@@ -2074,12 +2074,12 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             verdicts: {
               type: "integer",
               description:
-                "Findings that came back with a verdict. Zero means nothing was judged.",
+                "Findings that came back with a verdict, counted per finding rather than per distinct id. Zero means nothing was judged.",
             },
             attempted: {
               type: "integer",
               description:
-                "Findings there were to judge. On /scan/verify-batch a skipped element (a null one, or one with a field that cannot be converted to text) is handed back as sent and not counted.",
+                "Findings there were to judge. A skipped element (a null one, or one with a field that cannot be converted to text) is handed back as sent and not counted.",
             },
             rateLimited: {
               type: "boolean",

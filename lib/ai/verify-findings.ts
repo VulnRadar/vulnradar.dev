@@ -624,6 +624,15 @@ async function callVerify(
 }
 
 /**
+ * Each verdict under the index of the finding it was asked about, in the
+ * array the pass was given. Not keyed by finding id: v3 takes a repeated id,
+ * and an id map handed one call's verdict to every finding carrying it, so a
+ * finding the budget stopped before came back judged. The id is kept on the
+ * verdict for the feedback rows, which are keyed by it.
+ */
+type PositionedVerdicts = Map<number, VerifyResult>;
+
+/**
  * Verifies findings in fixed-size concurrent chunks instead of firing every
  * finding at once. Two problems this fixes versus one big Promise.race
  * over the whole batch: unbounded fan-out can trip provider rate limits on
@@ -635,7 +644,7 @@ async function callVerify(
  * got verified even if it runs out of time before covering all of them.
  */
 interface VerifyInChunksResult {
-  verdictMap: Map<string, Omit<VerifyResult, "id">>;
+  verdicts: PositionedVerdicts;
   /** Sum of every call's real token usage across the whole batch, regardless of whether that call produced a usable verdict. */
   totalTokens: number;
   /** The provider rate-limited the pass, which was stopped there. */
@@ -676,11 +685,9 @@ async function verifyInChunks(
   settings: VerifySettings,
   budget: number | null,
   spent: { tokens: number },
-  onChunkDone?: (
-    verdicts: Map<string, Omit<VerifyResult, "id">>,
-  ) => Promise<void> | void,
+  onChunkDone?: (verdicts: PositionedVerdicts) => Promise<void> | void,
 ): Promise<VerifyInChunksResult> {
-  const verdictMap = new Map<string, Omit<VerifyResult, "id">>();
+  const verdicts: PositionedVerdicts = new Map();
   let rateLimited = false;
   let budgetExhausted = false;
   let fatalStatus: number | undefined;
@@ -696,7 +703,9 @@ async function verifyInChunks(
   // builder cannot read, see isAskableFinding) is left out before any chunk
   // is formed, so it takes no slot and no admission, and applyVerdicts hands
   // it back as it was sent.
-  const askable = askableFindings(findings);
+  const askable = findings.flatMap((finding, position) =>
+    isAskableFinding(finding) ? [{ finding, position }] : [],
+  );
   while (next < askable.length) {
     if (Date.now() >= deadline) break;
 
@@ -707,18 +716,23 @@ async function verifyInChunks(
     // at its ceiling. Real calls cost less, so the room they leave is used by
     // the chunks after them.
     if (budget !== null) {
-      const admitted = admitWithinBudget(group, budget - held, settings, probe);
+      const admitted = admitWithinBudget(
+        group.map((g) => g.finding),
+        budget - held,
+        settings,
+        probe,
+      );
       if (admitted.length === 0) {
         budgetExhausted = true;
         break;
       }
-      group = admitted.map((a) => a.finding);
+      group = group.slice(0, admitted.length);
       ceilings = admitted.map((a) => a.ceiling);
     }
     next += group.length;
 
     const settled = await Promise.allSettled(
-      group.map((f) => callVerify(url, f, endpoint, probe, settings)),
+      group.map((g) => callVerify(url, g.finding, endpoint, probe, settings)),
     );
 
     for (const [i, r] of settled.entries()) {
@@ -727,16 +741,13 @@ async function verifyInChunks(
         held += r.value.costUnknown ? (ceilings[i] ?? 0) : r.value.tokensUsed;
         if (r.value.rateLimited) rateLimited = true;
         if (r.value.fatalStatus) fatalStatus = r.value.fatalStatus;
-        if (r.value.result) {
-          const { id, ...rest } = r.value.result;
-          verdictMap.set(id, rest);
-        }
+        if (r.value.result) verdicts.set(group[i].position, r.value.result);
       }
     }
 
     // Awaited so a slow chunk's persistence can't land after (and clobber)
     // a later, more-complete chunk's write.
-    await onChunkDone?.(verdictMap);
+    await onChunkDone?.(verdicts);
 
     // Once the provider has said 429, every remaining chunk would be refused
     // the same way. It used to carry on regardless: a scan with forty
@@ -752,20 +763,20 @@ async function verifyInChunks(
     // number those checks imply.
     if (rateLimited) {
       console.error(
-        `[AI-VERIFY] ${logValue(endpoint.baseUrl)} rate-limited the pass for ${logValue(url)}; stopped after ${verdictMap.size} of ${logValue(findings.length)} verdicts.`,
+        `[AI-VERIFY] ${logValue(endpoint.baseUrl)} rate-limited the pass for ${logValue(url)}; stopped after ${verdicts.size} of ${logValue(askable.length)} verdicts.`,
       );
       break;
     }
     if (fatalStatus) {
       console.error(
-        `[AI-VERIFY] ${logValue(endpoint.baseUrl)} returned ${fatalStatus} for model ${logValue(endpoint.model)} verifying ${logValue(url)}; stopped after ${verdictMap.size} of ${logValue(findings.length)} verdicts. Check the AI key and model.`,
+        `[AI-VERIFY] ${logValue(endpoint.baseUrl)} returned ${fatalStatus} for model ${logValue(endpoint.model)} verifying ${logValue(url)}; stopped after ${verdicts.size} of ${logValue(askable.length)} verdicts. Check the AI key and model.`,
       );
       break;
     }
   }
 
   return {
-    verdictMap,
+    verdicts,
     totalTokens: spent.tokens,
     rateLimited,
     budgetExhausted,
@@ -827,8 +838,7 @@ export async function verifyFindingsBatchWithOutcome(
     // the provider when neither reached it. A batch with nothing else in it
     // returns here, before the endpoint lookup and the probe of the target:
     // nothing in it would use either.
-    const askable = askableFindings(findings);
-    const attempted = askable.length;
+    const attempted = askableFindings(findings).length;
     if (attempted === 0) {
       return {
         findings,
@@ -854,7 +864,7 @@ export async function verifyFindingsBatchWithOutcome(
       settings.probeBodySnippetChars,
     );
     const deadline = Date.now() + settings.totalTimeoutMs;
-    const { verdictMap, rateLimited, budgetExhausted } = await verifyInChunks(
+    const pass = await verifyInChunks(
       url,
       findings,
       endpoint,
@@ -865,21 +875,9 @@ export async function verifyFindingsBatchWithOutcome(
       spent,
     );
 
-    // Counted per finding, not per distinct id: v3 takes a missing or
-    // repeated id, and applyVerdicts puts a verdict on every finding carrying
-    // that id, so verdictMap.size undercounted what the caller received. Not
-    // read off aiVerdict either, which a finding from an earlier pass
-    // already carries when it is sent back.
-    const verdicts = askable.filter((f) => verdictMap.has(f.id)).length;
     return {
-      findings: applyVerdicts(findings, verdictMap, new Set(askable)),
-      outcome: {
-        configured: true,
-        verdicts,
-        attempted,
-        ...(rateLimited ? { rateLimited: true } : {}),
-        ...(budgetExhausted ? { budgetExhausted: true } : {}),
-      },
+      findings: applyVerdicts(findings, pass.verdicts),
+      outcome: passOutcome(pass, attempted),
     };
   } finally {
     await settleVerifyTokens(reservation, spent.tokens);
@@ -931,16 +929,16 @@ async function syncFeedbackFromAiVerdicts(
   userId: number | null | undefined,
   scanHistoryId: number | null | undefined,
   url: string,
-  verdicts: Map<string, Omit<VerifyResult, "id">>,
+  verdicts: PositionedVerdicts,
 ): Promise<void> {
   if (!userId) return;
 
   const findingIds: string[] = [];
   const feedbackVerdicts: string[] = [];
-  for (const [findingId, v] of verdicts) {
+  for (const v of verdicts.values()) {
     const feedbackVerdict = AI_VERDICT_TO_FEEDBACK[v.verdict];
     if (!feedbackVerdict) continue;
-    findingIds.push(findingId);
+    findingIds.push(v.id);
     feedbackVerdicts.push(feedbackVerdict);
   }
   if (findingIds.length === 0) return;
@@ -990,15 +988,13 @@ async function syncFeedbackFromAiVerdicts(
 
 function applyVerdicts(
   findings: Vulnerability[],
-  verdictMap: Map<string, Omit<VerifyResult, "id">>,
-  askable?: ReadonlySet<Vulnerability>,
+  verdicts: PositionedVerdicts,
 ): Vulnerability[] {
-  return findings.map((f) => {
-    // verify-batch's null element comes back as it was sent, and so does one
-    // the pass skipped, even when it shares an id with a finding that was
-    // judged: it was never asked about, so no verdict is its own.
-    if (!f || (askable && !askable.has(f))) return f;
-    const v = verdictMap.get(f.id);
+  return findings.map((f, position) => {
+    // No verdict at this position covers every finding the pass did not get
+    // an answer for: one it skipped, one after the stop, one whose call
+    // failed. Each comes back as it was sent, whatever its id.
+    const v = verdicts.get(position);
     if (!v) return f;
     return {
       ...f,
@@ -1021,9 +1017,12 @@ function applyVerdicts(
 export interface AiVerificationOutcome {
   /** An endpoint resolved at all (instance config, or the user's own key). */
   configured: boolean;
-  /** Findings that came back with a verdict. Zero means nothing was judged. */
+  /**
+   * Findings that came back with a verdict, counted per finding rather than
+   * per distinct id. Zero means nothing was judged.
+   */
   verdicts: number;
-  /** Findings the pass was asked to judge. */
+  /** Findings there were to ask about: see isAskableFinding for what is not. */
   attempted: number;
   /**
    * The AI provider refused the pass with a rate limit. The modal says so
@@ -1038,6 +1037,20 @@ export interface AiVerificationOutcome {
    * against `attempted` says how far it got.
    */
   budgetExhausted?: boolean;
+}
+
+/** The outcome of a pass that ran. Both routes report through this, so they count alike. */
+function passOutcome(
+  pass: VerifyInChunksResult,
+  attempted: number,
+): AiVerificationOutcome {
+  return {
+    configured: true,
+    verdicts: pass.verdicts.size,
+    attempted,
+    ...(pass.rateLimited ? { rateLimited: true } : {}),
+    ...(pass.budgetExhausted ? { budgetExhausted: true } : {}),
+  };
 }
 
 /**
@@ -1055,7 +1068,8 @@ export async function runAiVerification(
 ): Promise<AiVerificationOutcome> {
   const spent = { tokens: 0 };
   try {
-    if (findings.length === 0) {
+    const attempted = askableFindings(findings).length;
+    if (attempted === 0) {
       return { configured: true, verdicts: 0, attempted: 0 };
     }
 
@@ -1067,7 +1081,7 @@ export async function runAiVerification(
       console.error(
         "[AI-VERIFY] No endpoint resolved. Check AI_BASE_URL and AI_PROVIDER, or the user's own AI settings.",
       );
-      return { configured: false, verdicts: 0, attempted: findings.length };
+      return { configured: false, verdicts: 0, attempted };
     }
 
     const settings = await resolveVerifySettings();
@@ -1082,7 +1096,7 @@ export async function runAiVerification(
     // at the end, so a scan with a lot of findings keeps whatever got
     // verified even if the process is cut off (by the deadline above, or by
     // the calling route's own request timeout) before covering all of them.
-    const { verdictMap, rateLimited, budgetExhausted } = await verifyInChunks(
+    const pass = await verifyInChunks(
       url,
       findings,
       endpoint,
@@ -1111,19 +1125,13 @@ export async function runAiVerification(
     // A pass the budget stopped before its first finding judged nothing
     // because of the account, not the endpoint, so it is not reported as an
     // endpoint failure.
-    if (verdictMap.size === 0 && !budgetExhausted) {
+    if (pass.verdicts.size === 0 && !pass.budgetExhausted) {
       console.error(
-        `[AI-VERIFY] All ${findings.length} findings returned null or timed out for ${logValue(url)}. Check the configured AI endpoint and model.`,
+        `[AI-VERIFY] All ${attempted} findings returned null or timed out for ${logValue(url)}. Check the configured AI endpoint and model.`,
       );
     }
 
-    return {
-      configured: true,
-      verdicts: verdictMap.size,
-      attempted: findings.length,
-      ...(rateLimited ? { rateLimited: true } : {}),
-      ...(budgetExhausted ? { budgetExhausted: true } : {}),
-    };
+    return passOutcome(pass, attempted);
   } finally {
     await settleVerifyTokens(reservation, spent.tokens);
   }

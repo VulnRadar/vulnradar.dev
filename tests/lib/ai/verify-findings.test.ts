@@ -1282,9 +1282,9 @@ describe("verifyFindingsBatch: a null element from verify-batch", () => {
 });
 
 describe("verifyFindingsBatchWithOutcome: counting verdicts on a caller-supplied batch", () => {
-  // v3 accepts a finding with a missing or repeated id, as 3.9.1 did. The
-  // verdict lands on every finding carrying that id, so the count is of the
-  // findings handed back with a verdict, not of distinct ids.
+  // v3 accepts a finding with a missing or repeated id, as 3.9.1 did. Each
+  // is asked about and judged on its own, so the count is of the findings
+  // handed back with a verdict, not of distinct ids.
   it("counts every finding that came back with a verdict, not distinct ids", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
       confirmedResponseWithUsage("x", 100, 50),
@@ -1308,6 +1308,268 @@ describe("verifyFindingsBatchWithOutcome: counting verdicts on a caller-supplied
       verdicts: 2,
       attempted: 2,
     });
+  });
+});
+
+describe("verdicts belong to the position that was asked about, not to its id", () => {
+  beforeEach(() => {
+    mockQuery.mockResolvedValue({ rows: [] });
+  });
+
+  async function ceilingOf(finding: Vulnerability): Promise<number> {
+    const { admittedCallCeiling } = await import("@/lib/ai/verify-findings");
+    const { CONFIG_AI_VERIFY_MAX_TOKENS } =
+      await import("@/lib/config/config-values");
+    return admittedCallCeiling(
+      finding,
+      { maxTokens: CONFIG_AI_VERIFY_MAX_TOKENS },
+      {
+        status_code: 200,
+        final_url: "https://example.com/",
+        response_headers: {},
+        body_snippet: "",
+      },
+    );
+  }
+
+  /** Answers each call with the title it was asked about, so a verdict can be traced to its call. */
+  function answerByTitle(): void {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(init.body as string);
+        const title = /title: (.+)/.exec(body.messages[1].content)?.[1];
+        return confirmedResponse(title ?? "unknown");
+      },
+    );
+  }
+
+  function withTitle(id: string, title: string): Vulnerability {
+    return { ...makeFinding(id), title };
+  }
+
+  /** What the last chunk's write put on the scan. */
+  function persistedFindings(): Vulnerability[] {
+    const writes = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).startsWith("UPDATE scan_history"),
+    );
+    return JSON.parse(writes.at(-1)?.[1][0] as string);
+  }
+
+  it("leaves a repeated id the budget never reached without a verdict", async () => {
+    answerByTitle();
+    const findings = [makeFinding("dup"), makeFinding("dup")];
+    const held = reservation({ budget: await ceilingOf(findings[0]) });
+
+    const { findings: out, outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      findings,
+      42,
+      held,
+    );
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(out[0].aiVerdict).toBe("confirmed");
+    expect(out[1]).toEqual(makeFinding("dup"));
+    expect(outcome).toMatchObject({
+      verdicts: 1,
+      attempted: 2,
+      budgetExhausted: true,
+    });
+  });
+
+  it("keeps the stop contiguous when ids repeat on both sides of it", async () => {
+    const one = await ceilingOf(makeFinding("a"));
+    // Each call really costs its whole ceiling, so two exhaust a budget of two.
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponseWithUsage("x", one, 0),
+    );
+    const findings = ["a", "b", "a", "b"].map(makeFinding);
+
+    const { findings: out, outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      findings,
+      42,
+      reservation({ budget: one * 2 }),
+    );
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(out.map((f) => f.aiVerdict)).toEqual([
+      "confirmed",
+      "confirmed",
+      undefined,
+      undefined,
+    ]);
+    expect(out.map((f) => f.id)).toEqual(["a", "b", "a", "b"]);
+    expect(outcome).toMatchObject({
+      verdicts: 2,
+      attempted: 4,
+      budgetExhausted: true,
+    });
+  });
+
+  it("gives each repeated id the verdict of its own call", async () => {
+    answerByTitle();
+
+    const { findings: out } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      [withTitle("dup", "first"), withTitle("dup", "second")],
+      null,
+      null,
+    );
+
+    expect(out.map((f) => f.aiReason)).toEqual([
+      "real issue for first",
+      "real issue for second",
+    ]);
+  });
+
+  it("leaves a repeated id without a verdict when its own call failed", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(init.body as string);
+        return body.messages[1].content.includes("title: good")
+          ? confirmedResponse("good")
+          : { ok: false, status: 503, text: async () => "down" };
+      },
+    );
+
+    const { findings: out, outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      [withTitle("dup", "good"), withTitle("dup", "bad")],
+      null,
+      null,
+    );
+
+    expect(out[0].aiVerdict).toBe("confirmed");
+    expect(out[1].aiVerdict).toBeUndefined();
+    expect(outcome).toMatchObject({ verdicts: 1, attempted: 2 });
+    errors.mockRestore();
+  });
+
+  it("leaves a finding from an earlier pass as it was sent when the budget stops before it", async () => {
+    answerByTitle();
+    const earlier = {
+      ...withTitle("dup", "unreached"),
+      aiVerdict: "uncertain",
+      aiConfidence: 60,
+      aiReason: "from an earlier pass",
+    } as Vulnerability;
+    const first = withTitle("dup", "reached");
+    const held = reservation({ budget: await ceilingOf(first) });
+
+    const { findings: out } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      [first, earlier],
+      42,
+      held,
+    );
+
+    expect(out[1]).toEqual(earlier);
+  });
+
+  it("writes a stored scan's repeated id by position too", async () => {
+    answerByTitle();
+    const findings = [makeFinding("dup"), makeFinding("dup")];
+    const held = reservation({ budget: await ceilingOf(findings[0]) });
+
+    const outcome = await runAiVerification(
+      "https://example.com",
+      findings,
+      7,
+      null,
+      held,
+    );
+
+    expect(persistedFindings().map((f) => f.aiVerdict)).toEqual([
+      "confirmed",
+      undefined,
+    ]);
+    expect(outcome).toMatchObject({
+      verdicts: 1,
+      attempted: 2,
+      budgetExhausted: true,
+    });
+  });
+});
+
+describe("runAiVerification: counts the way verify-batch counts", () => {
+  beforeEach(() => {
+    mockQuery.mockResolvedValue({ rows: [] });
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponse("x"),
+    );
+  });
+
+  it("counts a repeated id once per finding that came back with a verdict", async () => {
+    const outcome = await runAiVerification(
+      "https://example.com",
+      [makeFinding("dup"), makeFinding("dup")],
+      7,
+      null,
+      null,
+    );
+
+    expect(outcome).toStrictEqual({
+      configured: true,
+      verdicts: 2,
+      attempted: 2,
+    });
+  });
+
+  it("leaves a null element out of attempted", async () => {
+    const outcome = await runAiVerification(
+      "https://example.com",
+      [makeFinding("f1"), null as unknown as Vulnerability],
+      7,
+      null,
+      null,
+    );
+
+    expect(outcome).toStrictEqual({
+      configured: true,
+      verdicts: 1,
+      attempted: 1,
+    });
+  });
+
+  it("returns before the endpoint lookup and the probe when there is nothing to ask about", async () => {
+    const outcome = await runAiVerification(
+      "https://example.com",
+      [null as unknown as Vulnerability],
+      7,
+      42,
+      null,
+    );
+
+    expect(outcome).toStrictEqual({
+      configured: true,
+      verdicts: 0,
+      attempted: 0,
+    });
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+  });
+
+  it("reports the no-endpoint case with the same attempted count", async () => {
+    delete process.env.AI_BASE_URL;
+    delete process.env.AI_API_KEY;
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const outcome = await runAiVerification(
+      "https://example.com",
+      [makeFinding("f1"), null as unknown as Vulnerability],
+      7,
+      null,
+      null,
+    );
+
+    expect(outcome).toStrictEqual({
+      configured: false,
+      verdicts: 0,
+      attempted: 1,
+    });
+    errors.mockRestore();
   });
 });
 
