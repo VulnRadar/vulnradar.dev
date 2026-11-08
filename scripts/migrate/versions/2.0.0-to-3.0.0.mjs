@@ -999,6 +999,25 @@ export const upgrade = {
   ],
 
   addColumns: [
+    // The second notification button. _snippets.mjs gives these to a table
+    // the migrator creates, but a v2 database's table predates them and only
+    // the app's boot ever added them, so the check that runs after a migration
+    // refused every real v2 upgrade over three missing columns.
+    {
+      table: "admin_notifications",
+      column: "action_label_2",
+      definition: "VARCHAR(100) DEFAULT NULL",
+    },
+    {
+      table: "admin_notifications",
+      column: "action_url_2",
+      definition: "VARCHAR(500) DEFAULT NULL",
+    },
+    {
+      table: "admin_notifications",
+      column: "action_external_2",
+      definition: "BOOLEAN DEFAULT false",
+    },
     {
       table: "users",
       column: "unsubscribe_token",
