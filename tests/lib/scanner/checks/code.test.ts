@@ -391,7 +391,7 @@ const fixtures: DetectorFixtures = {
     },
     {
       description:
-        "Google API key ALONE must not fire here — no legitimate-secret pattern present, and the format is covered by google-api-key-exposed / secret-google-maps-api-key at medium severity instead of being re-flagged critical",
+        "Google API key ALONE must not fire here — no legitimate-secret pattern present, and the format is covered by google-api-key-exposed / secret-google-maps-api-key at their own lower severities instead of being re-flagged critical",
       body: "<script>const mapsKey = 'AIzaSyDaGmWKa4JsXZ-HjGw7ISLn_3namBGewQe';</script>",
       expect: "skip",
     },
