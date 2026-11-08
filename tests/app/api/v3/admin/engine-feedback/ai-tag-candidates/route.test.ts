@@ -244,6 +244,51 @@ describe("POST /api/v3/admin/engine-feedback/ai-tag-candidates (promote)", () =>
     expect(JSON.parse(params[2])).toEqual(["dns"]);
   });
 
+  // findingQualifies ANDs the two lists under requireBoth, and an absent list
+  // never matches, so these rules would save cleanly and never tag anything.
+  it.each([
+    ["only CWEs", { cwes: ["CWE-79"] }],
+    ["only categories", { categories: ["dns"] }],
+    // The check has to run on what survives filtering, not on what was sent.
+    ["CWEs that are all invalid", { cwes: ["nope"], categories: ["dns"] }],
+  ])("400s requireBoth with %s", async (_name, signal) => {
+    withAdmin();
+
+    const res = await POST(
+      postRequest({
+        tag: "Half A Rule",
+        requireBoth: true,
+        minSeverity: "high",
+        ...signal,
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/at least one of each/i);
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("INSERT INTO promoted_auto_tag_rules"),
+      ),
+    ).toBe(false);
+  });
+
+  it("still saves a requireBoth rule that has one of each", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT
+
+    const res = await POST(
+      postRequest({
+        tag: "Whole Rule",
+        cwes: ["CWE-79"],
+        categories: ["dns"],
+        requireBoth: true,
+        minSeverity: "high",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+  });
+
   it("saves a valid promotion with source_ai_tag and created_by set, and upserts on a repeat promotion", async () => {
     withAdmin(9);
     mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT

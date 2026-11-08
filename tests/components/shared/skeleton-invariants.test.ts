@@ -292,7 +292,7 @@ describe("every admin section reserves the shape it arrives in", () => {
 
   // A panel whose second card the placeholder never heard of grows by roughly
   // 130px of header the moment its chunk lands. Five panels stack two cards
-  // and Engine Feedback stacks three; the old one-shape-fits-all fallback drew
+  // and Engine Feedback stacks four; the old one-shape-fits-all fallback drew
   // one for all of them.
   const CONDITIONAL_HEADERS: Record<string, number> = {
     // The install-log card only exists while a job is running, so it is not
@@ -300,8 +300,17 @@ describe("every admin section reserves the shape it arrives in", () => {
     updater: 1,
   };
 
+  // A card drawn by a child component carries its header in that component's
+  // file, so counting the panel's own file alone reads one short. Engine
+  // Feedback's fourth card was missed exactly that way.
+  const CHILD_PANEL_FILES: Record<string, string[]> = {
+    "engine-feedback": ["components/admin/features/promoted-rules-panel.tsx"],
+  };
+
   it.each([...FILES.keys()])("%s reserves one card per panel header", (tab) => {
-    const src = code(FILES.get(tab)!);
+    const src = [FILES.get(tab)!, ...(CHILD_PANEL_FILES[tab] ?? [])]
+      .map(code)
+      .join("\n");
     const real =
       (src.match(/<AdminPanelHeader\b/g) ?? []).length -
       (CONDITIONAL_HEADERS[tab] ?? 0);
@@ -315,6 +324,16 @@ describe("every admin section reserves the shape it arrives in", () => {
       cards.filter((c) => !/header:\s*"(none|plain)"/.test(c[0])).length +
       (/facts:/.test(shape) ? 1 : 0);
     expect(reserved).toBe(real);
+  });
+
+  it("engine-feedback's last card reserves the rows Promoted rules draws", () => {
+    const panel = code("components/admin/features/promoted-rules-panel.tsx");
+    const rows = /<DataTableSkeleton rows=\{(\d+)\}/.exec(panel)?.[1];
+    const cards = [
+      ...SHAPES.get("engine-feedback")!.matchAll(/rows:\s*(\d+)/g),
+    ].map((m) => m[1]);
+    expect(rows).toBeDefined();
+    expect(cards.at(-1)).toBe(rows);
   });
 });
 

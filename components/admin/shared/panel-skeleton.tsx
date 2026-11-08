@@ -152,6 +152,8 @@ export const ADMIN_PANEL_SHAPES: Record<AdminTabKey, PanelShape> = {
       { filterRows: 1, body: "table" },
       { body: "table", rows: 4 },
       { body: "table", rows: 3 },
+      // Promoted rules, drawn by its own component below the three above.
+      { body: "table", rows: 2 },
     ],
   },
 };

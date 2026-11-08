@@ -154,6 +154,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
+  // findingQualifies ANDs the two lists under requireBoth and an absent list
+  // never matches, so a rule with only one of them would save, show up as
+  // promoted, and never tag a single scan.
+  const requireBoth = Boolean(body.requireBoth);
+  if (requireBoth && (cwes.length === 0 || categories.length === 0)) {
+    return NextResponse.json(
+      {
+        error:
+          "Requiring both a CWE and a category needs at least one of each.",
+      },
+      { status: 400 },
+    );
+  }
+
   const minSeverity = body.minSeverity as Severity;
   if (!RULE_SEVERITIES.includes(minSeverity)) {
     return NextResponse.json(
@@ -184,7 +198,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         tag,
         cwes.length > 0 ? JSON.stringify(cwes) : null,
         categories.length > 0 ? JSON.stringify(categories) : null,
-        Boolean(body.requireBoth),
+        requireBoth,
         minSeverity,
         minCount,
         tag,
