@@ -171,6 +171,13 @@ const INLINE_IN_SENTENCE: Record<string, string[]> = {
   "components/docs/docs-pager.tsx": [],
   "components/legal/legal-section.tsx": [],
   "components/changelog/changelog-release.tsx": [],
+  // /brand is a page of download links, so every chip and the hero's ZIP
+  // link are held to the floor; the two in-sentence links are padded inline.
+  "components/brand/brand-kit.tsx": [
+    "README",
+    "Ask for it on the contact page",
+  ],
+  "components/brand/kit-assets.tsx": [],
 };
 
 /** A floor on how many links each file is expected to hold, so a parser miss
@@ -188,6 +195,8 @@ const MIN_LINKS: Record<string, number> = {
   "components/docs/docs-pager.tsx": 1,
   "components/legal/legal-section.tsx": 1,
   "components/changelog/changelog-release.tsx": 1,
+  "components/brand/brand-kit.tsx": 3,
+  "components/brand/kit-assets.tsx": 1,
 };
 
 describe.each(Object.keys(INLINE_IN_SENTENCE))("%s", (rel) => {

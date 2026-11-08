@@ -509,6 +509,8 @@ export const ROUTES = {
   CONTACT: "/contact",
   DONATE: "/donate",
   PRICING: "/pricing",
+  /** Public brand kit: logo files, colours and usage rules (app/brand). */
+  BRAND: "/brand",
   LANDING: "/landing",
   LEGAL_TERMS: "/legal/terms",
   LEGAL_PRIVACY: "/legal/privacy",

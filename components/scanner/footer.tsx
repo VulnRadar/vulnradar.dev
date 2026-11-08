@@ -231,6 +231,14 @@ export function Footer() {
                   {t("security")}
                 </Link>
               </li>
+              <li>
+                <Link
+                  href={ROUTES.BRAND}
+                  className="hover:text-foreground transition-colors"
+                >
+                  {t("brand")}
+                </Link>
+              </li>
             </ul>
           </div>
 

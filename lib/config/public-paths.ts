@@ -110,6 +110,12 @@ export const PUBLIC_PATHS = [
   // route starts with "/security" (the machine-readable /security.txt and
   // /.well-known/security.txt are listed separately below).
   "/security",
+  // The brand kit (app/brand/page.tsx) and its files. Prefix-matched, which
+  // is the point: the PNGs and SVGs under public/brand/ skip middleware by
+  // the matcher's image-suffix rule, but the ZIP and README.md do not, and
+  // without this a signed-out visitor's "Download everything" would be a 307
+  // to the login page. No protected route starts with "/brand".
+  ROUTES.BRAND,
 
   // ─── SEO Content Pages ─────────────────────────────────────────
   // Prefix-matched below, so each entry also covers its sub-routes:

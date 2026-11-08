@@ -314,6 +314,19 @@ describe("middleware: public path / auth redirects", () => {
     expect(res.headers.get("location")).toBeNull();
   });
 
+  // The brand kit page and the two kinds of its files the matcher sends
+  // through middleware. Its PNGs and SVGs skip middleware by suffix, but the
+  // ZIP behind "Download everything" and the README do not, and a 307 to
+  // /login there hands a signed-out visitor an HTML page named .zip.
+  it.each([ROUTES.BRAND, "/brand/vulnradar-brand-kit.zip", "/brand/README.md"])(
+    "lets a signed-out visitor reach %s",
+    (path) => {
+      const res = middleware(makeRequest(path));
+      expect(res.headers.get("location")).toBeNull();
+      expect([307, 308]).not.toContain(res.status);
+    },
+  );
+
   // Regression: these five were missing from PUBLIC_PATHS entirely (only
   // their sub-pages or API routes were listed, not the page itself), so a
   // logged-out visitor got 307'd to /login before ever reaching a page
@@ -910,6 +923,11 @@ describe("middleware: matcher", () => {
     expect(runsFor("/logo.png")).toBe(false);
     expect(runsFor("/images/hero.webp")).toBe(false);
     expect(runsFor("/icons/shield.svg")).toBe(false);
+    expect(runsFor("/brand/logo/vulnradar-logo-512x512.png")).toBe(false);
+  });
+
+  it("runs for the brand kit's ZIP, which is why /brand is a public path", () => {
+    expect(runsFor("/brand/vulnradar-brand-kit.zip")).toBe(true);
   });
 
   it.each(imageSuffixes)(

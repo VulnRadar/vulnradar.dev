@@ -44,6 +44,7 @@ export const STATIC_PUBLIC_ROUTES: readonly PublicRoute[] = [
   { path: "/changelog", priority: 0.6, changeFrequency: "weekly" },
   { path: "/contact", priority: 0.5, changeFrequency: "yearly" },
   { path: "/security", priority: 0.5, changeFrequency: "yearly" },
+  { path: "/brand", priority: 0.4, changeFrequency: "yearly" },
   { path: "/donate", priority: 0.4, changeFrequency: "yearly" },
   { path: "/signup", priority: 0.6, changeFrequency: "monthly" },
   { path: "/login", priority: 0.4, changeFrequency: "monthly" },
