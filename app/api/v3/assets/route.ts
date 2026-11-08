@@ -5,12 +5,16 @@ import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import type { SettingKey } from "@/lib/config/registry";
-import { normalizeHostForReputation } from "@/lib/scanner/host-reputation";
+import { PUBLIC_HOST_SQL } from "@/lib/database/sql-fragments";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import {
+  RATING_FINDINGS_SQL,
+  type RatingFinding,
+} from "@/lib/scanner/rating-findings-sql";
 import {
   getSafetyRating,
   type SafetyRating,
 } from "@/lib/scanner/safety-rating";
-import type { Vulnerability } from "@/lib/scanner/types";
 
 /**
  * GET /api/v3/assets
@@ -18,21 +22,17 @@ import type { Vulnerability } from "@/lib/scanner/types";
  * Backs app/assets/page.tsx: every distinct host the caller has scanned,
  * grouped from their own scan_history rows, most-recently-scanned host
  * first. scan_history has no separate `host` column (only the full scanned
- * `url`), so the GROUP BY happens here in JS via hostForGrouping() rather
- * than in SQL -- see normalizeHostForReputation's own doc comment for why
- * host extraction is a TS URL parse, not a SQL regex, elsewhere in this
- * codebase.
+ * `url`), so the grouping key is HOST_KEY_SQL below.
  *
- * Retention mirrors GET /api/v3/history exactly (same setting keys, same
- * dated-window vs. unlimited branching, same HISTORY_LIST_MAX_ROWS cap): a
- * host whose only qualifying scan already fell outside the caller's plan
- * retention window must not appear here just because /api/v3/history also
- * hides it.
+ * Retention mirrors GET /api/v3/history (same setting keys, same dated-window
+ * vs. unlimited branching): a host whose only qualifying scan already fell
+ * outside the caller's plan retention window must not appear here just because
+ * /api/v3/history also hides it. HISTORY_LIST_MAX_ROWS caps the hosts returned.
  *
  * Each row's safety rating comes from getSafetyRating() run against that
- * host's latest COMPLETED scan's full findings array -- the same function and the
- * same "safe / caution / unsafe" verdict GET /api/v3/public-scans computes
- * per row -- not a re-derivation from the aggregated severity counts alone.
+ * host's latest COMPLETED scan's findings -- the same function and the same
+ * "safe / caution / unsafe" verdict GET /api/v3/public-scans computes per row
+ * -- not a re-derivation from the aggregated severity counts alone.
  */
 
 // Mirrors app/api/v3/history/route.ts's RETENTION_SETTING_KEYS. Duplicated
@@ -66,39 +66,30 @@ export interface AssetRow {
   isPublic: boolean;
 }
 
-interface ScanHistoryRow {
+interface HostRow {
   id: number;
+  host: string;
   url: string;
   summary: Record<string, number> | null;
   findings_count: number;
   scanned_at: string | Date;
   is_public: boolean;
+  scan_count: number;
+  total_hosts: number;
+  total_scans: number;
+  findings: RatingFinding[] | null;
 }
 
 /**
- * Grouping key for one scanned URL. normalizeHostForReputation strips
- * protocol/path/port/www and lowercases -- the exact host identity the
- * /host/[hostname] aggregate page (this route's link target) resolves --
- * but it deliberately returns null for a bare IP literal (see its own doc
- * comment), same as host_reputation never tracking IPs. Falls back to a
- * raw hostname parse so an IP-scanned target still gets its own row instead
- * of silently disappearing from the list (its /host/ link just won't
- * resolve to a report, same as it wouldn't anywhere else in the app today).
+ * The host a scan belongs to: PUBLIC_HOST_SQL, the identity /host/[hostname]
+ * (this route's link target) resolves, with www stripped and case folded. A bare
+ * IP has a host there too, so an IP-scanned target keeps its own row. That
+ * expression stops at the first colon, so a bracketed IPv6 literal is read
+ * first and whole. A URL neither can read (a pre-normalization row) is keyed on
+ * the URL itself, so it is listed rather than silently dropped.
  */
-function hostForGrouping(url: string): string {
-  const normalized = normalizeHostForReputation(url);
-  if (normalized) return normalized;
-
-  const trimmed = url.trim();
-  try {
-    const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed);
-    return new URL(
-      hasScheme ? trimmed : `https://${trimmed}`,
-    ).hostname.toLowerCase();
-  } catch {
-    return trimmed.toLowerCase();
-  }
-}
+const IPV6_LITERAL_SQL = `LOWER(substring(url from '^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^/?#@]*@)?([[][^]/?#@]*[]])'))`;
+const HOST_KEY_SQL = `COALESCE(${IPV6_LITERAL_SQL}, ${PUBLIC_HOST_SQL}, LOWER(url))`;
 
 /** Cap on the public "all hosts" browse. host_reputation is small today, but
  *  bound it so the list stays a browse, not an unbounded dump. */
@@ -135,10 +126,21 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // completed scan's snapshot and a later pending or failed attempt never
   // replaces it.
   if (request.nextUrl.searchParams.get("scope") === "all") {
+    // Every row here costs a walk of that host's findings, up to ALL_HOSTS_MAX
+    // of them per call, for any signed-in account. The per-user branch below is
+    // bounded by what that account has scanned; this one is not.
+    const rl = await checkRateLimit({
+      key: `assets-all:${userId}`,
+      ...RATE_LIMITS.api,
+    });
+    if (!rl.allowed) {
+      return ApiResponse.tooManyRequests(undefined, rl.retryAfterSeconds);
+    }
+
     const res = await pool.query<{
       host: string;
       severity_counts: Record<string, number> | null;
-      findings: Vulnerability[] | null;
+      findings: RatingFinding[] | null;
       last_scanned_at: string | Date;
       source_scan_id: number | null;
     }>(
@@ -150,13 +152,16 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       // scan of every host on file, tokens and all (a magic-login link, a
       // password-reset URL, a presigned S3 URL). The host itself is already
       // public at /host/[hostname]; the exact URL is not.
-      `SELECT host, severity_counts, findings, last_scanned_at, source_scan_id
+      //
+      // One past the cap, so `truncated` can tell "exactly the cap" from "more
+      // than the cap".
+      `SELECT host, severity_counts, ${RATING_FINDINGS_SQL} AS findings, last_scanned_at, source_scan_id
        FROM host_reputation
        ORDER BY last_scanned_at DESC
        LIMIT $1`,
-      [ALL_HOSTS_MAX],
+      [ALL_HOSTS_MAX + 1],
     );
-    const assets: AssetRow[] = res.rows.map((r) => {
+    const assets: AssetRow[] = res.rows.slice(0, ALL_HOSTS_MAX).map((r) => {
       const counts = r.severity_counts || {};
       const findingsCount =
         (counts.critical ?? 0) +
@@ -190,7 +195,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       totalHosts: assets.length,
       totalScans: assets.length,
       limit: ALL_HOSTS_MAX,
-      truncated: res.rows.length === ALL_HOSTS_MAX,
+      truncated: res.rows.length > ALL_HOSTS_MAX,
       scope: "all",
     });
   }
@@ -215,88 +220,70 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // 'pending' with summary '{}' and no findings from the moment it is queued,
   // and a failed or cancelled one keeps those defaults, so letting one in made
   // it the host's "latest" and the page reported 0 findings and a "safe"
-  // rating for a site whose last real result had criticals. Filtering in SQL
-  // also keeps failed rows from spending the HISTORY_LIST_MAX_ROWS cap, at the
-  // price that a host with no completed scan at all has no posture to show and
-  // does not appear (its attempts are still in History).
-  const result = await pool.query<ScanHistoryRow>(
-    retentionDays <= 0
-      ? `SELECT id, url, summary, findings_count, scanned_at, is_public
-         FROM scan_history
-         WHERE user_id = $1 AND (scan_type IS NULL OR scan_type != 'github')
-           AND status = 'completed'
-         ORDER BY scanned_at DESC
-         LIMIT $2`
-      : `SELECT id, url, summary, findings_count, scanned_at, is_public
-         FROM scan_history
-         WHERE user_id = $1 AND (scan_type IS NULL OR scan_type != 'github')
-           AND status = 'completed'
-           AND scanned_at > NOW() - ($2 * INTERVAL '1 day')
-         ORDER BY scanned_at DESC
-         LIMIT $3`,
-    retentionDays <= 0
-      ? [userId, historyMaxRows]
-      : [userId, Math.floor(retentionDays), historyMaxRows],
+  // rating for a site whose last real result had criticals. The price is that
+  // a host with no completed scan at all has no posture to show and does not
+  // appear (its attempts are still in History).
+  //
+  // Grouped here rather than in Node so the cap counts hosts. It used to cut
+  // off the newest HISTORY_LIST_MAX_ROWS scans and group what was left, so one
+  // site rescanned daily spent the whole allowance and pushed every other host
+  // off the list, and any account past the cap read as truncated even with
+  // nothing missing. The findings are read last, for the returned rows only.
+  const retentionWindow =
+    retentionDays > 0 ? `AND scanned_at > NOW() - ($3 * INTERVAL '1 day')` : "";
+  const result = await pool.query<HostRow>(
+    `WITH per_host AS (
+       SELECT DISTINCT ON (host)
+              id, host, url, summary, findings_count, scanned_at, is_public, scan_count
+         FROM (
+           SELECT id, url, summary, findings_count, scanned_at, is_public,
+                  ${HOST_KEY_SQL} AS host,
+                  COUNT(*) OVER (PARTITION BY ${HOST_KEY_SQL})::int AS scan_count
+             FROM scan_history
+            WHERE user_id = $1 AND (scan_type IS NULL OR scan_type != 'github')
+              AND status = 'completed'
+              ${retentionWindow}
+         ) scans
+        ORDER BY host, scanned_at DESC, id DESC
+     ),
+     page AS (
+       SELECT per_host.*,
+              COUNT(*) OVER ()::int AS total_hosts,
+              SUM(scan_count) OVER ()::int AS total_scans
+         FROM per_host
+        ORDER BY scanned_at DESC, id DESC
+        LIMIT $2
+     )
+     SELECT page.*, ${RATING_FINDINGS_SQL} AS findings
+       FROM page
+       JOIN scan_history USING (id)
+      ORDER BY page.scanned_at DESC, page.id DESC`,
+    retentionDays > 0
+      ? [userId, historyMaxRows, Math.floor(retentionDays)]
+      : [userId, historyMaxRows],
   );
 
-  // Rows arrive most-recent-first (ORDER BY scanned_at DESC above), so the
-  // first row seen for a given host is already that host's latest COMPLETED
-  // scan -- no re-sorting needed once grouped. scanCount counts completed
-  // scans for the same reason.
-  const groups = new Map<
-    string,
-    { host: string; scanCount: number; latest: ScanHistoryRow }
-  >();
-  for (const row of result.rows) {
-    const host = hostForGrouping(row.url);
-    const existing = groups.get(host);
-    if (existing) {
-      existing.scanCount += 1;
-    } else {
-      groups.set(host, { host, scanCount: 1, latest: row });
-    }
-  }
-
-  // Full findings (needed for getSafetyRating's title/severity matching)
-  // are only fetched for each host's single latest scan, not for every row
-  // in the retention window -- keeps this bounded to one row per host
-  // instead of one row per scan.
-  const latestIds = Array.from(groups.values()).map((g) => g.latest.id);
-  const findingsByScanId = new Map<number, Vulnerability[]>();
-  if (latestIds.length > 0) {
-    const findingsRes = await pool.query<{
-      id: number;
-      findings: Vulnerability[] | null;
-    }>(`SELECT id, findings FROM scan_history WHERE id = ANY($1::int[])`, [
-      latestIds,
-    ]);
-    for (const row of findingsRes.rows) {
-      findingsByScanId.set(row.id, row.findings || []);
-    }
-  }
-
-  const assets: AssetRow[] = Array.from(groups.values()).map((g) => ({
-    host: g.host,
-    scanCount: g.scanCount,
-    latestScanId: g.latest.id,
-    latestUrl: g.latest.url,
-    latestScannedAt: new Date(g.latest.scanned_at).toISOString(),
-    findingsCount: g.latest.findings_count,
-    summary: g.latest.summary || {},
-    safetyRating: getSafetyRating(findingsByScanId.get(g.latest.id) || []),
-    isPublic: g.latest.is_public,
+  const assets: AssetRow[] = result.rows.map((row) => ({
+    host: row.host,
+    scanCount: row.scan_count,
+    latestScanId: row.id,
+    latestUrl: row.url,
+    latestScannedAt: new Date(row.scanned_at).toISOString(),
+    findingsCount: row.findings_count,
+    summary: row.summary || {},
+    safetyRating: getSafetyRating(row.findings || []),
+    isPublic: row.is_public,
   }));
 
-  // totalScans is the number of scan rows this request grouped, and that read
-  // is capped at HISTORY_LIST_MAX_ROWS, so on an account with more scans than
-  // the cap it silently pins to the cap and both counts understate the truth.
-  // `limit` and `truncated` say so rather than leaving the client to present a
-  // ceiling as a total. ref: AUDIT-015#api-04
+  // Both totals are computed before the cap, so they are real figures for the
+  // retention window, and `truncated` is true only when a host was left out.
+  // ref: AUDIT-015#api-04
+  const totalHosts = result.rows[0]?.total_hosts ?? 0;
   return ApiResponse.success({
     assets,
-    totalHosts: assets.length,
-    totalScans: result.rows.length,
+    totalHosts,
+    totalScans: result.rows[0]?.total_scans ?? 0,
     limit: historyMaxRows,
-    truncated: result.rows.length === historyMaxRows,
+    truncated: totalHosts > assets.length,
   });
 });

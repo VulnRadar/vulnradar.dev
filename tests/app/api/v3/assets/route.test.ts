@@ -1,13 +1,16 @@
 /**
  * Route-level tests for GET /api/v3/assets.
  *
- * Mocks the database pool, session, and the runtime-config settings
- * resolver; the route's own auth-gating, disabled-account check, host
- * grouping (via the real normalizeHostForReputation), and safety-rating
- * computation (via the real getSafetyRating) all run for real.
+ * Mocks the database pool, session, limiter and the runtime-config settings
+ * resolver; the route's own auth-gating, disabled-account check, response
+ * shaping and safety-rating computation (via the real getSafetyRating) all run
+ * for real. What Postgres does with the host grouping, the cap and the totals
+ * is proven against a real database in tests/integration/read-perf.test.ts.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { PUBLIC_HOST_SQL } from "@/lib/database/sql-fragments";
+import { RATING_FINDINGS_SQL } from "@/lib/scanner/rating-findings-sql";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -19,12 +22,17 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+const mockRateLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/rate-limit", () => ({
+  checkRateLimit: (...args: unknown[]) => mockRateLimit(...args),
+  RATE_LIMITS: { api: { limit: "api" } },
+}));
+
 // Mirrors tests/app/api/v3/dashboard/route.test.ts's approach: mock the
 // settings resolver directly rather than the underlying system_settings
-// table, since this route's own job is host grouping and safety-rating
-// computation, not retention-window resolution (that's already covered by
+// table, since retention-window resolution is already covered by
 // tests/app/api/v3/history/route.test.ts, whose SQL branching this route
-// deliberately mirrors).
+// deliberately mirrors.
 let settingsOverride: Record<string, number> = {};
 vi.mock("@/lib/config/runtime-config", () => ({
   getSettings: vi.fn(async (keys: string[]) => {
@@ -47,35 +55,97 @@ function getRequest() {
   return new NextRequest("http://localhost/api/v3/assets", { method: "GET" });
 }
 
-const CLEAN_FINDINGS: unknown[] = [];
+function allRequest() {
+  return new NextRequest("http://localhost/api/v3/assets?scope=all", {
+    method: "GET",
+  });
+}
+
 const CRITICAL_EXPLOIT_FINDINGS = [
   { title: "SQL Injection Vulnerability", severity: "critical" },
 ];
+
+function hostRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 2,
+    host: "example.com",
+    url: "https://example.com/newer",
+    summary: { info: 1 },
+    findings_count: 1,
+    scanned_at: "2024-02-01T00:00:00Z",
+    is_public: false,
+    scan_count: 1,
+    total_hosts: 1,
+    total_scans: 1,
+    findings: [],
+    ...overrides,
+  };
+}
+
+const USER_ROW = { plan: "free", role: "user", disabled_at: null };
+
+function installDefaultQueryMock(hostRows: unknown[], user = USER_ROW) {
+  mockQuery.mockImplementation(async (sql: string) => {
+    if (sql.includes("SELECT plan, role, disabled_at FROM users")) {
+      return { rows: [user] };
+    }
+    if (sql.includes("DISTINCT ON (host)")) {
+      return { rows: hostRows };
+    }
+    return { rows: [] };
+  });
+}
+
+function reputationRow(host: string) {
+  return {
+    host,
+    severity_counts: { critical: 1, high: 0, medium: 2, low: 0, info: 1 },
+    findings: CRITICAL_EXPLOIT_FINDINGS,
+    last_scanned_at: "2024-02-01T00:00:00Z",
+    source_scan_id: 55,
+  };
+}
+
+function installAllHostsMock(rows: unknown[]) {
+  mockQuery.mockImplementation(async (sql: string) => {
+    if (sql.includes("SELECT plan, role, disabled_at FROM users")) {
+      return { rows: [USER_ROW] };
+    }
+    if (sql.includes("FROM host_reputation")) {
+      return { rows };
+    }
+    // The privacy guarantee: scope=all must never touch scan_history (which
+    // includes private scans); it reads only the public host_reputation table.
+    throw new Error(`scope=all ran an unexpected query: ${sql}`);
+  });
+}
+
+function hostsCall() {
+  return mockQuery.mock.calls.find(([sql]) =>
+    String(sql).includes("DISTINCT ON (host)"),
+  ) as [string, unknown[]];
+}
+
+function reputationSql(): string {
+  return String(
+    mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes("FROM host_reputation"),
+    )![0],
+  );
+}
 
 beforeEach(() => {
   settingsOverride = {};
   mockQuery.mockReset();
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue({ userId: 7 });
-});
-
-function installDefaultQueryMock(scanRows: unknown[], findingsRows: unknown[]) {
-  mockQuery.mockImplementation(async (sql: string) => {
-    if (sql.includes("SELECT plan, role, disabled_at FROM users")) {
-      return { rows: [{ plan: "free", role: "user", disabled_at: null }] };
-    }
-    if (
-      sql.includes("FROM scan_history") &&
-      sql.includes("ORDER BY scanned_at DESC")
-    ) {
-      return { rows: scanRows };
-    }
-    if (sql.includes("SELECT id, findings FROM scan_history WHERE id = ANY")) {
-      return { rows: findingsRows };
-    }
-    return { rows: [] };
+  mockRateLimit.mockReset();
+  mockRateLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 10,
+    retryAfterSeconds: 0,
   });
-}
+});
 
 describe("GET /api/v3/assets", () => {
   it("rejects an unauthenticated request before touching the database", async () => {
@@ -102,228 +172,224 @@ describe("GET /api/v3/assets", () => {
     expect(res.status).toBe(403);
   });
 
-  it("scope=all lists public hosts from host_reputation and never reads scan_history", async () => {
-    mockQuery.mockImplementation(async (sql: string) => {
-      if (sql.includes("SELECT plan, role, disabled_at FROM users")) {
-        return { rows: [{ plan: "free", role: "user", disabled_at: null }] };
-      }
-      if (sql.includes("FROM host_reputation")) {
-        return {
-          rows: [
-            {
-              host: "someone-else.com",
-              severity_counts: {
-                critical: 1,
-                high: 0,
-                medium: 2,
-                low: 0,
-                info: 1,
-              },
-              findings: [
-                { title: "SQL Injection Vulnerability", severity: "critical" },
-              ],
-              last_scanned_at: "2024-02-01T00:00:00Z",
-              source_scan_id: 55,
-              scanned_url: "https://someone-else.com/x",
-            },
-          ],
-        };
-      }
-      // The privacy guarantee: scope=all must never touch scan_history (which
-      // includes private scans); it reads only the public host_reputation table.
-      if (sql.includes("FROM scan_history")) {
-        throw new Error("scope=all must not read scan_history");
-      }
-      return { rows: [] };
+  describe("scope=all", () => {
+    it("lists public hosts from host_reputation and never reads scan_history", async () => {
+      installAllHostsMock([
+        {
+          ...reputationRow("someone-else.com"),
+          scanned_url: "https://someone-else.com/x",
+        },
+      ]);
+
+      const res = await GET(allRequest());
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.scope).toBe("all");
+      expect(json.assets).toHaveLength(1);
+      expect(json.assets[0]).toMatchObject({
+        host: "someone-else.com",
+        isPublic: true,
+        findingsCount: 4,
+        safetyRating: "unsafe",
+      });
+      // Privacy: the scanned URL itself (path + query string) must never leave
+      // this branch. It has no owner predicate, so returning it would hand
+      // every signed-in caller the exact URL of the latest public scan of
+      // every host, tokens included. Only the hostname is public.
+      expect(reputationSql()).not.toContain("scanned_url");
+      expect(json.assets[0].latestUrl).toBe("https://someone-else.com");
+      expect(JSON.stringify(json)).not.toContain("someone-else.com/x");
     });
 
-    const req = new NextRequest("http://localhost/api/v3/assets?scope=all", {
-      method: "GET",
-    });
-    const res = await GET(req);
-    const json = await res.json();
+    it("reads four fields of each finding rather than the whole column", async () => {
+      installAllHostsMock([]);
 
-    expect(res.status).toBe(200);
-    expect(json.scope).toBe("all");
-    expect(json.assets).toHaveLength(1);
-    expect(json.assets[0]).toMatchObject({
-      host: "someone-else.com",
-      isPublic: true,
-      findingsCount: 4,
+      await GET(allRequest());
+
+      expect(reputationSql()).toContain(`${RATING_FINDINGS_SQL} AS findings`);
     });
-    // Privacy: the scanned URL itself (path + query string) must never leave
-    // this branch. It has no owner predicate, so returning it would hand every
-    // signed-in caller the exact URL of the latest public scan of every host,
-    // tokens included. Only the hostname is public.
-    const [hostSql] = mockQuery.mock.calls.find((c) =>
-      String(c[0]).includes("FROM host_reputation"),
-    )!;
-    expect(hostSql).not.toContain("scanned_url");
-    expect(json.assets[0].latestUrl).toBe("https://someone-else.com");
-    expect(JSON.stringify(json)).not.toContain("someone-else.com/x");
+
+    it("is limited per account, and a refused call reads nothing", async () => {
+      mockRateLimit.mockResolvedValue({
+        allowed: false,
+        remaining: 0,
+        retryAfterSeconds: 42,
+      });
+      installAllHostsMock([]);
+
+      const res = await GET(allRequest());
+
+      expect(res.status).toBe(429);
+      expect(res.headers.get("Retry-After")).toBe("42");
+      expect(mockRateLimit).toHaveBeenCalledWith(
+        expect.objectContaining({ key: "assets-all:7", limit: "api" }),
+      );
+      expect(
+        mockQuery.mock.calls.some(([sql]) =>
+          String(sql).includes("FROM host_reputation"),
+        ),
+      ).toBe(false);
+    });
+
+    it("says truncated only when a host was actually left out", async () => {
+      const rows = (n: number) =>
+        Array.from({ length: n }, (_, i) => reputationRow(`h${i}.test`));
+
+      installAllHostsMock(rows(500));
+      const exact = await (await GET(allRequest())).json();
+      expect(exact.assets).toHaveLength(500);
+      expect(exact.truncated).toBe(false);
+
+      installAllHostsMock(rows(501));
+      const over = await (await GET(allRequest())).json();
+      expect(over.assets).toHaveLength(500);
+      expect(over.limit).toBe(500);
+      expect(over.truncated).toBe(true);
+    });
   });
 
-  it("groups scans of the same host (www-stripped) and counts them, keyed to the newest scan", async () => {
-    installDefaultQueryMock(
-      [
-        {
-          id: 2,
-          url: "https://example.com/newer",
-          summary: { info: 1 },
-          findings_count: 1,
-          scanned_at: "2024-02-01T00:00:00Z",
-        },
-        {
-          id: 1,
-          url: "https://www.example.com/older",
-          summary: {},
-          findings_count: 0,
-          scanned_at: "2024-01-01T00:00:00Z",
-        },
-      ],
-      [{ id: 2, findings: CLEAN_FINDINGS }],
-    );
+  describe("the caller's own hosts", () => {
+    it("groups in SQL by the same host expression the public report uses", async () => {
+      installDefaultQueryMock([]);
 
-    const res = await GET(getRequest());
-    const json = await res.json();
+      await GET(getRequest());
 
-    expect(res.status).toBe(200);
-    expect(json.totalHosts).toBe(1);
-    expect(json.assets).toHaveLength(1);
-    expect(json.assets[0]).toMatchObject({
-      host: "example.com",
-      scanCount: 2,
-      latestScanId: 2,
-      latestUrl: "https://example.com/newer",
-      safetyRating: "safe",
+      const [sql] = hostsCall();
+      expect(sql).toContain(PUBLIC_HOST_SQL);
+      expect(sql).toContain("ORDER BY host, scanned_at DESC, id DESC");
+      expect(sql).toContain("COUNT(*) OVER (PARTITION BY");
     });
 
-    // Findings are fetched only for the one latest-per-host scan id, not
-    // for every row in the retention window.
-    const findingsCall = mockQuery.mock.calls.find(([sql]) =>
-      sql.includes("SELECT id, findings FROM scan_history WHERE id = ANY"),
-    );
-    expect(findingsCall?.[1]).toEqual([[2]]);
-  });
+    it("reads four fields of the latest scan's findings, after the cap", async () => {
+      installDefaultQueryMock([]);
 
-  it("keeps distinct hosts as separate rows and computes each one's own safety rating", async () => {
-    installDefaultQueryMock(
-      [
-        {
-          id: 10,
-          url: "https://safe.test",
-          summary: {},
-          findings_count: 0,
-          scanned_at: "2024-03-01T00:00:00Z",
-        },
-        {
+      await GET(getRequest());
+
+      const [sql] = hostsCall();
+      expect(sql).toContain(`${RATING_FINDINGS_SQL} AS findings`);
+      // Only the outer SELECT, past the LIMIT, may touch the column.
+      const projection = sql.indexOf(RATING_FINDINGS_SQL);
+      expect(sql.indexOf("LIMIT $2")).toBeLessThan(projection);
+      expect(sql.slice(0, projection)).not.toMatch(/\bfindings\b/);
+    });
+
+    it("is not held to the all-hosts limiter", async () => {
+      installDefaultQueryMock([]);
+
+      await GET(getRequest());
+
+      expect(mockRateLimit).not.toHaveBeenCalled();
+    });
+
+    it("maps each host row, keeping the scan count and its own safety rating", async () => {
+      installDefaultQueryMock([
+        hostRow({ scan_count: 2, total_hosts: 2, total_scans: 3 }),
+        hostRow({
           id: 11,
+          host: "vuln.test",
           url: "https://vuln.test",
           summary: { critical: 1 },
-          findings_count: 1,
-          scanned_at: "2024-02-15T00:00:00Z",
-        },
-      ],
-      [
-        { id: 10, findings: CLEAN_FINDINGS },
-        { id: 11, findings: CRITICAL_EXPLOIT_FINDINGS },
-      ],
-    );
+          is_public: true,
+          findings: CRITICAL_EXPLOIT_FINDINGS,
+          total_hosts: 2,
+          total_scans: 3,
+        }),
+      ]);
 
-    const res = await GET(getRequest());
-    const json = await res.json();
+      const res = await GET(getRequest());
+      const json = await res.json();
 
-    expect(res.status).toBe(200);
-    expect(json.totalHosts).toBe(2);
-    const byHost = Object.fromEntries(
-      (json.assets as Array<{ host: string; safetyRating: string }>).map(
-        (a) => [a.host, a.safetyRating],
-      ),
-    );
-    expect(byHost["safe.test"]).toBe("safe");
-    expect(byHost["vuln.test"]).toBe("unsafe");
-  });
-
-  it("groups a bare-IP scanned target by its raw hostname instead of dropping it", async () => {
-    installDefaultQueryMock(
-      [
+      expect(res.status).toBe(200);
+      expect(json.totalHosts).toBe(2);
+      expect(json.totalScans).toBe(3);
+      expect(json.truncated).toBe(false);
+      expect(json.assets).toEqual([
         {
-          id: 20,
-          url: "http://203.0.113.5/admin",
-          summary: {},
-          findings_count: 0,
-          scanned_at: "2024-04-01T00:00:00Z",
+          host: "example.com",
+          scanCount: 2,
+          latestScanId: 2,
+          latestUrl: "https://example.com/newer",
+          latestScannedAt: "2024-02-01T00:00:00.000Z",
+          findingsCount: 1,
+          summary: { info: 1 },
+          safetyRating: "safe",
+          isPublic: false,
         },
-      ],
-      [{ id: 20, findings: CLEAN_FINDINGS }],
-    );
-
-    const res = await GET(getRequest());
-    const json = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(json.assets).toHaveLength(1);
-    expect(json.assets[0].host).toBe("203.0.113.5");
-  });
-
-  it("skips the findings lookup entirely when there are no scans", async () => {
-    installDefaultQueryMock([], []);
-
-    const res = await GET(getRequest());
-    const json = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(json.assets).toEqual([]);
-    expect(json.totalHosts).toBe(0);
-    expect(
-      mockQuery.mock.calls.some((call) =>
-        String(call[0]).includes(
-          "SELECT id, findings FROM scan_history WHERE id = ANY",
-        ),
-      ),
-    ).toBe(false);
-  });
-
-  it("uses a dated retention window scoped to the caller when the plan's retention is finite", async () => {
-    settingsOverride.BILLING_FREE_RETENTION = 30;
-    installDefaultQueryMock([], []);
-
-    await GET(getRequest());
-
-    const scanCall = mockQuery.mock.calls.find(
-      ([sql]) =>
-        sql.includes("FROM scan_history") &&
-        sql.includes("ORDER BY scanned_at DESC"),
-    );
-    expect(scanCall?.[0]).toContain("scanned_at > NOW()");
-    expect(scanCall?.[0]).toContain("user_id = $1");
-    expect(scanCall?.[1]).toEqual([7, 30, 100]);
-  });
-
-  it("gives staff roles unlimited retention regardless of plan", async () => {
-    mockQuery.mockImplementation(async (sql: string) => {
-      if (sql.includes("SELECT plan, role, disabled_at FROM users")) {
-        return { rows: [{ plan: "free", role: "admin", disabled_at: null }] };
-      }
-      if (
-        sql.includes("FROM scan_history") &&
-        sql.includes("ORDER BY scanned_at DESC")
-      ) {
-        return { rows: [] };
-      }
-      return { rows: [] };
+        {
+          host: "vuln.test",
+          scanCount: 1,
+          latestScanId: 11,
+          latestUrl: "https://vuln.test",
+          latestScannedAt: "2024-02-01T00:00:00.000Z",
+          findingsCount: 1,
+          summary: { critical: 1 },
+          safetyRating: "unsafe",
+          isPublic: true,
+        },
+      ]);
     });
-    settingsOverride.BILLING_FREE_RETENTION = 30;
 
-    await GET(getRequest());
+    it("says truncated when more hosts exist than the cap returned", async () => {
+      settingsOverride.HISTORY_LIST_MAX_ROWS = 1;
+      installDefaultQueryMock([hostRow({ total_hosts: 3, total_scans: 9 })]);
 
-    const scanCall = mockQuery.mock.calls.find(
-      ([sql]) =>
-        sql.includes("FROM scan_history") &&
-        sql.includes("ORDER BY scanned_at DESC"),
-    );
-    expect(scanCall?.[0]).not.toContain("scanned_at >");
-    expect(scanCall?.[1]).toEqual([7, 100]);
+      const json = await (await GET(getRequest())).json();
+
+      expect(json.assets).toHaveLength(1);
+      expect(json.limit).toBe(1);
+      expect(json.totalHosts).toBe(3);
+      expect(json.totalScans).toBe(9);
+      expect(json.truncated).toBe(true);
+    });
+
+    it("does not say truncated when the hosts exactly fill the cap", async () => {
+      settingsOverride.HISTORY_LIST_MAX_ROWS = 1;
+      installDefaultQueryMock([hostRow({ total_hosts: 1, total_scans: 40 })]);
+
+      const json = await (await GET(getRequest())).json();
+
+      expect(json.totalScans).toBe(40);
+      expect(json.truncated).toBe(false);
+    });
+
+    it("answers zeros for an account with no scans", async () => {
+      installDefaultQueryMock([]);
+
+      const res = await GET(getRequest());
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json).toMatchObject({
+        assets: [],
+        totalHosts: 0,
+        totalScans: 0,
+        truncated: false,
+      });
+    });
+
+    it("uses a dated retention window scoped to the caller when the plan's retention is finite", async () => {
+      settingsOverride.BILLING_FREE_RETENTION = 30;
+      installDefaultQueryMock([]);
+
+      await GET(getRequest());
+
+      const [sql, params] = hostsCall();
+      expect(sql).toContain("scanned_at > NOW()");
+      expect(sql).toContain("user_id = $1");
+      expect(params).toEqual([7, 100, 30]);
+    });
+
+    it("gives staff roles unlimited retention regardless of plan", async () => {
+      settingsOverride.BILLING_FREE_RETENTION = 30;
+      installDefaultQueryMock([], { ...USER_ROW, role: "admin" });
+
+      await GET(getRequest());
+
+      const [sql, params] = hostsCall();
+      expect(sql).not.toContain("scanned_at >");
+      expect(params).toEqual([7, 100]);
+    });
   });
 
   describe("only a COMPLETED scan can be a host's latest", () => {
@@ -335,44 +401,27 @@ describe("GET /api/v3/assets", () => {
     // .test.ts; this pins that both retention branches carry the filter.
     it.each([
       ["unlimited retention", -1, [7, 100]],
-      ["a dated retention window", 30, [7, 30, 100]],
+      ["a dated retention window", 30, [7, 100, 30]],
     ] as const)(
       "filters on status in the %s query",
       async (_name, days, params) => {
         settingsOverride.BILLING_FREE_RETENTION = days;
-        installDefaultQueryMock([], []);
+        installDefaultQueryMock([]);
 
         await GET(getRequest());
 
-        const scanCall = mockQuery.mock.calls.find(
-          ([sql]) =>
-            sql.includes("FROM scan_history") &&
-            sql.includes("ORDER BY scanned_at DESC"),
-        );
-        expect(scanCall?.[0]).toContain("status = 'completed'");
-        expect(scanCall?.[1]).toEqual(params);
+        const [sql, sent] = hostsCall();
+        expect(sql).toContain("status = 'completed'");
+        expect(sent).toEqual(params);
       },
     );
 
     it("leaves the public all-hosts branch alone: host_reputation only ever holds completed scans", async () => {
-      mockQuery.mockImplementation(async (sql: string) => {
-        if (sql.includes("SELECT plan, role, disabled_at FROM users")) {
-          return { rows: [{ plan: "free", role: "user", disabled_at: null }] };
-        }
-        return { rows: [] };
-      });
+      installAllHostsMock([]);
 
-      await GET(
-        new NextRequest("http://localhost/api/v3/assets?scope=all", {
-          method: "GET",
-        }),
-      );
+      await GET(allRequest());
 
-      const hostSql = String(
-        mockQuery.mock.calls.find((c) =>
-          String(c[0]).includes("FROM host_reputation"),
-        )![0],
-      );
+      const hostSql = reputationSql();
       expect(hostSql).not.toContain("scan_history");
       expect(hostSql).not.toContain("status");
     });
@@ -381,7 +430,7 @@ describe("GET /api/v3/assets", () => {
   it("returns 500 when a query throws", async () => {
     mockQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("SELECT plan, role, disabled_at FROM users")) {
-        return { rows: [{ plan: "free", role: "user", disabled_at: null }] };
+        return { rows: [USER_ROW] };
       }
       throw new Error("db unavailable");
     });

@@ -3,4 +3,5 @@ export { AssetRowItem } from "./asset-row";
 export { AssetsTable } from "./assets-table";
 export { AssetsEmptyState } from "./assets-empty-state";
 export { AssetsStats } from "./assets-stats";
+export { AssetsTruncatedNotice } from "./assets-truncated-notice";
 export { AssetsSkeleton, AssetsDataSkeleton } from "./assets-skeleton";

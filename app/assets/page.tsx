@@ -23,6 +23,7 @@ import {
   AssetsTable,
   AssetsEmptyState,
   AssetsDataSkeleton,
+  AssetsTruncatedNotice,
   type AssetRow,
 } from "@/components/assets";
 import { HistoryViewTabs } from "@/components/history/history-view-tabs";
@@ -41,6 +42,12 @@ export default function AssetsPage() {
   // /history both grew this listError panel for exactly this reason and
   // /assets never did.
   const [listError, setListError] = useState<string | null>(null);
+  // Set when the server held back hosts past its cap, so the list and its
+  // search are not mistaken for everything on file.
+  const [truncation, setTruncation] = useState<{
+    limit: number;
+    totalHosts: number;
+  } | null>(null);
   const [filter, setFilter] = useState("");
   // "mine" = the caller's own scanned hosts (default); "all" = every public
   // host on file (host_reputation, public-scan-only). Synced to ?scope=.
@@ -96,6 +103,11 @@ export default function AssetsPage() {
       const data = await res.json();
       setListError(null);
       setAssets(Array.isArray(data.assets) ? data.assets : []);
+      setTruncation(
+        data.truncated
+          ? { limit: data.limit, totalHosts: data.totalHosts }
+          : null,
+      );
     } catch {
       // Was setAssets([]), which turned a dropped connection into a positive
       // claim that this account has never scanned anything.
@@ -173,13 +185,12 @@ export default function AssetsPage() {
         <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
           {scope === "all" ? "All public hosts" : "Assets"}
         </h1>
-        {/* Both counts are over a capped window, not a lifetime total: the
-              API reads at most HISTORY_LIST_MAX_ROWS scan rows (or ALL_HOSTS_MAX
-              reputation rows) and then groups those into hosts, so it cannot
-              know the account-wide figure. The old copy said "N distinct hosts
-              you've scanned", which reads as that figure. /history had the same
-              defect and says "showing the N most recent"; this says what the
-              number actually counts instead. */}
+        {/* The count is of the rows on this page, not a lifetime total: the
+              API returns at most HISTORY_LIST_MAX_ROWS hosts (ALL_HOSTS_MAX for
+              the public list) inside the plan's retention window. The old copy
+              said "N distinct hosts you've scanned", which reads as the
+              lifetime figure. /history had the same defect and says "showing
+              the N most recent"; this says what the number actually counts. */}
         <p className="mt-1 text-sm text-muted-foreground">
           {/* The count is only true once the fetch lands. Printing it while
               loading opened the page by telling an account with hosts on file
@@ -243,6 +254,14 @@ export default function AssetsPage() {
       </div>
 
       {!loading && !listError && <AssetsStats assets={assets} />}
+
+      {!loading && !listError && truncation && (
+        <AssetsTruncatedNotice
+          scope={scope}
+          shown={assets.length}
+          totalHosts={truncation.totalHosts}
+        />
+      )}
 
       {!loading && !listError && assets.length > 0 && (
         <ListSearchInput
