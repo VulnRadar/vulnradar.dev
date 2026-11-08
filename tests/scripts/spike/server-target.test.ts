@@ -79,7 +79,7 @@ describe("the spike runs the server the product runs", () => {
 
     const { text, verdicts } = buildSummary(everyTargetButTheServer, null);
 
-    expect(verdicts[2]).toBe("PARTIAL");
+    expect((verdicts as unknown as Record<number, string>)[2]).toBe("PARTIAL");
     expect(text).toContain("node server.mjs");
   });
 });

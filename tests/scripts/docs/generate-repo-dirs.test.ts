@@ -21,6 +21,8 @@ import { afterEach, describe, expect, it } from "vitest";
 const COMMITTED = "// the committed list\n";
 const OUTPUT = "app/docs/architecture/repo-dirs.generated.ts";
 
+type Env = Record<string, string | undefined>;
+
 describe("generate-repo-dirs when git is unavailable", () => {
   let root: string;
 
@@ -36,15 +38,15 @@ describe("generate-repo-dirs when git is unavailable", () => {
     writeFileSync(path.join(root, OUTPUT), COMMITTED);
   }
 
-  function generate(env: NodeJS.ProcessEnv) {
+  function generate(env: Env) {
     return spawnSync(
       process.execPath,
       [path.join(root, "scripts/docs/generate-repo-dirs.mjs")],
-      { encoding: "utf8", env },
+      { encoding: "utf8", env: env as NodeJS.ProcessEnv },
     );
   }
 
-  const baseEnv = (): NodeJS.ProcessEnv => ({
+  const baseEnv = (): Env => ({
     SystemRoot: process.env.SystemRoot,
   });
   const output = () => readFileSync(path.join(root, OUTPUT), "utf8");
