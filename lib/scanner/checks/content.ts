@@ -1944,8 +1944,8 @@ const rawDetectors: Record<string, DetectFn> = {
     // The host is captured whole and compared rather than spelled into the
     // pattern, where it would read as a substring test. Read as text, not
     // through urlRefs: a webhook carried in another URL's query string has
-    // still leaked.
-    for (const m of body.matchAll(
+    // still leaked. Slashes as a JSON blob writes them are read as plain ones.
+    for (const m of plainSlashView(body).text.matchAll(
       /https:\/\/([a-z0-9.-]+)\/services\/T[A-Z0-9]+\/B[A-Z0-9]+\/[A-Za-z0-9]+/gi,
     )) {
       if (m[1].toLowerCase() === "hooks.slack.com") {
