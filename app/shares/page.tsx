@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useConfirm } from "@/components/shared/use-confirm";
 import { EmptyState } from "@/components/shared/empty-state";
+import { InlineAlert } from "@/components/shared/inline-alert";
 import { worthFiltering } from "@/components/shared/list-filter-bar";
 import { AppPageShell } from "@/components/shared/app-page-shell";
 import {
@@ -39,6 +40,9 @@ import {
 export default function SharesPage() {
   const { toast } = useToast();
   const [shares, setShares] = useState<Share[]>([]);
+  // Set when the server held back shares past its cap, so the list and its
+  // search are not mistaken for every link on file.
+  const [truncatedAt, setTruncatedAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<number | null>(null);
@@ -120,6 +124,7 @@ export default function SharesPage() {
       const data = await res.json();
       setListError(null);
       setShares(data.shares || []);
+      setTruncatedAt(data.truncated ? data.limit : null);
     } catch (err) {
       console.error("Failed to fetch shares:", err);
       setListError("Couldn't reach the server to load your share links.");
@@ -340,6 +345,13 @@ export default function SharesPage() {
       ) : (
         <>
           {shares.length > 0 && <SharesStats shares={shares} />}
+
+          {truncatedAt !== null && (
+            <InlineAlert tone="info" live="off">
+              Showing your {truncatedAt} most recent share links. Older ones
+              still work, but search only covers this list.
+            </InlineAlert>
+          )}
 
           {/* Between the strip and the table, the slot /history and /repos
               put it in. Not rendered while the list failed to load: there is
