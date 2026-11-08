@@ -31,6 +31,11 @@ const {
 } = await import("@/lib/notifications/notifications");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 
+const VERIFIED_ACCOUNT = {
+  unsubscribe_token: "tok",
+  email_verified_at: new Date("2026-01-01T00:00:00.000Z"),
+};
+
 beforeEach(() => {
   mockQuery.mockReset();
   mockSendEmail.mockReset();
@@ -145,7 +150,7 @@ describe("sendNotificationEmail", () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [] }) // FEATURE_EMAIL_NOTIFICATIONS settings lookup (empty -> shipped default, enabled)
       .mockResolvedValueOnce({ rows: [row] }) // getNotificationPreferences
-      .mockResolvedValueOnce({ rows: [{ unsubscribe_token: "tok" }] }); // token lookup
+      .mockResolvedValueOnce({ rows: [VERIFIED_ACCOUNT] }); // token lookup
 
     await sendNotificationEmail({
       userId: 1,
@@ -162,7 +167,7 @@ describe("sendNotificationEmail", () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [] }) // FEATURE_EMAIL_NOTIFICATIONS settings lookup
       .mockResolvedValueOnce({ rows: [row] })
-      .mockResolvedValueOnce({ rows: [{ unsubscribe_token: "tok" }] });
+      .mockResolvedValueOnce({ rows: [VERIFIED_ACCOUNT] });
 
     await sendNotificationEmail({
       userId: 1,
@@ -186,9 +191,7 @@ describe("sendNotificationEmail", () => {
     // A mail client's Unsubscribe button on a "new sign-in" notice used to
     // switch off the sign-in, password and two-factor warnings together.
     const row = Object.fromEntries(ALL_COLUMNS.map((c) => [c, true]));
-    mockQuery
-      .mockResolvedValueOnce({ rows: [] }) // FEATURE_EMAIL_NOTIFICATIONS
-      .mockResolvedValueOnce({ rows: [row] }); // getNotificationPreferences
+    mockQuery.mockResolvedValueOnce({ rows: [row] }); // getNotificationPreferences
 
     await sendNotificationEmail({
       userId: 1,
@@ -207,9 +210,7 @@ describe("sendNotificationEmail", () => {
   it("still honours a security preference the user switched off", async () => {
     const row = Object.fromEntries(ALL_COLUMNS.map((c) => [c, true]));
     row.email_new_login = false;
-    mockQuery
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [row] });
+    mockQuery.mockResolvedValueOnce({ rows: [row] });
 
     await sendNotificationEmail({
       userId: 1,
@@ -226,7 +227,7 @@ describe("sendNotificationEmail", () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [row] })
-      .mockResolvedValueOnce({ rows: [{ unsubscribe_token: "tok" }] });
+      .mockResolvedValueOnce({ rows: [VERIFIED_ACCOUNT] });
 
     await sendNotificationEmail({
       userId: 1,
@@ -265,5 +266,162 @@ describe("sendNotificationEmail", () => {
     // Only the one settings-table query ran; the function returned before
     // ever touching notification_preferences or the unsubscribe token.
     expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  describe("with FEATURE_EMAIL_NOTIFICATIONS switched off", () => {
+    function killSwitchOff(prefs: Record<string, boolean> = {}) {
+      const row = Object.fromEntries(ALL_COLUMNS.map((c) => [c, true]));
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes("system_settings")) {
+          return {
+            rows: [{ key: "FEATURE_EMAIL_NOTIFICATIONS", value: "false" }],
+          };
+        }
+        if (sql.includes("notification_preferences")) {
+          return { rows: [{ ...row, ...prefs }] };
+        }
+        return { rows: [VERIFIED_ACCOUNT] };
+      });
+    }
+
+    const send = (type: Parameters<typeof shouldSendNotification>[1]) =>
+      sendNotificationEmail({
+        userId: 1,
+        userEmail: "user@example.com",
+        type,
+        emailContent,
+      });
+
+    it("still sends login_alerts, and does not send scan_complete", async () => {
+      killSwitchOff();
+
+      await expect(send("login_alerts")).resolves.toBe(true);
+      expect(mockSendEmail).toHaveBeenCalledTimes(1);
+
+      mockSendEmail.mockClear();
+      await expect(send("scan_complete")).resolves.toBe(false);
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+
+    it("sends every security type past it", async () => {
+      killSwitchOff();
+      const types = [
+        "security",
+        "login_alerts",
+        "password_changes",
+        "two_factor_changes",
+        "session_alerts",
+        "account_changes",
+      ] as const;
+
+      for (const type of types) {
+        await expect(send(type)).resolves.toBe(true);
+      }
+      expect(mockSendEmail).toHaveBeenCalledTimes(types.length);
+    });
+
+    it("still honours the per-user switch on a security type", async () => {
+      killSwitchOff({ email_password_change: false });
+
+      await expect(send("password_changes")).resolves.toBe(false);
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+
+    it("sends email_security even from a row that says false", async () => {
+      killSwitchOff({ email_security: false });
+
+      await expect(send("security")).resolves.toBe(true);
+      expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("while the account address is unverified", () => {
+    function unverified() {
+      const row = Object.fromEntries(ALL_COLUMNS.map((c) => [c, true]));
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes("system_settings")) return { rows: [] };
+        if (sql.includes("notification_preferences")) return { rows: [row] };
+        return {
+          rows: [{ unsubscribe_token: "tok", email_verified_at: null }],
+        };
+      });
+    }
+
+    it("holds back everything that is not a security notice", async () => {
+      unverified();
+
+      await expect(
+        sendNotificationEmail({
+          userId: 1,
+          userEmail: "new-address@example.com",
+          type: "severity_alerts",
+          emailContent,
+        }),
+      ).resolves.toBe(false);
+
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+
+    it("still delivers a security notice", async () => {
+      unverified();
+
+      await expect(
+        sendNotificationEmail({
+          userId: 1,
+          userEmail: "new-address@example.com",
+          type: "password_changes",
+          emailContent,
+        }),
+      ).resolves.toBe(true);
+
+      expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it.each([
+    [true, 1],
+    [false, 0],
+  ])(
+    "gates critical_findings on email_critical_findings (%s)",
+    async (enabled, sends) => {
+      const row = Object.fromEntries(ALL_COLUMNS.map((c) => [c, true]));
+      row.email_critical_findings = enabled;
+      mockQuery
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [row] })
+        .mockResolvedValueOnce({ rows: [VERIFIED_ACCOUNT] });
+
+      await sendNotificationEmail({
+        userId: 1,
+        userEmail: "user@example.com",
+        type: "critical_findings",
+        emailContent,
+      });
+
+      expect(mockSendEmail).toHaveBeenCalledTimes(sends);
+      if (sends === 1) {
+        expect(mockSendEmail.mock.calls[0][0].unsubscribeColumn).toBe(
+          "email_critical_findings",
+        );
+      }
+    },
+  );
+
+  it("resolves false when the user's preference held the mail back", async () => {
+    const row = Object.fromEntries(ALL_COLUMNS.map((c) => [c, true]));
+    row.email_regression_alert = false;
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [row] })
+      .mockResolvedValueOnce({ rows: [VERIFIED_ACCOUNT] });
+
+    await expect(
+      sendNotificationEmail({
+        userId: 1,
+        userEmail: "user@example.com",
+        type: "severity_alerts",
+        emailContent,
+      }),
+    ).resolves.toBe(false);
   });
 });

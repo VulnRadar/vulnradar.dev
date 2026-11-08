@@ -203,8 +203,11 @@ export interface DueDigestUser {
   last_digest_sent_at: Date | null;
 }
 
-/** Opted-in, non-disabled users whose digest is due: never sent one, or
- *  their last one is at least `windowDays` old. */
+/** Opted-in, non-disabled users with a confirmed address whose digest is due:
+ *  never sent one, or their last one is at least `windowDays` old. The
+ *  address test is here as well as in sendNotificationEmail so an account
+ *  mid-email-change does not spend its digest: claiming it below would stamp
+ *  a week nobody was sent. */
 export async function getDueDigestUsers(
   windowDays: number = CONFIG_POSTURE_DIGEST_WINDOW_DAYS,
 ): Promise<DueDigestUser[]> {
@@ -213,6 +216,7 @@ export async function getDueDigestUsers(
      FROM users
      WHERE digest_email_enabled = true
        AND disabled_at IS NULL
+       AND email_verified_at IS NOT NULL
        AND (last_digest_sent_at IS NULL OR last_digest_sent_at <= NOW() - make_interval(days => $1))
      ORDER BY id`,
     [windowDays],

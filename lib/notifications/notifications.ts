@@ -3,6 +3,7 @@ import { sendEmail } from "@/lib/email/email";
 import { getSetting } from "@/lib/config/runtime-config";
 import {
   ALL_COLUMNS,
+  ALWAYS_ON_COLUMNS,
   DEFAULT_PREFERENCES,
   NOTIFICATION_COLUMNS,
   isSecurityNotification,
@@ -44,8 +45,11 @@ export async function shouldSendNotification(
   userId: number,
   type: NotificationType,
 ): Promise<boolean> {
-  const prefs = await getNotificationPreferences(userId);
   const column = NOTIFICATION_COLUMNS[type];
+  // "Cannot be switched off" holds here as well as in the writers, so a row
+  // saved before they enforced it cannot silence the alert.
+  if (ALWAYS_ON_COLUMNS.has(column)) return true;
+  const prefs = await getNotificationPreferences(userId);
   return prefs[column];
 }
 
@@ -69,33 +73,55 @@ interface SendNotificationEmailParams {
   };
 }
 
+/**
+ * Resolves true when the mail was handed to the mailer, false when the
+ * deployment, the user's preference or an unverified address held it back. A
+ * caller choosing between two messages needs to know which one actually went.
+ */
 export async function sendNotificationEmail({
   userId,
   userEmail,
   type,
   emailContent,
-}: SendNotificationEmailParams): Promise<void> {
+}: SendNotificationEmailParams): Promise<boolean> {
+  const isSecurity = isSecurityNotification(type);
+
   // features: deployment-wide kill switch, separate from the per-user
   // preference check below. Checked first so a self-hoster who disables
   // email notifications entirely doesn't pay for the preferences query.
-  if (!(await getSetting("FEATURE_EMAIL_NOTIFICATIONS"))) return;
+  //
+  // Security mail is outside it, as the setting's help text says. A deployment
+  // that turned off optional mail still has to tell someone their password
+  // changed.
+  if (!isSecurity && !(await getSetting("FEATURE_EMAIL_NOTIFICATIONS"))) {
+    return false;
+  }
 
   // A security notice carries no unsubscribe token, so it gets neither the
   // footer link nor a one-click List-Unsubscribe header (see
   // isSecurityNotification). The token is not even read for one.
-  const wantsToken = !isSecurityNotification(type);
-  const [shouldSend, tokenResult] = await Promise.all([
+  const [shouldSend, accountResult] = await Promise.all([
     shouldSendNotification(userId, type),
-    wantsToken
-      ? pool.query<{ unsubscribe_token: string | null }>(
-          "SELECT unsubscribe_token FROM users WHERE id = $1",
+    isSecurity
+      ? Promise.resolve(null)
+      : pool.query<{
+          unsubscribe_token: string | null;
+          email_verified_at: Date | null;
+        }>(
+          "SELECT unsubscribe_token, email_verified_at FROM users WHERE id = $1",
           [userId],
-        )
-      : Promise.resolve(null),
+        ),
   ]);
-  if (!shouldSend) return;
+  if (!shouldSend) return false;
 
-  const unsubscribeToken = tokenResult?.rows[0]?.unsubscribe_token ?? undefined;
+  // Changing the account email clears email_verified_at, and until the new
+  // address is confirmed it may be a typo or someone else's inbox. Scan
+  // findings and API activity do not go there. Security notices still do: they
+  // are the mail an account owner needs while the address is in question.
+  if (accountResult && !accountResult.rows[0]?.email_verified_at) return false;
+
+  const unsubscribeToken =
+    accountResult?.rows[0]?.unsubscribe_token ?? undefined;
 
   await sendEmail({
     to: userEmail,
@@ -107,4 +133,5 @@ export async function sendNotificationEmail({
       ? NOTIFICATION_COLUMNS[type]
       : undefined,
   });
+  return true;
 }

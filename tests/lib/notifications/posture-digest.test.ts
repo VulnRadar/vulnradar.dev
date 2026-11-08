@@ -260,6 +260,7 @@ describe("getDueDigestUsers", () => {
     expect(call).toBeDefined();
     const [sql, params] = call!;
     expect(sql).toContain("disabled_at IS NULL");
+    expect(sql).toContain("email_verified_at IS NOT NULL");
     expect(sql).toContain("last_digest_sent_at IS NULL");
     expect(params).toEqual([7]);
   });
