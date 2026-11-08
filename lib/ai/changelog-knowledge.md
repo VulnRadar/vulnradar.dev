@@ -958,16 +958,14 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The login page, the signup page and the connected accounts tab of your profile now pick their error sentence from a fixed list. Text placed in a link no longer appears in the error alert, and a stray percent sign no longer crashes the page.
 - [Link2] **[SECURITY]** **Sign-In Forms Check Where They Send You**
   After a password or two-factor code is accepted, the forms only navigate to a path on this site, so a crafted link cannot send a freshly signed-in person somewhere else.
-- [Link2] **[IMPROVED]** **Your Destination Survives Sign-Up and Provider Sign-In**
-  A link that sent you to sign in now keeps its destination through the Google, GitHub and Discord buttons, the signup page, a restarted two-factor step and the step after email verification.
+- [Link2] **[FIXED]** **Your Destination Survives Sign-Up and Provider Sign-In**
+  A link that sent you to sign in now keeps its destination through the Google, GitHub and Discord buttons, the signup page, a two-factor prompt, a restarted two-factor step and the step after email verification, instead of landing on the dashboard.
 - [Eye] **[ACCESSIBILITY]** **Password Show and Hide Buttons Announce Correctly**
   Show password buttons keep one name and report their state, so screen readers no longer hear a contradiction, and the two-factor code field now announces the step it belongs to.
 - [KeyRound] **[SECURITY]** **Linking a Sign-In Provider Asks for Your Password**
   Connecting Google, GitHub or Discord to an existing account that has a password now requires entering it first, and an admin signed in as you can no longer link or disconnect one, or grant GitHub repo access, at all. An account created with a provider can connect only the identity already on it or one whose verified email is the account's address.
 - [Lock] **[SECURITY]** **A Password Reset Removes Linked Sign-Ins**
   Resetting your password now disconnects every linked Google, GitHub and Discord sign-in except the one that created the account, so a sign-in someone else attached cannot be used to get back in. Discord is told to revoke the tokens that were held for it.
-- [Link2] **[FIXED]** **Signing In With a Provider Keeps Your Destination**
-  Signing in with Google, GitHub or Discord now returns you to the page you were heading to, including after a two-factor prompt, instead of always landing on the dashboard.
 - [MessageSquare] **[FIXED]** **Clearer Connect and Sign-In Messages**
   Granting repo access with a GitHub account already used by another VulnRadar account now reports that case instead of a generic retry, and the sign-in code email states the lifetime your instance is configured with.
 - [Webhook] **[SECURITY]** **Disconnecting Revokes Access at the Provider**
@@ -3366,6 +3364,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1375
+- **Total changes documented:** 1374
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

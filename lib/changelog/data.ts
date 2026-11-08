@@ -3044,8 +3044,8 @@ const CHANGELOG: Release[] = [
       {
         icon: Link2,
         label: "Your Destination Survives Sign-Up and Provider Sign-In",
-        desc: "A link that sent you to sign in now keeps its destination through the Google, GitHub and Discord buttons, the signup page, a restarted two-factor step and the step after email verification.",
-        category: "improved",
+        desc: "A link that sent you to sign in now keeps its destination through the Google, GitHub and Discord buttons, the signup page, a two-factor prompt, a restarted two-factor step and the step after email verification, instead of landing on the dashboard.",
+        category: "fixed",
       },
       {
         icon: Eye,
@@ -3064,12 +3064,6 @@ const CHANGELOG: Release[] = [
         label: "A Password Reset Removes Linked Sign-Ins",
         desc: "Resetting your password now disconnects every linked Google, GitHub and Discord sign-in except the one that created the account, so a sign-in someone else attached cannot be used to get back in. Discord is told to revoke the tokens that were held for it.",
         category: "security",
-      },
-      {
-        icon: Link2,
-        label: "Signing In With a Provider Keeps Your Destination",
-        desc: "Signing in with Google, GitHub or Discord now returns you to the page you were heading to, including after a two-factor prompt, instead of always landing on the dashboard.",
-        category: "fixed",
       },
       {
         icon: MessageSquare,

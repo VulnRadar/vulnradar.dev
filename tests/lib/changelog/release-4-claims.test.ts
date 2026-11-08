@@ -36,6 +36,21 @@ describe("4.0.0 error code claims", () => {
   });
 });
 
+describe("4.0.0 sign-in destination", () => {
+  // The client half and the server half of one feature were written as two
+  // entries, and both told the reader the same three buttons keep the page.
+  it("is one entry", () => {
+    const about = (release?.changes ?? []).filter(
+      (c) =>
+        /destination|page you were heading to/i.test(c.desc) &&
+        /Google, GitHub (and|or) Discord/.test(c.desc),
+    );
+    expect(about.map((c) => c.label)).toEqual([
+      "Your Destination Survives Sign-Up and Provider Sign-In",
+    ]);
+  });
+});
+
 describe("4.0.0 team entries", () => {
   // Owner decision D7 builds team ownership transfer in this same release, so
   // an entry saying it cannot be done would ship contradicting another one.
