@@ -171,4 +171,24 @@ describe("inviting someone", () => {
     expect(PAGE).toContain("{showInvite && canInvite && (");
     expect(PAGE).not.toContain("TEAM_ROLES.ADMIN");
   });
+
+  // The link card shows a copy-once link. openTeam resets inviteToken, so a
+  // role change or a removal made right after an invite used to throw the
+  // link away before it was copied. Cancelling an invite still goes through
+  // openTeam on purpose: the link on screen may be the one just cancelled.
+  it.each(["handleChangeRole", "handleRemoveMember"])(
+    "%s reloads the lists without dismissing the invite link",
+    (name) => {
+      const body = handler(name);
+      expect(body).toContain("refreshMembers(selectedTeam)");
+      expect(body).not.toContain("openTeam(");
+      expect(body).not.toContain("setInviteToken(");
+    },
+  );
+
+  it("a removal closes the scans view only when it shows the removed member", () => {
+    expect(handler("handleRemoveMember")).toMatch(
+      /setViewingMember\(\(viewing\) =>\s*viewing\?\.user_id === userId \? null : viewing,?\s*\)/,
+    );
+  });
 });

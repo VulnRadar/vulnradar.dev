@@ -487,7 +487,13 @@ export default function TeamsPage() {
       { teamId: selectedTeam.id, userId },
       "We could not remove that member. Try again.",
     );
-    await openTeam(selectedTeam);
+    // refreshMembers, not openTeam: openTeam throws away the copy-once link
+    // an invite sent a moment ago is still showing, and pushes another
+    // history entry for the team already open.
+    setViewingMember((viewing) =>
+      viewing?.user_id === userId ? null : viewing,
+    );
+    await refreshMembers(selectedTeam);
   }
 
   // The save of the "Change role" dialog in TeamMembersList. That list
@@ -506,7 +512,8 @@ export default function TeamsPage() {
       { teamId: selectedTeam.id, userId, role },
       "We could not change that role. Try again.",
     );
-    await openTeam(selectedTeam);
+    // refreshMembers, not openTeam, for the same reason as a removal.
+    await refreshMembers(selectedTeam);
   }
 
   async function handleCancelInvite(inviteId: number) {
