@@ -106,9 +106,24 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/**
+ * Strip tags until nothing changes: one pass over crafted markup can leave a
+ * tag behind, which is what js/incomplete-multi-character-sanitization
+ * reports, test file or not.
+ */
+function stripTags(markup: string): string {
+  let out = markup;
+  let before: string;
+  do {
+    before = out;
+    out = out.replace(/<[^>]+>/g, "");
+  } while (out !== before);
+  return out;
+}
+
 function buttonTag(html: string, label: string): string {
   const tags = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
-  const tag = tags.find((t) => t.replace(/<[^>]+>/g, "").trim() === label);
+  const tag = tags.find((t) => stripTags(t).trim() === label);
   if (!tag) throw new Error(`no button labelled "${label}" in:\n${html}`);
   return tag;
 }

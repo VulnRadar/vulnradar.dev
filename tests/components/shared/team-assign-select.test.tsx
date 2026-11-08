@@ -82,6 +82,21 @@ const TEAMS: TeamOption[] = [
   { id: 5, name: "Payments", role: "member" },
 ];
 
+/**
+ * Strip tags until nothing changes: one pass over crafted markup can leave a
+ * tag behind, which is what js/incomplete-multi-character-sanitization
+ * reports, test file or not.
+ */
+function stripTags(markup: string): string {
+  let out = markup;
+  let before: string;
+  do {
+    before = out;
+    out = out.replace(/<[^>]+>/g, "");
+  } while (out !== before);
+  return out;
+}
+
 function render(node: ReactNode): string {
   cursor = 0;
   return renderToStaticMarkup(<>{node}</>);
@@ -137,10 +152,7 @@ describe("the trigger", () => {
     // The accessible name is the button's text content, so the sr-only prefix
     // and the visible text together make "Team for Alerts: Not shared", which
     // contains the visible "Not shared" (WCAG 2.5.3).
-    const text = html
-      .replace(/<svg[\s\S]*?<\/svg>/g, "")
-      .replace(/<[^>]+>/g, "");
-    expect(text).toBe("Team for Alerts: Not shared");
+    expect(stripTags(html)).toBe("Team for Alerts: Not shared");
     expect(html).toContain('<span class="sr-only">Team for Alerts: </span>');
     expect(html).not.toContain("aria-label");
   });
