@@ -192,6 +192,12 @@ export async function POST(request: Request) {
         reservation = gate.reservation;
       } else if (gate.busy) {
         return NextResponse.json({ error: gate.message }, { status: 429 });
+      } else if (gate.planGate) {
+        // The free plan with its trial used and credits below one batch: the
+        // same refusal the pre-check gives zero credits. Falling through to
+        // the pattern scan here made a token of credit an unlimited supply of
+        // free scans that never spent it (owner decision D19).
+        return NextResponse.json({ error: gate.message }, { status: 403 });
       } else {
         allowanceMessage = gate.message;
       }
@@ -280,6 +286,42 @@ export async function POST(request: Request) {
       engineConfidence,
     };
 
+    // The plan works from tree sizes and the run from the content it built,
+    // so when the plan found no batch under the ceiling but the content turned
+    // out smaller, the zero budget is what stopped the run. The reason is
+    // still the ceiling: more allowance would not have changed it.
+    const ceilingBlocked = plan.batchesWithinCap === 0;
+    const stoppedAtRunCap =
+      aiResult.stoppedAtRunCap || (ceilingBlocked && aiResult.stoppedAtBudget);
+
+    // How far the AI review got, in the response and stored with the scan in
+    // result_meta, which GET /api/v3/history/[id] spreads back over the row,
+    // so a repo scan reopened from history says what the live result said.
+    // The allowance message is left out of the stored copy: it is the
+    // account's balance at that moment, stale by the next scan and not
+    // something a teammate the scan is shared with should read.
+    const aiReview = {
+      filesScanned: files.length,
+      filesSkippedByCaps: truncatedByCaps,
+      aiReviewSkipped: aiResult.noEndpoint,
+      // True when the account's allowance and credits ran out before every
+      // file was reviewed, including before the first one; the AI findings
+      // cover the files before that point and the pattern scan covers all.
+      aiReviewStoppedAtBudget: aiResult.stoppedAtBudget && !ceilingBlocked,
+      // True when GITHUB_REVIEW_MAX_TOKENS_PER_RUN stopped it instead.
+      aiReviewStoppedAtRunCap: stoppedAtRunCap,
+      aiReviewCoverage: {
+        filesReviewed: aiResult.filesReviewed,
+        filesTotal: aiResult.filesTotal,
+        batchesReviewed: aiResult.batchesReviewed,
+        batchesFailed: aiResult.batchesFailed,
+        batchesTotal: aiResult.batchesTotal,
+        // Files each over the per-run ceiling on their own, skipped while
+        // the review carried on with the rest.
+        filesSkippedOverRunCap: aiResult.filesSkippedOverRunCap,
+      },
+    };
+
     let scanHistoryId: number | null = null;
     try {
       // is_public = false: unlike a URL scan (a public website's HTTP
@@ -289,8 +331,8 @@ export async function POST(request: Request) {
       // away from a share link the way scan_history.is_public otherwise
       // defaults to true.
       const insertResult = await pool.query(
-        `INSERT INTO scan_history (user_id, url, scan_type, summary, findings, findings_count, duration, scanned_at, source, notes, is_public, team_id)
-         VALUES ($1, $2, 'github', $3, $4, $5, $6, $7, 'web', $8, FALSE, $9) RETURNING id`,
+        `INSERT INTO scan_history (user_id, url, scan_type, summary, findings, findings_count, duration, scanned_at, source, notes, is_public, team_id, result_meta)
+         VALUES ($1, $2, 'github', $3, $4, $5, $6, $7, 'web', $8, FALSE, $9, $10) RETURNING id`,
         [
           userId,
           repoFullName,
@@ -301,6 +343,7 @@ export async function POST(request: Request) {
           result.scannedAt,
           DEFAULT_SCAN_NOTE,
           teamAssignment.primaryTeamId,
+          JSON.stringify(aiReview),
         ],
       );
       scanHistoryId = insertResult.rows[0]?.id ?? null;
@@ -342,34 +385,12 @@ export async function POST(request: Request) {
       });
     }
 
-    // The plan works from tree sizes and the run from the content it built,
-    // so when the plan found no batch under the ceiling but the content turned
-    // out smaller, the zero budget is what stopped the run. The reason is
-    // still the ceiling: more allowance would not have changed it.
-    const ceilingBlocked = plan.batchesWithinCap === 0;
-    const stoppedAtRunCap =
-      aiResult.stoppedAtRunCap || (ceilingBlocked && aiResult.stoppedAtBudget);
-
     return NextResponse.json({
       ...result,
       scanHistoryId,
       ref,
-      filesScanned: files.length,
-      filesSkippedByCaps: truncatedByCaps,
+      ...aiReview,
       aiTokensUsed: aiResult.totalTokensUsed,
-      aiReviewSkipped: aiResult.noEndpoint,
-      // True when the account's allowance and credits ran out before every
-      // file was reviewed, including before the first one; the AI findings
-      // cover the files before that point and the pattern scan covers all.
-      aiReviewStoppedAtBudget: aiResult.stoppedAtBudget && !ceilingBlocked,
-      // True when GITHUB_REVIEW_MAX_TOKENS_PER_RUN stopped it instead.
-      aiReviewStoppedAtRunCap: stoppedAtRunCap,
-      aiReviewCoverage: {
-        filesReviewed: aiResult.filesReviewed,
-        filesTotal: aiResult.filesTotal,
-        batchesReviewed: aiResult.batchesReviewed,
-        batchesTotal: aiResult.batchesTotal,
-      },
       // Why the account could not cover even the first batch, and what would.
       aiReviewAllowanceMessage: allowanceMessage,
     });

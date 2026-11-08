@@ -119,13 +119,15 @@ describe("the run path: an uncapped review never sends more than the per-run cap
     },
   );
 
-  it("refuses the first batch outright when it alone is over the cap", async () => {
+  it("never sends a batch that alone is over the cap: it is skipped and listed, not sent", async () => {
+    // Skipped rather than stopped at since owner decision D20 (2026-11-07);
+    // tests/lib/ai/review-source-oversized.test.ts covers the run carrying on.
     const files = denseFiles("漢字".repeat(30), 2, 290_000);
     const result = await runGithubAiReview(files, 1, false, null);
 
     expect(global.fetch).not.toHaveBeenCalled();
     expect(result.rejectedOverCap).toBe(true);
-    expect(result.stoppedAtRunCap).toBe(true);
+    expect(result.filesSkippedOverRunCap).toEqual(files.map((f) => f.path));
     expect(result.filesReviewed).toBe(0);
   });
 

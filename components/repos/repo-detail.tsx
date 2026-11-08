@@ -23,7 +23,11 @@ import { mapHistoryDetailResponse } from "@/lib/scanner/history-detail";
 import { formatDateTime } from "@/lib/ui/format-date";
 import type { GithubRepo, GithubScanOutcome } from "./types";
 import { GithubIcon } from "./github-icon";
-import { aiReviewNotice, type AiReviewNotice } from "./scan-outcome";
+import {
+  aiReviewNotice,
+  historyAiReviewNotice,
+  type AiReviewNotice,
+} from "./scan-outcome";
 
 /**
  * A load failure with the way out attached. Both failures in here used to be
@@ -96,11 +100,12 @@ export function RepoDetail({
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(
     null,
   );
-  // The AI review coverage of the scan just run here, keyed by its history id.
-  // Closing the result modal lands on this scan's findings, and a partly
-  // AI-reviewed scan must not read as a complete review there either. History
-  // rows do not store coverage, so a past scan reopened later carries none.
-  const [freshNotice, setFreshNotice] = useState<{
+  // What the AI review covered on the scan open below, keyed by its history
+  // id so a notice never lands on a different scan's findings. A scan just
+  // run here takes it from the response; a past scan reopened from the
+  // timeline takes it from what the route stored with the row, so a partly
+  // AI-reviewed scan reads the same either way and never as a complete review.
+  const [scanNotice, setScanNotice] = useState<{
     scanId: number;
     notice: AiReviewNotice;
   } | null>(null);
@@ -139,7 +144,7 @@ export function RepoDetail({
     setSelectedScanId(null);
     setScanDetail(null);
     setSelectedIssue(null);
-    setFreshNotice(null);
+    setScanNotice(null);
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [repo.fullName]);
 
@@ -147,6 +152,7 @@ export function RepoDetail({
     setSelectedScanId(id);
     setSelectedIssue(null);
     setDetailLoading(true);
+    setScanNotice(null);
     try {
       const res = await fetch(API.HISTORY_ITEM(id));
       if (!res.ok) {
@@ -155,6 +161,8 @@ export function RepoDetail({
       }
       const data = await res.json();
       setScanDetail(mapHistoryDetailResponse(data));
+      const notice = historyAiReviewNotice(data);
+      setScanNotice(notice ? { scanId: id, notice } : null);
     } catch {
       setScanDetail(null);
     } finally {
@@ -173,7 +181,7 @@ export function RepoDetail({
     // also skipped the jump). The detail still shows below regardless.
     const scanHistoryId = outcome.scanHistoryId;
     const notice = aiReviewNotice(outcome);
-    setFreshNotice(
+    setScanNotice(
       scanHistoryId != null && notice
         ? { scanId: scanHistoryId, notice }
         : null,
@@ -306,13 +314,13 @@ export function RepoDetail({
               <>
                 {/* Above the findings, as in the result modal, which has
                     already announced it, so no live role here. */}
-                {freshNotice && freshNotice.scanId === selectedScanId && (
+                {scanNotice && scanNotice.scanId === selectedScanId && (
                   <InlineAlert
                     tone="warning"
-                    title={freshNotice.notice.title}
+                    title={scanNotice.notice.title}
                     live="off"
                   >
-                    {freshNotice.notice.paragraphs.map((p) => (
+                    {scanNotice.notice.paragraphs.map((p) => (
                       <p key={p}>{p}</p>
                     ))}
                   </InlineAlert>

@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   aiReviewNotice,
   aiReviewStatValue,
+  historyAiReviewNotice,
   parseGithubScanResponse,
 } from "@/components/repos/scan-outcome";
 
@@ -193,6 +194,170 @@ describe("aiReviewNotice", () => {
   });
 });
 
+describe("aiReviewNotice: files skipped for the per-run cap, and failures before a stop (owner decision D20, 2026-11-07)", () => {
+  function cov(extra: Record<string, unknown>) {
+    return {
+      aiReviewCoverage: {
+        filesReviewed: 38,
+        filesTotal: 40,
+        batchesReviewed: 3,
+        batchesFailed: 0,
+        batchesTotal: 5,
+        filesSkippedOverRunCap: [],
+        ...extra,
+      },
+    };
+  }
+
+  it("lists a file skipped for being over the per-run limit on its own, and does not call the rest stopped", () => {
+    const n = aiReviewNotice(
+      outcome(
+        cov({ filesReviewed: 39, filesSkippedOverRunCap: ["data/huge.json"] }),
+      ),
+    );
+    expect(n?.kind).toBe("partial");
+    expect(n?.title).toBe("AI review covered 39 of 40 files");
+    expect(text(n)).toMatch(
+      /data\/huge\.json is larger than this server's per-run AI review limit on its own and was skipped/,
+    );
+    expect(text(n)).toMatch(/1 file got no AI review/);
+    expect(text(n)).not.toMatch(/error or timed out/);
+    expect(text(n)).not.toMatch(/rest of the repo/);
+  });
+
+  it("names several skipped files and counts the ones it does not name", () => {
+    const n = aiReviewNotice(
+      outcome(
+        cov({
+          filesReviewed: 35,
+          filesSkippedOverRunCap: [
+            "a.json",
+            "b.json",
+            "c.json",
+            "d.json",
+            "e.json",
+          ],
+        }),
+      ),
+    );
+    expect(text(n)).toMatch(
+      /5 files are each larger than this server's per-run AI review limit on their own and were skipped \(a\.json, b\.json, c\.json and 2 more\)/,
+    );
+  });
+
+  it("first batch failed, then the allowance stopped it: says both, and not that the first batch was over a limit", () => {
+    const n = aiReviewNotice(
+      outcome({
+        aiReviewStoppedAtBudget: true,
+        ...cov({ filesReviewed: 0, batchesReviewed: 0, batchesFailed: 1 }),
+      }),
+    );
+    expect(n?.kind).toBe("failed");
+    expect(text(n)).toMatch(
+      /The AI provider returned an error or timed out on 1 batch, and your GitHub review allowance ran out before the rest of the repo, so no file got an AI review/,
+    );
+    expect(text(n)).not.toMatch(/did not cover the first batch/);
+  });
+
+  it("first batch failed, then the per-run limit stopped it: says both, and not that the first batch was over the limit", () => {
+    const n = aiReviewNotice(
+      outcome({
+        aiReviewStoppedAtRunCap: true,
+        ...cov({ filesReviewed: 0, batchesReviewed: 0, batchesFailed: 1 }),
+      }),
+    );
+    expect(n?.kind).toBe("failed");
+    expect(text(n)).toMatch(
+      /error or timed out on 1 batch, and the rest of the repo is over this server's per-run AI review limit/,
+    );
+    expect(text(n)).not.toMatch(/first batch of files is over/);
+  });
+
+  it("a skipped file, a failed batch and a stop together", () => {
+    const n = aiReviewNotice(
+      outcome({
+        aiReviewStoppedAtRunCap: true,
+        ...cov({
+          filesReviewed: 20,
+          batchesReviewed: 2,
+          batchesFailed: 2,
+          filesSkippedOverRunCap: ["data/huge.json"],
+        }),
+      }),
+    );
+    expect(n?.title).toBe("AI review covered 20 of 40 files");
+    const t = text(n);
+    expect(t).toMatch(/data\/huge\.json is larger/);
+    expect(t).toMatch(/error or timed out on 2 batches/);
+    expect(t).toMatch(/rest of the repo is over this server's per-run/);
+    expect(t).toMatch(/20 files got no AI review/);
+    expect(t).not.toMatch(/[—–·]/);
+  });
+});
+
+describe("a repo scan reopened from history (owner decision D20, 2026-11-07)", () => {
+  it("shows the same notice as the live result, from what the route stored", () => {
+    const live = {
+      ...BASE,
+      aiReviewStoppedAtBudget: true,
+      aiReviewCoverage: {
+        filesReviewed: 12,
+        filesTotal: 40,
+        batchesReviewed: 1,
+        batchesFailed: 1,
+        batchesTotal: 4,
+        filesSkippedOverRunCap: ["data/huge.json"],
+      },
+    };
+    // GET /api/v3/history/[id] spreads scan_history.result_meta over the row,
+    // and the route stores these keys there.
+    const reopened = {
+      id: 7,
+      url: live.url,
+      scannedAt: live.scannedAt,
+      duration: live.duration,
+      summary: live.summary,
+      findings: live.findings,
+      notes: "",
+      tags: [],
+      filesScanned: live.filesScanned,
+      filesSkippedByCaps: live.filesSkippedByCaps,
+      aiReviewSkipped: live.aiReviewSkipped,
+      aiReviewStoppedAtBudget: live.aiReviewStoppedAtBudget,
+      aiReviewStoppedAtRunCap: live.aiReviewStoppedAtRunCap,
+      aiReviewCoverage: live.aiReviewCoverage,
+    };
+
+    const fromLive = aiReviewNotice(parseGithubScanResponse(live));
+    const fromHistory = historyAiReviewNotice(reopened);
+
+    expect(fromLive).not.toBeNull();
+    expect(fromHistory).toEqual(fromLive);
+  });
+
+  it("a scan stored before coverage was kept shows no notice rather than a wrong one", () => {
+    expect(
+      historyAiReviewNotice({
+        url: "octocat/hello-world",
+        summary: BASE.summary,
+        findings: [],
+      }),
+    ).toBeNull();
+  });
+
+  it("the repo page loads that notice when it opens a past scan", () => {
+    const detail = fs
+      .readFileSync(
+        path.resolve(__dirname, "../../../components/repos/repo-detail.tsx"),
+        "utf8",
+      )
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    const load = detail.slice(detail.indexOf("const loadScanDetail"));
+    expect(load).toMatch(/historyAiReviewNotice\(data\)/);
+  });
+});
+
 describe("the result modal", () => {
   const src = fs
     .readFileSync(
@@ -228,7 +393,7 @@ describe("the result modal", () => {
     expect(alert).toBeLessThan(detail.indexOf("<ScanSummary"));
     expect(alert).toBeLessThan(detail.indexOf("<ResultsList"));
     expect(detail).toMatch(/aiReviewNotice\(outcome\)/);
-    expect(detail).toMatch(/freshNotice\.scanId === selectedScanId/);
+    expect(detail).toMatch(/scanNotice\.scanId === selectedScanId/);
   });
 
   it("does not claim the AI review ran clean when it did not cover every file", () => {

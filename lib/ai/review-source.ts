@@ -239,8 +239,9 @@ export interface GithubReviewPlan {
  * tree metadata alone, before any content is fetched: batched the way
  * runGithubAiReview will batch them, each call counted at its input plus its
  * whole output allowance, and stopped at the batch whose input would cross
- * GITHUB_REVIEW_MAX_TOKENS_PER_RUN. The run makes the same cut on the content
- * it actually built, so this is a plan, not a promise.
+ * GITHUB_REVIEW_MAX_TOKENS_PER_RUN. A batch over the cap by itself is skipped
+ * rather than stopped at, as the run skips it. The run makes the same cut on
+ * the content it actually built, so this is a plan, not a promise.
  */
 export async function planGithubReview(
   fileSizes: number[],
@@ -268,6 +269,7 @@ export async function planGithubReview(
     const bytes = batch.reduce((n, s) => n + s, 0);
     const promptBytes = Math.ceil(bytes * (1 + PROMPT_FRAMING_ALLOWANCE));
     const input = reviewCallInput(promptBytes);
+    if (input > maxTokensPerRun) continue;
     if (plan.inputWithinCap + input > maxTokensPerRun) break;
     const ceiling = reviewCallCeiling(promptBytes, maxTokensPerCall);
     if (plan.batchesWithinCap === 0) plan.firstBatch = ceiling;
@@ -439,20 +441,29 @@ export interface GithubAiReviewResult {
   totalTokensUsed: number;
   /** True if no AI endpoint could be resolved (server not configured, no user key) — findings will be empty. */
   noEndpoint: boolean;
-  /** True if not even the first batch fit under GITHUB_REVIEW_MAX_TOKENS_PER_RUN, so nothing was sent. */
+  /** True if nothing was sent because GITHUB_REVIEW_MAX_TOKENS_PER_RUN
+   *  excluded every batch, by skipping it or by stopping before it. */
   rejectedOverCap: boolean;
   /** True if the reservation could not cover the next batch, so the files from there on were not reviewed. */
   stoppedAtBudget: boolean;
   /** True if the next batch would have taken the input sent past
-   *  GITHUB_REVIEW_MAX_TOKENS_PER_RUN, so the files from there on were not reviewed. */
+   *  GITHUB_REVIEW_MAX_TOKENS_PER_RUN, so the files from there on were not
+   *  reviewed. A batch over the cap by itself does not stop the run: it is
+   *  skipped and listed in filesSkippedOverRunCap. */
   stoppedAtRunCap: boolean;
   /** Files in a batch the model answered, of filesTotal handed to the run.
    *  The difference is what the AI review did not cover: batches past a stop,
-   *  and batches whose call failed. */
+   *  batches skipped for the cap, and batches whose call failed. */
   filesReviewed: number;
   filesTotal: number;
   batchesReviewed: number;
+  /** Batches sent whose call returned no answer (an HTTP error, a timeout). */
+  batchesFailed: number;
   batchesTotal: number;
+  /** Paths in a batch whose input alone is over GITHUB_REVIEW_MAX_TOKENS_PER_RUN,
+   *  in tree order. In practice one file each: a batch only holds several
+   *  files when together they are under the per-call budget. */
+  filesSkippedOverRunCap: string[];
 }
 
 /**
@@ -461,7 +472,11 @@ export interface GithubAiReviewResult {
  *
  * Batches go out in order until one would cross a limit, and the run stops
  * there, at a batch boundary, saying which limit it was and how much it
- * covered. The two limits:
+ * covered. The exception is a batch over the per-run cap by itself (in
+ * practice one large file): no run could ever send it, so it is skipped and
+ * listed and the run carries on. Stopping there meant one file of about 235 KB
+ * early in tree order left the whole rest of the repo unreviewed. The two
+ * limits:
  *
  * GITHUB_REVIEW_MAX_TOKENS_PER_RUN bounds the input one run sends, on every
  * run, counted at one token per byte of the prompt actually built. It was
@@ -493,7 +508,9 @@ export async function runGithubAiReview(
     filesReviewed: 0,
     filesTotal: files.length,
     batchesReviewed: 0,
+    batchesFailed: 0,
     batchesTotal: 0,
+    filesSkippedOverRunCap: [],
   };
   if (files.length === 0) return nothing;
 
@@ -543,10 +560,15 @@ export async function runGithubAiReview(
   let filesReviewed = 0;
   let stoppedAtBudget = false;
   let stoppedAtRunCap = false;
+  const filesSkippedOverRunCap: string[] = [];
 
   for (const batch of batches) {
     const promptBytes = maxInputTokens(batch.map(buildFileBlock).join("\n\n"));
     const input = reviewCallInput(promptBytes);
+    if (input > maxTokensPerRun) {
+      filesSkippedOverRunCap.push(...batch.map((f) => f.path));
+      continue;
+    }
     if (inputSent + input > maxTokensPerRun) {
       stoppedAtRunCap = true;
       break;
@@ -578,12 +600,17 @@ export async function runGithubAiReview(
     findings,
     totalTokensUsed,
     noEndpoint: false,
-    rejectedOverCap: stoppedAtRunCap && batchesSent === 0,
+    rejectedOverCap:
+      batchesSent === 0 &&
+      (stoppedAtRunCap || filesSkippedOverRunCap.length > 0) &&
+      !stoppedAtBudget,
     stoppedAtBudget,
     stoppedAtRunCap,
     filesReviewed,
     filesTotal: files.length,
     batchesReviewed,
+    batchesFailed: batchesSent - batchesReviewed,
     batchesTotal: batches.length,
+    filesSkippedOverRunCap,
   };
 }

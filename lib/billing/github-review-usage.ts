@@ -299,7 +299,18 @@ export interface GithubReviewReservation extends TokenReservation {
 
 export type GithubReviewGate =
   | { allowed: true; reservation: GithubReviewReservation }
-  | { allowed: false; busy: boolean; message: string };
+  | {
+      allowed: false;
+      busy: boolean;
+      /** A plan with no review allowance, its trial spent, and credits that
+       *  do not cover one batch: the plan itself refuses the scan, the same
+       *  refusal as zero credits. Otherwise a token of credit bought a free
+       *  pattern scan on every request and was never spent. A plan with an
+       *  allowance of its own is never refused here: it still gets the
+       *  pattern scan (owner decision D13). */
+      planGate: boolean;
+      message: string;
+    };
 
 /**
  * The gate for a GitHub repo review: takes the review's estimate (input plus
@@ -321,7 +332,9 @@ export type GithubReviewGate =
  *
  * A plan with no review allowance (githubReviewTokensPerWindow 0) first tries
  * the free trial, claimed atomically by claimFreeGithubReviewTrial; with the
- * trial spent, the reservation comes out of the balance alone.
+ * trial spent, the reservation comes out of the balance alone, and a refusal
+ * is the plan gate (planGate): the route answers 403 to credits below one
+ * batch exactly as it does to none.
  */
 export async function reserveGithubReviewTokens(
   userId: number,
@@ -386,6 +399,7 @@ export async function reserveGithubReviewTokens(
     return {
       allowed: false,
       busy: true,
+      planGate: false,
       message:
         "Another GitHub repo review is still running on your account. Wait for it to finish, then try again.",
     };
@@ -397,6 +411,7 @@ export async function reserveGithubReviewTokens(
     return {
       allowed: false,
       busy: false,
+      planGate: true,
       message: `You've used today's free GitHub AI review. Upgrade for regular access, connect your own AI provider key in Profile > AI settings, or check back in ${freeTrialWindowHours} hours.`,
     };
   }
@@ -404,6 +419,7 @@ export async function reserveGithubReviewTokens(
   return {
     allowed: false,
     busy: false,
+    planGate: limitTokens === 0,
     message:
       limitTokens === 0
         ? `The AI review needs at least ${result.needed.toLocaleString()} GitHub review tokens to start on this repo and your credit balance is ${result.balance.toLocaleString()}. Buy GitHub review credits in Profile > Billing, upgrade your plan, or connect your own AI provider key in Profile > AI settings.`

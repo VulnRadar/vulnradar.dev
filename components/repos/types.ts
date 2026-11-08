@@ -52,5 +52,11 @@ export interface AiReviewCoverage {
   filesReviewed: number;
   filesTotal: number;
   batchesReviewed: number;
+  /** Batches sent whose call failed. Null from a server, or a stored scan,
+   *  that predates the field. */
+  batchesFailed: number | null;
   batchesTotal: number;
+  /** Files each over the per-run limit on their own, skipped while the
+   *  review carried on with the rest. */
+  filesSkippedOverRunCap: string[];
 }
