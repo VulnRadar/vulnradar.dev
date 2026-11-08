@@ -12,7 +12,7 @@ import { detectors } from "@/lib/scanner/checks/code";
  * credential-shaped literal even when it is a made-up fixture.
  */
 
-const escapeSlashes = (s: string) => s.replace(/\//g, "\\/");
+const escapeSlashes = (s: string) => s.split("/").join("\\/");
 
 const DISCORD = [
   "https:",

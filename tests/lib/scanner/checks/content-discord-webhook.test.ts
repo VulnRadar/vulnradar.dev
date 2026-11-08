@@ -85,7 +85,7 @@ describe("discord-webhook-exposed uses the shared host and path rules", () => {
   });
 
   it("reads JSON-escaped slashes, as the secret tier does", () => {
-    const body = inScript(webhook("discord.com").replace(/\//g, "\\/"));
+    const body = inScript(webhook("discord.com").split("/").join("\\/"));
     expect(exposed(body)).toBe(true);
     expect(secretTier(body)).toBe(true);
   });

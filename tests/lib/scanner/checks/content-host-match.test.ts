@@ -134,7 +134,7 @@ describe("slack-webhook-exposed compares the webhook URL's host", () => {
   });
 
   it("reads a webhook written with JSON-escaped slashes, host check included", () => {
-    const escape = (url: string) => url.replace(/\//g, "\\/");
+    const escape = (url: string) => url.split("/").join("\\/");
     expect(
       slack(`{"hook":"${escape(`https://hooks.slack.com${path}`)}"}`),
     ).not.toBeNull();
