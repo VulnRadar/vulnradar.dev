@@ -51,6 +51,44 @@ afterAll(() => {
   }
 });
 
+describe("getClientIp behind the front server", () => {
+  // server.mjs rewrites the header before Next sees it. This pins the other
+  // half: what it leaves behind reads as the address it meant.
+  async function clientIpAfterFrontServer(
+    remoteAddress: string,
+    sent: Record<string, string>,
+  ): Promise<string> {
+    const { enforceForwardedFor, trustedProxyCidr } =
+      await import("@/lib/server/http-front.mjs");
+    const req = { headers: { ...sent }, socket: { remoteAddress } };
+    enforceForwardedFor(
+      req as unknown as import("node:http").IncomingMessage,
+      trustedProxyCidr({}),
+    );
+    for (const [name, value] of Object.entries(req.headers)) {
+      mockHeaders.set(name, value);
+    }
+    return getClientIp();
+  }
+
+  it("cannot be talked into another address by a direct client", async () => {
+    await expect(
+      clientIpAfterFrontServer("203.0.113.9", {
+        "x-forwarded-for": "1.1.1.1",
+        "x-real-ip": "1.0.0.1",
+      }),
+    ).resolves.toBe("203.0.113.9");
+  });
+
+  it("still reads the client a trusted proxy appended, right-most", async () => {
+    await expect(
+      clientIpAfterFrontServer("127.0.0.1", {
+        "x-forwarded-for": "1.1.1.1, 198.51.100.7",
+      }),
+    ).resolves.toBe("198.51.100.7");
+  });
+});
+
 describe("ipsInSameSubnet", () => {
   it("matches IPv4 addresses within the same /24", () => {
     expect(ipsInSameSubnet("203.0.113.5", "203.0.113.250", 24, 48)).toBe(true);

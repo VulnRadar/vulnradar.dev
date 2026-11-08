@@ -2,108 +2,18 @@ import { headers } from "next/headers";
 import { isIP } from "node:net";
 import { AUTH_HEADER } from "@/lib/config/constants";
 import { parseBearer } from "@/lib/api/bearer";
+import {
+  ipInCidrList,
+  ipv4ToInt,
+  ipv6ToBigInt,
+  normalizeIp,
+} from "@/lib/server/http-front.mjs";
+
+export { normalizeIp };
 
 /**
  * Client information helpers
  */
-
-/**
- * Returns true if `ip` falls within any of the comma-separated CIDR ranges
- * listed in `cidrList` (e.g. "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16").
- *
- * Used to walk `x-forwarded-for` from the right and skip
- * trusted hops when TRUSTED_PROXY_CIDR is configured. Without this, an
- * attacker could spoof their IP by sending a custom `x-forwarded-for` header.
- */
-function ipInCidrList(ip: string, cidrList: string): boolean {
-  // isIP returns 0 for invalid, 4 for IPv4, 6 for IPv6.
-  const version = isIP(ip) as 0 | 4 | 6;
-  if (version === 0) return false;
-
-  const cidrs = cidrList
-    .split(",")
-    .map((c) => c.trim())
-    .filter(Boolean);
-  for (const cidr of cidrs) {
-    const [base, prefixStr] = cidr.split("/");
-    if (!base || !prefixStr) continue;
-    const baseVersion = isIP(base) as 0 | 4 | 6;
-    if (baseVersion !== version) continue;
-    const prefix = Number(prefixStr);
-    if (
-      !Number.isFinite(prefix) ||
-      prefix < 0 ||
-      prefix > (version === 4 ? 32 : 128)
-    ) {
-      continue;
-    }
-    if (ipInCidr(ip, base, prefix, version)) return true;
-  }
-  return false;
-}
-
-function ipv4ToInt(ip: string): number | null {
-  const parts = ip.split(".");
-  if (parts.length !== 4) return null;
-  let acc = 0;
-  for (const p of parts) {
-    const n = Number(p);
-    if (!Number.isInteger(n) || n < 0 || n > 255) return null;
-    acc = acc * 256 + n;
-  }
-  return acc;
-}
-
-function ipv6ToBigInt(ip: string): bigint | null {
-  // Expand :: shorthand.
-  const doubleColonIdx = ip.indexOf("::");
-  let head: string[];
-  let tail: string[];
-  if (doubleColonIdx === -1) {
-    head = ip.split(":");
-    tail = [];
-  } else {
-    head = ip.slice(0, doubleColonIdx).split(":");
-    tail = ip.slice(doubleColonIdx + 2).split(":");
-    if (head.length === 1 && head[0] === "") head = [];
-    if (tail.length === 1 && tail[0] === "") tail = [];
-  }
-  if (head.length + tail.length > 8) return null;
-  const fillCount = 8 - (head.length + tail.length);
-  const groups = [
-    ...head,
-    ...Array.from({ length: fillCount }, () => "0"),
-    ...tail,
-  ];
-  if (groups.length !== 8) return null;
-  let acc = BigInt(0);
-  for (const g of groups) {
-    if (!/^[0-9a-fA-F]{1,4}$/.test(g)) return null;
-    acc = (acc << BigInt(16)) | BigInt(parseInt(g, 16));
-  }
-  return acc;
-}
-
-function ipInCidr(
-  ip: string,
-  base: string,
-  prefix: number,
-  version: 4 | 6,
-): boolean {
-  if (prefix === 0) return true;
-  if (version === 4) {
-    const ipN = ipv4ToInt(ip);
-    const baseN = ipv4ToInt(base);
-    if (ipN === null || baseN === null) return false;
-    const mask = prefix === 32 ? -1 : (0xffffffff << (32 - prefix)) >>> 0;
-    return (ipN & mask) === (baseN & mask);
-  }
-  const ipB = ipv6ToBigInt(ip);
-  const baseB = ipv6ToBigInt(base);
-  if (ipB === null || baseB === null) return false;
-  const shift = BigInt(128 - prefix);
-  return ipB >> shift === baseB >> shift;
-}
 
 /**
  * ip-binding: compare two IPs at subnet granularity instead of requiring
@@ -119,7 +29,7 @@ function ipInCidr(
  * to). Callers decide what an unparsable IP means for their own
  * mismatch policy — this function only answers the subnet question.
  *
- * Reuses the same masking logic as ipInCidr() above rather than adding a
+ * Reuses the masking logic in lib/server/http-front.mjs rather than adding a
  * second IP-comparison implementation.
  */
 export function ipsInSameSubnet(
@@ -152,42 +62,6 @@ export function ipsInSameSubnet(
 }
 
 /**
- * Normalize a raw address string into a canonical IP, or null if it is not a
- * valid IP. Proxies and runtimes hand us addresses that are "an IP with
- * extra": an appended `:port`, IPv6 wrapped in `[brackets]`, or an
- * IPv4-mapped IPv6 (`::ffff:a.b.c.d`), and occasionally something that is not
- * an IP at all. Anything that persists or displays the client IP (session and
- * device rows, API-key last-seen IP) must never store one of those, so this
- * strips the wrapping and validates with `isIP` before returning.
- *
- * A syntactically valid IP, including a compressed IPv6 like `2001:db8::1`, is
- * returned unchanged: there is nothing to fix about a real address.
- */
-export function normalizeIp(raw: string): string | null {
-  let s = raw.trim();
-  if (!s) return null;
-
-  if (s.startsWith("[")) {
-    // Bracketed IPv6, optionally with a :port after the closing bracket.
-    const end = s.indexOf("]");
-    if (end === -1) return null;
-    s = s.slice(1, end);
-  } else if (s.split(":").length === 2) {
-    // Exactly one colon means an IPv4 host with a :port. Unbracketed IPv6
-    // always has more than one colon, so this never truncates an IPv6.
-    const [host, port] = s.split(":");
-    if (isIP(host) === 4 && /^\d+$/.test(port)) s = host;
-  }
-
-  // IPv4-mapped IPv6 (::ffff:a.b.c.d) -> the plain IPv4 it carries.
-  if (s.toLowerCase().startsWith("::ffff:") && isIP(s.slice(7)) === 4) {
-    s = s.slice(7);
-  }
-
-  return isIP(s) ? s : null;
-}
-
-/**
  * Extract client IP from request headers.
  *
  * Trusts `x-forwarded-for` correctly when running behind
@@ -205,6 +79,9 @@ export function normalizeIp(raw: string): string | null {
  * - If not set: take the rightmost IP from `x-forwarded-for` (safer than
  *   leftmost, which is trivially spoofable when no proxy is in play).
  * - Falls back to `x-real-ip`, then `cf-connecting-ip`, then "unknown".
+ *
+ * The right-most rule is only safe because server.mjs has already replaced the
+ * header on any connection whose peer is not a trusted proxy.
  */
 export async function getClientIp(): Promise<string> {
   const h = await headers();
