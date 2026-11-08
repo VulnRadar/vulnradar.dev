@@ -52,6 +52,7 @@ import {
 import { formatTimestamp } from "@/components/admin/utils";
 import type { ToastState } from "@/components/admin/types";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { PREFERENCE_COPY } from "@/lib/notifications/columns";
 import {
   CampaignTemplatePicker,
   type SavedTemplate,
@@ -91,8 +92,14 @@ const CATEGORY_OPTIONS: { value: string; label: string }[] = [
   { value: "email_product_updates", label: "Product Updates" },
   { value: "email_tips_guides", label: "Tips & Guides" },
   { value: "email_scan_complete", label: "Scan Completed" },
-  { value: "email_critical_findings", label: "Critical Issues Found" },
-  { value: "email_regression_alert", label: "Regression Alerts" },
+  {
+    value: "email_critical_findings",
+    label: PREFERENCE_COPY.email_critical_findings.label,
+  },
+  {
+    value: "email_regression_alert",
+    label: PREFERENCE_COPY.email_regression_alert.label,
+  },
   { value: "email_schedules", label: "Scheduled Scans" },
   { value: "email_security", label: "Security Alerts" },
   { value: "email_new_login", label: "Login Alerts" },
