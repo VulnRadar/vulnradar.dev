@@ -63,6 +63,12 @@ describe("rolling back", () => {
     expect(managed).toContain("DATABASE_URL");
     expect(managed).not.toContain("--replace");
   });
+
+  it("stops the app before the managed database is dropped", () => {
+    const stop = managed.indexOf("docker compose stop app");
+    expect(stop).toBeGreaterThan(-1);
+    expect(stop).toBeLessThan(managed.indexOf("DROP DATABASE"));
+  });
 });
 
 describe("backups", () => {
@@ -98,6 +104,24 @@ describe("SMTP in the .env example", () => {
     }
   });
 
+  it("leaves the other optional keys commented out too", () => {
+    // TURNSTILE_ENABLED is true for any non-empty site key, so a copied
+    // placeholder refuses every sign-up, the first admin's included.
+    expect(read("lib/config/client-constants.ts")).toContain(
+      "TURNSTILE_ENABLED = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY",
+    );
+    for (const name of [
+      "DISCORD_CLIENT_ID",
+      "NEXT_PUBLIC_TURNSTILE_SITE_KEY",
+      "TURNSTILE_SECRET_KEY",
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET",
+    ]) {
+      expect(env, name).toContain(`# ${name}=`);
+      expect(env, name).not.toMatch(new RegExp(`^${name}=`, "m"));
+    }
+  });
+
   it("explains the lock-out, which is what the signup code does", () => {
     expect(env).toContain('title="SMTP on/off changes sign-up"');
     expect(read("lib/auth/auth.ts")).toContain(
@@ -126,6 +150,11 @@ describe("running without TLS", () => {
     expect(env).toContain("# ALLOW_INSECURE_HTTP=1  # only for a trusted LAN");
     expect(env).not.toMatch(/^ALLOW_INSECURE_HTTP=/m);
     expect(env).toContain('title="No TLS yet?"');
+  });
+
+  it("names the bind address compose defaults to", () => {
+    expect(read("docker-compose.yml")).toContain("${HOST_BIND:-127.0.0.1}:");
+    expect(env).toContain("HOST_BIND=0.0.0.0");
   });
 
   it("puts HTTPS required before the file it applies to", () => {

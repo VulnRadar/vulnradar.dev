@@ -633,20 +633,21 @@ NEXT_PUBLIC_APP_URL=https://scanner.yourdomain.com
 # SMTP_FROM=noreply@yourdomain.com
 
 # Optional: Discord OAuth
-DISCORD_CLIENT_ID=...
-DISCORD_CLIENT_SECRET=...
-DISCORD_BOT_TOKEN=...
-DISCORD_GUILD_ID=...
+# DISCORD_CLIENT_ID=...
+# DISCORD_CLIENT_SECRET=...
+# DISCORD_BOT_TOKEN=...
+# DISCORD_GUILD_ID=...
 
-# Optional: Cloudflare Turnstile
-NEXT_PUBLIC_TURNSTILE_SITE_KEY=...
-TURNSTILE_SECRET_KEY=...
+# Optional: Cloudflare Turnstile. Real keys only: any value in the site key
+# puts a captcha on sign-up, and a placeholder's captcha can never pass.
+# NEXT_PUBLIC_TURNSTILE_SITE_KEY=...
+# TURNSTILE_SECRET_KEY=...
 
 # Optional: Stripe (only if CONFIG_BILLING_ENABLED=true)
-STRIPE_SECRET_KEY=sk_live_...
-STRIPE_PUBLISHABLE_KEY=pk_live_...
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
-STRIPE_WEBHOOK_SECRET=whsec_...`}
+# STRIPE_SECRET_KEY=sk_live_...
+# STRIPE_PUBLISHABLE_KEY=pk_live_...
+# NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
+# STRIPE_WEBHOOK_SECRET=whsec_...`}
         />
         <DocsCallout variant="warning" title="SMTP on/off changes sign-up">
           <p>
@@ -674,7 +675,9 @@ STRIPE_WEBHOOK_SECRET=whsec_...`}
             the app over plain HTTP. Without it every request redirects to an
             https port nothing is listening on. Traffic and the session cookie
             are then unencrypted, so use it only on a trusted network, and take
-            it out once a proxy terminates TLS.
+            it out once a proxy terminates TLS. Compose publishes the port on
+            127.0.0.1 only, so reaching it from another machine also needs{" "}
+            <InlineCode>HOST_BIND=0.0.0.0</InlineCode>.
           </p>
         </DocsCallout>
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
@@ -1653,18 +1656,19 @@ git checkout <previous-tag>
 docker compose build app && docker compose up -d`}
           />
           <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-            On a managed database, restore into a new empty one instead and keep
-            the old database until the app is back. If your provider gives you
-            only the one, run <InlineCode>DROP DATABASE vulnradar</InlineCode>{" "}
-            and{" "}
+            On a managed database, run{" "}
+            <InlineCode>docker compose stop app</InlineCode> first, then restore
+            into a new empty one and keep the old database until the app is
+            back. If your provider gives you only the one, run{" "}
+            <InlineCode>DROP DATABASE vulnradar</InlineCode> and{" "}
             <InlineCode>CREATE DATABASE vulnradar OWNER vulnradar</InlineCode>{" "}
-            from psql. Then point <InlineCode>DATABASE_URL</InlineCode> at it
-            and restore:
+            from psql, connected to any other database: Postgres refuses to drop
+            the one you are in, or one the app still holds open. Then point{" "}
+            <InlineCode>DATABASE_URL</InlineCode> at it and restore:
           </p>
           <CodeBlock
             language="bash"
-            code={`docker compose stop app
-docker compose run --rm app npm run db:restore -- \\
+            code={`docker compose run --rm app npm run db:restore -- \\
   --file=./backups/<the dump from step 1> --yes
 git checkout <previous-tag>
 docker compose build app && docker compose up -d`}
