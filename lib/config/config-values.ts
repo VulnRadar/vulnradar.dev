@@ -549,6 +549,14 @@ export const CONFIG_API_KEY_IP_BINDING_IPV6_PREFIX = 128;
 
 // Maximum simultaneous connections held open by one app process.
 // Raise this only after raising PostgreSQL's max_connections to match.
+//
+// The other per-process ceiling to size a box by is password hashing. The
+// published image sets UV_THREADPOOL_SIZE=16 so DNS lookups, file reads and
+// zlib are not queued behind a slow scrypt. One scrypt holds about 128 MiB, so
+// if every thread hashed at once that would be 16 x 128 MiB = 2 GiB;
+// SCRYPT_MAX_CONCURRENT in lib/auth/password-hash.ts holds it at 2 x 128 MiB =
+// 256 MiB however large the threadpool is. Raise that limiter only with the
+// container's memory limit in mind.
 export const CONFIG_DB_POOL_MAX = 10;
 
 // Minimum connections kept warm. 0 lets the pool drain fully when idle,
@@ -742,6 +750,19 @@ export const CONFIG_RATE_LIMIT_SUPPORT_TICKET_STATUS_WINDOW_MINUTES = 60;
 // through a contact form, from a route that needs no account at all.
 export const CONFIG_RATE_LIMIT_CONTACT_FORM_ATTEMPTS = 5;
 export const CONFIG_RATE_LIMIT_CONTACT_FORM_WINDOW_MINUTES = 60;
+
+// Per-user cap on host reputation lookups (GET /api/v3/scan/reputation). The
+// browser extension asks once per site visited, so it needs far more room than
+// the general API bucket without being unlimited.
+export const CONFIG_RATE_LIMIT_REPUTATION_REQUESTS = 600;
+export const CONFIG_RATE_LIMIT_REPUTATION_WINDOW_MINUTES = 60;
+
+// Per-API-key cap on GET /auth/me. The endpoint is the extension's identity
+// check and does not spend the key's budget, so this is what stops a leaked
+// key from turning it into a free stream of quota queries. The extension is
+// nowhere near this: it asks on popup open and service-worker start.
+export const CONFIG_RATE_LIMIT_AUTH_ME_REQUESTS = 60;
+export const CONFIG_RATE_LIMIT_AUTH_ME_WINDOW_MINUTES = 1;
 
 // SCANNING CONFIGURATION - UPDATE IF NEEDED
 

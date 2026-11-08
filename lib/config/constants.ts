@@ -119,6 +119,10 @@ import {
   CONFIG_RATE_LIMIT_SUPPORT_TICKET_STATUS_WINDOW_MINUTES,
   CONFIG_RATE_LIMIT_CONTACT_FORM_ATTEMPTS,
   CONFIG_RATE_LIMIT_CONTACT_FORM_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_REPUTATION_REQUESTS,
+  CONFIG_RATE_LIMIT_REPUTATION_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_AUTH_ME_REQUESTS,
+  CONFIG_RATE_LIMIT_AUTH_ME_WINDOW_MINUTES,
 } from "./config-values";
 // Imported for local use below (LOGO_URL, TOTP_ISSUER, VERSION_CHECK_URL);
 // the same names are re-exported wholesale at the bottom of this file.
@@ -505,6 +509,15 @@ export const RATE_LIMIT_DEFAULTS = {
   contactForm: {
     maxAttempts: CONFIG_RATE_LIMIT_CONTACT_FORM_ATTEMPTS,
     windowSeconds: 60 * CONFIG_RATE_LIMIT_CONTACT_FORM_WINDOW_MINUTES,
+  },
+  reputation: {
+    maxAttempts: CONFIG_RATE_LIMIT_REPUTATION_REQUESTS,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_REPUTATION_WINDOW_MINUTES,
+  },
+  // Bucket key `auth-me:{keyId}`: per API key, not per IP.
+  authMe: {
+    maxAttempts: CONFIG_RATE_LIMIT_AUTH_ME_REQUESTS,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_AUTH_ME_WINDOW_MINUTES,
   },
 };
 

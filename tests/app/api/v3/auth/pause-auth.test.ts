@@ -33,8 +33,8 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     return { rows: settingsRows };
   }
   if (s.startsWith("DELETE FROM rate_limits")) return { rows: [] };
-  if (s.startsWith("UPDATE rate_limits")) return { rows: [] };
   if (s.startsWith("INSERT INTO rate_limits")) {
+    if (rateLimitCount >= (params[2] as number)) return { rows: [] };
     rateLimitCount += 1;
     return { rows: [{ count: String(rateLimitCount) }] };
   }

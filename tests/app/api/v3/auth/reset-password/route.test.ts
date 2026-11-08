@@ -64,6 +64,10 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   if (s.startsWith("SELECT unsubscribe_token FROM users WHERE id")) {
     return { rows: [{ unsubscribe_token: null }] };
   }
+  // Zero rows from the limiter's upsert means the bucket is full.
+  if (s.startsWith("INSERT INTO rate_limits")) {
+    return { rows: [{ count: "1" }] };
+  }
   return { rows: [] };
 });
 

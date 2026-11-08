@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import * as configValues from "@/lib/config/config-values";
 import {
   NEVER_CONFIGURABLE,
+  RATE_LIMIT_MAX_WINDOW_SECONDS,
   SETTINGS_REGISTRY,
   coerceSettingValue,
   isSecretSetting,
@@ -356,6 +357,51 @@ describe("super-admin-only settings", () => {
     for (const key of SUPER_ADMIN_ONLY) {
       expect(section, key).toContain(`<InlineCode>${key}</InlineCode>`);
     }
+  });
+});
+
+describe("RATE_LIMIT_MAX_WINDOW_SECONDS", () => {
+  const UNIT_SECONDS: Record<string, number> = { MINUTES: 60, HOURS: 3600 };
+
+  const windowMaxima = Object.entries(SETTINGS_REGISTRY).flatMap(
+    ([key, def]) => {
+      const unit = /_WINDOW_(MINUTES|HOURS)$/.exec(key)?.[1];
+      const max = (def as { max?: number }).max;
+      return unit && max !== undefined ? [max * UNIT_SECONDS[unit]] : [];
+    },
+  );
+
+  it("finds the window settings it is meant to bound", () => {
+    expect(windowMaxima.length).toBeGreaterThanOrEqual(26);
+  });
+
+  // The prune of rate_limits keeps rows for this long. If a window setting's
+  // maximum grew past it, a caller refused for that window would have their
+  // bucket deleted while the window was still open.
+  it("equals the largest maximum any window setting accepts", () => {
+    expect(RATE_LIMIT_MAX_WINDOW_SECONDS).toBe(Math.max(...windowMaxima));
+  });
+});
+
+describe("SESSION_IP_BINDING_ENABLED help", () => {
+  it("says a switch between IPv4 and IPv6 counts as a different network", () => {
+    expect(SETTINGS_REGISTRY.SESSION_IP_BINDING_ENABLED.help).toMatch(
+      /between IPv4 and IPv6 counts as a different network/,
+    );
+  });
+});
+
+describe("the named limits added for v4", () => {
+  it.each([
+    ["RATE_LIMIT_REPUTATION_REQUESTS", 600],
+    ["RATE_LIMIT_REPUTATION_WINDOW_MINUTES", 60],
+    ["RATE_LIMIT_AUTH_ME_REQUESTS", 60],
+    ["RATE_LIMIT_AUTH_ME_WINDOW_MINUTES", 1],
+  ] as const)("%s ships as %i, editable at runtime", (key, value) => {
+    const def = SETTINGS_REGISTRY[key];
+    expect(def.default).toBe(value);
+    expect(def.tier).toBe("runtime");
+    expect(def.group).toBe("Rate Limits");
   });
 });
 

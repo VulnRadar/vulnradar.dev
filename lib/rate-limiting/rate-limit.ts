@@ -93,6 +93,11 @@ const CONFIGURABLE_LIMITS: Partial<
     "RATE_LIMIT_CONTACT_FORM_ATTEMPTS",
     "RATE_LIMIT_CONTACT_FORM_WINDOW_MINUTES",
   ],
+  reputation: [
+    "RATE_LIMIT_REPUTATION_REQUESTS",
+    "RATE_LIMIT_REPUTATION_WINDOW_MINUTES",
+  ],
+  authMe: ["RATE_LIMIT_AUTH_ME_REQUESTS", "RATE_LIMIT_AUTH_ME_WINDOW_MINUTES"],
 };
 
 /** Resolve a named limit through the admin settings resolver. */
@@ -167,54 +172,51 @@ export async function checkRateLimit(
   const windowMs = windowSeconds * 1000;
   const bucketStart = new Date(Math.floor(now.getTime() / windowMs) * windowMs);
 
-  // Trim stale rows for this key only — the previous blanket DELETE scanned
-  // the whole rate_limits table on every call. Doing the cleanup lazily
-  // inside the UPSERT below avoids both the table scan and the read-then-
-  // write TOCTOU race (two concurrent attempts could both observe the
-  // pre-increment count and both squeeze under the cap).
-  await pool.query(
-    "DELETE FROM rate_limits WHERE key = $1 AND window_start < $2",
-    [key, windowStart],
-  );
+  // Retry-after equals how long until the bucket rolls over.
+  const denied = (): RateLimitResult => {
+    const nextBucket = new Date(bucketStart.getTime() + windowMs);
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: Math.max(
+        1,
+        Math.ceil((nextBucket.getTime() - now.getTime()) / 1000),
+      ),
+    };
+  };
 
-  // Atomic UPSERT + read-back. Either:
-  //   - insert a fresh row and read it back as `count=1`, or
-  //   - increment the existing in-window row and read it back as the new count.
-  // Both branches happen in a single statement so the count returned is the
-  // same count that was persisted.
+  // The upsert's guard only covers the DO UPDATE branch. A fresh INSERT is
+  // not subject to it, so a cap of zero has to be refused before the write.
+  if (maxAttempts <= 0) return denied();
+
+  // One guarded statement. Either it inserts a fresh row (count 1), or it
+  // increments an in-window row still under the cap, or the WHERE fails and
+  // no row comes back. Postgres re-checks the WHERE against the locked row, so
+  // concurrent attempts cannot both squeeze under the cap, and a refused
+  // attempt writes nothing. This used to increment unconditionally and put
+  // the count back with a second UPDATE, which turned every refusal into two
+  // writes and left a window in which the bucket read as over its cap.
   const result = await pool.query<{ count: string }>(
     `INSERT INTO rate_limits (key, "count", window_start)
      VALUES ($1, 1, $2)
      ON CONFLICT (key, window_start)
      DO UPDATE SET "count" = rate_limits."count" + 1
+       WHERE rate_limits."count" < $3
      RETURNING "count"`,
-    [key, bucketStart],
+    [key, bucketStart, maxAttempts],
   );
 
-  const count = Number(result.rows[0]?.count ?? 0);
+  if (result.rows.length === 0) return denied();
+  const count = Number(result.rows[0].count);
 
-  if (count > maxAttempts) {
-    // We over-shot — roll back the increment we just did so the counter
-    // stays pinned at the cap rather than drifting upward on every call.
-    // (`> maxAttempts` means this attempt is the (maxAttempts+1)-th, which
-    // must be rejected; the previous row sat at maxAttempts exactly.)
+  // Trim this key's older buckets when this attempt opened a new one, which
+  // is the only moment a new stale row can have appeared. Doing it first, on
+  // every call, added a write to each request and to each refusal.
+  if (count === 1) {
     await pool.query(
-      `UPDATE rate_limits
-       SET "count" = $2
-       WHERE key = $1 AND window_start = $3`,
-      [key, maxAttempts, bucketStart],
+      "DELETE FROM rate_limits WHERE key = $1 AND window_start < $2",
+      [key, windowStart],
     );
-    // Retry-after equals how long until the bucket rolls over.
-    const nextBucket = new Date(bucketStart.getTime() + windowMs);
-    const retryAfter = Math.max(
-      1,
-      Math.ceil((nextBucket.getTime() - now.getTime()) / 1000),
-    );
-    return {
-      allowed: false,
-      remaining: 0,
-      retryAfterSeconds: retryAfter,
-    };
   }
 
   return {
@@ -341,4 +343,6 @@ export const RATE_LIMITS = {
     ...RATE_LIMIT_DEFAULTS.supportTicketStatus,
   },
   contactForm: { limit: "contactForm", ...RATE_LIMIT_DEFAULTS.contactForm },
+  reputation: { limit: "reputation", ...RATE_LIMIT_DEFAULTS.reputation },
+  authMe: { limit: "authMe", ...RATE_LIMIT_DEFAULTS.authMe },
 } as const satisfies Record<RateLimitName, RateLimitPair & { limit: string }>;

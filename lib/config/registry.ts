@@ -121,6 +121,10 @@ import {
   CONFIG_RATE_LIMIT_SUPPORT_TICKET_STATUS_WINDOW_MINUTES,
   CONFIG_RATE_LIMIT_CONTACT_FORM_ATTEMPTS,
   CONFIG_RATE_LIMIT_CONTACT_FORM_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_REPUTATION_REQUESTS,
+  CONFIG_RATE_LIMIT_REPUTATION_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_AUTH_ME_REQUESTS,
+  CONFIG_RATE_LIMIT_AUTH_ME_WINDOW_MINUTES,
   CONFIG_MAX_URL_LENGTH,
   CONFIG_MAX_URLS_BULK,
   CONFIG_SCHEDULE_WORKER_BATCH_CONCURRENCY,
@@ -413,6 +417,14 @@ export interface SettingDefinition {
 function socialHelp(platform: string, example: string): string {
   return `Your ${platform} account, shown as an icon link in the footer and on the landing page and listed in the site's structured data as an account of this organisation. Leave empty to hide it. Must be an absolute https URL, such as ${example}.`;
 }
+
+/**
+ * The longest window any window setting below accepts: 168 hours, today on
+ * DEMO_WINDOW_HOURS and its two siblings (the RATE_LIMIT_*_WINDOW_MINUTES keys
+ * stop at a day). A prune of rate_limits has to keep at least this much, or a
+ * refused caller's bucket is deleted while its window is still open.
+ */
+export const RATE_LIMIT_MAX_WINDOW_SECONDS = 7 * 24 * 60 * 60;
 
 export const SETTINGS_REGISTRY = {
   // OPERATIONS
@@ -2153,6 +2165,46 @@ export const SETTINGS_REGISTRY = {
     min: 1,
     max: 1440,
   },
+  RATE_LIMIT_REPUTATION_REQUESTS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_REPUTATION_REQUESTS,
+    group: "Rate Limits",
+    label: "Reputation lookups per window",
+    help: "Host reputation lookups one caller may make per window. The browser extension asks once per site visited, so keep this well above the general API limit.",
+    min: 1,
+    max: 100000,
+  },
+  RATE_LIMIT_REPUTATION_WINDOW_MINUTES: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_REPUTATION_WINDOW_MINUTES,
+    group: "Rate Limits",
+    label: "Reputation lookup window (minutes)",
+    help: "Length of the reputation lookup rate-limit bucket.",
+    min: 1,
+    max: 1440,
+  },
+  RATE_LIMIT_AUTH_ME_REQUESTS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_AUTH_ME_REQUESTS,
+    group: "Rate Limits",
+    label: "API key identity checks per window",
+    help: "Calls to /auth/me one API key may make per window. The endpoint does not spend the key's budget, so this is the only cap on it.",
+    min: 1,
+    max: 100000,
+  },
+  RATE_LIMIT_AUTH_ME_WINDOW_MINUTES: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_AUTH_ME_WINDOW_MINUTES,
+    group: "Rate Limits",
+    label: "API key identity check window (minutes)",
+    help: "Length of the /auth/me rate-limit bucket.",
+    min: 1,
+    max: 1440,
+  },
   // SCANNING
 
   MAX_URL_LENGTH: {
@@ -2692,7 +2744,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SESSION_IP_BINDING_ENABLED,
     group: "Authentication",
     label: "Bind sessions to their subnet",
-    help: "Ends a session and asks for login again when a request arrives from a different subnet than the one it started on. Off by default: mobile networks and wifi-to-cellular handoffs rotate IPs mid-session for real users.",
+    help: "Ends a session and asks for login again when a request arrives from a different subnet than the one it started on. A switch between IPv4 and IPv6 counts as a different network, so a dual-stack client that changes address family is signed out too. Off by default: mobile networks and wifi-to-cellular handoffs rotate IPs mid-session for real users.",
   },
   SESSION_IP_BINDING_IPV4_PREFIX: {
     tier: "runtime",

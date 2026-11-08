@@ -94,6 +94,9 @@ function installRateLimitQueryMock() {
     }
     if (sql.includes("INSERT INTO rate_limits")) {
       const key = params[0] as string;
+      if ((counts.get(key) ?? 0) >= (params[2] as number)) {
+        return { rows: [] };
+      }
       const next = (counts.get(key) ?? 0) + 1;
       counts.set(key, next);
       return { rows: [{ count: String(next) }] };
