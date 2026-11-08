@@ -467,9 +467,10 @@ describe("GET /api/v3/auth/discord/callback", () => {
       const location = locationOf(res);
       expect(location.pathname).toBe("/profile");
       expect(location.searchParams.get("discord_connected")).toBe("true");
-      expect(location.searchParams.get("discord_username")).toBe(
-        discordUserFixture.username,
-      );
+      // The modal reads the stored row: a name or avatar in this URL is
+      // something a crafted link could also supply.
+      expect(location.searchParams.has("discord_username")).toBe(false);
+      expect(location.searchParams.has("discord_avatar")).toBe(false);
       // Privacy: the Discord email must never appear in the redirect URL.
       expect(location.search).not.toContain(discordUserFixture.email);
       expect(location.searchParams.has("discord_email")).toBe(false);

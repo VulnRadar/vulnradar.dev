@@ -19,9 +19,7 @@ const loadDiscordProfileModal = () =>
  */
 function DiscordProfileModalGate() {
   const searchParams = useSearchParams();
-  const wanted =
-    searchParams.get("discord_connected") === "true" &&
-    !!searchParams.get("discord_username");
+  const wanted = searchParams.get("discord_connected") === "true";
   return <LazyMount wanted={wanted} load={loadDiscordProfileModal} />;
 }
 

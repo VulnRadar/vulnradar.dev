@@ -315,24 +315,14 @@ export async function GET(request: Request) {
         session.userId,
       ]);
 
-      // Build Discord avatar URL
-      const discordAvatarUrl = discordUser.avatar
-        ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
-        : null;
-
-      // Redirect with Discord profile info so user can choose to use it.
-      // Note: discord_user.email is intentionally NOT passed via URL —
-      // the Discord email can correlate with the user's primary email and
-      // would end up in browser history, server access logs, and any
-      // outbound Referer header. The profile page can fetch it from the
-      // /api/v3/account endpoint instead.
+      // The flag only opens the sync modal, which reads the profile from the
+      // stored row. Nothing about the Discord account goes in this URL: a
+      // name or avatar here is something a crafted link could also supply,
+      // and an address would end up in browser history, access logs and any
+      // outbound Referer header.
       const redirectUrl = new URL(`${baseUrl}/profile`);
       redirectUrl.searchParams.set("tab", "social");
       redirectUrl.searchParams.set("discord_connected", "true");
-      redirectUrl.searchParams.set("discord_username", discordUser.username);
-      if (discordAvatarUrl) {
-        redirectUrl.searchParams.set("discord_avatar", discordAvatarUrl);
-      }
 
       return NextResponse.redirect(redirectUrl.toString());
     } else {

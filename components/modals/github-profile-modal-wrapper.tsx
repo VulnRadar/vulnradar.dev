@@ -15,9 +15,7 @@ const loadGithubProfileModal = () =>
  */
 function GithubProfileModalGate() {
   const searchParams = useSearchParams();
-  const wanted =
-    searchParams.get("github_connected") === "true" &&
-    !!searchParams.get("github_username");
+  const wanted = searchParams.get("github_connected") === "true";
   return <LazyMount wanted={wanted} load={loadGithubProfileModal} />;
 }
 

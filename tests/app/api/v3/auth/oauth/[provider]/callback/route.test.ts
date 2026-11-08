@@ -1209,6 +1209,12 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       expect(location.pathname).toBe("/profile");
       expect(location.searchParams.get("tab")).toBe("social");
       expect(location.searchParams.get("google_connected")).toBe("true");
+      // Only the flag: the sync modals read the stored row, so a name or
+      // avatar here would be something a crafted link could also supply.
+      expect([...location.searchParams.keys()].sort()).toEqual([
+        "google_connected",
+        "tab",
+      ]);
       // The sign-up/sign-in path's account-creation queries must never run
       // for a link.
       expect(insertUserCalls).toHaveLength(0);

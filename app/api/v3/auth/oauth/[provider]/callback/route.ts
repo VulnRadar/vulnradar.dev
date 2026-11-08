@@ -703,19 +703,12 @@ async function handleOAuthLink(
       throw err;
     }
 
-    // GitHub gets the same post-connect sync modal Discord already has
-    // (components/modals/github-profile-modal.tsx) -- username/avatar only,
-    // never email, matching the reasoning above: no PII in a redirect URL.
+    // The flag only opens GitHub's post-connect sync modal
+    // (components/modals/github-profile-modal.tsx), which reads the profile
+    // from the stored row. A name or avatar in this URL would be something a
+    // crafted link could also supply.
     const successUrl = new URL(profileUrl);
     successUrl.searchParams.set(`${provider}_connected`, "true");
-    if (provider === "github") {
-      if (userInfo.name) {
-        successUrl.searchParams.set("github_username", userInfo.name);
-      }
-      if (userInfo.avatarUrl) {
-        successUrl.searchParams.set("github_avatar", userInfo.avatarUrl);
-      }
-    }
     return NextResponse.redirect(successUrl.toString());
   } catch (err) {
     console.error(`[OAuth:${provider}] link callback error:`, err);
