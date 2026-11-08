@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   ArrowLeft,
   Pencil,
@@ -7,12 +8,11 @@ import {
   MoreHorizontal,
   Trash2,
   LogOut,
-  Check,
-  X,
-  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { EditDialog } from "@/components/shared/edit-dialog";
 import { pluralize } from "@/lib/ui/plural";
 import {
   DropdownMenu,
@@ -26,19 +26,64 @@ import { RolePill } from "./role-pill";
 import { TeamAvatar } from "./team-avatar";
 import { TeamAvatarPicker } from "./team-avatar-picker";
 
+/** The name a rename would send: trimmed, and only when it is a change. */
+export function renameCandidate(saved: string, draft: string): string | null {
+  const next = draft.trim();
+  return next !== "" && next !== saved ? next : null;
+}
+
+export function RenameTeamDialog({
+  team,
+  onRename,
+  onClose,
+}: {
+  team: Team;
+  /** Resolves when the server accepted the name and throws an Error whose
+   *  message is the reason when it did not: the dialog shows that message and
+   *  stays open with what was typed. */
+  onRename: (name: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  // Mounted only while open, so every opening starts from the saved name and a
+  // refetch of the team list cannot reset a draft that is being typed.
+  const [name, setName] = useState(team.name);
+  const next = renameCandidate(team.name, name);
+
+  return (
+    <EditDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title="Rename team"
+      size="sm"
+      dirty={name !== team.name}
+      canSave={next !== null}
+      saveLabel="Rename team"
+      onSave={() => (next === null ? undefined : onRename(next))}
+    >
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="rename-team-name">Name</Label>
+        <Input
+          id="rename-team-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={50}
+          autoFocus
+        />
+      </div>
+    </EditDialog>
+  );
+}
+
 interface TeamDetailHeaderProps {
   team: Team;
   currentRole: string;
   memberCount: number;
-  editingName: boolean;
-  nameInput: string;
-  savingName: boolean;
   onBack: () => void;
-  onEditName: () => void;
-  onNameInputChange: (v: string) => void;
-  onSaveName: () => void;
-  onCancelEdit: () => void;
-  onToggleInvite: () => void;
+  /** Throws an Error carrying the reason when the rename is refused. */
+  onRename: (name: string) => Promise<void>;
+  onInvite: () => void;
   onDelete: () => void;
   onLeave: () => void;
   /** The team's picture changed: the new URL, or null when it was cleared. */
@@ -50,20 +95,15 @@ export function TeamDetailHeader({
   team,
   currentRole,
   memberCount,
-  editingName,
-  nameInput,
-  savingName,
   onBack,
-  onEditName,
-  onNameInputChange,
-  onSaveName,
-  onCancelEdit,
-  onToggleInvite,
+  onRename,
+  onInvite,
   onDelete,
   onLeave,
   onAvatarChange,
   onAvatarError,
 }: TeamDetailHeaderProps) {
+  const [renaming, setRenaming] = useState(false);
   // "manage_team" is the rename permission, and the picture rides with it: both
   // change how the team presents itself to everyone in it. PATCH /api/v3/teams
   // enforces the same check, so hiding the control here is presentation, not
@@ -106,73 +146,26 @@ export function TeamDetailHeader({
               />
             )}
             <div className="min-w-0 flex-1">
-              {editingName ? (
-                // The row sits between the 48px picture and the card edge, so
-                // below sm it has roughly 170-250px for an input and two 44px
-                // buttons. The input used to be a fixed w-48 that could not
-                // shrink and pushed Cancel past the card (cut off by the
-                // body's overflow-x: clip, so unreachable). min-w-0 flex-1
-                // lets it give way; basis-32 plus flex-wrap drops the buttons
-                // under it instead of squeezing a team that has a picture,
-                // and so a Remove button, down to a 43-73px field.
-                <div className="flex flex-wrap items-center gap-2">
-                  <Input
-                    value={nameInput}
-                    onChange={(e) => onNameInputChange(e.target.value)}
-                    aria-label="Team name"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") onSaveName();
-                      if (e.key === "Escape") onCancelEdit();
-                    }}
-                    className="h-9 min-w-0 flex-1 basis-32 text-base font-semibold sm:w-64 sm:flex-none"
-                    autoFocus
-                    maxLength={50}
-                  />
-                  <Button
-                    size="sm"
-                    className="h-11 w-11 sm:h-9 sm:w-9 p-0"
-                    onClick={onSaveName}
-                    disabled={savingName}
-                    aria-label="Save team name"
+              <div className="flex items-center gap-2">
+                {/* h1, not h2: opening a team replaces the list, so this is
+                    the only page title on the detail view. It was an h2, so
+                    the whole detail branch shipped with no h1 at all and
+                    the title shrank from the list's Tier B when you drilled
+                    in. Tier B is the in-app sub-page scale. */}
+                <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground truncate">
+                  {team.name}
+                </h1>
+                {canRename && (
+                  <button
+                    type="button"
+                    onClick={() => setRenaming(true)}
+                    aria-label="Rename team"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:h-auto sm:w-auto sm:p-1.5"
                   >
-                    {savingName ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Check className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-11 w-11 sm:h-9 sm:w-9 p-0"
-                    onClick={onCancelEdit}
-                    aria-label="Cancel renaming"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  {/* h1, not h2: opening a team replaces the list, so this is
-                      the only page title on the detail view. It was an h2, so
-                      the whole detail branch shipped with no h1 at all and
-                      the title shrank from the list's Tier B when you drilled
-                      in. Tier B is the in-app sub-page scale. */}
-                  <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground truncate">
-                    {team.name}
-                  </h1>
-                  {canRename && (
-                    <button
-                      type="button"
-                      onClick={onEditName}
-                      aria-label="Rename team"
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:h-auto sm:w-auto sm:p-1.5"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              )}
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
               {/* currentRole is "" until the members request resolves, and
                   stays "" if it fails. Printing "0 members · Your role: " with
                   a blank role states two things as fact that are not known
@@ -195,7 +188,7 @@ export function TeamDetailHeader({
                 variant="outline"
                 size="sm"
                 className="gap-1.5"
-                onClick={onToggleInvite}
+                onClick={onInvite}
                 aria-label="Invite people"
               >
                 <UserPlus className="h-4 w-4" aria-hidden="true" />
@@ -236,6 +229,14 @@ export function TeamDetailHeader({
           </div>
         </div>
       </div>
+
+      {renaming && (
+        <RenameTeamDialog
+          team={team}
+          onRename={onRename}
+          onClose={() => setRenaming(false)}
+        />
+      )}
     </>
   );
 }

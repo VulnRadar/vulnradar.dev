@@ -6,8 +6,8 @@
  * Source-text assertions, because this Vitest config runs plain node with no
  * jsdom and a `.tsx` cannot be imported into a suite. What is asserted is the
  * wiring that decides the behaviour: which handlers throw (so useConfirm keeps
- * its dialog open with the reason), what the rename editor does on a refusal,
- * and what the Leave button sends. The request helper those handlers share has
+ * its dialog open with the reason), what the rename, invite and role dialogs
+ * do on a refusal, and what the Leave button sends. The request helper those handlers share has
  * its own behavioural suite in team-requests.test.ts.
  */
 import { describe, it, expect } from "vitest";
@@ -31,12 +31,11 @@ function handler(name: string): string {
 const CONFIRMED = [
   "handleDelete",
   "handleRemoveMember",
-  "handleChangeRole",
   "handleCancelInvite",
   "handleLeave",
 ];
 
-describe("the five confirmed actions go through useConfirm", () => {
+describe("the four confirmed actions go through useConfirm", () => {
   it("does not hand-roll the dialog any more", () => {
     expect(PAGE).toContain('from "@/components/shared/use-confirm"');
     expect(PAGE).toContain("useConfirm()");
@@ -50,7 +49,6 @@ describe("the five confirmed actions go through useConfirm", () => {
     for (const kind of [
       "deleteTeam",
       "removeMember",
-      "changeRole",
       "cancelInvite",
       "leaveTeam",
     ]) {
@@ -91,31 +89,75 @@ describe("Leave team", () => {
   });
 });
 
+describe("changing a role", () => {
+  const body = handler("handleChangeRole");
+
+  it("lets a failure throw, so the role dialog stays open with the reason", () => {
+    expect(body).toContain("sendTeamsRequest(");
+    expect(body).not.toContain("catch");
+    expect(body.match(/setActionError\(/g)).toHaveLength(1);
+    expect(body).toContain("setActionError(null)");
+  });
+
+  it("is the role dialog's save, not a second confirmation", () => {
+    expect(PAGE).toContain("onChangeRole={handleChangeRole}");
+    expect(PAGE).not.toContain("changeRole");
+  });
+});
+
 describe("renaming a team", () => {
   const body = handler("handleRename");
 
-  it("shows the server's reason when the rename is refused", () => {
+  it("takes the new name from the dialog and lets a refusal throw", () => {
+    expect(PAGE).toMatch(/async function handleRename\(name: string\)/);
     expect(body).toContain("sendTeamsRequest(");
-    expect(body).toMatch(/catch \(err\) \{[\s\S]*setActionError\(/);
-    expect(body).toContain("err.message");
+    // The dialog shows err.message and stays open with what was typed; a
+    // catch here would turn a refusal into a rename that looks like it worked.
+    expect(body).not.toContain("catch");
+    expect(body).not.toContain("finally");
+    expect(body).not.toContain("setEditingName");
   });
 
-  it("clears the refusal when the person gives up on the edit", () => {
-    expect(PAGE).toMatch(
-      /onCancelEdit=\{\(\) => \{\s*setEditingName\(false\);[\s\S]*?setActionError\(null\);/,
-    );
-  });
-
-  it("closes the editor only after the rename went through", () => {
+  it("applies the new name to the open team and reloads the list after the request", () => {
     const afterRequest = body.slice(body.indexOf("sendTeamsRequest("));
-    const closes = afterRequest.indexOf("setEditingName(false)");
-    expect(closes).toBeGreaterThan(-1);
-    expect(closes).toBeLessThan(afterRequest.indexOf("catch (err)"));
+    expect(afterRequest).toContain("setSelectedTeam(");
+    expect(afterRequest).toContain("fetchTeams()");
+  });
 
-    // The old handler closed it in `finally`, so every refusal looked like the
-    // rename had quietly undone itself.
-    const finallyBlock = body.slice(body.indexOf("finally"));
-    expect(finallyBlock).not.toContain("setEditingName");
-    expect(finallyBlock).toContain("setSavingName(false)");
+  it("keeps no inline-editor state or handlers", () => {
+    for (const gone of [
+      "editingName",
+      "nameInput",
+      "savingName",
+      "onCancelEdit",
+      "onEditName",
+      "onSaveName",
+      "onNameInputChange",
+    ]) {
+      expect(PAGE, gone).not.toContain(gone);
+    }
+    expect(PAGE).toContain("onRename={handleRename}");
+  });
+});
+
+describe("inviting someone", () => {
+  const body = handler("handleInvite");
+
+  it("throws a refusal instead of posting it to the banner", () => {
+    expect(body).toContain("throw new Error(");
+    expect(body.match(/setActionError\(/g)).toHaveLength(1);
+  });
+
+  it("refreshes the lists without resetting the copy-once token", () => {
+    expect(body).toContain("refreshMembers(selectedTeam)");
+    expect(body).not.toContain("openTeam(");
+  });
+
+  it("opens a dialog and renders the link card once it has closed", () => {
+    expect(PAGE).toContain("<TeamInviteDialog");
+    expect(PAGE).toMatch(/inviteToken && !showInvite/);
+    expect(PAGE).toContain("<TeamInviteLinkCard");
+    expect(PAGE).not.toContain("TeamInviteForm");
+    expect(PAGE).not.toContain("inviteEmail");
   });
 });

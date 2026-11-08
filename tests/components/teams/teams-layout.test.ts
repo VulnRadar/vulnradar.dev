@@ -18,26 +18,38 @@ const HEADER = read("components/teams/team-detail-header.tsx");
 const MEMBERS = read("components/teams/team-members-list.tsx");
 const INVITATIONS = read("components/teams/team-invitations.tsx");
 
-describe("the rename row on a phone", () => {
-  it("lets the input shrink so Cancel stays on the card", () => {
-    // w-48 could not shrink: Cancel ended up past the card edge, cut off by
-    // the body's overflow-x: clip, so on a phone it could not be reached.
-    expect(HEADER).not.toContain("font-semibold w-48");
-    expect(HEADER).toContain("min-w-0 flex-1");
-    expect(HEADER).toContain("sm:w-64 sm:flex-none");
+describe("renaming from the header on a phone", () => {
+  // Everything from the component's own declaration down. RenameTeamDialog is
+  // defined above it in the same file and holds the Input, so slicing here is
+  // what separates "the header" from "the dialog it opens".
+  const headerBody = HEADER.slice(
+    HEADER.indexOf("export function TeamDetailHeader"),
+  );
+
+  it("renders no Input in the header: the name is edited in a dialog", () => {
+    // The row used to turn into an input and two buttons that had to be
+    // squeezed onto the card at 360px; that whole layout problem went with it.
+    expect(headerBody).not.toContain("<Input");
+    expect(headerBody).not.toContain("<input");
+    expect(headerBody).toContain("<RenameTeamDialog");
   });
 
-  it("wraps the buttons under the input instead of squeezing it to a sliver", () => {
-    // A team with a picture also carries a Remove button beside the avatar,
-    // which left the input 43-73px wide at phone widths without this.
-    expect(HEADER).toContain(
-      '<div className="flex flex-wrap items-center gap-2">',
-    );
-    expect(HEADER).toContain("min-w-0 flex-1 basis-32");
+  it("keeps the Rename team trigger at the 44px phone target", () => {
+    expect(headerBody).toContain('aria-label="Rename team"');
+    expect(headerBody).toContain("h-11 w-11");
+    expect(headerBody).toContain("sm:h-auto sm:w-auto sm:p-1.5");
   });
 
-  it("keeps the icon buttons at the 44px phone target", () => {
-    expect(HEADER).toContain("h-11 w-11 sm:h-9 sm:w-9");
+  it("keeps the Team actions button at the 44px phone target", () => {
+    expect(headerBody).toContain("h-11 w-11 sm:h-9 sm:w-9");
+  });
+});
+
+describe("the invite link card on a phone", () => {
+  it("keeps its dismiss control at the 44px phone target", () => {
+    const invite = read("components/teams/team-invite-form.tsx");
+    expect(invite).toContain("h-11 w-11");
+    expect(invite).toContain("sm:h-9 sm:w-9");
   });
 });
 

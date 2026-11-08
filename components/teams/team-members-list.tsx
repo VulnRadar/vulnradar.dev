@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import {
   Eye,
@@ -11,16 +12,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EditDialog } from "@/components/shared/edit-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/ui/utils";
@@ -42,6 +39,104 @@ import {
   INVITABLE_ROLES,
 } from "./teams-types";
 import { RolePill } from "./role-pill";
+
+/** A role change is not cosmetic: it moves what somebody else can do. */
+const ROLE_CHANGE_EFFECT =
+  "That changes what they can do with this team's scans straight away.";
+
+/** Save is for picking a different role the viewer may actually grant. */
+export function canSaveRoleChange(
+  current: string,
+  picked: string,
+  assignableRoles: readonly string[],
+): boolean {
+  return picked !== current && assignableRoles.includes(picked);
+}
+
+export function roleChangeDescription(
+  label: string,
+  current: string,
+  picked: string,
+): string {
+  return picked === current
+    ? `Choose a new role for ${label}. ${ROLE_CHANGE_EFFECT}`
+    : `${label} becomes ${picked}. ${ROLE_CHANGE_EFFECT}`;
+}
+
+export function ChangeRoleDialog({
+  member,
+  assignableRoles,
+  onChangeRole,
+  onClose,
+}: {
+  member: Member;
+  assignableRoles: readonly string[];
+  /** Resolves once the role changed and throws an Error carrying the reason
+   *  when it did not: the dialog shows that message and stays open. */
+  onChangeRole: (userId: number, role: string) => void | Promise<void>;
+  onClose: () => void;
+}) {
+  // Mounted only while open, so it always starts on the member's saved role.
+  const [role, setRole] = useState(member.role);
+  const label = member.name || member.email;
+
+  return (
+    <EditDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title="Change role"
+      description={roleChangeDescription(label, member.role, role)}
+      size="sm"
+      dirty={role !== member.role}
+      canSave={canSaveRoleChange(member.role, role, assignableRoles)}
+      saveLabel="Change role"
+      onSave={() => onChangeRole(member.user_id, role)}
+    >
+      <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+        <legend className="sr-only">Role for {label}</legend>
+        {assignableRoles.map((r) => {
+          const RoleIcon = ROLE_ICONS[r] || Eye;
+          const checked = role === r;
+          return (
+            <label
+              key={r}
+              className={cn(
+                "flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors",
+                checked
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-muted-foreground/50",
+              )}
+            >
+              <input
+                type="radio"
+                name="member-role"
+                value={r}
+                checked={checked}
+                onChange={() => setRole(r)}
+                autoFocus={r === member.role}
+                className="mt-1"
+              />
+              <span className="min-w-0">
+                <span className="flex items-center gap-1.5 text-sm font-medium capitalize text-foreground">
+                  <RoleIcon
+                    className="h-3.5 w-3.5 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  {r}
+                </span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {ROLE_ABILITIES[r]}
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </fieldset>
+    </EditDialog>
+  );
+}
 
 interface TeamMembersListProps {
   members: Member[];
@@ -66,7 +161,7 @@ interface TeamMembersListProps {
    *  re-invite them, which destroys their team scans' association on the way
    *  through (AUDIT-011#drift-21). Optional so the list still renders in any
    *  context that has nothing to wire it to. */
-  onChangeRole?: (userId: number, role: string) => void;
+  onChangeRole?: (userId: number, role: string) => void | Promise<void>;
 }
 
 export function TeamMembersList({
@@ -81,6 +176,7 @@ export function TeamMembersList({
   onCancelInvite,
   onChangeRole,
 }: TeamMembersListProps) {
+  const [roleTarget, setRoleTarget] = useState<Member | null>(null);
   const canManage = hasTeamPermission(currentRole, "manage_members");
   // Only the roles this viewer may actually grant. The team roles are a
   // partial order rather than a ladder, so this is the same subset relation
@@ -216,41 +312,20 @@ export function TeamMembersList({
                         assignableRoles.length > 0 && (
                           <>
                             <DropdownMenuSeparator />
-                            <DropdownMenuSub>
-                              <DropdownMenuSubTrigger>
-                                <ShieldCheck
-                                  className="h-4 w-4 mr-2"
-                                  aria-hidden="true"
-                                />
-                                Change role
-                              </DropdownMenuSubTrigger>
-                              <DropdownMenuSubContent className="w-40">
-                                <DropdownMenuRadioGroup
-                                  value={m.role}
-                                  onValueChange={(role) => {
-                                    if (role !== m.role)
-                                      onChangeRole(m.user_id, role);
-                                  }}
-                                >
-                                  {assignableRoles.map((role) => {
-                                    const RoleIcon = ROLE_ICONS[role] || Eye;
-                                    return (
-                                      <DropdownMenuRadioItem
-                                        key={role}
-                                        value={role}
-                                        className="capitalize"
-                                      >
-                                        <RoleIcon
-                                          className="h-3.5 w-3.5 mr-2 text-muted-foreground"
-                                          aria-hidden="true"
-                                        />
-                                        {role}
-                                      </DropdownMenuRadioItem>
-                                    );
-                                  })}
-                                </DropdownMenuRadioGroup>
-                              </DropdownMenuSubContent>
-                            </DropdownMenuSub>
+                            <DropdownMenuItem
+                              // A frame late: the menu hands focus back to
+                              // this row's Actions button as it closes, and
+                              // the dialog records its opener when it mounts.
+                              onSelect={() =>
+                                requestAnimationFrame(() => setRoleTarget(m))
+                              }
+                            >
+                              <ShieldCheck
+                                className="h-4 w-4 mr-2"
+                                aria-hidden="true"
+                              />
+                              Change role...
+                            </DropdownMenuItem>
                           </>
                         )}
                       {canManage && m.role !== TEAM_ROLES.OWNER && (
@@ -306,6 +381,15 @@ export function TeamMembersList({
           </div>
         )}
       </div>
+
+      {roleTarget && onChangeRole && (
+        <ChangeRoleDialog
+          member={roleTarget}
+          assignableRoles={assignableRoles}
+          onChangeRole={onChangeRole}
+          onClose={() => setRoleTarget(null)}
+        />
+      )}
 
       {/* Pending invites */}
       {invites.length > 0 && (

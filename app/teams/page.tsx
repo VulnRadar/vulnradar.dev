@@ -9,7 +9,7 @@ import { AppPageShell } from "@/components/shared/app-page-shell";
 import { EmptyState } from "@/components/shared/empty-state";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
 import { usePagination } from "@/components/ui/pagination-control";
-import { API, TEAM_ROLES } from "@/lib/config/client-constants";
+import { API, hasTeamPermission } from "@/lib/config/client-constants";
 import {
   type Team,
   type Member,
@@ -17,11 +17,13 @@ import {
   type MemberScan,
   type TeamInvitation,
   type NewTeamInvite,
+  type InvitableRole,
   TeamsList,
   TeamCreateDialog,
   TeamInvitations,
   TeamDetailHeader,
-  TeamInviteForm,
+  TeamInviteDialog,
+  TeamInviteLinkCard,
   TeamMembersList,
   TeamMemberScans,
   TeamsDataSkeleton,
@@ -30,9 +32,13 @@ import { copyToClipboard } from "@/lib/ui/clipboard";
 import { useQueryParam } from "@/lib/ui/url-state";
 import { InlineAlert } from "@/components/shared/inline-alert";
 import { useConfirm } from "@/components/shared/use-confirm";
-import { sendTeamsRequest } from "@/components/teams/team-requests";
+import {
+  sendTeamsRequest,
+  TEAMS_UNREACHABLE,
+} from "@/components/teams/team-requests";
+import { inviteRequestBody } from "@/components/teams/team-invite-form";
 // The members list needs to know which row is you, so it can hide the
-// "Change role" submenu on your own membership: a team owner demoting
+// "Change role" item on your own membership: a team owner demoting
 // themselves would leave the team with nobody who can promote anyone back.
 import { useAuth } from "@/components/providers/auth-provider";
 
@@ -41,7 +47,6 @@ type Confirmation =
   | { kind: "deleteTeam"; teamId: number; teamName: string }
   | { kind: "removeMember"; userId: number; label: string }
   | { kind: "leaveTeam"; teamName: string }
-  | { kind: "changeRole"; userId: number; label: string; role: string }
   | { kind: "cancelInvite"; inviteId: number; label: string };
 
 const CONFIRM_COPY: Record<
@@ -51,10 +56,6 @@ const CONFIRM_COPY: Record<
   deleteTeam: { title: "Delete this team?", confirmLabel: "Delete team" },
   removeMember: { title: "Remove this person?", confirmLabel: "Remove" },
   leaveTeam: { title: "Leave this team?", confirmLabel: "Leave" },
-  changeRole: {
-    title: "Change this person's role?",
-    confirmLabel: "Change role",
-  },
   cancelInvite: { title: "Cancel this invite?", confirmLabel: "Cancel invite" },
 };
 
@@ -68,16 +69,6 @@ function confirmDescription(confirmation: Confirmation): React.ReactNode {
           </span>{" "}
           and its member list are deleted. Everyone loses access to the
           team&apos;s shared reports. This cannot be undone.
-        </>
-      );
-    case "changeRole":
-      return (
-        <>
-          <span className="font-medium text-foreground">
-            {confirmation.label}
-          </span>{" "}
-          becomes {confirmation.role}. That changes what they can do with this
-          team&apos;s scans straight away.
         </>
       );
     case "cancelInvite":
@@ -154,19 +145,12 @@ export default function TeamsPage() {
   const [membersLoading, setMembersLoading] = useState(false);
   const [membersError, setMembersError] = useState<string | null>(null);
 
-  // Rename state
-  const [editingName, setEditingName] = useState(false);
-  const [nameInput, setNameInput] = useState("");
-  const [savingName, setSavingName] = useState(false);
-
-  // Invite state
+  // Invite state. showInvite is the dialog's open state; the dialog keeps its
+  // own email and role draft. The token and the address it was minted for
+  // outlive the dialog, because the link card is the copy-once delivery path.
   const [showInvite, setShowInvite] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<
-    "admin" | "manager" | "operator" | "member" | "viewer"
-  >("viewer");
-  const [inviting, setInviting] = useState(false);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [invitedEmail, setInvitedEmail] = useState("");
   const [copied, setCopied] = useState(false);
 
   // Failures used to vanish into empty catch blocks. Surface them instead.
@@ -196,8 +180,9 @@ export default function TeamsPage() {
   );
   const paginatedScans = getScanPage(scanPage);
 
-  const canManage =
-    currentRole === TEAM_ROLES.OWNER || currentRole === TEAM_ROLES.ADMIN;
+  // The header's Invite button and the members list both gate on this same
+  // permission, so a manager (who holds it) can open the dialog it shows them.
+  const canInvite = hasTeamPermission(currentRole, "manage_members");
 
   const fetchTeams = useCallback(async () => {
     try {
@@ -461,40 +446,36 @@ export default function TeamsPage() {
     setViewingMember(null);
   }
 
-  async function handleInvite() {
-    if (!inviteEmail.trim() || !selectedTeam) return;
-    setInviting(true);
-    setInviteToken(null);
+  // The invite dialog's save. It throws on a refusal so the dialog stays open
+  // with the server's reason and the address as typed, the way the confirmed
+  // actions do; it never posts to actionError, which sits behind the scrim.
+  async function handleInvite(email: string, role: InvitableRole) {
+    if (!selectedTeam) return;
     setActionError(null);
+    setInviteToken(null);
+    let res: Response;
     try {
-      const res = await fetch(API.TEAMS_MEMBERS, {
+      res = await fetch(API.TEAMS_MEMBERS, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          teamId: selectedTeam.id,
-          email: inviteEmail.trim(),
-          role: inviteRole,
-        }),
+        body: JSON.stringify(inviteRequestBody(selectedTeam.id, email, role)),
       });
-      const data = await res.json();
-      if (res.ok) {
-        setInviteToken(data.token);
-        setInviteEmail("");
-        // Refresh the lists but KEEP the invite panel + one-time token visible.
-        await refreshMembers(selectedTeam);
-      } else {
-        setActionError(
-          data.error ||
-            "We could not send that invite. Check the address and try again.",
-        );
-      }
     } catch {
-      setActionError(
-        "We could not reach the server. Check your connection and try again.",
-      );
-    } finally {
-      setInviting(false);
+      throw new Error(TEAMS_UNREACHABLE);
     }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(
+        typeof data.error === "string" && data.error
+          ? data.error
+          : "We could not send that invite. Check the address and try again.",
+      );
+    }
+    setInviteToken(data.token);
+    setInvitedEmail(email);
+    // Refresh the lists but leave the one-time token alone: refreshMembers,
+    // not openTeam, which would reset it.
+    await refreshMembers(selectedTeam);
   }
 
   async function handleRemoveMember(userId: number) {
@@ -509,15 +490,13 @@ export default function TeamsPage() {
     await openTeam(selectedTeam);
   }
 
-  // The role change the "Change role" submenu in TeamMembersList fires. That
-  // submenu already filters the offered roles through canAssignTeamRole in
-  // both directions (the caller may not appoint a role it does not hold, and
-  // may not act on a member who already holds one); PATCH /teams/members
-  // enforces the same ceiling server-side, so a hand-built request gains
-  // nothing. It routes through the confirmation dialog like every other
-  // action here: it is reversible, but it changes what somebody ELSE can do
-  // with the team's scans, and it fires from a single click on a menu row
-  // next to "Remove".
+  // The save of the "Change role" dialog in TeamMembersList. That list
+  // already filters the offered roles through canAssignTeamRole in both
+  // directions (the caller may not appoint a role it does not hold, and may
+  // not act on a member who already holds one); PATCH /teams/members enforces
+  // the same ceiling server-side, so a hand-built request gains nothing. The
+  // dialog is the confirmation: it names the person and the new role and
+  // needs an explicit Save, so this does not ask a second time.
   async function handleChangeRole(userId: number, role: string) {
     if (!selectedTeam) return;
     setActionError(null);
@@ -563,8 +542,6 @@ export default function TeamsPage() {
         return handleDelete(c.teamId);
       case "removeMember":
         return handleRemoveMember(c.userId);
-      case "changeRole":
-        return handleChangeRole(c.userId, c.role);
       case "cancelInvite":
         return handleCancelInvite(c.inviteId);
       case "leaveTeam":
@@ -582,39 +559,21 @@ export default function TeamsPage() {
     });
   }
 
-  async function handleRename() {
-    if (
-      !selectedTeam ||
-      !nameInput.trim() ||
-      nameInput.trim() === selectedTeam.name
-    ) {
-      setEditingName(false);
-      return;
-    }
-    setSavingName(true);
+  // The rename dialog's save. A refusal is left to throw: the dialog shows the
+  // server's reason and stays open with what was typed, which a one-character
+  // name or a permission lost mid-edit needs, rather than a banner above the
+  // header that the scrim would cover.
+  async function handleRename(name: string) {
+    if (!selectedTeam) return;
     setActionError(null);
-    try {
-      await sendTeamsRequest(
-        API.TEAMS,
-        "PATCH",
-        { teamId: selectedTeam.id, name: nameInput.trim() },
-        "We could not rename that team. Try again.",
-      );
-      setSelectedTeam({ ...selectedTeam, name: nameInput.trim() });
-      setEditingName(false);
-      await fetchTeams();
-    } catch (err) {
-      // The editor stays open with what was typed: a one-character name or a
-      // permission lost mid-edit is something to fix or give up on, not a
-      // rename that quietly undid itself.
-      setActionError(
-        err instanceof Error
-          ? err.message
-          : "We could not rename that team. Try again.",
-      );
-    } finally {
-      setSavingName(false);
-    }
+    await sendTeamsRequest(
+      API.TEAMS,
+      "PATCH",
+      { teamId: selectedTeam.id, name },
+      "We could not rename that team. Try again.",
+    );
+    setSelectedTeam((prev) => (prev ? { ...prev, name } : prev));
+    await fetchTeams();
   }
 
   /** The picture changed. TeamAvatarPicker already did the PATCH, so this only
@@ -750,26 +709,11 @@ export default function TeamsPage() {
             team={selectedTeam}
             currentRole={currentRole}
             memberCount={members.length}
-            editingName={editingName}
-            nameInput={nameInput}
-            savingName={savingName}
             onBack={closeTeam}
-            onEditName={() => {
-              setNameInput(selectedTeam.name);
-              setEditingName(true);
-            }}
-            onNameInputChange={setNameInput}
-            onSaveName={handleRename}
-            onCancelEdit={() => {
-              setEditingName(false);
-              // A refused rename left its reason in the banner. Giving up on
-              // the edit would otherwise leave that sentence up for a rename
-              // that is no longer being attempted.
-              setActionError(null);
-            }}
-            onToggleInvite={() => {
-              setShowInvite(!showInvite);
+            onRename={handleRename}
+            onInvite={() => {
               setInviteToken(null);
+              setShowInvite(true);
             }}
             onDelete={() =>
               askConfirmation({
@@ -788,21 +732,21 @@ export default function TeamsPage() {
             onAvatarError={setActionError}
           />
 
-          {showInvite && canManage && (
-            <TeamInviteForm
-              inviteEmail={inviteEmail}
-              inviteRole={inviteRole}
-              inviting={inviting}
-              inviteToken={inviteToken}
-              copied={copied}
-              onEmailChange={setInviteEmail}
-              onRoleChange={setInviteRole}
+          {showInvite && canInvite && (
+            <TeamInviteDialog
+              currentRole={currentRole}
               onInvite={handleInvite}
+              onClose={() => setShowInvite(false)}
+            />
+          )}
+
+          {inviteToken && !showInvite && (
+            <TeamInviteLinkCard
+              token={inviteToken}
+              email={invitedEmail}
+              copied={copied}
               onCopy={copyInviteLink}
-              onClose={() => {
-                setShowInvite(false);
-                setInviteToken(null);
-              }}
+              onClose={() => setInviteToken(null)}
             />
           )}
 
@@ -814,15 +758,7 @@ export default function TeamsPage() {
             currentRole={currentRole}
             currentUserId={me?.userId}
             onViewScans={handleViewMemberScans}
-            onChangeRole={(userId, role) => {
-              const m = members.find((x) => x.user_id === userId);
-              askConfirmation({
-                kind: "changeRole",
-                userId,
-                role,
-                label: m?.name || m?.email || "this member",
-              });
-            }}
+            onChangeRole={handleChangeRole}
             onRemoveMember={(userId) => {
               const m = members.find((x) => x.user_id === userId);
               askConfirmation({
