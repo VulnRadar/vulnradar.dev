@@ -59,6 +59,13 @@ Also known as: embed snippet readme svg
 
 Pick a scan and get an image that links back to the full report. The badge is tied to that URL, not that one scan: every time you scan it again, the badge updates on its own. Paste the embed code once and forget it.
 
+### Brand kit
+Route: /brand
+Access: public, no account needed
+Page title: Brand kit
+
+The VulnRadar logo and lockup as transparent PNGs, SVG sources, one ZIP, banner sizes and avatars, with clear space, colour and type rules. No sign-in.
+
 ### Live Browser Session
 Route: /browser/[id]
 Access: signed in (or a share token)

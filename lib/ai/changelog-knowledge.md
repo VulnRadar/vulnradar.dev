@@ -684,6 +684,12 @@ The largest release since 3.0, and a pass over the whole product rather than one
   A Discord webhook URL with an API version in its path, such as /api/v10/webhooks/, is now recognised as Discord and receives the rich embed instead of plain JSON. Lookalike hosts are still treated as generic webhooks.
 - [ScanSearch] **[ENGINE]** **Leaked Discord Webhooks on a Versioned Path Are Reported**
   The scanner's check for a Discord webhook URL exposed in a page now also finds one written with an API version in its path, such as /api/v10/webhooks/, which Discord's own docs and libraries use. It used to report only the unversioned form.
+- [Palette] **[ADDED]** **Brand Kit Page**
+  A new public brand kit at /brand, no sign-in needed. Download the logo as transparent PNGs in 13 sizes, the logo with the name for 14 common banner and social sizes (one version for dark backgrounds, one for light), profile pictures, the SVG files, or everything as one ZIP. The page also covers clear space and minimum sizes, the colours with copy buttons, type, writing style, do and don't examples, and alt text and contrast. It says what the files may be used for, and it is linked from the footer.
+- [Image] **[CHANGED]** **Logo Icons Without a Background**
+  The browser tab icon, the app icons, the iPhone home screen icon and the logo search engines show are the round VulnRadar logo again, with no navy square behind it.
+- [Trash2] **[REMOVED]** **Unused Logo Files**
+  Removed two old social card images and the square app icon variants that are no longer used.
 
 ---
 
@@ -2992,6 +2998,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1188
+- **Total changes documented:** 1191
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

@@ -2218,6 +2218,24 @@ const CHANGELOG: Release[] = [
         desc: "The scanner's check for a Discord webhook URL exposed in a page now also finds one written with an API version in its path, such as /api/v10/webhooks/, which Discord's own docs and libraries use. It used to report only the unversioned form.",
         category: "engine",
       },
+      {
+        icon: Palette,
+        label: "Brand Kit Page",
+        desc: "A new public brand kit at /brand, no sign-in needed. Download the logo as transparent PNGs in 13 sizes, the logo with the name for 14 common banner and social sizes (one version for dark backgrounds, one for light), profile pictures, the SVG files, or everything as one ZIP. The page also covers clear space and minimum sizes, the colours with copy buttons, type, writing style, do and don't examples, and alt text and contrast. It says what the files may be used for, and it is linked from the footer.",
+        category: "added",
+      },
+      {
+        icon: Image,
+        label: "Logo Icons Without a Background",
+        desc: "The browser tab icon, the app icons, the iPhone home screen icon and the logo search engines show are the round VulnRadar logo again, with no navy square behind it.",
+        category: "changed",
+      },
+      {
+        icon: Trash2,
+        label: "Unused Logo Files",
+        desc: "Removed two old social card images and the square app icon variants that are no longer used.",
+        category: "removed",
+      },
     ],
   },
   {
