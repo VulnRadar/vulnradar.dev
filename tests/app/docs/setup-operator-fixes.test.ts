@@ -151,7 +151,9 @@ describe("deployment options", () => {
   });
 
   it("gives the PM2 line for a script that exists", () => {
-    expect(deployment).toContain("pm2 start npm --name vulnradar -- start");
+    expect(deployment).toContain(
+      "pm2 start npm --name vulnradar --kill-timeout 40000 -- start",
+    );
     expect(JSON.parse(read("package.json")).scripts.start).toBeDefined();
   });
 });
