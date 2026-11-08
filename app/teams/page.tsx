@@ -465,10 +465,9 @@ export default function TeamsPage() {
   // with the server's reason and the address as typed, the way the confirmed
   // actions do; it never posts to actionError, which sits behind the scrim.
   //
-  // The dialog's busy state already blocks a second press of the button, but
-  // Enter in the address field can submit twice before it has re-rendered, so
-  // the handler keeps its own guard: a second call while one is in flight is
-  // dropped, not sent.
+  // EditDialog's busy ref is what stops a second Enter from this dialog. The
+  // handler keeps its own guard so the rule does not depend on who calls it: a
+  // second call while one is in flight is dropped, not sent.
   async function handleInvite(email: string, role: InvitableRole) {
     if (!selectedTeam) return;
     const team = selectedTeam;
