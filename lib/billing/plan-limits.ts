@@ -1,8 +1,9 @@
 // Per-resource plan limits (API keys, webhooks, scheduled scans, teams,
 // team members) — distinct from the daily scan quota check in
 // lib/rate-limiting/daily-limits.ts, but following the same rules: billing
-// disabled means unlimited; staff are capped at the Pro Supporter plan's
-// limits (not unlimited); otherwise the caller's real plan decides.
+// disabled means unlimited; a staff role with no higher paid or gifted plan
+// gets the Pro Supporter plan's limits (not unlimited); otherwise the caller's
+// real plan decides.
 //
 // The actual numbers live in the admin settings registry (lib/config/
 // registry.ts, "Billing" group), not in lib/billing/catalog.ts's PLANS
@@ -86,10 +87,11 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
 };
 
 /**
- * Null means billing is disabled entirely (unlimited). A staff caller is
- * NOT null here: it resolves to the Pro Supporter plan's real PlanLimits,
+ * Null means billing is disabled entirely (unlimited). The "staff" plan tag
+ * is NOT null here: it resolves to the Pro Supporter plan's real PlanLimits,
  * the same substitution getDailyLimit (lib/rate-limiting/daily-limits.ts)
- * makes for the daily scan cap.
+ * makes for the daily scan cap. A staff account with a higher paid or gifted
+ * plan never carries that tag.
  */
 export async function getUserPlanLimits(
   userId: number,
@@ -116,7 +118,7 @@ export async function getPlanLimitsForPlan(
   const billingEnabled = await getSetting("BILLING_ENABLED");
   if (!billingEnabled) return null;
 
-  // Staff are capped at the Pro Supporter plan's limits, not unlimited --
+  // The staff tag means the Pro Supporter plan's limits, not unlimited --
   // substitute the real plan id and resolve it like a real account.
   const effectivePlan: PlanId = plan === "staff" ? "pro_supporter" : plan;
 

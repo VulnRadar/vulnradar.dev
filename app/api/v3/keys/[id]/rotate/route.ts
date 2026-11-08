@@ -41,8 +41,8 @@ export async function POST(
   }
 
   // billing: resolve the admin-configurable per-plan request quota (falls
-  // back to unlimited only when billing is off -- a staff caller now
-  // resolves to the Pro Supporter plan's real limit), same source of
+  // back to unlimited only when billing is off -- a staff caller with no
+  // higher plan resolves to the Pro Supporter plan's real limit), same source of
   // truth POST /api/v3/keys uses when a key is first created.
   const planLimits = await getUserPlanLimits(session.userId);
   const dailyLimit = planLimits ? planLimits.apiRequestsPerDay : -1;

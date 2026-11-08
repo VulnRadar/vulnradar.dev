@@ -1,10 +1,11 @@
 // Staff plan grant/revoke -- the real, non-Stripe `users.plan` side effect
 // of a staff role transition. Distinct from (and layered on top of) the
 // dynamic-limits safety net in lib/rate-limiting/daily-limits.ts and
-// lib/billing/plan-limits.ts, which still resolves a "staff" caller to the
-// Pro Supporter plan's numeric limits regardless of what `users.plan`
-// literally says at any given moment (e.g. covers the instant before this
-// module's UPDATE has run, or a self-hosted deployment with billing off).
+// lib/billing/plan-limits.ts, which still give a staff caller at least the
+// Pro Supporter plan's numeric limits whatever `users.plan` literally says at
+// any given moment (e.g. covers the instant before this module's UPDATE has
+// run, or a self-hosted deployment with billing off). A higher paid or gifted
+// plan is kept.
 //
 // Policy (see scripts/migrate/versions/2.0.0-to-3.0.0.mjs's header comment
 // on users.pre_staff_plan for the schema side of this):
