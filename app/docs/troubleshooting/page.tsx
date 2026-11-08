@@ -37,7 +37,7 @@ const tocItems: TocItem[] = [
   { id: "errors", label: "Failure messages, and what to do" },
   { id: "timeouts", label: "Timeouts" },
   { id: "blocked", label: "Targets we refuse to scan" },
-  { id: "recognising-traffic", label: `Recognising ${APP_NAME} traffic` },
+  { id: "recognising-traffic", label: "Recognising scanner traffic" },
   { id: "zero-findings", label: "A scan with no findings" },
   { id: "incomplete", label: "Partial results" },
   { id: "robots", label: "robots.txt and crawling" },
@@ -413,10 +413,7 @@ export default function TroubleshootingPage() {
         </DocsSubSection>
       </DocsSection>
 
-      <DocsSection
-        id="recognising-traffic"
-        title={`Recognising ${APP_NAME} traffic`}
-      >
+      <DocsSection id="recognising-traffic" title="Recognising scanner traffic">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           Every HTTP request the {APP_NAME} scanner sends to a scan target
           carries a User-Agent containing{" "}
