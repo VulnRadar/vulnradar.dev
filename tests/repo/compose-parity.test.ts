@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { localPlainHttpApplies } from "@/lib/server/http-front.mjs";
 import { blocksNamed, readCompose } from "./_compose";
 
 /**
@@ -41,6 +42,21 @@ describe("docker-compose.dev.yml mirrors docker-compose.yml", () => {
     for (const yaml of [prod, dev]) {
       expect(yaml).toMatch(/^ {6}HOST_BIND: \$\{HOST_BIND:-127\.0\.0\.1\}$/m);
     }
+  });
+
+  it("opens over plain HTTP on the steps the README gives", () => {
+    // cp .env.example .env, set the two required values, compose up. A
+    // placeholder https URL there left the loopback quick start 301ing every
+    // browser to an https://localhost nothing listens on.
+    const fromExample = Object.fromEntries(
+      Array.from(
+        readCompose(".env.example").matchAll(/^([A-Z_]+)=(.*)$/gm),
+        (match) => [match[1], match[2]],
+      ),
+    );
+    expect(
+      localPlainHttpApplies({ ...fromExample, HOST_BIND: "127.0.0.1" }),
+    ).toBe(true);
   });
 
   it("does not send anyone to a step that is not needed", () => {
