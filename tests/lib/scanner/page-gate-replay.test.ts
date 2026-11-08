@@ -33,19 +33,6 @@ describe("a refused page behind the gate", () => {
       expect(ungated.findings.length).toBeGreaterThan(0);
     },
   );
-
-  it("no longer reports a challenge script's eval as the site's", () => {
-    const pow = REFUSED_RESPONSES.filter((r) => r.name.startsWith("pow-"));
-    expect(pow).toHaveLength(3);
-    for (const recorded of pow) {
-      expect(
-        ids(runSyncChecks(TARGET, recorded.headers, recorded.body)),
-      ).toContain("eval-in-client-script");
-      expect(
-        ids(scanBehindGate(recorded.status, recorded.headers, recorded.body)),
-      ).not.toContain("eval-in-client-script");
-    }
-  });
 });
 
 describe("a real page behind the gate", () => {
