@@ -117,11 +117,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.forbidden(reauth.error);
   }
 
-  // The same lookup the acceptance route resolves the invite with, so the
-  // guards below judge the account an accepted invite would actually change.
-  // It compares LOWER(email), as the unique index does: `email = $1` missed a
+  // getUserByEmail, the lookup the invite page answers hasAccount with. It
+  // compares LOWER(email), as the unique index does: `email = $1` missed a
   // legacy mixed-case row (Root@Example.com), and with it the super_admin
-  // guard and the same-role check.
+  // guard and the same-role check. Where an exactly lowercased row exists it
+  // is the one returned, and that is the row an accepted invite changes, so
+  // the guards below judge that account rather than a case variant of it.
   const existingAccount = await getUserByEmail(email);
   // super-admin: same blanket protection app/api/v3/admin/route.ts's PATCH
   // handler gives the designated first-user account -- no admin-panel path

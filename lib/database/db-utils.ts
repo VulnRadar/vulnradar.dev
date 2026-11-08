@@ -43,11 +43,12 @@ export interface UserRow {
  * Compared as LOWER(email), the expression idx_users_email_lower is built
  * on. `email = $1` against the lowercased input missed every row stored
  * before writers lowercased (Bob@x.com): its owner could not sign in, signup
- * took the address for free, and the staff invite guards never saw the
- * account. The ORDER BY only matters on a database where that index could
- * not be built because two rows differ only in case (the boot step warns and
- * carries on): there the exactly-lowercased row wins, which is the one this
- * query returned before, so neither account changes hands.
+ * went on to an INSERT that the unique index then refused with a 500, and the
+ * staff invite guards never saw the account. The ORDER BY only matters on a
+ * database where that index could not be built because two rows differ only
+ * in case (the boot step warns and carries on): there the exactly-lowercased
+ * row wins, which is the one this query returned before, so neither account
+ * changes hands.
  */
 export async function getUserByEmail(email: string): Promise<UserRow | null> {
   const result = await pool.query(
