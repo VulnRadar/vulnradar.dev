@@ -96,6 +96,10 @@ describeIntegration(
 
       url.pathname = `/${scratchName}`;
       scratch = new Pool({ connectionString: url.toString(), ssl, max: 2 });
+      // pool.end() resolves before its sockets have closed, so the forced drop
+      // in afterAll can terminate a connection that is still on its way out.
+      // With no listener the pool rethrows that FATAL as an uncaught exception.
+      scratch.on("error", () => {});
 
       replayErrors = await buildFromV2Snapshot(db());
       versionBefore = fingerprintDetect(await getActualSchema(db())).version;

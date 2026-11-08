@@ -63,7 +63,17 @@ async function createScratch(
   scratchNames.push(name);
   const scratchUrl = new URL(url);
   scratchUrl.pathname = `/${name}`;
-  return new Pool({ connectionString: scratchUrl.toString(), ssl, max: 2 });
+  const pool = new Pool({
+    connectionString: scratchUrl.toString(),
+    ssl,
+    max: 2,
+  });
+  // pool.end() resolves before its sockets have closed, so the forced drop in
+  // afterAll can terminate a connection that is still on its way out. With no
+  // listener the pool rethrows that FATAL as an uncaught exception, and the run
+  // fails with every test passed.
+  pool.on("error", () => {});
+  return pool;
 }
 
 async function seedSource(pool: Pool): Promise<void> {
