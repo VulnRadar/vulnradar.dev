@@ -21,6 +21,7 @@ import {
   DocsFigure,
   InlineCode,
 } from "@/components/docs";
+import { DocsUiPath } from "@/components/docs/docs-ui-path";
 
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
@@ -134,7 +135,12 @@ export default function ExtensionPage() {
             {
               step: 2,
               title: "Create a key",
-              description: `On ${APP_NAME}, go to Profile > Developer > API Keys and create one (${ROUTES.PROFILE}?tab=developer&dtab=api-keys while logged in).`,
+              description: (
+                <>
+                  On {APP_NAME}, go to{" "}
+                  <DocsUiPath to="profile.developer.apiKeys" /> and create one.
+                </>
+              ),
             },
             {
               step: 3,

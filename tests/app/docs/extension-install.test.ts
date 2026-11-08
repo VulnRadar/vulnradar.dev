@@ -25,8 +25,7 @@ describe("the extension page's install section", () => {
   });
 
   it("names the path to the key and the tab the profile page reads", () => {
-    expect(install).toContain("Profile > Developer > API Keys");
-    expect(install).toContain("?tab=developer&dtab=api-keys");
+    expect(install).toContain('<DocsUiPath to="profile.developer.apiKeys" />');
   });
 
   it("names controls the extension really has", () => {

@@ -33,6 +33,7 @@ import {
   InlineCode,
   type Endpoint,
 } from "@/components/docs";
+import { DocsUiPath } from "@/components/docs/docs-ui-path";
 
 const endpoints: Endpoint[] = [
   {
@@ -2039,11 +2040,7 @@ export default function APIDocsPage() {
             <ol className="list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-muted-foreground marker:text-primary">
               <li>Sign in to your {APP_NAME} account.</li>
               <li>
-                Go to{" "}
-                <strong className="text-foreground">
-                  Profile &gt; Developer &gt; API Keys
-                </strong>
-                .
+                Go to <DocsUiPath to="profile.developer.apiKeys" />.
               </li>
               <li>
                 Click <strong className="text-foreground">Create key</strong>.
@@ -2078,9 +2075,9 @@ export default function APIDocsPage() {
                 (start scans), <InlineCode>scan:read</InlineCode> (read history
                 and reports), and <InlineCode>scan:delete</InlineCode> (delete
                 scans). New keys default to write and read; choose the set when
-                you create a key in Profile &gt; Developer &gt; API Keys &gt;
-                Create key. A route you call without the scope it needs returns
-                403 naming the missing one.
+                you create a key under{" "}
+                <DocsUiPath to="profile.developer.apiKeys" />. A route you call
+                without the scope it needs returns 403 naming the missing one.
               </p>
             </DocsCallout>
           </div>

@@ -81,7 +81,7 @@ describe("verification", () => {
 
   it("uses the labels the API keys screen really has", () => {
     const flatStep = verification.replace(/\s+/g, " ");
-    expect(flatStep).toContain("Profile &gt; Developer &gt; API Keys");
+    expect(flatStep).toContain('<DocsUiPath to="profile.developer.apiKeys" />');
     expect(flatStep).toContain("Create key");
     expect(flatStep).toContain("The key is shown once.");
     expect(read("components/profile/tabs/profile-developer-tab.tsx")).toContain(
@@ -101,7 +101,9 @@ describe("verification", () => {
     expect(defaults).toContain("API_KEY_SCOPES.SCAN_WRITE");
     expect(defaults).toContain("API_KEY_SCOPES.SCAN_READ");
     expect(defaults).not.toContain("SCAN_DELETE");
-    expect(verification).toContain("keep the scan scopes ticked");
+    expect(verification.replace(/\s+/g, " ")).toContain(
+      "keep the scan scopes ticked",
+    );
   });
 
   it("polls the route that exists and states the finished status", () => {

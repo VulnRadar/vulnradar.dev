@@ -71,7 +71,7 @@ describe("/docs/api code examples", () => {
 
   it("names the real key path and button", () => {
     const flat = page.replace(/\s+/g, " ");
-    expect(flat).toContain("Profile &gt; Developer &gt; API Keys");
+    expect(flat).toContain('<DocsUiPath to="profile.developer.apiKeys" />');
     expect(flat).toContain("Create key");
     expect(page).not.toContain("Generate New Key");
   });

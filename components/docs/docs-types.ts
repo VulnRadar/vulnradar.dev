@@ -101,7 +101,7 @@ export interface QuickStat {
 export interface Step {
   step: number;
   title: string;
-  description: string;
+  description: ReactNode;
 }
 
 // Method colors for endpoint badges

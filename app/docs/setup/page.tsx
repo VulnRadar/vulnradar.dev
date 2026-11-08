@@ -20,6 +20,7 @@ import {
   CodeBlock,
   InlineCode,
 } from "@/components/docs";
+import { DocsUiPath } from "@/components/docs/docs-ui-path";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 
 const tocItems: TocItem[] = [
@@ -474,15 +475,9 @@ npm start`}
               4. Generate an API key
             </h3>
             <p className="text-sm text-muted-foreground">
-              Open{" "}
-              <Link
-                href="/profile?tab=developer&dtab=api-keys"
-                className="text-primary underline-offset-2 hover:underline"
-              >
-                Profile &gt; Developer &gt; API Keys
-              </Link>
-              : type a name, keep the scan scopes ticked, click Create key. The
-              key is shown once.
+              Open <DocsUiPath to="profile.developer.apiKeys" />: type a name,
+              keep the scan scopes ticked, click Create key. The key is shown
+              once.
             </p>
           </div>
           <div>
