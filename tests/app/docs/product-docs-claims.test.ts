@@ -275,9 +275,7 @@ describe("/docs/teams", () => {
 
 describe("/docs/account-security", () => {
   const page = flat("app/docs/account-security/page.tsx");
-  const notifications = flat(
-    "components/profile/tabs/profile-notifications-tab.tsx",
-  );
+  const notifications = flat("lib/notifications/columns.ts");
 
   it("uses the tab names on the screen", () => {
     expect(page).toContain(">Social</strong>");

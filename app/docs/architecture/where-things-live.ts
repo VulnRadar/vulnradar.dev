@@ -113,6 +113,10 @@ const NOTES: Record<RepoPath, { what: string; doc: string }> = {
     what: "Discord sign-in and profile helpers.",
     doc: "/docs/account-security",
   },
+  "lib/docs": {
+    what: "The docs site's redirects, moved anchors and typed click paths.",
+    doc: "/docs/architecture",
+  },
   "lib/domains": {
     what: "Domain ownership checks, scope rules and the re-verify worker.",
     doc: "/docs/scanning",
@@ -160,6 +164,14 @@ const NOTES: Record<RepoPath, { what: string; doc: string }> = {
   "lib/scanner": {
     what: "The detection engine: checks, check data, active probes, protocol scanners.",
     doc: "/docs/architecture#scanner",
+  },
+  "lib/security": {
+    what: "The security response times the contact mail and pages quote.",
+    doc: "/docs/architecture",
+  },
+  "lib/server": {
+    what: "The front server's helpers: who may set X-Forwarded-For, and local plain HTTP.",
+    doc: "/docs/config#proxy",
   },
   "lib/seo": {
     what: "Page metadata and the content of the /checks pages.",
