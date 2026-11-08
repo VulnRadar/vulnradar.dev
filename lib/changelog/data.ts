@@ -2172,7 +2172,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Mail,
         label: "New Email Addresses Are Checked Properly",
-        desc: "Signing up now sends the verification email to the same cleaned-up address the account is created with (lowercased, surrounding spaces removed). A new address, at signup, in a staff invite, in a profile email change or in an email change made from the admin panel, must look like a real one: a single @, a domain with a dot in it, no spaces or control characters, at most 254 characters. So an address such as admin@localhost can no longer be given to a new account. Existing accounts can still sign in, reset their password and resend verification with the address they already have.",
+        desc: "Signing up now sends the verification email to the same cleaned-up address the account is created with (lowercased, surrounding spaces removed). A new address, at signup, in a staff invite, in a profile email change or in an email change made from the admin panel, must look like a real one: a single @, a domain with a dot in it, no spaces or control characters, at most 254 characters. So an address such as admin@localhost can no longer be given to a new account. Existing accounts can still sign in with their password and resend verification with the address they already have.",
         category: "fixed",
       },
       {
@@ -2294,7 +2294,7 @@ const CHANGELOG: Release[] = [
       {
         icon: UserCheck,
         label: "Mixed-Case Email Addresses Found Again",
-        desc: "Accounts whose email address was saved with capital letters before addresses were normalised can sign in again, signing up with that address no longer tries to create a second account, and such an account can accept a staff invite without being asked for a password it has no field to enter.",
+        desc: "Accounts whose email address was saved with capital letters before addresses were normalised can sign in with their password again, signing up with that address no longer tries to create a second account, and such an account can accept a staff invite without being asked for a password it has no field to enter.",
         category: "fixed",
       },
       {
