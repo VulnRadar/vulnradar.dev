@@ -4,7 +4,7 @@ import {
   backfillSubDailyScheduleSlots,
   bootstrapSuperAdmin,
   canonicalizeStoredScanUrls,
-  redactAlertWebhookAuditRows,
+  redactSecretSettingAuditRows,
   runBootBackfills,
 } from "@/lib/database/boot/backfills";
 import { isAuditAction } from "@/lib/admin/audit-actions";
@@ -253,7 +253,7 @@ describe("canonicalizeStoredScanUrls", () => {
   });
 });
 
-describe("redactAlertWebhookAuditRows", () => {
+describe("redactSecretSettingAuditRows", () => {
   function auditPool(rowCount = 0) {
     const query = vi.fn(async (_sql: string, _params?: unknown[]) => ({
       rows: [],
@@ -262,30 +262,36 @@ describe("redactAlertWebhookAuditRows", () => {
     return { pool: { query } as unknown as Pool, query };
   }
 
-  it("rewrites both sentences that quoted the value, each under its own action", async () => {
+  it("rewrites both sentences that quoted a value, for every secret setting", async () => {
     const { pool, query } = auditPool();
-    await redactAlertWebhookAuditRows(pool, "App");
+    await redactSecretSettingAuditRows(pool, "App");
 
-    expect(query.mock.calls.map(([, params]) => params)).toEqual([
+    expect(query.mock.calls.map(([, params]) => params)).toEqual(
       [
-        "system_setting_changed",
-        'Changed "ADMIN_ALERT_WEBHOOK_URL" from ',
-        'Changed "ADMIN_ALERT_WEBHOOK_URL" (value redacted)',
-      ],
-      [
-        "system_setting_reset",
-        'Reset "ADMIN_ALERT_WEBHOOK_URL" to its default (was ',
-        'Reset "ADMIN_ALERT_WEBHOOK_URL" to its default (value redacted)',
-      ],
-    ]);
+        "ADMIN_ALERT_WEBHOOK_URL",
+        "ADMIN_ALERT_WEBHOOK_SECRET",
+        "STAFF_OIDC_CLIENT_SECRET",
+      ].flatMap((key) => [
+        [
+          "system_setting_changed",
+          `Changed "${key}" from `,
+          `Changed "${key}" (value redacted)`,
+        ],
+        [
+          "system_setting_reset",
+          `Reset "${key}" to its default (was `,
+          `Reset "${key}" to its default (value redacted)`,
+        ],
+      ]),
+    );
   });
 
   it("reports how many rows it rewrote and stays quiet when there were none", async () => {
-    await redactAlertWebhookAuditRows(auditPool(0).pool, "App");
+    await redactSecretSettingAuditRows(auditPool(0).pool, "App");
     expect(console.log).not.toHaveBeenCalled();
 
-    await redactAlertWebhookAuditRows(auditPool(2).pool, "App");
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining("4"));
+    await redactSecretSettingAuditRows(auditPool(2).pool, "App");
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining("12"));
   });
 
   it("does not throw when the query fails, so a boot is never stopped", async () => {
@@ -296,7 +302,7 @@ describe("redactAlertWebhookAuditRows", () => {
     } as unknown as Pool;
 
     await expect(
-      redactAlertWebhookAuditRows(pool, "App"),
+      redactSecretSettingAuditRows(pool, "App"),
     ).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalled();
   });

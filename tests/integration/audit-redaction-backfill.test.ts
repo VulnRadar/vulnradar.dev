@@ -1,10 +1,10 @@
 import { it, expect, beforeEach, afterEach, vi } from "vitest";
 import pool from "@/lib/database/db";
-import { redactAlertWebhookAuditRows } from "@/lib/database/boot/backfills";
+import { redactSecretSettingAuditRows } from "@/lib/database/boot/backfills";
 import { describeIntegration, createUser } from "./_db";
 
 /**
- * The boot backfill that takes old ADMIN_ALERT_WEBHOOK_URL values out of
+ * The boot backfill that takes old values of the secret settings out of
  * admin_audit_log, run against a real PostgreSQL. A faked pool answers the
  * prefix match and the suffix regex exactly as it answers wrong ones, and both
  * decide whether a credential stays in a table moderators can page through.
@@ -13,7 +13,7 @@ const KEY = "ADMIN_ALERT_WEBHOOK_URL";
 const URL_A = "https://hooks.slack.test/services/T000/B000/oldtoken111";
 const URL_B = "https://hooks.slack.test/services/T000/B000/newtoken222";
 
-describeIntegration("alert webhook audit redaction backfill", () => {
+describeIntegration("secret setting audit redaction backfill", () => {
   let adminId: number;
 
   beforeEach(async () => {
@@ -55,7 +55,7 @@ describeIntegration("alert webhook audit redaction backfill", () => {
       `Changed "${KEY}" from "(not set)" to "${URL_B}"`,
     );
 
-    await redactAlertWebhookAuditRows(pool, "App");
+    await redactSecretSettingAuditRows(pool, "App");
 
     const redacted = `Changed "${KEY}" (value redacted)`;
     expect(await details(changed)).toBe(redacted);
@@ -68,12 +68,26 @@ describeIntegration("alert webhook audit redaction backfill", () => {
       `Reset "${KEY}" to its default (was "${URL_A}")`,
     );
 
-    await redactAlertWebhookAuditRows(pool, "App");
+    await redactSecretSettingAuditRows(pool, "App");
 
     expect(await details(reset)).toBe(
       `Reset "${KEY}" to its default (value redacted)`,
     );
   });
+
+  it.each(["ADMIN_ALERT_WEBHOOK_SECRET", "STAFF_OIDC_CLIENT_SECRET"])(
+    "rewrites %s the same way",
+    async (key) => {
+      const changed = await insert(
+        "system_setting_changed",
+        `Changed "${key}" from "old-secret" to "new-secret"`,
+      );
+
+      await redactSecretSettingAuditRows(pool, "App");
+
+      expect(await details(changed)).toBe(`Changed "${key}" (value redacted)`);
+    },
+  );
 
   it("keeps the impersonation note, which is the part of the row worth keeping", async () => {
     const id = await insert(
@@ -81,7 +95,7 @@ describeIntegration("alert webhook audit redaction backfill", () => {
       `Changed "${KEY}" from "${URL_A}" to "${URL_B}" [while impersonating user #42]`,
     );
 
-    await redactAlertWebhookAuditRows(pool, "App");
+    await redactSecretSettingAuditRows(pool, "App");
 
     expect(await details(id)).toBe(
       `Changed "${KEY}" (value redacted) [while impersonating user #42]`,
@@ -94,9 +108,9 @@ describeIntegration("alert webhook audit redaction backfill", () => {
       `Changed "${KEY}" from "${URL_A}" to "${URL_B}"`,
     );
 
-    await redactAlertWebhookAuditRows(pool, "App");
+    await redactSecretSettingAuditRows(pool, "App");
     const once = await details(id);
-    await redactAlertWebhookAuditRows(pool, "App");
+    await redactSecretSettingAuditRows(pool, "App");
 
     expect(await details(id)).toBe(once);
   });
@@ -124,7 +138,7 @@ describeIntegration("alert webhook audit redaction backfill", () => {
     ];
     const ids = await Promise.all(rows.map(([a, d]) => insert(a, d)));
 
-    await redactAlertWebhookAuditRows(pool, "App");
+    await redactSecretSettingAuditRows(pool, "App");
 
     for (const [i, id] of ids.entries()) {
       expect(await details(id)).toBe(rows[i][1]);

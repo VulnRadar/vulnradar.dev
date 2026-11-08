@@ -21,6 +21,7 @@
 
 import type { Pool } from "pg";
 import type { AuditAction } from "@/lib/admin/audit-actions";
+import { SETTINGS_REGISTRY, isSecretSetting } from "@/lib/config/registry";
 import { DEFAULT_BADGES_SQL } from "@/lib/database/schema/seeds.mjs";
 import { logError } from "@/lib/logging/log";
 import { parsedFormOf } from "@/lib/scanner/canonical-url";
@@ -43,51 +44,54 @@ export async function runBootBackfills(
   await backfillWebhookSecrets(appName);
   await backfillSubDailyScheduleSlots(pool, appName);
   await canonicalizeStoredScanUrls(pool);
-  await redactAlertWebhookAuditRows(pool, appName);
+  await redactSecretSettingAuditRows(pool, appName);
 }
 
-const ALERT_WEBHOOK_KEY = "ADMIN_ALERT_WEBHOOK_URL";
+/** Read from the registry, so a setting marked secret later is covered too. */
+const SECRET_SETTING_KEYS =
+  Object.keys(SETTINGS_REGISTRY).filter(isSecretSetting);
 
-/** The two sentences that quoted the value, and what each one becomes. */
-const ALERT_WEBHOOK_AUDIT_REWRITES: ReadonlyArray<{
+/** The two sentences that quoted a value, and what each one becomes. */
+const SECRET_SETTING_AUDIT_REWRITES: ReadonlyArray<{
   action: AuditAction;
   prefix: string;
   replacement: string;
-}> = [
+}> = SECRET_SETTING_KEYS.flatMap((key) => [
   {
-    action: "system_setting_changed",
-    prefix: `Changed "${ALERT_WEBHOOK_KEY}" from `,
-    replacement: `Changed "${ALERT_WEBHOOK_KEY}" (value redacted)`,
+    action: "system_setting_changed" as const,
+    prefix: `Changed "${key}" from `,
+    replacement: `Changed "${key}" (value redacted)`,
   },
   {
-    action: "system_setting_reset",
-    prefix: `Reset "${ALERT_WEBHOOK_KEY}" to its default (was `,
-    replacement: `Reset "${ALERT_WEBHOOK_KEY}" to its default (value redacted)`,
+    action: "system_setting_reset" as const,
+    prefix: `Reset "${key}" to its default (was `,
+    replacement: `Reset "${key}" to its default (value redacted)`,
   },
-];
+]);
 
 /**
- * Take old ADMIN_ALERT_WEBHOOK_URL values out of admin_audit_log.
+ * Take old values of the secret settings out of admin_audit_log.
  *
- * A Slack or Discord webhook URL carries its token in the path. The setting
- * was not marked secret when these rows were written, so each one kept a
- * working credential where any staff member who can read the log could copy
- * it, for the year the log is retained. Marking it secret only stopped new
- * rows.
+ * A Slack or Discord webhook URL carries its token in the path, and
+ * ADMIN_ALERT_WEBHOOK_SECRET and STAFF_OIDC_CLIENT_SECRET are credentials
+ * outright. None was marked secret when these rows were written, so each one
+ * kept a working credential where any staff member who can read the log could
+ * copy it, for the year the log is retained. Marking a setting secret only
+ * stopped new rows.
  *
- * Compared with left() rather than LIKE because the underscores in the key are
+ * Compared with left() rather than LIKE because the underscores in a key are
  * LIKE wildcards. The impersonation note logAction appends is kept: it says
  * who really made the change and holds no part of the value. The brackets in
  * its pattern are bracket expressions, so no backslash has to survive being
  * quoted twice. Idempotent: a rewritten row no longer starts with the prefix.
  */
-export async function redactAlertWebhookAuditRows(
+export async function redactSecretSettingAuditRows(
   pool: Pool,
   appName: string,
 ): Promise<void> {
   try {
     let redacted = 0;
-    for (const rewrite of ALERT_WEBHOOK_AUDIT_REWRITES) {
+    for (const rewrite of SECRET_SETTING_AUDIT_REWRITES) {
       const result = await pool.query(
         `UPDATE admin_audit_log
             SET details = $3::text || COALESCE(
@@ -101,13 +105,13 @@ export async function redactAlertWebhookAuditRows(
     }
     if (redacted > 0) {
       console.log(
-        `[${appName}] Redacted ${redacted} audit log row(s) that quoted ${ALERT_WEBHOOK_KEY}.`,
+        `[${appName}] Redacted ${redacted} audit log row(s) that quoted a secret setting.`,
       );
     }
   } catch (err) {
     logError(
       "admin",
-      `Failed to redact ${ALERT_WEBHOOK_KEY} from the audit log (non-fatal)`,
+      "Failed to redact secret settings from the audit log (non-fatal)",
       err,
     );
   }
