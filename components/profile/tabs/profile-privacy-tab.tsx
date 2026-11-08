@@ -517,8 +517,8 @@ export function ProfilePrivacyTab({
             ) : (
               "this account"
             )}
-            ? Every API key, scan, and export tied to it is deleted with it.
-            Type{" "}
+            ? Every API key, scan, and export tied to it is deleted with it, and
+            any active subscription is cancelled immediately. Type{" "}
             <span className="font-mono font-semibold text-destructive">
               DELETE
             </span>{" "}

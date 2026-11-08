@@ -2551,7 +2551,7 @@ export function UserDetailPanel({
                     queueSupportAction(
                       "delete",
                       "Delete Account",
-                      `Permanently remove ${u.name || u.email}'s account. This cannot be undone.`,
+                      `Permanently remove ${u.name || u.email}'s account and cancel any active subscription immediately. This cannot be undone.`,
                       "destructive",
                     )
                   }
