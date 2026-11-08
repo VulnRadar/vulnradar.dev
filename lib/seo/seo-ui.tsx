@@ -261,8 +261,10 @@ export function ScanCta({
             {body}
           </p>
           {action ? (
-            <Button asChild size="lg" shape="pill" className="h-11 px-6">
-              <Link href={action.href}>{action.label}</Link>
+            <Button asChild size="lg" shape="pill">
+              <Link href={action.href} className={cn("h-11 px-6", focus.ring)}>
+                {action.label}
+              </Link>
             </Button>
           ) : (
             <ScanCtaForm />
