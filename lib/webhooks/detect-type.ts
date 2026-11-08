@@ -5,7 +5,10 @@
  * instead of two copies drifting apart.
  */
 
-import { hostMatches, type HostSpec } from "@/lib/net/host-match";
+import {
+  discordWebhookPattern,
+  isDiscordHost,
+} from "@/lib/net/discord-webhook";
 
 /**
  * The three values that can be stored.
@@ -23,15 +26,34 @@ export function isWebhookType(value: unknown): value is WebhookType {
   );
 }
 
-// ptb. and canary. are Discord's own client hosts and serve the same API.
-const DISCORD_HOSTS: HostSpec[] = [
-  { host: "discord.com", subdomains: true },
-  { host: "discordapp.com", subdomains: true },
-];
+const DISCORD_WEBHOOK_PATH = discordWebhookPattern("^", "");
 
-// Discord accepts webhooks on the unversioned path and on every versioned one
-// (/api/v10/webhooks/...), and its docs and client libraries write the latter.
-const DISCORD_WEBHOOK_PATH = /^\/api\/(?:v\d+\/)?webhooks\//i;
+// Discord serves two compatibility endpoints under every webhook, after the
+// id and the token: /slack reads a Slack payload and /github reads a GitHub
+// event. Neither reads an embed.
+const DISCORD_COMPAT_ENDPOINT = discordWebhookPattern(
+  "^",
+  String.raw`[^/]+\/[^/]+\/(slack|github)\/?$`,
+);
+
+/**
+ * The format a Discord compatibility endpoint is sent, or null when the path
+ * is not one. /github gets the generic body: no GitHub-shaped payload is
+ * built anywhere, and an embed is the one thing it certainly does not read.
+ */
+function discordCompatFormat(pathname: string): WebhookType | null {
+  const m = DISCORD_COMPAT_ENDPOINT.exec(pathname);
+  if (!m) return null;
+  return m[1].toLowerCase() === "slack" ? "slack" : "generic";
+}
+
+function parseUrl(url: string): URL | null {
+  try {
+    return new URL(url);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Auto-detects a webhook's platform type from its URL.
@@ -43,20 +65,32 @@ const DISCORD_WEBHOOK_PATH = /^\/api\/(?:v\d+\/)?webhooks\//i;
  * parse as a URL is generic.
  */
 export function detectWebhookType(url: string): WebhookType {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return "generic";
-  }
+  const parsed = parseUrl(url);
+  if (!parsed) return "generic";
   const host = parsed.hostname.toLowerCase();
-  if (
-    DISCORD_HOSTS.some((spec) => hostMatches(host, spec)) &&
-    DISCORD_WEBHOOK_PATH.test(parsed.pathname)
-  )
-    return "discord";
+  if (isDiscordHost(host)) {
+    const compat = discordCompatFormat(parsed.pathname);
+    if (compat) return compat;
+    if (DISCORD_WEBHOOK_PATH.test(parsed.pathname)) return "discord";
+  }
   if (host === "hooks.slack.com") return "slack";
   return "generic";
+}
+
+/**
+ * The payload format a stored webhook is sent.
+ *
+ * The stored type wins, with one exception: a row stored as discord whose
+ * URL is one of Discord's own compatibility endpoints. Rows saved before the
+ * detector knew about /slack and /github hold discord, and no caller can
+ * have meant an embed for an endpoint that does not read one. A discord type
+ * pinned on any other URL, a proxy included, is kept.
+ */
+export function deliveryFormat(storedType: string, url: string): string {
+  if (storedType !== "discord") return storedType;
+  const parsed = parseUrl(url);
+  if (!parsed || !isDiscordHost(parsed.hostname)) return storedType;
+  return discordCompatFormat(parsed.pathname) ?? storedType;
 }
 
 /**

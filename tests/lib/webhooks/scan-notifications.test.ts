@@ -186,6 +186,91 @@ describe("notifyScanComplete: delivery fan-out", () => {
   });
 });
 
+/**
+ * Discord's /slack and /github endpoints sit under a Discord webhook's path,
+ * so they were taken as Discord and sent an embed. /slack reads a Slack
+ * payload and ignores embeds; /github reads a GitHub event. A row saved
+ * before the detector knew this is still stored as discord, which is why
+ * these go through the whole send path rather than the body builders alone.
+ */
+describe("notifyScanComplete: Discord's compatibility endpoints", () => {
+  const SLACK_COMPAT = "https://discord.com/api/webhooks/1/x/slack";
+  const GITHUB_COMPAT = "https://discord.com/api/v10/webhooks/1/x/github";
+
+  async function bodiesFor(
+    webhooks: { id: number; url: string; type: string }[],
+  ): Promise<Map<string, Record<string, unknown>>> {
+    installQueryMock({
+      webhooks: webhooks.map((w) => ({ ...w, secret: null })),
+    });
+    await notifyScanComplete(baseParams());
+    return new Map(
+      mockDeliverWebhook.mock.calls.map((call) => [
+        (call[0] as { url: string }).url,
+        JSON.parse(call[2] as string) as Record<string, unknown>,
+      ]),
+    );
+  }
+
+  it("sends /slack a Slack payload with a text fallback, whether stored as discord or slack", async () => {
+    const legacy = await bodiesFor([
+      { id: 1, url: SLACK_COMPAT, type: "discord" },
+    ]);
+    mockDeliverWebhook.mockClear();
+    const detected = await bodiesFor([
+      { id: 1, url: SLACK_COMPAT, type: "slack" },
+    ]);
+
+    for (const body of [legacy.get(SLACK_COMPAT), detected.get(SLACK_COMPAT)]) {
+      expect(body).not.toHaveProperty("embeds");
+      expect(Array.isArray(body?.blocks)).toBe(true);
+      // Discord's Slack endpoint renders `text` and attachments, not Block
+      // Kit, so a blocks-only body arrives as an empty message.
+      expect(typeof body?.text).toBe("string");
+      expect(body?.text).toContain("Scan Complete");
+      expect(body?.text).toContain("https://example.com/");
+    }
+  });
+
+  it("sends /github the generic JSON body, since there is no GitHub format", async () => {
+    const bodies = await bodiesFor([
+      { id: 1, url: GITHUB_COMPAT, type: "discord" },
+    ]);
+    const body = bodies.get(GITHUB_COMPAT);
+    expect(body).not.toHaveProperty("embeds");
+    expect(body?.event).toBe(SCAN_COMPLETED_EVENT);
+  });
+
+  it("still sends an ordinary Discord webhook an embed", async () => {
+    const url = "https://discord.com/api/webhooks/1/x";
+    const bodies = await bodiesFor([{ id: 1, url, type: "discord" }]);
+    expect(Array.isArray(bodies.get(url)?.embeds)).toBe(true);
+  });
+
+  it("does not treat a lookalike host's /slack path as Discord's", async () => {
+    const lookalike = "https://discord.com.evil.example/api/webhooks/1/x/slack";
+    const bodies = await bodiesFor([
+      { id: 1, url: lookalike, type: "generic" },
+      { id: 2, url: `${lookalike}/`, type: "discord" },
+    ]);
+    expect(bodies.get(lookalike)?.event).toBe(SCAN_COMPLETED_EVENT);
+    // A type pinned on a host that is not Discord's is the caller's choice.
+    expect(Array.isArray(bodies.get(`${lookalike}/`)?.embeds)).toBe(true);
+  });
+
+  it("gives the Slack regression alert the same text fallback", () => {
+    const body = JSON.parse(
+      buildScanRegressedBody("slack", baseParams(), {
+        hasNewCriticalOrHigh: true,
+        newFindings: [finding()],
+        outstandingFindings: [],
+      } as never),
+    );
+    expect(body.text).toContain("1 new critical or high finding");
+    expect(body.text).toContain("https://example.com/");
+  });
+});
+
 describe("notifyScanComplete: a failed notification never fails the scan", () => {
   it("resolves when a webhook delivery throws", async () => {
     installQueryMock({

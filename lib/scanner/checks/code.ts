@@ -21,7 +21,11 @@ import {
   extractScriptContents,
 } from "../_helpers";
 import { openTags, hasTagWith } from "./_tag-scan";
-import { hostMatches, leadingHost, type HostRule } from "./_url-hosts";
+import { leadingHost } from "./_url-hosts";
+import {
+  discordWebhookPattern,
+  isDiscordHost,
+} from "@/lib/net/discord-webhook";
 
 /**
  * The leading run of `text` up to the first line terminator, matching what a
@@ -222,12 +226,6 @@ const ELEVATED_RISK_SECRET_PATTERNS: SecretPattern[] = [
   { name: "Replicate Token", pattern: /r8_[A-Za-z0-9]{40}/g },
 ];
 
-// ptb. and canary. are Discord's own client channels and serve webhooks too.
-const DISCORD_HOSTS: HostRule[] = [
-  { host: "discord.com", subdomains: true },
-  { host: "discordapp.com", subdomains: true },
-];
-
 // Vendor-documented client-exposed-by-design credentials, secured via
 // restrictions (referrer/domain allowlists, write-only scopes, quota
 // limits) rather than secrecy. Presence alone is normal; the risk is
@@ -235,15 +233,18 @@ const DISCORD_HOSTS: HostRule[] = [
 const CLIENT_EXPOSED_SECRET_PATTERNS: SecretPattern[] = [
   // Discord webhooks are meant to be POSTed to from server code, but a
   // leaked URL lets anyone post as the webhook (spam/impersonation in
-  // the target channel) — real abuse, bounded impact. Discord serves them on
-  // the versioned path (/api/v10/webhooks/...) too, which its own docs and
-  // client libraries write.
+  // the target channel) — real abuse, bounded impact. The hosts and the
+  // path, versioned or not, are the ones the webhook type detector uses, with
+  // its case rule: a URL spelt Discord.com/API/WEBHOOKS/ leaks the same id and
+  // token.
   {
     name: "Discord Webhook",
-    pattern:
-      /(?<![\w.-])[a-z0-9.-]+\/api\/(?:v\d+\/)?webhooks\/\d{17,20}\/[\w-]{60,68}/g,
-    accept: (match) =>
-      DISCORD_HOSTS.some((r) => hostMatches(leadingHost(match), r)),
+    pattern: discordWebhookPattern(
+      String.raw`(?<![\w.-])[a-z0-9.-]+`,
+      String.raw`\d{17,20}\/[\w-]{60,68}`,
+      { global: true },
+    ),
+    accept: (match) => isDiscordHost(leadingHost(match)),
   },
   // Sentry's own docs: "the DSN is not a secret" — it is meant to be
   // public and only allows writing events, not reading data. Risk is

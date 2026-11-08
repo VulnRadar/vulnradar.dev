@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  deliveryFormat,
   detectWebhookType,
   resolveWebhookType,
   WEBHOOK_TYPES,
@@ -135,6 +136,54 @@ describe("detectWebhookType", () => {
     ]);
   });
 
+  // Discord serves two compatibility endpoints under every webhook: /slack
+  // takes a Slack payload and /github takes a GitHub event. Both are under
+  // the webhooks path, so they were saved as discord and sent an embed,
+  // which neither endpoint reads.
+  it("takes Discord's Slack-compatible endpoint as Slack", () => {
+    for (const url of [
+      "https://discord.com/api/webhooks/123/abc/slack",
+      "https://discordapp.com/api/v10/webhooks/123/abc/slack",
+      "https://ptb.discord.com/api/webhooks/123/abc/slack/",
+      "https://Discord.com/API/WEBHOOKS/123/abc/SLACK",
+      "https://discord.com/api/webhooks/123/abc/slack?wait=true",
+    ]) {
+      expect(detectWebhookType(url), url).toBe("slack");
+    }
+  });
+
+  it("takes Discord's GitHub-compatible endpoint as generic, since no GitHub format is sent", () => {
+    for (const url of [
+      "https://discord.com/api/webhooks/123/abc/github",
+      "https://canary.discordapp.com/api/v9/webhooks/123/abc/github",
+      "https://discord.com/api/webhooks/123/abc/GitHub/",
+    ]) {
+      expect(detectWebhookType(url), url).toBe("generic");
+    }
+  });
+
+  it("keeps the other paths under a Discord webhook as Discord", () => {
+    for (const url of [
+      "https://discord.com/api/webhooks/123/abc/",
+      "https://discord.com/api/webhooks/123/abc/messages/456",
+      "https://discord.com/api/webhooks/123/slack",
+      "https://discord.com/api/webhooks/123/abc/slackx",
+      "https://discord.com/api/webhooks/123/abc/slack/extra",
+    ]) {
+      expect(detectWebhookType(url), url).toBe("discord");
+    }
+  });
+
+  it("does not take a lookalike host's /slack or /github path as anything but generic", () => {
+    allGeneric([
+      "https://discord.com.evil.example/api/webhooks/1/x/slack",
+      "https://notdiscord.com/api/v10/webhooks/1/x/slack",
+      "https://discordapp.com@evil.example/api/webhooks/1/x/slack",
+      "https://evil.example/api/webhooks/1/x/slack",
+      "https://discord.com.evil.example/api/webhooks/1/x/github",
+    ]);
+  });
+
   it("treats a string that is not a URL as generic", () => {
     expect(detectWebhookType("hooks.slack.com/services/T/B/X")).toBe("generic");
     expect(detectWebhookType("not a url")).toBe("generic");
@@ -192,5 +241,50 @@ describe("resolveWebhookType", () => {
   it("names every accepted value in the error it hands back", () => {
     for (const t of WEBHOOK_TYPES) expect(WEBHOOK_TYPE_ERROR).toContain(t);
     expect(WEBHOOK_TYPE_ERROR).toContain("auto");
+  });
+});
+
+/**
+ * The format a stored webhook is actually sent. A Discord compatibility
+ * endpoint registered before the detector knew about it is stored as
+ * discord, and an embed is never what /slack or /github reads, so delivery
+ * re-reads the URL for that one case. Every other stored type is honoured,
+ * including a discord type pinned on a proxy URL.
+ */
+describe("deliveryFormat", () => {
+  it("sends a stored-discord compatibility endpoint the format it reads", () => {
+    expect(
+      deliveryFormat("discord", "https://discord.com/api/webhooks/1/x/slack"),
+    ).toBe("slack");
+    expect(
+      deliveryFormat(
+        "discord",
+        "https://discord.com/api/v10/webhooks/1/x/github",
+      ),
+    ).toBe("generic");
+  });
+
+  it("leaves an ordinary Discord webhook on discord", () => {
+    expect(
+      deliveryFormat("discord", "https://discord.com/api/webhooks/1/x"),
+    ).toBe("discord");
+  });
+
+  it("honours a pinned type everywhere else", () => {
+    expect(deliveryFormat("discord", "https://proxy.example/hook")).toBe(
+      "discord",
+    );
+    expect(
+      deliveryFormat(
+        "discord",
+        "https://discord.com.evil.example/api/webhooks/1/x/slack",
+      ),
+    ).toBe("discord");
+    expect(
+      deliveryFormat("generic", "https://discord.com/api/webhooks/1/x"),
+    ).toBe("generic");
+    expect(
+      deliveryFormat("slack", "https://discord.com/api/webhooks/1/x/github"),
+    ).toBe("slack");
   });
 });

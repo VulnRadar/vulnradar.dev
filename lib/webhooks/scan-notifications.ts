@@ -49,6 +49,8 @@ import {
 } from "@/lib/scanner/safety-rating";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { deliverWebhook } from "@/lib/webhooks/delivery";
+import { deliveryFormat } from "@/lib/webhooks/detect-type";
+import { pluralize } from "@/lib/ui/plural";
 
 /** Webhook event names this module can emit. */
 export const SCAN_COMPLETED_EVENT = "scan.completed";
@@ -197,6 +199,13 @@ export function buildScanCompletedBody(
 
   if (webhookType === "slack") {
     return JSON.stringify({
+      // Slack shows `text` in the notification itself, and Discord's
+      // Slack-compatible endpoint renders only `text` and attachments, so a
+      // blocks-only body reached a Discord channel as an empty message.
+      text: [
+        `${APP_NAME} Scan Complete for ${target.value}: ${pluralize(summary.total, "issue")} (${summary.critical} critical, ${summary.high} high, ${summary.medium} medium, ${summary.low} low)`,
+        ...(incomplete.length > 0 ? [incompleteNote(incomplete)] : []),
+      ].join("\n"),
       blocks: [
         {
           type: "header",
@@ -324,6 +333,7 @@ export function buildScanRegressedBody(
 
   if (webhookType === "slack") {
     return JSON.stringify({
+      text: `${APP_NAME} Regression Detected: ${headline} since the previous scan of ${target.value}`,
       blocks: [
         {
           type: "header",
@@ -497,11 +507,12 @@ async function deliverScanWebhooks(
       // retried once on failure. deliverWebhook re-validates the URL through
       // safeFetch's SSRF check before every attempt, so no separate
       // validateScanTarget call belongs here.
+      const format = deliveryFormat(row.type, row.url);
       try {
         await deliverWebhook(
           target,
           SCAN_COMPLETED_EVENT,
-          buildScanCompletedBody(row.type, params),
+          buildScanCompletedBody(format, params),
         );
       } catch (err) {
         console.error(`[${APP_NAME}] Webhook delivery failed`, {
@@ -516,7 +527,7 @@ async function deliverScanWebhooks(
         await deliverWebhook(
           target,
           SCAN_REGRESSED_EVENT,
-          buildScanRegressedBody(row.type, params, regression),
+          buildScanRegressedBody(format, params, regression),
         );
       } catch (err) {
         console.error(`[${APP_NAME}] Webhook delivery failed`, {
