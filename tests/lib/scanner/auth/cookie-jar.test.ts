@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { ScanCookieJar, readSetCookies } from "@/lib/scanner/auth/cookie-jar";
+import { ScanCookieJar } from "@/lib/scanner/auth/cookie-jar";
+import { getSetCookies } from "@/lib/scanner/_helpers";
 
 describe("ScanCookieJar", () => {
   it("stores a cookie from Set-Cookie and sends it back on the next request", () => {
@@ -90,21 +91,21 @@ describe("ScanCookieJar", () => {
     expect(header).toBe("b=2; a=1");
   });
 
-  it("readSetCookies keeps two Set-Cookie headers apart", () => {
+  it("getSetCookies keeps two Set-Cookie headers apart", () => {
     const headers = new Headers();
     headers.append("set-cookie", "a=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT");
     headers.append("set-cookie", "b=2");
-    expect(readSetCookies(headers)).toEqual([
+    expect(getSetCookies(headers)).toEqual([
       "a=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT",
       "b=2",
     ]);
   });
 
-  it("readSetCookies still reads the header on a runtime without getSetCookie", () => {
+  it("getSetCookies still reads the header on a runtime without getSetCookie", () => {
     const headers = new Headers();
     headers.set("set-cookie", "a=1");
     Object.defineProperty(headers, "getSetCookie", { value: undefined });
-    expect(readSetCookies(headers)).toEqual(["a=1"]);
+    expect(getSetCookies(headers)).toEqual(["a=1"]);
   });
 
   it("seedFromBrowser accepts a cookie scoped to the navigated host", () => {

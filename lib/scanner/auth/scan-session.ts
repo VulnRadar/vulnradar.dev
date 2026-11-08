@@ -19,7 +19,8 @@
  * logs them, and `describe()` deliberately reports counts, not contents.
  */
 
-import { ScanCookieJar, readSetCookies } from "./cookie-jar";
+import { getSetCookies } from "../_helpers";
+import { ScanCookieJar } from "./cookie-jar";
 import { blockedForAuthenticatedRequest } from "./logout-guard";
 import type { ScanAuthType, ScanSessionBinding } from "./types";
 
@@ -116,7 +117,7 @@ export class ScanSession implements ScanSessionBinding {
   observe(url: string, status: number, headers: Headers): void {
     if (!this.inScope(url)) return;
 
-    const { cleared } = this.jar.applySetCookies(url, readSetCookies(headers));
+    const { cleared } = this.jar.applySetCookies(url, getSetCookies(headers));
 
     // The target explicitly deleted a cookie we were relying on.
     for (const name of cleared) {

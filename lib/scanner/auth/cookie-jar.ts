@@ -336,6 +336,3 @@ function parseCookieName(header: string): string {
   const eq = first.indexOf("=");
   return eq <= 0 ? "" : first.slice(0, eq).trim();
 }
-
-// The login flow reads Set-Cookie under this name; the parsing is _helpers'.
-export { getSetCookies as readSetCookies } from "../_helpers";
