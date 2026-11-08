@@ -55,6 +55,7 @@ const ENV_KEYS = [
   "STRIPE_WEBHOOK_SECRET",
   "STRIPE_SECRET_KEY",
   "NEXT_PUBLIC_APP_URL",
+  "APP_URL",
 ] as const;
 const savedEnv = new Map<string, string | undefined>();
 
@@ -142,6 +143,22 @@ describe("GET /api/v3/stripe/setup-webhook", () => {
     expect(res.status).toBe(500);
     const json = await res.json();
     expect(json.error).toMatch(/NEXT_PUBLIC_APP_URL/);
+  });
+
+  it("takes the origin from APP_URL when that is the only one set", async () => {
+    // The published image is built with NEXT_PUBLIC_APP_URL empty, so a literal
+    // read of it is "" there however the container was started.
+    process.env.STRIPE_SECRET_KEY = "sk_test_123";
+    process.env.APP_URL = "https://vulnradar.example";
+    mockEnsureStripeWebhook.mockResolvedValue({
+      success: true,
+      webhookId: "we_1",
+      alreadyExists: true,
+    });
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    expect(mockEnsureStripeWebhook).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces the error when ensureStripeWebhook fails", async () => {

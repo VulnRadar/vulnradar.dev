@@ -6,8 +6,8 @@
 //
 // Next.js replaces every `process.env.NEXT_PUBLIC_*` it can see with the value
 // it had at `next build`, in server bundles as well as browser ones. The
-// published image is built with the upstream origin, so on a self-hosted
-// instance the APP_URL export in client-constants.ts is https://vulnradar.dev
+// published image is built with it empty, so on a self-hosted instance the
+// APP_URL export in client-constants.ts is CONFIG_APP_URL, the upstream origin,
 // whatever the container is started with, and a password-reset or
 // verification link built from it hands a live token to a domain the operator
 // does not own. Reading the variable by a name held in an array is something

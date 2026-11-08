@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ensureStripeWebhook } from "@/lib/billing/stripe-webhook-setup";
 import { getSetting } from "@/lib/config/runtime-config";
+import { runtimeEnvAppUrl } from "@/lib/config/server-app-url";
 import { requireAdmin } from "@/lib/auth/authorization";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 
@@ -61,7 +62,8 @@ export async function GET() {
     });
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  // Read at run time, for the reason given in ensureStripeWebhook.
+  const appUrl = runtimeEnvAppUrl();
   const hasSecretKey = !!process.env.STRIPE_SECRET_KEY;
 
   if (!hasSecretKey) {

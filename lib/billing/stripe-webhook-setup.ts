@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 import { getStripe } from "./stripe";
 import { REQUIRED_EVENTS } from "./stripe-webhook-events";
 import { getSetting } from "@/lib/config/runtime-config";
+import { runtimeEnvAppUrl } from "@/lib/config/server-app-url";
 import { APP_NAME } from "@/lib/config/constants";
 
 type WebhookEvent = Parameters<
@@ -44,7 +45,10 @@ export async function ensureStripeWebhook(): Promise<{
 
   // Check required env vars
   const secretKey = process.env.STRIPE_SECRET_KEY;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  // The running environment, not process.env.NEXT_PUBLIC_APP_URL: Next inlines
+  // that at build, and the published image is built with it empty, so every
+  // pulled image would report it unset however the container was started.
+  const appUrl = runtimeEnvAppUrl();
 
   if (!secretKey) {
     return { success: false, error: "STRIPE_SECRET_KEY is not set" };

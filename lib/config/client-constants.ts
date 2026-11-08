@@ -638,7 +638,8 @@ export const API_CURRENT_VERSION = CONFIG_API_CURRENT_VERSION;
 // .env.example); read it here so it actually reaches this constant instead
 // of always resolving to the hardcoded CONFIG_APP_URL placeholder. Every
 // consumer of APP_URL (emails, sitemap.xml, robots.txt, canonical/OG tags,
-// PDF/SARIF reports, webhook payloads, docs) picks this up too.
+// PDF/SARIF reports, webhook payloads, docs) picks this up too. The published
+// image is built with it empty, so in a pulled image this is CONFIG_APP_URL.
 //
 // Still fully synchronous, so it has no idea about a database admin
 // override: an admin-panel APP_URL change reaches THIS export -- and

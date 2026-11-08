@@ -9,7 +9,7 @@ import ts from "typescript";
  * Next.js replaces `process.env.NEXT_PUBLIC_APP_URL` with the value it had at
  * `next build`, in server bundles as well as browser ones, and the APP_URL
  * export of lib/config/client-constants.ts is built from it. The published
- * image is built with the upstream origin, so on a self-hosted instance every
+ * image was built with the upstream origin, so on a self-hosted instance every
  * server-side reader of either one sent links to https://vulnradar.dev: a
  * password-reset or verification email handed its live token to a domain the
  * operator does not own. Server code asks lib/config/server-app-url.ts
@@ -58,11 +58,9 @@ const HOMES: Record<string, string> = {
 const DEBT: Record<string, number> = {
   "app/api/v3/openapi.json/route.ts": 1,
   "app/api/v3/scan/github-issue/route.ts": 1,
-  "app/api/v3/stripe/setup-webhook/route.ts": 1,
   "app/api/v3/whoami-ip/route.ts": 1,
   "lib/ai/system-prompt.ts": 1,
   "lib/ai/transport.ts": 1,
-  "lib/billing/stripe-webhook-setup.ts": 1,
   // The import, and the re-export that hands it to every server module.
   "lib/config/constants.ts": 2,
   "lib/domains/reverify-worker.ts": 1,

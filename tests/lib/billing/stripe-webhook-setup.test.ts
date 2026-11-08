@@ -45,12 +45,14 @@ vi.mock("@/lib/database/db", () => ({
 
 const originalSecretKey = process.env.STRIPE_SECRET_KEY;
 const originalAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+const originalServerAppUrl = process.env.APP_URL;
 
 beforeEach(() => {
   mockGetStripe.mockReset();
   mockDbQuery.mockClear();
   delete process.env.STRIPE_SECRET_KEY;
   delete process.env.NEXT_PUBLIC_APP_URL;
+  delete process.env.APP_URL;
 });
 
 afterEach(() => {
@@ -62,6 +64,8 @@ afterAll(() => {
   else process.env.STRIPE_SECRET_KEY = originalSecretKey;
   if (originalAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
   else process.env.NEXT_PUBLIC_APP_URL = originalAppUrl;
+  if (originalServerAppUrl === undefined) delete process.env.APP_URL;
+  else process.env.APP_URL = originalServerAppUrl;
 });
 
 async function loadWithBillingEnabled(billingEnabled: boolean) {
@@ -106,6 +110,26 @@ describe("ensureStripeWebhook", () => {
       success: false,
       error: "NEXT_PUBLIC_APP_URL is not set",
     });
+  });
+
+  // The published image is built with NEXT_PUBLIC_APP_URL empty, and Next
+  // compiles a literal read of it to that empty string, so the origin has to
+  // come from a read the build cannot rewrite. APP_URL is the case a literal
+  // read of NEXT_PUBLIC_APP_URL cannot see.
+  it("registers against APP_URL when that is the only origin set", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_fake";
+    process.env.APP_URL = "https://runtime.example.com";
+    const list = vi.fn(async () => ({ data: [] }));
+    const create = vi.fn(async () => ({ id: "we_new", secret: "whsec_new" }));
+    mockGetStripe.mockReturnValue({ webhookEndpoints: { list, create } });
+    const { ensureStripeWebhook } = await loadWithBillingEnabled(true);
+    const result = await ensureStripeWebhook();
+    expect(result.success).toBe(true);
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://runtime.example.com/api/v3/webhooks/stripe",
+      }),
+    );
   });
 
   it("fails when getStripe() returns null despite both env vars being set", async () => {
