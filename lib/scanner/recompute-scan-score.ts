@@ -28,6 +28,7 @@
  * "Critical Exposure" tag for findings the owner has ruled out.
  */
 import pool from "@/lib/database/db";
+import { HUMAN_FEEDBACK_SQL } from "./feedback-source";
 import { getDangerScore } from "./safety-rating";
 import { coveringDomainCandidates } from "@/lib/domains/covering";
 import { computeAutoTags } from "@/lib/tags/auto-tags";
@@ -107,7 +108,8 @@ export async function recomputeScanScore(
 
     const fpRes = await pool.query<{ finding_id: string }>(
       `SELECT finding_id FROM scan_finding_feedback
-       WHERE user_id = $1 AND verdict = 'false_positive'`,
+       WHERE user_id = $1 AND verdict = 'false_positive'
+         AND ${HUMAN_FEEDBACK_SQL}`,
       [callerUserId],
     );
     const suppressed = new Set(fpRes.rows.map((r) => r.finding_id));

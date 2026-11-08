@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { getDangerScore } from "@/lib/scanner/safety-rating";
 import { computeAutoTags } from "@/lib/tags/auto-tags";
+import { HUMAN_FEEDBACK_SQL } from "@/lib/scanner/feedback-source";
 import type { Vulnerability } from "@/lib/scanner/types";
 
 const mockQuery = vi.fn();
@@ -119,6 +120,7 @@ describe("recomputeScanScore", () => {
 
     const [fpSql, fpParams] = mockQuery.mock.calls[1];
     expect(fpSql).toContain("verdict = 'false_positive'");
+    expect(fpSql).toContain(HUMAN_FEEDBACK_SQL);
     expect(fpParams).toEqual([42]);
   });
 

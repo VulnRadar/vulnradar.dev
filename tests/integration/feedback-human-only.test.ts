@@ -7,6 +7,7 @@ import {
   getFalsePositiveIds,
 } from "@/lib/scanner/remediation-store";
 import { checkForNewCriticalOrHighFindings } from "@/lib/scanner/regression-alert";
+import { recomputeScanScore } from "@/lib/scanner/recompute-scan-score";
 import { buildDigestForUser } from "@/lib/notifications/posture-digest";
 import { POST } from "@/app/api/v3/scan/feedback/route";
 import type { Vulnerability } from "@/lib/scanner/types";
@@ -125,6 +126,33 @@ describeIntegration("AI-written feedback never suppresses a finding", () => {
     const ids = await getFalsePositiveIds(userId);
 
     expect([...ids].sort()).toEqual(["human-bare", "human-note"]);
+  });
+
+  it("recomputeScanScore only takes out the finding a person marked", async () => {
+    const userId = await seedUser();
+    const url = urlFor("score");
+    const scanId = await seedCompletedScan(
+      userId,
+      url,
+      [finding("ai-only", "high"), finding("human-bare", "high")],
+      new Date(),
+    );
+    await markFeedback(
+      userId,
+      "ai-only",
+      url,
+      "false_positive",
+      AI_FEEDBACK_NOTE,
+    );
+    await markFeedback(userId, "human-bare", url, "false_positive", null);
+
+    await recomputeScanScore(scanId, userId);
+
+    const { rows } = await pool.query<{ findings_count: number }>(
+      "SELECT findings_count FROM scan_history WHERE id = $1",
+      [scanId],
+    );
+    expect(rows[0].findings_count).toBe(1);
   });
 
   it("only flags the human-marked finding suppressed, which is the flag the CI gate filters on", async () => {
