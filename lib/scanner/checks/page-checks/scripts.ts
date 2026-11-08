@@ -128,6 +128,7 @@ export const scriptChecks: PageCheck[] = [
     codeExamples: [],
     // Not in the script group: a stylesheet and a script are two fixes, and
     // sharing "sri-missing" let a script finding absorb this one.
+    dedupeGroup: "sri-stylesheet-missing",
     run(ctx) {
       const offending = ctx.stylesheets.filter((s) =>
         lacksWarrantedIntegrity(s.resolved ?? s.href, s.integrity, ctx.url),

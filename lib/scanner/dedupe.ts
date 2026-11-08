@@ -29,6 +29,10 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   "third-party-script-no-sri": "sri-missing",
   "supply-chain-sri-external-script": "sri-missing",
 
+  // A third-party stylesheet with no integrity attribute. The page-level check
+  // carries the same group through its own dedupeGroup.
+  "sri-stylesheet-missing": "sri-stylesheet-missing",
+
   // Sensitive values written to localStorage / sessionStorage.
   "localstorage-sensitive": "client-storage-sensitive",
   "sessionstorage-tokens": "client-storage-sensitive",
