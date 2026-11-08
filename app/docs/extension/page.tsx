@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,12 +65,6 @@ export default function ExtensionPage() {
       </DocsSection>
 
       <DocsSection id="install" title="Install">
-        <DocsCallout variant="success" title="Live on both stores">
-          Chrome and other Chromium browsers (Edge, Brave) install from the
-          Chrome Web Store; Firefox installs from Firefox Add-ons, which
-          approved the listing on 2026-08-15. Both update themselves.
-        </DocsCallout>
-
         <div className="grid gap-4 sm:grid-cols-2">
           <Card className="p-5 border-border/50 bg-card/50 flex flex-col">
             <div className="flex items-center gap-2 mb-1">
@@ -126,17 +121,26 @@ export default function ExtensionPage() {
           </Card>
         </div>
 
-        {/* The old step 1 told Firefox users to load a temporary add-on
-            "until the AMO listing is live". It has been live since
-            2026-08-15, and the card above already links to it, so the two
-            halves of this screen contradicted each other. Unpacked loading is
-            now a build-from-source note, not the install path. */}
+        {/* The profile page keys its tabs off query params, not a hash, so
+            /profile#api-keys would land on the default tab. */}
         <DocsSteps
           steps={[
             {
               step: 1,
-              title: "Connect your account",
-              description: `Click the toolbar icon, then Settings. Create an API key under Profile, Developer, API Keys on ${APP_NAME}, paste it in and press Test & Save. The extension authenticates as you from then on.`,
+              title: "Install from the store",
+              description:
+                "Use the button above for your browser. Chrome, Edge, Brave and other Chromium browsers install from the Chrome Web Store, Firefox from Firefox Add-ons.",
+            },
+            {
+              step: 2,
+              title: "Create a key",
+              description: `On ${APP_NAME}, go to Profile > Developer > API Keys and create one (${ROUTES.PROFILE}?tab=developer&dtab=api-keys while logged in).`,
+            },
+            {
+              step: 3,
+              title: "Paste the key into the extension",
+              description:
+                "Click the toolbar icon, open Settings from the popup's footer, paste it in and press Test & Save. The extension authenticates as you from then on.",
             },
           ]}
         />
@@ -150,8 +154,15 @@ export default function ExtensionPage() {
 
         <DocsCallout variant="info" title="Building from source instead">
           <p>
-            Working on the extension, or want to run an unreleased build? In
-            Chrome, <InlineCode>chrome://extensions</InlineCode> &rarr;
+            Working on the extension, or want to run an unreleased build? The{" "}
+            <a
+              href={`https://github.com/${APP_REPO}/tree/main/extension`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              source is on GitHub
+            </a>
+            . In Chrome, <InlineCode>chrome://extensions</InlineCode> &rarr;
             Developer mode &rarr; Load unpacked, and pick the built folder. In
             Firefox,{" "}
             <InlineCode>about:debugging#/runtime/this-firefox</InlineCode>{" "}
@@ -160,16 +171,6 @@ export default function ExtensionPage() {
             is a development path and not the way to install the extension.
           </p>
         </DocsCallout>
-
-        {/* The profile page keys its tabs off query params, not a hash, so
-            /profile#api-keys just opened the default tab. */}
-        <p className="text-sm text-muted-foreground">
-          Need an API key first? Generate one from{" "}
-          <InlineCode>
-            {ROUTES.PROFILE}?tab=developer&amp;dtab=api-keys
-          </InlineCode>{" "}
-          while logged in.
-        </p>
       </DocsSection>
 
       <DocsSection id="scanning" title="Scanning from the popup">
@@ -197,8 +198,7 @@ export default function ExtensionPage() {
           <li>
             <strong className="text-foreground">Expand any finding</strong> for
             where it was found, why it matters, the numbered fix steps, and the
-            reference links. The API already returned all of that; the popup
-            used to render only the title and description and drop the rest.
+            reference links.
           </li>
           <li>
             <strong className="text-foreground">Export a saved scan</strong> as
@@ -408,9 +408,7 @@ export default function ExtensionPage() {
           auto-scan mode and throttle, notification threshold, card position,
           mute lists, and theme) lives there and is stored locally in the
           browser, not on your account, so it's per-install rather than
-          per-user. The sweep is one toggle now, not a per-service list: the old
-          per-service panel serialised a <InlineCode>probes</InlineCode> array
-          the API had already stopped reading, so configuring it did nothing.
+          per-user.
         </p>
       </DocsSection>
 
@@ -462,11 +460,16 @@ export default function ExtensionPage() {
         </ul>
       </DocsSection>
 
-      <div>
-        <Badge variant="outline" className="text-muted-foreground">
-          Questions about a specific permission prompt? Ask in the contact form.
-        </Badge>
-      </div>
+      <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+        Questions about a specific permission prompt? Ask in the{" "}
+        <Link
+          href={ROUTES.CONTACT}
+          className="text-primary underline-offset-2 hover:underline"
+        >
+          contact form
+        </Link>
+        .
+      </p>
     </div>
   );
 }
