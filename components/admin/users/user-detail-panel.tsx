@@ -518,11 +518,16 @@ export function UserDetailPanel({
     const changesForEmail = [...awarded, ...revoked].flatMap((r) =>
       r.result.ok && r.result.change ? [r.result.change] : [],
     );
+    // Silent, because the admin toast is a single slot: the email's "sent"
+    // label replaced the summary one round trip after it appeared. A refusal
+    // still raises its own error toast.
     if (notifyUser && changesForEmail.length > 0) {
-      await onAction(u.id, "notify_account_changes", {
-        changes: changesForEmail,
-        notifyUser: true,
-      });
+      await onAction(
+        u.id,
+        "notify_account_changes",
+        { changes: changesForEmail, notifyUser: true },
+        { toast: false },
+      );
     }
     const failed = [...awarded, ...revoked].find((r) => !r.result.ok);
     return failed ? { ok: false, error: failed.result.error } : { ok: true };

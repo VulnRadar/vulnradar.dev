@@ -636,6 +636,8 @@ describe("badges", () => {
       toast: "Badges updated: 1 awarded, 1 removed.",
     });
     expect(calls()[1][3]).toEqual({ toast: false });
+    // The toast is one slot: the email's own would replace the summary.
+    expect(calls()[2][3]).toEqual({ toast: false });
     expect(onBadgesChanged).toHaveBeenCalledWith([3], [4]);
   });
 
