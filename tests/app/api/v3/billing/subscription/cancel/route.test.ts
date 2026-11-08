@@ -42,7 +42,37 @@ function postRequest(body: unknown): NextRequest {
   );
 }
 
+function rawRequest(body?: string): NextRequest {
+  return new NextRequest(
+    "http://localhost/api/v3/billing/subscription/cancel",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    },
+  );
+}
+
 describe("POST /api/v3/billing/subscription/cancel", () => {
+  it.each([
+    ["an empty body", undefined],
+    ["malformed JSON", "{immediate:"],
+    ["a JSON null", "null"],
+    ["a JSON array", "[true]"],
+    ["a JSON string", '"immediate"'],
+    ["an immediate flag that is not a boolean", '{"immediate":"false"}'],
+  ])("answers 400 for %s and cancels nothing", async (_label, body) => {
+    const update = vi.fn();
+    mockGetStripe.mockReturnValue({ subscriptions: { update } });
+
+    const res = await POST(rawRequest(body));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toEqual(expect.any(String));
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it("requires authentication", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await POST(postRequest({ immediate: false }));

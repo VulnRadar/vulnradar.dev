@@ -23,9 +23,29 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  let body: unknown;
   try {
-    const { immediate } = await request.json();
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Send a JSON body with an immediate boolean." },
+      { status: 400 },
+    );
+  }
+  // A truthy string counts as immediate below, so {"immediate":"false"} would
+  // end the subscription on the spot if it were let through.
+  const immediate =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? (body as { immediate?: unknown }).immediate
+      : null;
+  if (immediate !== undefined && typeof immediate !== "boolean") {
+    return NextResponse.json(
+      { error: "Send a JSON body with an immediate boolean." },
+      { status: 400 },
+    );
+  }
 
+  try {
     // Get user's subscription
     const userResult = await pool.query(
       `SELECT plan, role, stripe_subscription_id FROM users WHERE id = $1`,
