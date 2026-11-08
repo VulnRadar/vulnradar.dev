@@ -715,7 +715,16 @@ sudo systemctl enable --now vulnradar`}
           >
             Self-Hosting
           </Link>
-          , which is the supported path.
+          , which is the supported path. Turnstile, Stripe checkout and your own
+          domain need a source build there, because{" "}
+          <InlineCode>NEXT_PUBLIC_*</InlineCode> values are compiled in:{" "}
+          <Link
+            href="/docs/config#build-time-variables"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Build-time vs runtime variables
+          </Link>{" "}
+          says which.
         </p>
       </DocsSection>
 
