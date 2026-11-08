@@ -86,27 +86,33 @@ describe("ipv4 echo token", () => {
     }
   });
 
-  it("does not sign or honour anything under a 64-character key that is not hex", () => {
-    const previous = process.env.API_KEY_ENCRYPTION_KEY;
-    // Decodes to zero bytes, so before the hex check this key signed with an
-    // HMAC key anyone can reproduce.
-    process.env.API_KEY_ENCRYPTION_KEY = "z".repeat(64);
-    try {
-      expect(() => signIpv4Token("203.0.113.9", NOW)).toThrow(
-        "API_KEY_ENCRYPTION_KEY must be set to a 64-character hex string (32 bytes) to sign IPv4 echo tokens.",
-      );
-      const body = Buffer.from(
-        JSON.stringify({ ip: "203.0.113.9", ts: NOW }),
-        "utf8",
-      ).toString("base64url");
-      const signature = createHmac("sha256", Buffer.alloc(0))
-        .update(`vulnradar.ipv4-echo.v1.${body}`)
-        .digest("base64url");
-      expect(verifyIpv4Token(`${body}.${signature}`, NOW)).toBeNull();
-    } finally {
-      process.env.API_KEY_ENCRYPTION_KEY = previous;
-    }
-  });
+  it.each([
+    ["no hex at all", "z".repeat(64)],
+    ["63 hex characters and a g", `${"a".repeat(63)}g`],
+  ])(
+    "does not sign or honour anything under a 64-character key with %s",
+    (_label, key) => {
+      const previous = process.env.API_KEY_ENCRYPTION_KEY;
+      // Each decodes short (the first to zero bytes), and before the hex check
+      // those truncated bytes were the HMAC key this forgery reproduces.
+      process.env.API_KEY_ENCRYPTION_KEY = key;
+      try {
+        expect(() => signIpv4Token("203.0.113.9", NOW)).toThrow(
+          "API_KEY_ENCRYPTION_KEY must be set to a 64-character hex string (32 bytes) to sign IPv4 echo tokens.",
+        );
+        const body = Buffer.from(
+          JSON.stringify({ ip: "203.0.113.9", ts: NOW }),
+          "utf8",
+        ).toString("base64url");
+        const signature = createHmac("sha256", Buffer.from(key, "hex"))
+          .update(`vulnradar.ipv4-echo.v1.${body}`)
+          .digest("base64url");
+        expect(verifyIpv4Token(`${body}.${signature}`, NOW)).toBeNull();
+      } finally {
+        process.env.API_KEY_ENCRYPTION_KEY = previous;
+      }
+    },
+  );
 
   it("returns null for missing or malformed tokens", () => {
     expect(verifyIpv4Token(null, NOW)).toBeNull();

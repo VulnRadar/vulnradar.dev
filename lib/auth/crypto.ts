@@ -144,7 +144,10 @@ export function decryptApiKeyWithKeyAge(encryptedBase64: string): {
 
 /**
  * Check if an encryption key is configured.
- * Returns false if not set, allowing graceful fallback.
+ * Returns false if not set, allowing graceful fallback, and for a key
+ * getEncryptionKey would refuse, so true means encryptApiKey can run. Boot
+ * validation stops a malformed key first; lib/webhooks/secret.ts is why that
+ * matters, since false there stores the secret in the clear.
  */
 export function isEncryptionConfigured(): boolean {
   return isKeyHex(process.env.API_KEY_ENCRYPTION_KEY);

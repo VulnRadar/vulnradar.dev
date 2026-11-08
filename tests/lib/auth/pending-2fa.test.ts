@@ -130,11 +130,17 @@ describe("a 64-character key that is not hex", () => {
     ["no hex at all", "z".repeat(64)],
   ];
 
-  function forgeUnderEmptyKey(payload: Record<string, unknown>): string {
+  // Signs with exactly the bytes the length check would have used. A forgery
+  // under a fixed empty key only exercises the keys that happen to decode to
+  // nothing, and would pass for the others with the guard removed.
+  function forgeUnderDecodedKey(
+    key: string,
+    payload: Record<string, unknown>,
+  ): string {
     const body = Buffer.from(JSON.stringify(payload), "utf8").toString(
       "base64url",
     );
-    const signature = createHmac("sha256", Buffer.alloc(0))
+    const signature = createHmac("sha256", Buffer.from(key, "hex"))
       .update(`vulnradar.2fa-pending.v1.${body}`)
       .digest("base64url");
     return `${body}.${signature}`;
@@ -147,16 +153,15 @@ describe("a 64-character key that is not hex", () => {
     );
   });
 
-  it("does not honour a token forged under the empty key", () => {
-    process.env.API_KEY_ENCRYPTION_KEY = "z".repeat(64);
-    const forged = forgeUnderEmptyKey({ userId: 1, ts: Date.now() });
-    expect(verifyPendingToken(forged)).toBeNull();
-  });
-
-  it.each(malformed)("verifies nothing under %s", (_label, key) => {
-    process.env.API_KEY_ENCRYPTION_KEY = key;
-    expect(
-      verifyPendingToken(forgeUnderEmptyKey({ userId: 1, ts: 1 })),
-    ).toBeNull();
-  });
+  it.each(malformed)(
+    "rejects a token signed with the bytes decoded from %s",
+    (_label, key) => {
+      process.env.API_KEY_ENCRYPTION_KEY = key;
+      expect(
+        verifyPendingToken(
+          forgeUnderDecodedKey(key, { userId: 1, ts: Date.now() }),
+        ),
+      ).toBeNull();
+    },
+  );
 });
