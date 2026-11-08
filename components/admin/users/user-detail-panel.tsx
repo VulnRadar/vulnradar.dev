@@ -255,6 +255,7 @@ export function UserDetailPanel({
   const [editingNote, setEditingNote] = useState<{
     id: number;
     text: string;
+    userId: number;
   } | null>(null);
   const [newBadgeName, setNewBadgeName] = useState("");
   const [newBadgeDisplay, setNewBadgeDisplay] = useState("");
@@ -277,6 +278,7 @@ export function UserDetailPanel({
   // Moving to another user drops the open dialog for good. Hidden but kept, it
   // reopened when the admin came back to the first user (browser back).
   if (editing && editing.userId !== u.id) setEditing(null);
+  if (editingNote && editingNote.userId !== u.id) setEditingNote(null);
   const isEditing = (kind: "account" | "role" | "badges") =>
     editing?.kind === kind && editing.userId === u.id;
   const closeEditing = () => setEditing(null);
@@ -1595,7 +1597,11 @@ export function UserDetailPanel({
                     <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity shrink-0">
                       <button
                         onClick={() =>
-                          setEditingNote({ id: note.id, text: note.note })
+                          setEditingNote({
+                            id: note.id,
+                            text: note.note,
+                            userId: u.id,
+                          })
                         }
                         className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:h-7 sm:w-7"
                         aria-label="Edit note"

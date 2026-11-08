@@ -491,6 +491,29 @@ describe("account changes always tell the user", () => {
       0,
     );
   });
+
+  it("a note dialog opened for one user does not reopen when the panel comes back to them", () => {
+    const { render, props } = setup();
+    const moveTo = (next: ReturnType<typeof detail>) => {
+      (props as unknown as { detail: ReturnType<typeof detail> }).detail = next;
+      // The guard sets state during render; React re-renders straight away,
+      // the harness on its next call.
+      render();
+    };
+    click(render(), labelled("Edit note"));
+    expect(findAll(render(), ofType(dialogs.EditNoteDialog))).toHaveLength(1);
+    moveTo(
+      detail(
+        { id: 8, email: "bob@example.com", name: "Bob" },
+        {
+          notes: [],
+        },
+      ),
+    );
+    expect(findAll(render(), ofType(dialogs.EditNoteDialog))).toHaveLength(0);
+    moveTo(detail());
+    expect(findAll(render(), ofType(dialogs.EditNoteDialog))).toHaveLength(0);
+  });
 });
 
 describe("staff role", () => {
@@ -691,6 +714,7 @@ describe("admin notes", () => {
     expect(note.props.note).toEqual({
       id: 11,
       text: "first line\nsecond line",
+      userId: 7,
     });
     let tree = note.render();
     (
