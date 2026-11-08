@@ -110,7 +110,7 @@ export async function copyTableData(originalPool, newPool, table, rowCount) {
       !targetColumnInfo.column_default
     ) {
       warn(
-        `  ${table}.${name} is NOT NULL with no default — skipping data copy.`,
+        `  ${table}.${name} is NOT NULL with no default: skipping data copy.`,
       );
       return false;
     }
@@ -187,7 +187,7 @@ export async function copyTableData(originalPool, newPool, table, rowCount) {
     );
   } else if (inserted < rowCount) {
     success(
-      `  ${table}: ${inserted}/${rowCount} rows copied (${rowCount - inserted} skipped — target already has rows with conflicting keys)`,
+      `  ${table}: ${inserted}/${rowCount} rows copied (${rowCount - inserted} skipped: target already has rows with conflicting keys)`,
     );
   } else {
     success(`  ${table}: ${inserted}/${rowCount} rows copied`);
