@@ -461,7 +461,7 @@ export interface GithubReviewQuotaCheck {
   /** True when the user brings their own AI key — the cap never applies in this case. */
   usingOwnAi: boolean;
   usedTokens: number;
-  /** -1 means unlimited (billing disabled); otherwise the plan's per-window cap (a staff caller resolves to the Pro Supporter cap, see getUserPlanLimits). */
+  /** -1 means unlimited (billing disabled); otherwise the plan's per-window cap (a staff caller resolves to at least the Pro Supporter cap and keeps a higher paid or gifted plan, see getUserPlanLimits). */
   limitTokens: number;
   /** Start of the window this check evaluated against. Mirrors AiUsageQuotaCheck's shape in lib/billing/ai-usage.ts. */
   windowStart: Date;
@@ -527,8 +527,8 @@ export async function checkGithubReviewQuota(
 
   const { windowStart, windowHours } = await resolveCurrentWindow();
   const limits = await getUserPlanLimits(userId);
-  // null means billing is disabled: unlimited. (A staff caller now
-  // resolves to the Pro Supporter plan's real limits, not null.)
+  // null means billing is disabled: unlimited. (A staff caller resolves
+  // to at least the Pro Supporter plan's real limits, not null.)
   if (limits === null) {
     return {
       allowed: true,

@@ -186,8 +186,8 @@ export default function TeamsPage() {
             <InlineCode>lib/billing/catalog.ts</InlineCode>.
           </li>
           <li>
-            Staff accounts are treated as the Pro Supporter plan here, not as
-            unlimited.
+            Staff accounts get at least the Pro Supporter plan here, not
+            unlimited; a higher paid or gifted plan is kept.
           </li>
         </ul>
       </DocsSection>

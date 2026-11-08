@@ -201,7 +201,7 @@ export async function recordBrowserbaseSeconds(
 export interface BrowserbaseQuotaCheck {
   allowed: boolean;
   usedSeconds: number;
-  /** -1 means unlimited (billing disabled); otherwise the plan's per-month cap in minutes (a staff caller resolves to the Pro Supporter cap, see getUserPlanLimits). */
+  /** -1 means unlimited (billing disabled); otherwise the plan's per-month cap in minutes (a staff caller resolves to at least the Pro Supporter cap and keeps a higher paid or gifted plan, see getUserPlanLimits). */
   limitMinutes: number;
   /** Start (UTC) of the calendar month this check evaluated against. */
   periodStart: Date;

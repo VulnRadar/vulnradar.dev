@@ -237,7 +237,7 @@ export async function syncPreStaffPlanForManualPlanChange(
     // first promotion. users.plan showing this (rather than
     // pro_supporter) while still staff doesn't under-provision them: the
     // dynamic-limits safety net this file's header comment describes
-    // still resolves a staff caller to Pro Supporter's numeric limits
+    // still resolves a staff caller to at least Pro Supporter's numeric limits
     // regardless of the literal plan column.
     await pool.query(
       "UPDATE users SET pre_staff_plan = $1, updated_at = NOW() WHERE id = $2",

@@ -256,6 +256,13 @@ describe("/docs/teams", () => {
     }
   });
 
+  it("says staff keep a higher paid or gifted plan", () => {
+    expect(page).not.toContain("treated as the Pro Supporter plan");
+    expect(page).toContain(
+      "Staff accounts get at least the Pro Supporter plan here, not unlimited; a higher paid or gifted plan is kept.",
+    );
+  });
+
   it("calls the assignee a private label", () => {
     expect(page).not.toContain("hand a remediation item");
     expect(page).toContain("It is a private label");

@@ -129,7 +129,7 @@ export interface BillingInfo {
    */
   aiUsage: {
     used: number;
-    /** -1 means unlimited (billing disabled or the user's own AI key -- a staff caller now resolves to the Pro Supporter cap, not -1). */
+    /** -1 means unlimited (billing disabled or the user's own AI key -- a staff caller resolves to at least the Pro Supporter cap, keeping a higher paid or gifted plan, never -1). */
     limit: number;
     resetsAt: string;
     windowHours: number;
@@ -149,7 +149,7 @@ export interface BillingInfo {
    */
   githubReviewUsage: {
     used: number;
-    /** -1 means unlimited (billing disabled or the user's own AI key -- a staff caller now resolves to the Pro Supporter cap, not -1). 0 means the plan doesn't include the feature at all (see the free-plan daily trial in lib/billing/github-review-usage.ts). */
+    /** -1 means unlimited (billing disabled or the user's own AI key -- a staff caller resolves to at least the Pro Supporter cap, keeping a higher paid or gifted plan, never -1). 0 means the plan doesn't include the feature at all (see the free-plan daily trial in lib/billing/github-review-usage.ts). */
     limit: number;
     resetsAt: string;
     windowHours: number;
