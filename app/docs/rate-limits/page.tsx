@@ -166,7 +166,9 @@ export default function RateLimitsPage() {
 
             Wrong on the behaviour: resolveUserPlan() tags a staff role as
             "staff", and getDailyLimit() resolves that tag to the Pro Supporter
-            plan's real limits. Staff are on a plan, not exempt. The old copy
+            plan's real limits, while a staff account with a higher paid or
+            gifted plan resolves to that plan instead. Staff are on a plan, not
+            exempt. The old copy
             promised Infinity, which is what the billing-disabled branch
             returns, not what a staff role returns.
 
@@ -184,10 +186,11 @@ export default function RateLimitsPage() {
               </span>
             ))}{" "}
             is resolved to the <InlineCode>staff</InlineCode> plan tag, which
-            carries the same daily allowance as Pro Supporter. That is a plan,
-            not an exemption: staff still spend against a quota and can still
-            run out. Only running {APP_NAME} with billing turned off makes a
-            daily limit genuinely unlimited.
+            carries the same daily allowance as Pro Supporter, unless a paid or
+            gifted plan on the account ranks higher, in which case that plan
+            applies. That is a plan, not an exemption: staff still spend against
+            a quota and can still run out. Only running {APP_NAME} with billing
+            turned off makes a daily limit genuinely unlimited.
           </p>
         </DocsCallout>
       </DocsSection>
