@@ -390,11 +390,11 @@ export default function DevelopersPage() {
           </Card>
         </div>
 
-        <DocsCallout variant="info" title="A Python SDK already exists">
+        <DocsCallout variant="info" title="The Python SDK needs a rebuild">
           <p>
-            <InlineCode>pip install vulnradar</InlineCode> wraps this API with
-            typed response models and a proper exception hierarchy. Source and
-            usage docs:{" "}
+            The <InlineCode>vulnradar</InlineCode> package on PyPI targets the
+            retired v2 API and does not work against v3 or v4, so use plain{" "}
+            <InlineCode>requests</InlineCode> until it is rebuilt. Source:{" "}
             <a
               href="https://github.com/VulnRadar/Python-SDK"
               target="_blank"
