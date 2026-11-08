@@ -15,7 +15,9 @@ import type { PoolClient } from "pg";
  * identical by construction, not by two lists staying in sync by hand.
  *
  * Caller owns the transaction (BEGIN/COMMIT/ROLLBACK) and any
- * caller-specific steps before/after: capturing the user's email for a
+ * caller-specific steps before/after: cancelling the Stripe subscription
+ * (cancelSubscriptionsBeforeDeletion, before the transaction, because this
+ * removes the only link to the customer), capturing the user's email for a
  * notification, re-verifying a password, destroying the caller's own
  * session, writing an audit log entry, deleting on-disk avatar files
  * (not part of this SQL transaction -- filesystem writes don't roll

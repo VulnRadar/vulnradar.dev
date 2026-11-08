@@ -64,6 +64,13 @@ vi.mock("@/lib/uploads/avatar-storage", () => ({
     mockDeleteAvatarFilesIfLocal(...args),
 }));
 
+// Stripe is the network boundary. Null by default: most of this suite is about
+// the delete itself on a deployment with no billing configured.
+const mockGetStripe = vi.fn();
+vi.mock("@/lib/billing/stripe", () => ({
+  getStripe: () => mockGetStripe(),
+}));
+
 const { POST } = await import("@/app/api/v3/account/delete/route");
 const { hashPassword } = await import("@/lib/auth/password-hash");
 
@@ -91,6 +98,8 @@ beforeEach(() => {
   mockGetSession.mockResolvedValue({ userId: 11 });
   mockDeleteAvatarFilesIfLocal.mockReset();
   mockDeleteAvatarFilesIfLocal.mockResolvedValue(undefined);
+  mockGetStripe.mockReset();
+  mockGetStripe.mockReturnValue(null);
 });
 
 function deleteRequest(body: unknown): Request {
@@ -241,4 +250,166 @@ describe("POST /api/v3/account/delete", () => {
     const res = await POST(deleteRequest({ currentPassword: REAL_PASSWORD }));
     expect(res.status).toBe(500);
   }, 20000);
+
+  describe("the Stripe subscription", () => {
+    function stripeWith(overrides: {
+      list?: ReturnType<typeof vi.fn>;
+      retrieve?: ReturnType<typeof vi.fn>;
+      cancel?: ReturnType<typeof vi.fn>;
+    }) {
+      const subscriptions = {
+        list: overrides.list ?? vi.fn().mockResolvedValue({ data: [] }),
+        retrieve:
+          overrides.retrieve ??
+          vi.fn().mockResolvedValue({ id: "sub_1", status: "active" }),
+        cancel: overrides.cancel ?? vi.fn().mockResolvedValue({}),
+      };
+      mockGetStripe.mockReturnValue({ subscriptions });
+      return subscriptions;
+    }
+
+    function queueAccount(billing: {
+      stripe_subscription_id: string | null;
+      stripe_customer_id: string | null;
+    }) {
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ password_hash: null, email: "a@b.test", name: "A" }],
+      });
+      mockQuery.mockResolvedValueOnce({ rows: [billing] });
+    }
+
+    it("cancels a live subscription before the account is deleted", async () => {
+      const { retrieve, cancel } = stripeWith({});
+      queueAccount({
+        stripe_subscription_id: "sub_1",
+        stripe_customer_id: null,
+      });
+
+      const res = await POST(deleteRequest({}));
+
+      expect(res.status).toBe(200);
+      expect(retrieve).toHaveBeenCalledWith("sub_1");
+      expect(cancel).toHaveBeenCalledWith("sub_1");
+      expect(mockClientQuery).toHaveBeenCalledWith("BEGIN");
+      expect(cancel.mock.invocationCallOrder[0]).toBeLessThan(
+        mockClientQuery.mock.invocationCallOrder[0],
+      );
+      expect(mockDestroySession).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the account and answers a retryable 503 when Stripe will not cancel", async () => {
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      stripeWith({
+        cancel: vi.fn().mockRejectedValue(new Error("stripe is down")),
+      });
+      queueAccount({
+        stripe_subscription_id: "sub_1",
+        stripe_customer_id: null,
+      });
+
+      const res = await POST(deleteRequest({}));
+
+      expect(res.status).toBe(503);
+      expect(res.headers.get("Retry-After")).toBe("60");
+      const json = await res.json();
+      expect(json.error).toMatch(/not deleted/);
+      expect(json.error).toMatch(/try again/i);
+      expect(mockConnect).not.toHaveBeenCalled();
+      expect(mockClientQuery).not.toHaveBeenCalled();
+      expect(mockDestroySession).not.toHaveBeenCalled();
+      expect(mockDeleteAvatarFilesIfLocal).not.toHaveBeenCalled();
+      expect(
+        errSpy.mock.calls.some((c) => String(c[0]).startsWith("[billing]")),
+      ).toBe(true);
+      errSpy.mockRestore();
+    });
+
+    it("deletes when the subscription no longer exists in Stripe", async () => {
+      const { cancel } = stripeWith({
+        retrieve: vi.fn().mockRejectedValue({ code: "resource_missing" }),
+      });
+      queueAccount({
+        stripe_subscription_id: "sub_gone",
+        stripe_customer_id: null,
+      });
+
+      const res = await POST(deleteRequest({}));
+
+      expect(res.status).toBe(200);
+      expect(cancel).not.toHaveBeenCalled();
+      expect(mockClientQuery).toHaveBeenLastCalledWith("COMMIT");
+    });
+
+    it("never touches Stripe on a deployment with no billing configured", async () => {
+      mockGetStripe.mockReturnValue(null);
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ password_hash: null, email: "a@b.test", name: "A" }],
+      });
+
+      const res = await POST(deleteRequest({}));
+
+      expect(res.status).toBe(200);
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      expect(mockClientQuery).toHaveBeenLastCalledWith("COMMIT");
+    });
+
+    it("does not cancel anything for a request that fails the password check", async () => {
+      const { retrieve, cancel } = stripeWith({});
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ password_hash: realHash, email: "a@b.test", name: "A" }],
+      });
+
+      const res = await POST(deleteRequest({ currentPassword: "not-it" }));
+
+      expect(res.status).toBe(400);
+      expect(retrieve).not.toHaveBeenCalled();
+      expect(cancel).not.toHaveBeenCalled();
+    }, 20000);
+  });
+
+  describe("the super admin account", () => {
+    it("refuses to delete a super_admin, whatever the session says, and cancels nothing", async () => {
+      const cancel = vi.fn();
+      mockGetStripe.mockReturnValue({
+        subscriptions: { cancel, list: vi.fn(), retrieve: vi.fn() },
+      });
+      mockGetSession.mockResolvedValue({ userId: 11, role: "user" });
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            password_hash: null,
+            email: "root@b.test",
+            name: "Root",
+            role: "super_admin",
+          },
+        ],
+      });
+
+      const res = await POST(deleteRequest({}));
+
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toMatch(/your own account/);
+      expect(mockConnect).not.toHaveBeenCalled();
+      expect(cancel).not.toHaveBeenCalled();
+      expect(mockDestroySession).not.toHaveBeenCalled();
+    });
+
+    it("still lets every other staff role delete their own account", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            password_hash: null,
+            email: "a@b.test",
+            name: "A",
+            role: "admin",
+          },
+        ],
+      });
+
+      const res = await POST(deleteRequest({}));
+
+      expect(res.status).toBe(200);
+    });
+  });
 });

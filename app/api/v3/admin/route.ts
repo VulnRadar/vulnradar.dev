@@ -23,6 +23,7 @@ import {
   syncPreStaffPlanForManualPlanChange,
 } from "@/lib/billing/staff-plan";
 import { deleteUserAccountData } from "@/lib/auth/account-deletion";
+import { cancelSubscriptionsBeforeDeletion } from "@/lib/billing/cancel-before-deletion";
 import { sendEmailVerification } from "@/lib/auth/email-verification";
 import { resolveCurrentWindow } from "@/lib/billing/ai-usage";
 import { getPaidPlans, getPlanById } from "@/lib/billing/catalog";
@@ -2404,6 +2405,16 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
       // This permanently deletes a user account - use with caution!
       const userEmail = targetUser.email;
       const userName = targetUser.name || userEmail;
+
+      if (!(await cancelSubscriptionsBeforeDeletion(userId))) {
+        return NextResponse.json(
+          {
+            error:
+              "Could not cancel this account's Stripe subscription, so the account was not deleted. Try again in a minute.",
+          },
+          { status: 503, headers: { "Retry-After": "60" } },
+        );
+      }
 
       // Run all deletes inside a single transaction so a mid-way failure
       // doesn't leave the user in a half-deleted state (and to avoid 33+

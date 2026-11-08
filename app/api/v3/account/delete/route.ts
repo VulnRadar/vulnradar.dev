@@ -6,6 +6,8 @@ import { getClientIp } from "@/lib/api/request-utils";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 import { deleteUserAccountData } from "@/lib/auth/account-deletion";
+import { cancelSubscriptionsBeforeDeletion } from "@/lib/billing/cancel-before-deletion";
+import { hasGodMode } from "@/lib/auth/permissions-client";
 import { sendEmail, accountDeletedEmail } from "@/lib/email/email";
 import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 
@@ -51,7 +53,8 @@ export const POST = withErrorHandling(async (request: Request) => {
     password_hash: string | null;
     email: string;
     name: string | null;
-  }>("SELECT password_hash, email, name FROM users WHERE id = $1", [
+    role: string | null;
+  }>("SELECT password_hash, email, name, role FROM users WHERE id = $1", [
     session.userId,
   ]);
   // No row at all (a stale/corrupted session referencing an already-gone
@@ -61,6 +64,16 @@ export const POST = withErrorHandling(async (request: Request) => {
   if (!pwRow.rows[0]) {
     return ApiResponse.badRequest("Password is incorrect.");
   }
+  // The admin panel refuses this on your own account, and this route used to
+  // be the way round it. Boot promotes the lowest-id account whenever no
+  // super_admin exists, so the delete would also hand god mode to the oldest
+  // remaining account. Read from the row, not the session, which can be stale.
+  if (hasGodMode(pwRow.rows[0].role)) {
+    return ApiResponse.badRequest(
+      "Cannot perform this action on your own account. A super admin account cannot be deleted.",
+    );
+  }
+
   const hasPassword = !!pwRow.rows[0].password_hash;
 
   if (hasPassword) {
@@ -84,6 +97,17 @@ export const POST = withErrorHandling(async (request: Request) => {
   // be built from values read now, while the row still exists.
   const deletedEmail = pwRow.rows[0].email;
   const deletedName = pwRow.rows[0].name;
+
+  // Last of the refusals on purpose: an attempt that fails the password check
+  // must not be able to end anybody's subscription.
+  if (!(await cancelSubscriptionsBeforeDeletion(session.userId))) {
+    const unavailable = ApiResponse.error(
+      "We could not cancel your subscription with Stripe, so your account was not deleted. Try again in a minute.",
+      503,
+    );
+    unavailable.headers.set("Retry-After", "60");
+    return unavailable;
+  }
 
   // Shares the exact same deletion logic app/api/v3/admin/route.ts's
   // delete_account handler uses -- see lib/auth/account-deletion.ts's own

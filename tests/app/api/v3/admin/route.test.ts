@@ -153,6 +153,11 @@ vi.mock("next/headers", () => ({
   cookies: vi.fn(async () => cookieStore),
 }));
 
+const mockGetStripe = vi.fn();
+vi.mock("@/lib/billing/stripe", () => ({
+  getStripe: () => mockGetStripe(),
+}));
+
 const mockSendEmail = vi.fn();
 vi.mock("@/lib/email/email", () => ({
   sendEmail: (...args: unknown[]) => mockSendEmail(...args),
@@ -220,6 +225,16 @@ beforeAll(async () => {
 }, 20000);
 
 /** requireStaff's own role lookup — must be queued first, before any other query. */
+function stripeForDelete(cancel: ReturnType<typeof vi.fn>) {
+  mockGetStripe.mockReturnValue({
+    subscriptions: {
+      list: vi.fn().mockResolvedValue({ data: [] }),
+      retrieve: vi.fn().mockResolvedValue({ id: "sub_1", status: "active" }),
+      cancel,
+    },
+  });
+}
+
 function queueRole(role: string | null) {
   mockQuery.mockResolvedValueOnce({ rows: role ? [{ role }] : [] });
 }
@@ -275,6 +290,8 @@ beforeEach(() => {
     },
   });
   mockQuery.mockReset();
+  mockGetStripe.mockReset();
+  mockGetStripe.mockReturnValue(null);
   mockConnect.mockReset();
   mockClientQuery.mockReset();
   mockClientRelease.mockReset();
@@ -1461,6 +1478,119 @@ describe("PATCH /api/v3/admin — the delete handler answers to one name", () =>
 });
 
 describe("PATCH /api/v3/admin — delete_account transaction", () => {
+  function queueDeleteWithSubscription() {
+    queueRole("admin");
+    queueTarget({
+      email: "gone@example.com",
+      role: "user",
+      name: "Gone",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ stripe_subscription_id: "sub_1", stripe_customer_id: null }],
+    });
+  }
+
+  function deleteTarget() {
+    return PATCH(
+      patchRequest({
+        action: "delete",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+  }
+
+  it("cancels the target's live subscription before deleting the account", async () => {
+    const cancel = vi.fn().mockResolvedValue({});
+    stripeForDelete(cancel);
+    queueDeleteWithSubscription();
+
+    const res = await deleteTarget();
+
+    expect(res.status).toBe(200);
+    expect(cancel).toHaveBeenCalledWith("sub_1");
+    expect(cancel.mock.invocationCallOrder[0]).toBeLessThan(
+      mockClientQuery.mock.invocationCallOrder[0],
+    );
+  }, 20000);
+
+  it("keeps the account and answers a retryable 503 when Stripe will not cancel", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    stripeForDelete(vi.fn().mockRejectedValue(new Error("stripe is down")));
+    queueDeleteWithSubscription();
+
+    const res = await deleteTarget();
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("60");
+    expect((await res.json()).error).toMatch(/not deleted/);
+    expect(mockClientQuery).not.toHaveBeenCalled();
+    expect(mockDeleteAvatarFilesIfLocal).not.toHaveBeenCalled();
+    expect(mockLogAction).not.toHaveBeenCalled();
+    errSpy.mockRestore();
+  }, 20000);
+
+  it("deletes when the subscription no longer exists in Stripe", async () => {
+    const cancel = vi.fn();
+    mockGetStripe.mockReturnValue({
+      subscriptions: {
+        list: vi.fn().mockResolvedValue({ data: [] }),
+        retrieve: vi.fn().mockRejectedValue({ code: "resource_missing" }),
+        cancel,
+      },
+    });
+    queueDeleteWithSubscription();
+
+    const res = await deleteTarget();
+
+    expect(res.status).toBe(200);
+    expect(cancel).not.toHaveBeenCalled();
+    expect(mockClientQuery.mock.calls[0][0]).toBe("BEGIN");
+  }, 20000);
+
+  it("deletes as before on a deployment with no billing configured", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "gone@example.com",
+      role: "user",
+      name: "Gone",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+
+    const res = await deleteTarget();
+
+    expect(res.status).toBe(200);
+    expect(mockClientQuery.mock.calls[0][0]).toBe("BEGIN");
+  }, 20000);
+
+  it("cancels nothing for a request that fails the admin's password check", async () => {
+    const cancel = vi.fn().mockResolvedValue({});
+    stripeForDelete(cancel);
+    queueRole("admin");
+    queueTarget({
+      email: "gone@example.com",
+      role: "user",
+      name: "Gone",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+
+    const res = await PATCH(
+      patchRequest({
+        action: "delete",
+        userId: 5,
+        currentAdminPassword: "not-the-password",
+      }),
+    );
+
+    expect(res.status).not.toBe(200);
+    expect(cancel).not.toHaveBeenCalled();
+    expect(mockClientQuery).not.toHaveBeenCalled();
+  }, 20000);
+
   it("runs the delete inside BEGIN/COMMIT and audit-logs it", async () => {
     queueRole("admin");
     queueTarget({
