@@ -74,14 +74,6 @@ const NO_GUARD_NEEDED = new Map<string, string>([
     "auth/2fa/verify/route.ts",
     "runs at the two-factor prompt, before the session is issued",
   ],
-  [
-    "account/oauth/[provider]/route.ts",
-    "only ever clears a linked identity, so it cannot give anyone a way in",
-  ],
-  [
-    "account/discord/route.ts",
-    "only ever clears a linked identity, so it cannot give anyone a way in",
-  ],
 ]);
 
 /** Every route.ts under app/api/v3, as a path relative to that root. */
