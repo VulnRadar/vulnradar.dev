@@ -115,7 +115,7 @@ export default async function ApiScannerPage() {
             The {featured.length} checks that matter most on an API
           </h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Picked across categories, because CORS and GraphQL findings are not
+            Picked across categories, because CORS and Swagger findings are not
             all filed under API. Each one has its own fix guide.{" "}
             <Link
               href="/checks/category/api"

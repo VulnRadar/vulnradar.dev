@@ -11,6 +11,8 @@ import {
   FEATURED_API_CHECK_IDS,
   getFeaturedApiChecks,
 } from "@/app/tools/api-scanner/featured-checks";
+import { LEGACY_DEDUPE_GROUPS } from "@/lib/scanner/dedupe";
+import { pageCheckGroups } from "@/lib/scanner/checks/page-checks";
 
 const CHECKS = getAllChecks();
 
@@ -106,6 +108,12 @@ describe("the api-scanner tool's curated checks", () => {
     expect(new Set(FEATURED_API_CHECK_IDS).size).toBe(
       FEATURED_API_CHECK_IDS.length,
     );
+  });
+
+  it("does not spend two slots on what the engine reports as one finding", () => {
+    const groupOf = { ...LEGACY_DEDUPE_GROUPS, ...pageCheckGroups };
+    const groups = FEATURED_API_CHECK_IDS.flatMap((id) => groupOf[id] ?? []);
+    expect(groups).toEqual([...new Set(groups)]);
   });
 
   it("crosses categories, which is why it is not a slice of one", () => {

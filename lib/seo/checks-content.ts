@@ -4,8 +4,9 @@
 // lib/scanner/registry.ts bundles them) and exposes a small, page-friendly
 // API: every documented check, lookup by id, grouping by category, and a
 // count map. Deliberately JSON-only -- it does NOT pull in the detector
-// modules the registry wires up, so an SEO page never drags scan-engine code
-// into its render path.
+// modules the registry wires up, so a page that only lists checks never drags
+// scan-engine code into its render path. check-see-also.ts is separate for
+// that reason: it does load the detectors, and only the per-check page uses it.
 //
 // Every count here is derived from the same list the pages render, so a
 // category page's "N checks" number always equals the number of links on it.
