@@ -869,9 +869,12 @@ export default function ConfigPage() {
         <DocsSubSection title="Auth">
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
-              <InlineCode>AUTH_SECRET</InlineCode>: used to HMAC-sign the
-              Discord OAuth state. Falls back to{" "}
-              <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode> if unset.
+              <InlineCode>AUTH_SECRET</InlineCode>: the HMAC key for OAuth state
+              tokens and the stored digests of password reset and email
+              verification tokens. Falls back to{" "}
+              <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode> if unset. Rotating
+              it, or setting it where the fallback was in use, invalidates every
+              unexpired reset and verification link.
             </li>
           </ul>
         </DocsSubSection>
