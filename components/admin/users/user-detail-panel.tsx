@@ -424,6 +424,11 @@ export function UserDetailPanel({
   // sends its own notice to the old and the new address, and the server sends
   // the old-address one whatever notifyUser says.
   //
+  // A moderator can rename an account but is refused notify_account_changes
+  // (it needs MANAGE_NOTIFICATIONS, withheld on purpose: see the route), so
+  // for a caller without it each write sends its own email instead. Only the
+  // name reaches here for that role, so the user still gets exactly one.
+  //
   // A refusal part way through still sends the email for the writes before
   // it. Those are on the account now, and the retry measures the draft
   // against the refetched record, so it never sends them again: an email
@@ -433,6 +438,8 @@ export function UserDetailPanel({
     opts: AccountSaveOptions,
   ): Promise<SaveResult> => {
     const pw = opts.password ? { currentAdminPassword: opts.password } : {};
+    const canBatch = canPerformAction(callerRole, "notify_account_changes");
+    const notifyUser = canBatch ? false : opts.notifyUser;
     const changesForEmail: ChangeForEmail[] = [];
     const steps: [string, Record<string, unknown>][] = [];
     if (changes.email !== undefined)
@@ -441,14 +448,11 @@ export function UserDetailPanel({
         { email: changes.email, notifyUser: opts.notifyUser, ...pw },
       ]);
     if (changes.role !== undefined)
-      steps.push([
-        "set_role",
-        { role: changes.role, notifyUser: false, ...pw },
-      ]);
+      steps.push(["set_role", { role: changes.role, notifyUser, ...pw }]);
     if (changes.name !== undefined)
-      steps.push(["update_name", { name: changes.name, notifyUser: false }]);
+      steps.push(["update_name", { name: changes.name, notifyUser }]);
     if (changes.plan !== undefined)
-      steps.push(["update_plan", { plan: changes.plan, notifyUser: false }]);
+      steps.push(["update_plan", { plan: changes.plan, notifyUser }]);
     let outcome: SaveResult = { ok: true };
     for (const [action, extra] of steps) {
       const result = await onAction(u.id, action, extra);
@@ -459,7 +463,7 @@ export function UserDetailPanel({
       if (result.change && action !== "update_email")
         changesForEmail.push(result.change);
     }
-    if (opts.notifyUser && changesForEmail.length > 0) {
+    if (canBatch && opts.notifyUser && changesForEmail.length > 0) {
       await onAction(u.id, "notify_account_changes", {
         changes: changesForEmail,
         notifyUser: true,

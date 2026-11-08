@@ -444,6 +444,30 @@ describe("account changes always tell the user", () => {
     expect(findAll(tree, (el) => el.props.name === "plan")).toHaveLength(0);
   });
 
+  it("a moderator's rename tells the user through the write itself", async () => {
+    // notify_account_changes needs MANAGE_NOTIFICATIONS, which the moderator
+    // role deliberately does not hold. Suppressing the per-field email and
+    // relying on the batch left the name saved, nobody told, and a red
+    // permission toast on a dialog that had closed as a success.
+    const { render, calls } = setup({ callerRole: "moderator" });
+    const account = open(
+      render,
+      labelled("Edit account"),
+      dialogs.EditAccountDialog,
+    );
+    let tree = account.render();
+    (
+      find(tree, (el) => el.props.name === "name").props.onChange as (
+        e: unknown,
+      ) => void
+    )({ target: { value: "Grace" } });
+    tree = account.render();
+    expect(await editDialog(tree).onSave()).toEqual({ ok: true });
+    expect(calls().map((c) => [c[1], c[2]])).toEqual([
+      ["update_name", { name: "Grace", notifyUser: true }],
+    ]);
+  });
+
   it("a dialog opened for one user is gone when the panel moves to another", () => {
     const { render, props } = setup();
     click(render(), labelled("Edit account"));
