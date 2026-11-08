@@ -38,7 +38,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     rateLimitCount += 1;
     return { rows: [{ count: String(rateLimitCount) }] };
   }
-  if (s.includes("WHERE email = $1") && s.includes("password_hash")) {
+  if (s.includes("WHERE LOWER(email) = $1") && s.includes("password_hash")) {
     return { rows: userRow ? [userRow] : [] };
   }
   if (

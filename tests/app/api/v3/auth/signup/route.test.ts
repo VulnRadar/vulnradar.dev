@@ -31,7 +31,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
 
   if (
     usersLookupError &&
-    s.includes("WHERE email = $1") &&
+    s.includes("WHERE LOWER(email) = $1") &&
     s.includes("password_hash")
   ) {
     throw usersLookupError;
@@ -47,7 +47,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     rateLimitCounts.set(key, next);
     return { rows: [{ count: String(next) }] };
   }
-  if (s.includes("WHERE email = $1") && s.includes("password_hash")) {
+  if (s.includes("WHERE LOWER(email) = $1") && s.includes("password_hash")) {
     return { rows: existingUserRow ? [existingUserRow] : [] };
   }
   if (s.startsWith("INSERT INTO users")) {
@@ -418,7 +418,8 @@ describe("POST /api/v3/auth/signup", () => {
 
     const lookup = queries.find(
       (q) =>
-        q.sql.includes("WHERE email = $1") && q.sql.includes("password_hash"),
+        q.sql.includes("WHERE LOWER(email) = $1") &&
+        q.sql.includes("password_hash"),
     );
     expect(lookup?.params[0]).toBe("alex.morgan@example.com");
     expect(insertedUserCalls[0][0]).toBe("alex.morgan@example.com");

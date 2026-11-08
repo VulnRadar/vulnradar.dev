@@ -27,6 +27,19 @@ describe("getUserByEmail", () => {
     expect(mockQuery.mock.calls[0][1]).toEqual(["user@x.com"]);
   });
 
+  it("compares the stored address the way idx_users_email_lower does", async () => {
+    // Uniqueness is enforced on lower(email). A plain `email = $1` misses a
+    // row stored before every writer lowercased (Bob@x.com), so login turned
+    // its owner away, signup treated the address as free, and the staff
+    // invite guards never saw the account. A faked pool cannot prove the
+    // match; tests/integration/email-case-lookup.test.ts does.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await getUserByEmail("bob@x.com");
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toMatch(/WHERE\s+LOWER\(email\)\s*=\s*\$1/i);
+    expect(sql).toMatch(/LIMIT 1/);
+  });
+
   it("returns the row when one matches", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, email: "u@x.com" }] });
     expect(await getUserByEmail("u@x.com")).toEqual({

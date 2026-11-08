@@ -358,6 +358,37 @@ describe("POST /api/v3/admin/staff-invites — invite lifecycle", () => {
     expect(json.error).toMatch(/already pending/i);
   });
 
+  it("looks up the account and the pending invite by lower(email), the form the unique index compares", async () => {
+    // A legacy row stored as Root@Example.com is missed by `email = $1`, which
+    // skipped the super_admin guard, the same-role check and the duplicate
+    // invite check. The real match is proven in
+    // tests/integration/email-case-lookup.test.ts.
+    queueRole("admin", 1);
+    queueAdminPassword();
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // existingUser
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 42 }] }); // existingInvite
+
+    const res = await POST(
+      postRequest({ email: "root@example.com", role: "support" }),
+    );
+    expect(res.status).toBe(400);
+
+    const [userSql, userParams] = mockQuery.mock.calls[2] as [
+      string,
+      unknown[],
+    ];
+    expect(userSql).toMatch(/FROM users\s+WHERE\s+LOWER\(email\)\s*=\s*\$1/i);
+    expect(userParams).toEqual(["root@example.com"]);
+    const [inviteSql, inviteParams] = mockQuery.mock.calls[3] as [
+      string,
+      unknown[],
+    ];
+    expect(inviteSql).toMatch(
+      /FROM staff_invites\s+WHERE\s+LOWER\(email\)\s*=\s*\$1/i,
+    );
+    expect(inviteParams).toEqual(["root@example.com"]);
+  });
+
   it("creates the invite, stores only the hashed token, and audit-logs the action", async () => {
     queueRole("admin", 1);
     queueAdminPassword();

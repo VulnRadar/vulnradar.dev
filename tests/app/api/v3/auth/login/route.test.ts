@@ -56,7 +56,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
 
   if (
     usersLookupError &&
-    s.includes("WHERE email = $1") &&
+    s.includes("WHERE LOWER(email) = $1") &&
     s.includes("password_hash")
   ) {
     throw usersLookupError;
@@ -71,7 +71,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   if (s.startsWith("SELECT key, value FROM system_settings")) {
     return { rows: [] };
   }
-  if (s.includes("WHERE email = $1") && s.includes("password_hash")) {
+  if (s.includes("WHERE LOWER(email) = $1") && s.includes("password_hash")) {
     return { rows: userRow ? [userRow] : [] };
   }
   if (
@@ -347,7 +347,8 @@ describe("POST /api/v3/auth/login", () => {
     expect(
       queries.some(
         (q) =>
-          q.sql.includes("WHERE email = $1") && q.sql.includes("password_hash"),
+          q.sql.includes("WHERE LOWER(email) = $1") &&
+          q.sql.includes("password_hash"),
       ),
     ).toBe(true);
     expect(sessionInsertCalls).toHaveLength(0);
@@ -422,7 +423,8 @@ describe("POST /api/v3/auth/login", () => {
     expect(
       queries.some(
         (q) =>
-          q.sql.includes("WHERE email = $1") && q.sql.includes("password_hash"),
+          q.sql.includes("WHERE LOWER(email) = $1") &&
+          q.sql.includes("password_hash"),
       ),
     ).toBe(false);
   });

@@ -59,8 +59,10 @@ const events: string[] = [];
 const poolCalls: { sql: string; params: unknown[] }[] = [];
 const clientCalls: { sql: string; params: unknown[] }[] = [];
 
+// getUserByEmail compares LOWER(email), the expression the unique index is
+// built on; the route's own unlocked and locked reads still write `email`.
 function usersByEmail(sql: string): boolean {
-  return /FROM users\s+WHERE email = \$1/.test(sql);
+  return /FROM users\s+WHERE (LOWER\(email\)|email) = \$1/.test(sql);
 }
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {

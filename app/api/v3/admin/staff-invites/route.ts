@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import pool from "@/lib/database/db";
+import { getUserByEmail } from "@/lib/database/db-utils";
 import {
   requireAdmin,
   logAction,
@@ -116,10 +117,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.forbidden(reauth.error);
   }
 
-  const existingUser = await pool.query<{ id: number; role: string }>(
-    "SELECT id, role FROM users WHERE email = $1",
-    [email],
-  );
+  // The same lookup the acceptance route resolves the invite with, so the
+  // guards below judge the account an accepted invite would actually change.
+  // It compares LOWER(email), as the unique index does: `email = $1` missed a
+  // legacy mixed-case row (Root@Example.com), and with it the super_admin
+  // guard and the same-role check.
+  const existingAccount = await getUserByEmail(email);
   // super-admin: same blanket protection app/api/v3/admin/route.ts's PATCH
   // handler gives the designated first-user account -- no admin-panel path
   // may modify it except the super_admin acting on themselves. Without this,
@@ -128,16 +131,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // demote them (accepting an invite for an existing account doesn't
   // require re-authenticating as that account, see the POST handler in
   // app/api/v3/auth/staff-invite/[token]/route.ts).
-  if (isSuperAdminRole(existingUser.rows[0]?.role)) {
+  if (isSuperAdminRole(existingAccount?.role)) {
     return ApiResponse.forbidden("This account cannot be modified.");
   }
-  if (existingUser.rows[0]?.role === role) {
+  if (existingAccount?.role === role) {
     return ApiResponse.badRequest("This user already holds that role.");
   }
 
+  // LOWER(email) for the same reason: a pending row written in mixed case
+  // has to count, or a second live invite goes out for the same person.
   const existingInvite = await pool.query(
     `SELECT id FROM staff_invites
-     WHERE email = $1 AND accepted_at IS NULL AND expires_at > NOW()`,
+     WHERE LOWER(email) = $1 AND accepted_at IS NULL AND expires_at > NOW()`,
     [email],
   );
   if (existingInvite.rows.length > 0) {
@@ -161,7 +166,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // key.
   await logAction(
     admin.id,
-    existingUser.rows[0]?.id ?? null,
+    existingAccount?.id ?? null,
     "staff_invite_sent",
     `Invited ${email} to staff role "${role}"`,
     ip,
