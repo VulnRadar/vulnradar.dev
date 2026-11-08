@@ -50,7 +50,7 @@ export function HistoryNotes({ notes, isOwner, onSave }: HistoryNotesProps) {
             variant="ghost"
             size="sm"
             onClick={() => setEditing(true)}
-            className="h-7 text-xs gap-1.5 text-muted-foreground"
+            className="h-11 sm:h-7 text-xs gap-1.5 text-muted-foreground"
           >
             <Pencil className="h-3 w-3" />
             {notes ? "Edit" : "Add note"}

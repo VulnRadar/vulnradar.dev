@@ -98,8 +98,8 @@ describe("the tracking card", () => {
     expect(html).toContain("Dec 1, 2026");
     const button = /<button[^>]*>Edit details<\/button>/.exec(html);
     expect(button).not.toBeNull();
-    // 28px tall, over the 24px floor.
-    expect(button![0]).toMatch(/\bh-7\b/);
+    // The only way into the dialog, so 44px on a phone and 28px above it.
+    expect(button![0]).toContain("h-11 sm:h-7");
     // The fields are not in the card any more.
     expect(html).not.toContain("<input");
     expect(html).not.toContain("<textarea");

@@ -430,6 +430,22 @@ describe("account changes always tell the user", () => {
     expect(textOf(trigger)).toContain("Edit");
   });
 
+  it.each([
+    ["Edit account", labelled("Edit account")],
+    ["Change role", buttonText("Change role")],
+    ["Edit badges", buttonText("Edit badges")],
+    ["Create Badge", buttonText("Create Badge")],
+    ["Manage Badges", buttonText("Manage Badges")],
+  ] as const)(
+    "%s is 44px tall on a phone and 28px above it",
+    (_name, match) => {
+      // Each of these opens the form that used to sit in the card, so it is the
+      // primary control of its card. Its row neighbours share the height.
+      const { render } = setup();
+      expect(find(render(), match).props.className).toContain("h-11 sm:h-7");
+    },
+  );
+
   it("without canManageStaff the dialog shows the name only", () => {
     const { render } = setup({ callerRole: "moderator" });
     const account = open(

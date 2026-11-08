@@ -536,7 +536,7 @@ export function ProfileGeneralTab({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 text-xs gap-1.5"
+                className="h-11 sm:h-7 text-xs gap-1.5"
                 aria-label="Edit name and email"
                 onClick={() => setEditingDetails(true)}
               >

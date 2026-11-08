@@ -913,7 +913,7 @@ export function UserDetailPanel({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 text-xs gap-1.5"
+                className="h-11 sm:h-7 text-xs gap-1.5"
                 onClick={() => setEditing({ kind: "account", userId: u.id })}
                 aria-label="Edit account"
               >
@@ -1031,7 +1031,7 @@ export function UserDetailPanel({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 text-xs gap-1.5"
+                  className="h-11 sm:h-7 text-xs gap-1.5"
                   disabled={hasGodMode(u.role)}
                   onClick={() => setEditing({ kind: "role", userId: u.id })}
                 >
@@ -1095,7 +1095,7 @@ export function UserDetailPanel({
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 text-xs gap-1 bg-transparent flex-1"
+                      className="h-11 sm:h-7 text-xs gap-1 bg-transparent flex-1"
                       onClick={() =>
                         setEditing({ kind: "badges", userId: u.id })
                       }
@@ -1107,7 +1107,7 @@ export function UserDetailPanel({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 text-xs gap-1 bg-transparent flex-1"
+                    className="h-11 sm:h-7 text-xs gap-1 bg-transparent flex-1"
                     onClick={() => setShowCreateBadge(true)}
                   >
                     <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Create
@@ -1121,7 +1121,7 @@ export function UserDetailPanel({
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 text-xs gap-1 bg-transparent text-destructive border-destructive/30 hover:bg-destructive/10 flex-1"
+                        className="h-11 sm:h-7 text-xs gap-1 bg-transparent text-destructive border-destructive/30 hover:bg-destructive/10 flex-1"
                         onClick={() => setShowManageBadges(true)}
                       >
                         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />{" "}

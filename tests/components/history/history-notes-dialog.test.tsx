@@ -79,13 +79,14 @@ beforeEach(() => {
 describe("the notes card", () => {
   const noSave = vi.fn(async () => null);
 
-  it("offers Add note on an empty card, at a 28px target", () => {
+  it("offers Add note on an empty card, 44px on a phone and 28px above it", () => {
     const html = renderToStaticMarkup(
       <HistoryNotes notes="" isOwner onSave={noSave} />,
     );
     expect(html).toMatch(
       /<button[^>]*class="[^"]*\bh-7\b[^"]*"[^>]*>.*Add note<\/button>/,
     );
+    expect(html).toContain("h-11 sm:h-7");
     expect(html).toContain("No notes yet.");
   });
 

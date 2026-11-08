@@ -196,7 +196,7 @@ export function AiProviderSummary({
             ref={triggerRef}
             type="button"
             size="sm"
-            className="h-7 text-xs gap-1.5 shrink-0"
+            className="h-11 sm:h-7 text-xs gap-1.5 shrink-0"
             onClick={onEdit}
           >
             <Pencil className="h-3 w-3" aria-hidden="true" />
@@ -232,7 +232,7 @@ export function AiProviderSummary({
             type="button"
             variant="outline"
             size="sm"
-            className="h-7 text-xs gap-1.5 shrink-0"
+            className="h-11 sm:h-7 text-xs gap-1.5 shrink-0"
             onClick={onEdit}
           >
             <Pencil className="h-3 w-3" aria-hidden="true" />

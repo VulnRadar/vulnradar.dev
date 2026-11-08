@@ -648,7 +648,10 @@ export function RemediationControl({
             variant="outline"
             onClick={() => setEditingDetails(true)}
             disabled={!loaded || saving}
-            className={cn("h-7 shrink-0 self-start px-2.5 text-xs", FOCUS_RING)}
+            className={cn(
+              "h-11 sm:h-7 shrink-0 self-start px-2.5 text-xs",
+              FOCUS_RING,
+            )}
           >
             {hasDetails ? "Edit details" : "Add details"}
           </Button>

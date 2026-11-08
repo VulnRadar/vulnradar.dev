@@ -146,14 +146,14 @@ describe("the Personal details block", () => {
     expect(html).not.toContain("Unsaved");
   });
 
-  it("has an Edit trigger that is a real button with a name and a 24px floor", () => {
+  it("has an Edit trigger that is a real button with a name and a 44px phone target", () => {
     const html = renderTab();
     const trigger = html.match(
       /<button[^>]*aria-label="Edit name and email"[^>]*>/,
     );
     expect(trigger).not.toBeNull();
-    // h-7 is 28px, over the 24px floor of WCAG 2.2 SC 2.5.8.
-    expect(trigger![0]).toMatch(/\bh-7\b/);
+    // 44px on a phone (owner decision T12), 28px above it.
+    expect(trigger![0]).toContain("h-11 sm:h-7");
     expect(trigger![0]).toContain('type="button"');
   });
 });

@@ -123,6 +123,26 @@ describe("the saved-provider summary", () => {
     expect(html).not.toContain("Reset to");
   });
 
+  it.each([
+    ["Set up provider", unconfigured],
+    ["Edit provider", saved()],
+  ] as const)("%s is 44px tall on a phone", (label, config) => {
+    const html = renderToStaticMarkup(
+      <AiProviderSummary
+        config={config}
+        onEdit={() => {}}
+        onReset={() => {}}
+        resetting={false}
+      />,
+    );
+    const button = html
+      .split("<button")
+      .slice(1)
+      .find((part) => part.split("</button>")[0].includes(label));
+    expect(button).toBeDefined();
+    expect(button).toContain("h-11 sm:h-7");
+  });
+
   it("the trigger is a real button with at least a 24px target", () => {
     const html = renderToStaticMarkup(
       <AiProviderSummary
