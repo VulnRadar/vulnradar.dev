@@ -1079,6 +1079,30 @@ docker compose logs -f app`}
             MISMATCH box and exits 1, which is a crash loop, not a rollback.
           </p>
         </DocsCallout>
+        <DocsCallout
+          variant="warning"
+          title="Upgrade note: staff SSO needs email_verified"
+        >
+          <p>
+            Staff single sign-on now trusts an email address only when the ID
+            token says <InlineCode>email_verified</InlineCode> is true.
+            Microsoft Entra ID sends no such claim unless you configure it, so
+            on an Entra install every staff SSO sign-in is refused after this
+            upgrade. Either add the claim at your provider, or have the super
+            admin turn on{" "}
+            <InlineCode>STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED</InlineCode> in
+            Settings, Advanced. Only the super admin can set it, and a token
+            that says <InlineCode>false</InlineCode> is still refused with it
+            on. Until then, sign in with a password. The details are in the{" "}
+            <Link
+              href="/docs/administration#staff-sso"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              staff SSO section of the administration docs
+            </Link>
+            .
+          </p>
+        </DocsCallout>
 
         <DocsSubSection id="in-app-updater" title="The in-app updater">
           <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">

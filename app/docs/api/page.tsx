@@ -2337,7 +2337,7 @@ X-RateLimit-Reset: 2026-03-12T00:00:00.000Z`}
               code: "413",
               title: "Payload Too Large",
               description:
-                "The request or the work it implies exceeds a hard cap, such as a repo too large for AI review or an oversized AI conversation.",
+                "The request or the work it implies exceeds a hard cap, such as an oversized AI conversation.",
             },
             {
               code: "422",

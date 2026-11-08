@@ -663,3 +663,28 @@ describe("operator copy avoids dash punctuation", () => {
     });
   }
 });
+
+describe("docs say what the repo review and staff SSO do now", () => {
+  const github = read("app/docs/github/page.tsx");
+  const api = read("app/docs/api/page.tsx");
+  const selfHosting = read("app/docs/self-hosting/page.tsx");
+
+  it("/docs/github does not claim an oversized repo is rejected", () => {
+    expect(github).not.toMatch(/oversized\s+or\s+empty\s+repo\s+is\s+rejected/);
+    expect(github).toMatch(/oversized\s+repo\s+is\s+not\s+rejected/);
+  });
+
+  it("the 413 row of /docs/api no longer uses a repo as its example", () => {
+    const row = api.match(/code: "413"[\s\S]*?\},/)?.[0] ?? "";
+    expect(row).toContain("oversized AI conversation");
+    expect(row).not.toMatch(/repo/);
+  });
+
+  it("/docs/self-hosting has the staff SSO upgrade note", () => {
+    expect(selfHosting).toContain("STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED");
+    expect(selfHosting).toContain("Microsoft Entra ID");
+    expect(selfHosting).toMatch(/super\s+admin/);
+    expect(selfHosting).toMatch(/still\s+refused/);
+    expect(selfHosting).toContain("/docs/administration#staff-sso");
+  });
+});

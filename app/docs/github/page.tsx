@@ -73,8 +73,10 @@ export default function GithubScanningPage() {
       <DocsSection id="how-it-works" title="How a scan runs">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
           <InlineCode>POST /api/v3/scan/github</InlineCode> runs the pipeline in
-          order and short-circuits at the first gate that fails, so an oversized
-          or empty repo is rejected before a single AI token is spent.
+          order and stops at the first gate that fails. An empty repo, or one
+          with no scannable files, is rejected before any AI token is spent. An
+          oversized repo is not rejected: it is fully pattern-scanned and partly
+          AI-reviewed, and the result says how much.
         </p>
         <ol className="list-decimal space-y-2 pl-6 text-sm text-muted-foreground">
           <li>
