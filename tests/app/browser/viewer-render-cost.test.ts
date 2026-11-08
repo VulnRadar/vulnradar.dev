@@ -36,7 +36,7 @@ describe("the viewer page", () => {
     expect(src).not.toContain("setNow(");
     // The network dock's poll runs through useVisibleInterval, so the page
     // owns no raw timer at all.
-    expect(src).not.toMatch(/setInterval\(/);
+    expect(src).not.toMatch(/\bsetInterval\(/);
     expect(src).toContain("useVisibleInterval(");
   });
 
