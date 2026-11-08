@@ -113,6 +113,22 @@ describe("latest-request", () => {
     expect(h.state.loading).toBe(false);
   });
 
+  it("a cancelled request does not end the loading of the open after it", async () => {
+    const h = harness();
+    const a = h.open(1);
+    h.tracker.cancel();
+    const b = h.open(2);
+    h.pending.get(1)!.resolve("findings of A");
+    await a;
+    expect(h.state.scanDetail).toBeNull();
+    expect(h.state.loading).toBe(true);
+
+    h.pending.get(2)!.resolve("findings of B");
+    await b;
+    expect(h.state.scanDetail).toBe("findings of B");
+    expect(h.state.loading).toBe(false);
+  });
+
   it("only the newest request reports itself current", () => {
     const tracker = createLatestRequest();
     const first = tracker.begin();
@@ -135,16 +151,38 @@ describe("repo detail uses it", () => {
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
+  // The behaviour above runs on a mirror, so these pin the component to it:
+  // the guard has to sit directly after each await, not merely exist.
+  const body = (start: string) => {
+    const from = src.indexOf(start);
+    expect(from).toBeGreaterThanOrEqual(0);
+    return src.slice(from, src.indexOf("\n  };\n", from));
+  };
+
   it("guards every state write after the detail fetch", () => {
-    const fn = src.match(/const loadScanDetail = async[\s\S]*?\n  \};\n/)![0];
+    const fn = body("const loadScanDetail = async");
     expect(fn).toContain("detailRequest.begin()");
-    expect(fn).toContain("{ signal }");
-    expect(fn.match(/isCurrent\(\)/g)!.length).toBeGreaterThanOrEqual(4);
+    expect(fn).toMatch(
+      /await fetch\(API\.HISTORY_ITEM\(id\), \{ signal \}\);\s*if \(!isCurrent\(\)\) return;/,
+    );
+    expect(fn).toMatch(/await res\.json\(\);\s*if \(!isCurrent\(\)\) return;/);
+    expect(fn).toMatch(
+      /catch \{\s*if \(isCurrent\(\)\) setScanDetail\(null\);/,
+    );
+    expect(fn).toMatch(
+      /finally \{\s*if \(isCurrent\(\)\) setDetailLoading\(false\);/,
+    );
   });
 
   it("cancels on repo change, on back, on a fresh scan and on unmount", () => {
-    expect(src.match(/detailRequest\.cancel/g)!.length).toBeGreaterThanOrEqual(
-      4,
+    const clears = /detailRequest\.cancel\(\);\s*setDetailLoading\(false\);/;
+    expect(
+      src.match(/useEffect\(\(\) => \{[\s\S]*?\[repo\.fullName\]\);/)![0],
+    ).toMatch(clears);
+    expect(body("const backToTimeline = ")).toMatch(clears);
+    expect(body("const handleScanClick = async")).toMatch(clears);
+    expect(src).toContain(
+      "useEffect(() => detailRequest.cancel, [detailRequest])",
     );
   });
 });
