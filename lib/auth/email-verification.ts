@@ -53,9 +53,10 @@ export async function sendEmailVerification(
 
   const verifyLink = `${secretLinkAppUrl()}/verify-email?token=${token}`;
   const emailContent = await emailVerificationEmail(
-    name || "there",
+    name ?? "",
     verifyLink,
     await getUserLocale(userId),
+    emailVerificationHours,
   );
   setImmediate(() => {
     sendEmail({

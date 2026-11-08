@@ -290,6 +290,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     name.trim(),
     verifyLink,
     locale,
+    emailVerificationHours,
   );
 
   setImmediate(() => {

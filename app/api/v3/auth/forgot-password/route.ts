@@ -4,6 +4,7 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { secretLinkAppUrl } from "@/lib/config/server-app-url";
+import { getSetting } from "@/lib/config/runtime-config";
 import { sendEmail, passwordResetEmail } from "@/lib/email/email";
 import { issueResetLinkToken } from "@/lib/auth/password-reset-token";
 import {
@@ -90,7 +91,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Send reset email via SMTP in the background
   const resetLink = `${secretLinkAppUrl()}/reset-password?token=${token}`;
-  const emailPayload = passwordResetEmail(resetLink);
+  const emailPayload = passwordResetEmail(
+    resetLink,
+    await getSetting("PASSWORD_RESET_HOURS"),
+  );
 
   // To the row's address, not the typed one: the lookup no longer guarantees
   // they are the same string, and a reset link only ever goes to the address

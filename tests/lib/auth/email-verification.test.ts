@@ -52,6 +52,18 @@ async function sentText(): Promise<string> {
 }
 
 describe("sendEmailVerification", () => {
+  it("states the lifetime the link was really given", async () => {
+    systemSettingsRows = [{ key: "EMAIL_VERIFICATION_HOURS", value: "3" }];
+    expect(await sentText()).toContain("3 hours");
+  });
+
+  it("greets nobody by the word there when the account has no name", async () => {
+    await sendEmailVerification(7, null, "alex@example.com");
+    await new Promise((resolve) => setImmediate(resolve));
+    const sent = mockSendEmail.mock.calls[0][0] as { text: string };
+    expect(sent.text).not.toMatch(/\bthere\b/i);
+  });
+
   // The build-time APP_URL constant was fixed when this module loaded; a
   // self-hosted container sets its own URL afterwards, at runtime.
   it("links to the URL the running process was given", async () => {

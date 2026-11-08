@@ -923,7 +923,10 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
       );
 
       const resetLink = `${secretLinkAppUrl()}/reset-password?token=${resetToken}`;
-      const emailPayloadPwd = passwordResetEmail(resetLink);
+      const emailPayloadPwd = passwordResetEmail(
+        resetLink,
+        await getSetting("PASSWORD_RESET_HOURS"),
+      );
       // No unsubscribe token, for the same reason as update_password above: a
       // password reset link is a security notice, not mail the user can opt out
       // of, and a token puts a one-click unsubscribe on it.

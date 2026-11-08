@@ -341,6 +341,11 @@ describe("POST /api/v3/auth/forgot-password", () => {
       );
       expect(text).not.toContain("evil.example");
     });
+
+    it("states the lifetime the link was really given", async () => {
+      systemSettingsRows = [{ key: "PASSWORD_RESET_HOURS", value: "6" }];
+      expect(await sentText()).toContain("6 hours");
+    });
   });
 
   it("does not send an email for an unknown account", async () => {
