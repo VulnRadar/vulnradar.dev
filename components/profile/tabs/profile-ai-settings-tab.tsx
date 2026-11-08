@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { clearAiInfoCache } from "@/components/shared/ai-info";
+import { EditDialog } from "@/components/shared/edit-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +19,7 @@ import {
   RotateCcw,
   Power,
   AlertTriangle,
+  Pencil,
 } from "lucide-react";
 import { AiSettingsTabSkeleton } from "./ai-settings-tab-skeleton";
 import type { ProfileTabProps } from "../types";
@@ -30,13 +32,368 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
-interface AiConfig {
+export interface AiConfig {
   useVulnradarAi: boolean;
   aiDisabled: boolean;
   provider: string | null;
   modelId: string | null;
   apiKeyLast4: string | null;
   baseUrl: string | null;
+}
+
+/**
+ * What AiProviderDialog holds while it is open. The typed API key lives here
+ * and nowhere else, so it is gone the moment the dialog unmounts.
+ */
+export interface AiProviderDraft {
+  provider: string;
+  model: string;
+  apiKey: string;
+}
+
+export function aiProviderDraftFrom(config: AiConfig): AiProviderDraft {
+  return {
+    provider: config.provider ?? "",
+    model: config.modelId ?? "",
+    apiKey: "",
+  };
+}
+
+/** A model belongs to one provider, so picking another provider clears it. */
+export function withDraftProvider(
+  draft: AiProviderDraft,
+  provider: string,
+): AiProviderDraft {
+  return { ...draft, provider, model: "" };
+}
+
+/**
+ * A stored key only counts for the provider it was saved under. Without the
+ * provider match, switching provider kept the save gate satisfied and a
+ * keyless save stored the new provider carrying the OLD provider's key: the
+ * route keeps whatever key is stored when none is sent.
+ */
+export function aiProviderHasExistingKey(
+  draft: AiProviderDraft,
+  config: AiConfig,
+): boolean {
+  return !!config.apiKeyLast4 && draft.provider === config.provider;
+}
+
+/**
+ * Trimmed exactly as aiProviderRequestBody trims it. The old gate read the
+ * key untrimmed, so a key of only spaces passed it and was then dropped from
+ * the body, which is the keyless save above by another route.
+ */
+export function aiProviderCanSave(
+  draft: AiProviderDraft,
+  config: AiConfig,
+): boolean {
+  if (!draft.provider || !draft.model) return false;
+  return draft.apiKey.trim() !== "" || aiProviderHasExistingKey(draft, config);
+}
+
+export function aiProviderDirty(
+  draft: AiProviderDraft,
+  config: AiConfig,
+): boolean {
+  return (
+    draft.provider !== (config.provider ?? "") ||
+    draft.model !== (config.modelId ?? "") ||
+    draft.apiKey !== ""
+  );
+}
+
+/** The key is sent only when one was typed, and only in this body. */
+export function aiProviderRequestBody(
+  draft: AiProviderDraft,
+): Record<string, unknown> {
+  const providerDef = AI_MODEL_CATALOG.find((p) => p.id === draft.provider);
+  const body: Record<string, unknown> = {
+    useVulnradarAi: false,
+    provider: draft.provider,
+    modelId: draft.model,
+    baseUrl: providerDef?.baseUrl ?? null,
+  };
+  const key = draft.apiKey.trim();
+  if (key) body.apiKey = key;
+  return body;
+}
+
+export type AiProviderSaveResult =
+  { ok: true; config: AiConfig } | { ok: false; error: string };
+
+export async function saveAiProvider(
+  draft: AiProviderDraft,
+  config: AiConfig,
+): Promise<AiProviderSaveResult> {
+  const body = aiProviderRequestBody(draft);
+  try {
+    const res = await fetch(API.ACCOUNT_AI_CONFIG, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: unknown;
+    };
+    if (!res.ok) {
+      return {
+        ok: false,
+        error:
+          typeof data.error === "string" && data.error
+            ? data.error
+            : "Failed to save AI config.",
+      };
+    }
+  } catch {
+    return { ok: false, error: "Failed to save AI config." };
+  }
+  const key = typeof body.apiKey === "string" ? body.apiKey : "";
+  return {
+    ok: true,
+    config: {
+      useVulnradarAi: false,
+      aiDisabled: config.aiDisabled,
+      provider: draft.provider,
+      modelId: draft.model,
+      apiKeyLast4: key ? key.slice(-4) : config.apiKeyLast4,
+      baseUrl: (body.baseUrl as string | null) ?? null,
+    },
+  };
+}
+
+/**
+ * The own-provider block of the tab: what is saved, with the trigger that
+ * opens AiProviderDialog. Nothing here is editable in place.
+ */
+export function AiProviderSummary({
+  config,
+  onEdit,
+  onReset,
+  resetting,
+}: {
+  config: AiConfig;
+  onEdit: () => void;
+  onReset: () => void;
+  resetting: boolean;
+}) {
+  if (config.useVulnradarAi) {
+    return (
+      <Card className="border-border/50 bg-card/50">
+        <CardContent className="pt-5 pb-5 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+          <p className="text-sm text-muted-foreground">
+            No provider saved yet. Scans keep using {APP_NAME}'s AI until you
+            add a provider, a model and an API key.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            className="h-7 text-xs gap-1.5 shrink-0"
+            onClick={onEdit}
+          >
+            <Pencil className="h-3 w-3" aria-hidden="true" />
+            Set up provider
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const providerDef = AI_MODEL_CATALOG.find((p) => p.id === config.provider);
+  const model = providerDef?.models.find((m) => m.id === config.modelId);
+  return (
+    <Card className="border-border/50 bg-card/50">
+      <CardContent className="pt-5 pb-5 flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm min-w-0">
+            <dt className="text-muted-foreground">Provider</dt>
+            <dd className="text-foreground font-medium truncate">
+              {providerDef?.name ?? config.provider}
+            </dd>
+            <dt className="text-muted-foreground">Model</dt>
+            <dd className="text-foreground truncate">
+              {model?.label ?? config.modelId}
+            </dd>
+            <dt className="text-muted-foreground">API key</dt>
+            <dd className="text-foreground font-mono">
+              {config.apiKeyLast4 ? `••••${config.apiKeyLast4}` : "Not saved"}
+            </dd>
+          </dl>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1.5 shrink-0"
+            onClick={onEdit}
+          >
+            <Pencil className="h-3 w-3" aria-hidden="true" />
+            Edit provider
+          </Button>
+        </div>
+        <div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onReset}
+            disabled={resetting}
+            className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+          >
+            {resetting ? (
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+            ) : (
+              <RotateCcw className="h-3 w-3" aria-hidden="true" />
+            )}
+            Reset to {APP_NAME} AI
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const selectClass =
+  "w-full h-10 rounded-md border border-border bg-card px-3 py-2 text-base sm:text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20";
+
+/**
+ * Mounted only while open, so every opening starts from the saved config and
+ * a typed key leaves state with the dialog.
+ */
+export function AiProviderDialog({
+  config,
+  onClose,
+  onSaved,
+}: {
+  config: AiConfig;
+  onClose: () => void;
+  onSaved: (next: AiConfig) => void;
+}) {
+  const [draft, setDraft] = useState(() => aiProviderDraftFrom(config));
+  const [showApiKeyText, setShowApiKeyText] = useState(false);
+  const providerDef = AI_MODEL_CATALOG.find((p) => p.id === draft.provider);
+  const modelSpec = getModelSpec(draft.provider, draft.model);
+  const hasExistingKey = aiProviderHasExistingKey(draft, config);
+  const hint = [
+    modelSpec?.contextWindow &&
+      `${formatTokens(modelSpec.contextWindow)} context`,
+    modelSpec?.maxOutputTokens &&
+      `${formatTokens(modelSpec.maxOutputTokens)} max output`,
+    modelSpec?.note,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  return (
+    <EditDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title={
+        config.useVulnradarAi ? "Set up your AI provider" : "Edit AI provider"
+      }
+      description="The provider, model and API key used to analyze the websites you scan."
+      saveLabel="Save provider"
+      dirty={aiProviderDirty(draft, config)}
+      canSave={aiProviderCanSave(draft, config)}
+      onSave={async () => {
+        const result = await saveAiProvider(draft, config);
+        if (!result.ok) return result.error;
+        onSaved(result.config);
+        return null;
+      }}
+    >
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="ai-provider-select">Provider</Label>
+          <select
+            id="ai-provider-select"
+            value={draft.provider}
+            onChange={(e) => setDraft(withDraftProvider(draft, e.target.value))}
+            className={selectClass}
+            autoFocus
+          >
+            <option value="">Choose a provider</option>
+            {AI_MODEL_CATALOG.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {draft.provider && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="ai-model-select">Model</Label>
+            <select
+              id="ai-model-select"
+              value={draft.model}
+              onChange={(e) => setDraft({ ...draft, model: e.target.value })}
+              className={selectClass}
+            >
+              <option value="">Choose a model</option>
+              {providerDef?.models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+          </div>
+        )}
+
+        {draft.provider && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="ai-api-key-input">API key</Label>
+            <div className="relative">
+              <Input
+                id="ai-api-key-input"
+                type={showApiKeyText ? "text" : "password"}
+                placeholder={providerDef?.keyPlaceholder ?? "API key"}
+                value={draft.apiKey}
+                onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })}
+                className="bg-card pr-10"
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKeyText((v) => !v)}
+                className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors"
+                aria-label={showApiKeyText ? "Hide API key" : "Show API key"}
+              >
+                {showApiKeyText ? (
+                  <EyeOff className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <Eye className="h-4 w-4" aria-hidden="true" />
+                )}
+              </button>
+            </div>
+            {hasExistingKey && (
+              <p className="text-xs text-muted-foreground">
+                Leave empty to keep the key ending {config.apiKeyLast4}.
+              </p>
+            )}
+            {providerDef?.keyHint && (
+              <p className="text-xs text-muted-foreground">
+                {providerDef.keyHint}
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="rounded-lg bg-muted/50 border border-border p-3">
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Your API key is encrypted at rest. It is used only when scanning
+            websites you submit. {APP_NAME} does not use it for anything else.
+          </p>
+        </div>
+      </div>
+    </EditDialog>
+  );
 }
 
 export function ProfileAiSettingsTab({
@@ -49,18 +406,12 @@ export function ProfileAiSettingsTab({
   // Bumped by the retry button below to re-run the load effect.
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Form state
   const [aiDisabled, setAiDisabled] = useState(false);
   const [togglingAi, setTogglingAi] = useState(false);
   const [useOwn, setUseOwn] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState("");
-  const [selectedModel, setSelectedModel] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [showKeyInput, setShowKeyInput] = useState(false);
-  const [showApiKeyText, setShowApiKeyText] = useState(false);
+  const [editingProvider, setEditingProvider] = useState(false);
 
   // Action state
-  const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
@@ -81,8 +432,6 @@ export function ProfileAiSettingsTab({
         setConfig(data);
         setAiDisabled(data.aiDisabled ?? false);
         setUseOwn(!data.useVulnradarAi);
-        if (data.provider) setSelectedProvider(data.provider);
-        if (data.modelId) setSelectedModel(data.modelId);
       } catch {
         // Handled by the null-config branch below, which offers a retry.
       } finally {
@@ -95,9 +444,6 @@ export function ProfileAiSettingsTab({
     setFetching(true);
     setReloadKey((k) => k + 1);
   }
-
-  const providerDef = AI_MODEL_CATALOG.find((p) => p.id === selectedProvider);
-  const modelSpec = getModelSpec(selectedProvider, selectedModel);
 
   async function handleToggleAi() {
     setTogglingAi(true);
@@ -126,54 +472,9 @@ export function ProfileAiSettingsTab({
     }
   }
 
-  async function handleSave() {
-    if (!selectedProvider || !selectedModel) {
-      setError("Select a provider and model before saving.");
-      return;
-    }
-
-    setSaving(true);
-    setError(null);
-    try {
-      const body: Record<string, unknown> = {
-        useVulnradarAi: false,
-        provider: selectedProvider,
-        modelId: selectedModel,
-        baseUrl: providerDef?.baseUrl ?? null,
-      };
-      if (apiKey.trim()) {
-        body.apiKey = apiKey.trim();
-      }
-
-      const res = await fetch(API.ACCOUNT_AI_CONFIG, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || "Failed to save AI config.");
-        return;
-      }
-
-      setConfig((prev) => ({
-        useVulnradarAi: false,
-        aiDisabled: prev?.aiDisabled ?? false,
-        provider: selectedProvider,
-        modelId: selectedModel,
-        apiKeyLast4: apiKey ? apiKey.slice(-4) : (prev?.apiKeyLast4 ?? null),
-        baseUrl: providerDef?.baseUrl ?? null,
-      }));
-      setApiKey("");
-      setShowKeyInput(false);
-      setShowApiKeyText(false);
-      setSuccess("AI provider saved.");
-    } catch {
-      setError("Failed to save AI config.");
-    } finally {
-      setSaving(false);
-    }
+  function askReset() {
+    setResetError(null);
+    setConfirmReset(true);
   }
 
   // Confirmed, because this is the only irreversible action on the page that
@@ -181,8 +482,7 @@ export function ProfileAiSettingsTab({
   // the provider API key is never rendered back (only apiKeyLast4 is stored
   // for display), so once it is deleted the only way to restore it is to go
   // and reissue one with the provider. Both triggers, the outline button and
-  // the 12px text link at the bottom of the form, went straight through with
-  // no warning.
+  // the text button on the saved-provider summary, go through this dialog.
   async function handleReset() {
     setResetting(true);
     setResetError(null);
@@ -204,10 +504,6 @@ export function ProfileAiSettingsTab({
         baseUrl: null,
       }));
       setUseOwn(false);
-      setSelectedProvider("");
-      setSelectedModel("");
-      setApiKey("");
-      setShowKeyInput(false);
       setSuccess(`Reset to ${APP_NAME} AI.`);
       setConfirmReset(false);
     } catch {
@@ -256,14 +552,6 @@ export function ProfileAiSettingsTab({
       </div>
     );
   }
-
-  // A stored key only counts as "existing" for the provider it was saved under.
-  // Without the provider match, switching to a different provider kept the save
-  // gate satisfied and showed the old provider's key last-4 under the new one,
-  // so a keyless save persisted the new provider carrying the OLD provider's
-  // key (a guaranteed auth failure when it runs).
-  const hasExistingKey =
-    !!config?.apiKeyLast4 && selectedProvider === config?.provider;
 
   return (
     <div className="flex flex-col gap-8">
@@ -378,10 +666,7 @@ export function ProfileAiSettingsTab({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      setResetError(null);
-                      setConfirmReset(true);
-                    }}
+                    onClick={askReset}
                     disabled={resetting}
                     className="shrink-0 gap-2"
                   >
@@ -403,197 +688,27 @@ export function ProfileAiSettingsTab({
           </Card>
         )}
 
-        {/* Custom provider form */}
         {useOwn && (
-          <Card className="border-border/50 bg-card/50">
-            <CardContent className="pt-6 flex flex-col gap-5">
-              {/* Provider select */}
-              <div className="flex flex-col gap-2">
-                <Label
-                  htmlFor="provider-select"
-                  className="text-sm font-medium"
-                >
-                  Provider
-                </Label>
-                <select
-                  id="provider-select"
-                  value={selectedProvider}
-                  onChange={(e) => {
-                    setSelectedProvider(e.target.value);
-                    setSelectedModel("");
-                  }}
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-base sm:text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">Choose a provider</option>
-                  {AI_MODEL_CATALOG.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Model select, only shown once a provider is picked */}
-              {selectedProvider && (
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="model-select" className="text-sm font-medium">
-                    Model
-                  </Label>
-                  <select
-                    id="model-select"
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-base sm:text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="">Choose a model</option>
-                    {providerDef?.models.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-                  {modelSpec &&
-                    (modelSpec.contextWindow || modelSpec.maxOutputTokens) && (
-                      <p className="text-xs text-muted-foreground">
-                        {modelSpec.contextWindow &&
-                          `${formatTokens(modelSpec.contextWindow)} context`}
-                        {modelSpec.contextWindow &&
-                          modelSpec.maxOutputTokens &&
-                          " · "}
-                        {modelSpec.maxOutputTokens &&
-                          `${formatTokens(modelSpec.maxOutputTokens)} max output`}
-                        {modelSpec.note && ` · ${modelSpec.note}`}
-                      </p>
-                    )}
-                </div>
-              )}
-
-              {/* API key */}
-              {selectedProvider && (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <Label
-                      htmlFor="api-key-input"
-                      className="text-sm font-medium"
-                    >
-                      API Key
-                    </Label>
-                    {hasExistingKey && !showKeyInput && (
-                      <button
-                        type="button"
-                        onClick={() => setShowKeyInput(true)}
-                        className="text-xs text-primary hover:underline"
-                      >
-                        Change key
-                      </button>
-                    )}
-                  </div>
-
-                  {hasExistingKey && !showKeyInput ? (
-                    <div className="flex items-center gap-2 h-10 px-3 rounded-md border border-border bg-muted/30 text-sm text-muted-foreground font-mono">
-                      {"••••••••" + config!.apiKeyLast4}
-                    </div>
-                  ) : (
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <Input
-                          id="api-key-input"
-                          type={showApiKeyText ? "text" : "password"}
-                          placeholder={providerDef?.keyPlaceholder ?? "API key"}
-                          value={apiKey}
-                          onChange={(e) => setApiKey(e.target.value)}
-                          className="bg-card pr-10"
-                          autoComplete="off"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowApiKeyText((v) => !v)}
-                          className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors"
-                          aria-label={
-                            showApiKeyText ? "Hide API key" : "Show API key"
-                          }
-                        >
-                          {showApiKeyText ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
-                        </button>
-                      </div>
-                      {hasExistingKey && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setShowKeyInput(false);
-                            setApiKey("");
-                          }}
-                          className="shrink-0"
-                        >
-                          Cancel
-                        </Button>
-                      )}
-                    </div>
-                  )}
-
-                  {providerDef?.keyHint && (
-                    <p className="text-xs text-muted-foreground">
-                      {providerDef.keyHint}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Info note */}
-              <div className="rounded-lg bg-muted/50 border border-border p-3">
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Your API key is encrypted at rest. It is used only when
-                  scanning websites you submit. {APP_NAME} does not use it for
-                  anything else.
-                </p>
-              </div>
-
-              {/* Save */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                {!config.useVulnradarAi && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setResetError(null);
-                      setConfirmReset(true);
-                    }}
-                    disabled={resetting}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
-                  >
-                    {resetting ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <RotateCcw className="h-3 w-3" />
-                    )}
-                    Reset to {APP_NAME} AI
-                  </button>
-                )}
-                <div className="ml-auto">
-                  <Button
-                    onClick={handleSave}
-                    disabled={
-                      saving ||
-                      !selectedProvider ||
-                      !selectedModel ||
-                      (!apiKey && !hasExistingKey)
-                    }
-                    className="gap-2"
-                  >
-                    {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                    Save provider
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <AiProviderSummary
+            config={config}
+            onEdit={() => setEditingProvider(true)}
+            onReset={askReset}
+            resetting={resetting}
+          />
         )}
       </section>
+
+      {editingProvider && (
+        <AiProviderDialog
+          config={config}
+          onClose={() => setEditingProvider(false)}
+          onSaved={(next) => {
+            setConfig(next);
+            setError(null);
+            setSuccess("AI provider saved.");
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={confirmReset}
