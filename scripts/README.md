@@ -182,8 +182,11 @@ not declare: install it for the run with `npm i --no-save sharp`.
 `npm run db:restore -- --file=<path> --yes` refuses to run against a database
 that still has tables in the `public` schema, because `db:backup` writes a
 plain dump with no `DROP` statements and restoring it over an existing schema
-fails on every statement. Restore into a fresh database, or pass `--force` when
-you know the dump and the target are compatible. psql runs with
+fails on its first `CREATE`. Restore into a fresh database, or pass `--replace`
+to drop the `public` schema and load the backup in the restore's own
+transaction, so a backup that does not apply leaves the database as it was.
+`--force` only lets the attempt start on a database that already has tables and
+replaces nothing. psql runs with
 `ON_ERROR_STOP=1` inside one transaction, so the first error aborts and rolls the
 whole restore back, and the run finishes by printing the row counts of a few
 core tables as positive evidence. An encrypted `.enc` backup is decrypted and
