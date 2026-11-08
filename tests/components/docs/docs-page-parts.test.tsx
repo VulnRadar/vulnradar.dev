@@ -45,7 +45,17 @@ import { APP_REPO } from "@/lib/config/client-constants";
 import { limitLabel } from "@/lib/ui/plan-labels";
 
 const html = renderToStaticMarkup;
-const text = (markup: string) => markup.replace(/<[^>]+>/g, "");
+/** Rendered text only. Walks the markup, so no half-tag can be left behind. */
+function text(markup: string): string {
+  let out = "";
+  let inTag = false;
+  for (const ch of markup) {
+    if (ch === "<") inTag = true;
+    else if (ch === ">" && inTag) inTag = false;
+    else if (!inTag) out += ch;
+  }
+  return out;
+}
 
 describe("DocsSteps", () => {
   it("takes children with an h3 and a linkable id", () => {
