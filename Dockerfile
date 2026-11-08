@@ -98,7 +98,7 @@ ENV STRIPE_SECRET_KEY="placeholder"
 ENV STRIPE_WEBHOOK_SECRET="placeholder"
 ENV STRIPE_PUBLISHABLE_KEY="placeholder"
 # NOTE: API_KEY_ENCRYPTION_KEY placeholder is intentionally NOT set
-# here. lib/config/env.ts validates the key length at startup; a 68-char
+# here. lib/config/env.ts requires exactly 64 hex characters at startup; a
 # placeholder fails closed and forces operators to inject a real key
 # via docker-compose env / Kubernetes secret / etc.
 
