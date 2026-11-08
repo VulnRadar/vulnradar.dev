@@ -1135,3 +1135,19 @@ describe("the rest of the tab", () => {
     expect(SOURCE.slice(start, end)).not.toMatch(/[—–·]/);
   });
 });
+
+describe("setting a first password", () => {
+  // An OAuth-only account that sets a password has a hash from then on. The
+  // tab reads hasPassword from the page's user, so unless the save patches it
+  // the tab keeps saying no password is on file, and the next change leaves out
+  // the current-password field the server now asks for.
+  it("tells the page the account has a password now", () => {
+    const start = SOURCE.indexOf("<PasswordDialog");
+    const end = SOURCE.indexOf("/>", start);
+    expect(start).toBeGreaterThan(-1);
+    const call = SOURCE.slice(start, end);
+    expect(call).toMatch(
+      /onSaved=\{\(\) => \{[\s\S]*if \(!hasPassword\) onUserPatch\?\.\(\{ hasPassword: true \}\);/,
+    );
+  });
+});

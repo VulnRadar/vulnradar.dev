@@ -1549,9 +1549,14 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
         <PasswordDialog
           hasPassword={hasPassword}
           onClose={() => setPasswordDialogOpen(false)}
-          onSaved={() =>
-            setSuccess(hasPassword ? "Password updated." : "Password set.")
-          }
+          onSaved={() => {
+            // A first password turns an OAuth-only account into one with a
+            // hash. Without this the tab keeps saying no password is on file,
+            // and the next change leaves out the current-password field the
+            // server now asks for.
+            if (!hasPassword) onUserPatch?.({ hasPassword: true });
+            setSuccess(hasPassword ? "Password updated." : "Password set.");
+          }}
         />
       )}
       {regenerateOpen && (
