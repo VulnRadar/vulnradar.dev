@@ -152,6 +152,39 @@ describe("dedupeFindings", () => {
     expect(findings[0].alsoReportedBy).toEqual(["symfony-debug-token"]);
   });
 
+  it("reports a Report-Only-only site once, as the missing CSP", () => {
+    const { findings, merged } = dedupeFindings([
+      finding("csp-missing", { severity: "high" }),
+      finding("csp-report-only", { severity: "medium" }),
+    ]);
+    expect(merged).toBe(1);
+    expect(checkIdOf(findings[0])).toBe("csp-missing");
+    expect(findings[0].alsoReportedBy).toEqual(["csp-report-only"]);
+  });
+
+  it("folds a CSP without frame-ancestors into the clickjacking finding", () => {
+    const { findings, merged } = dedupeFindings([
+      finding("csp-frame-ancestors-missing"),
+      finding("clickjack-missing"),
+    ]);
+    expect(merged).toBe(1);
+    expect(checkIdOf(findings[0])).toBe("clickjack-missing");
+    expect(findings[0].alsoReportedBy).toEqual(["csp-frame-ancestors-missing"]);
+  });
+
+  it("merges the legacy and structured object-src findings", () => {
+    const { findings, merged } = dedupeFindings(
+      [
+        finding("csp-object-src-missing"),
+        finding("page-csp-object-src-unrestricted"),
+      ],
+      pageCheckGroups,
+    );
+    expect(merged).toBe(1);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].alsoReportedBy).toHaveLength(1);
+  });
+
   it("keeps findings with no group entirely untouched", () => {
     const input = [finding("hsts-missing"), finding("xcto-missing")];
     const { findings, merged } = dedupeFindings(input);

@@ -13,6 +13,7 @@
 import type { PageCheck } from "../../check-types";
 import { excerpt } from "../../check-types";
 import { parseCsp } from "../../page-context";
+import { cspRestrictsContent } from "../_csp-shape";
 
 function hasSource(list: string[] | null, needle: string): boolean {
   if (!list) return false;
@@ -205,6 +206,9 @@ export const cspChecks: PageCheck[] = [
     run(ctx) {
       const csp = ctx.csp!;
       if (csp.reportOnly) return null;
+      // Read from the raw value: parseCsp splits on ";" only, so it sees the
+      // second of two joined headers as source expressions of the first.
+      if (!cspRestrictsContent(csp.raw)) return null;
       // ParsedCsp.effective("object-src") returns null when NEITHER
       // object-src NOR default-src constrains it, which is the unrestricted
       // (worst) case for this directive, not a covered one: object-src is

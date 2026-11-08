@@ -16,15 +16,55 @@ import {
 
 const h = getHeader;
 
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * A URL whose response body is the same bytes for every visitor. Shared by
- * the two Vary/Cookie checks so they cannot disagree about what a static
- * asset is: one of them demands Vary: Cookie and the other reports it as a
- * defect, and both were reading the same URL through separate copies of
- * this pattern.
+ * A URL whose response body is the same bytes for every visitor. One pattern
+ * for every check that asks, so they cannot disagree about what a static asset
+ * is: the Vary/Cookie pair used to read the same URL through separate copies
+ * of it.
  */
-const STATIC_ASSET_URL_RE =
+export const STATIC_ASSET_URL_RE =
   /\.(?:js|mjs|cjs|css|map|png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|otf|eot|mp4|webm|mp3|wav|ogg|pdf|zip|txt)(?:\?|#|$)/i;
+
+/**
+ * Cookies a CDN, WAF or load balancer attaches for itself. Most are added at
+ * the edge after the cache has answered, so one on a cached page says nothing
+ * about what the origin handed to the cache. Matched by name: the site's owner
+ * neither sets these nor can do anything about them.
+ */
+const EDGE_MANAGED_COOKIE =
+  /^(?:__cf_bm|_cfuvid|__cfruid|cf_clearance|__cflb|__cfwaitingroom|awsalb.*|awselb.*|incap_ses_.*|visid_incap_.*|nlbi_.*|ak_bmsc|bm_sz|bm_sv|_abck|datadome)$/i;
+
+/**
+ * The header that shows a shared cache may store or has stored this response,
+ * or null. Having no Cache-Control proves nothing either way, so only an
+ * explicit statement or an actual cache hit counts.
+ */
+function sharedCacheSignal(headers: Headers): string | null {
+  const cacheControl = h(headers, "cache-control") ?? "";
+  if (
+    /\bpublic\b/i.test(cacheControl) ||
+    /\bs-maxage\s*=\s*[1-9]/i.test(cacheControl)
+  ) {
+    return `Cache-Control: ${cacheControl}`;
+  }
+  const cfStatus = h(headers, "cf-cache-status") ?? "";
+  if (/^(?:hit|revalidated|stale|updating)$/i.test(cfStatus)) {
+    return `cf-cache-status: ${cfStatus}`;
+  }
+  const xCache = h(headers, "x-cache") ?? "";
+  if (/hit/i.test(xCache)) return `X-Cache: ${xCache}`;
+  const age = h(headers, "age");
+  if (Number(age ?? 0) > 0) return `Age: ${age}`;
+  return null;
+}
 
 export const detectors: Record<string, DetectFn> = {
   "vary-header-missing": (_url, headers) => {
@@ -58,27 +98,26 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "vary-header-cookie": (url, headers) => {
-    const cookies = getSetCookies(headers);
-    const vary = h(headers, "vary");
-    if (cookies.length === 0 || (vary && /cookie/i.test(vary))) return null;
-    // Never ask a static asset for Vary: Cookie. The sibling check
-    // vary-cookie-on-static-resource reports exactly that as a defect, so on
-    // a .js/.css/font/image URL that happens to carry a Set-Cookie (an
-    // analytics or bot-management cookie attached by a CDN, most often) the
-    // two checks contradicted each other and one of them had to be wrong.
-    // This is the one that is: the response body is the same bytes for
-    // every user, so there is no per-user content for a shared cache to
-    // mis-serve.
+    // Vary: Cookie is not the remedy and does not silence this. It is for a
+    // body that depends on the request's Cookie. A stored response carrying
+    // Set-Cookie is replayed to every visitor who sends no cookie, and that
+    // absent header is exactly what Vary would key on.
+    const own = getSetCookies(headers)
+      .map(parseCookieName)
+      .filter((name) => name && !EDGE_MANAGED_COOKIE.test(name));
+    if (own.length === 0) return null;
+    // Never report this on a static asset. The sibling check
+    // vary-cookie-on-static-resource reports Vary: Cookie there as a defect,
+    // and the response body is the same bytes for every user, so there is no
+    // per-user content for a shared cache to mis-serve.
     if (STATIC_ASSET_URL_RE.test(url)) return null;
-    // The risk this check describes (a shared cache storing one user's
-    // auth-gated response and serving it to another) only exists if the
-    // response can be cached by a shared cache at all. Cache-Control:
-    // no-store/no-cache/private already rules that out regardless of Vary,
-    // so flagging a missing Vary: Cookie on a response that can't be cached
-    // in the first place is a non-exploitable finding.
+    // Cache-Control: no-store/no-cache/private rules a shared cache out
+    // whatever else the response says, so nothing can be replayed.
     const cacheControl = (h(headers, "cache-control") || "").toLowerCase();
     if (/\b(?:no-store|no-cache|private)\b/.test(cacheControl)) return null;
-    return "Cookies are set on this response but Vary: Cookie is missing — auth-gated content may be served to the wrong user.";
+    const signal = sharedCacheSignal(headers);
+    if (!signal) return null;
+    return `Set-Cookie (${own.join(", ")}) is sent on a response a shared cache may store (${signal}), so the cookie can be replayed to other visitors.`;
   },
 
   "vary-cookie-on-static-resource": (url, headers) => {
@@ -90,13 +129,16 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "vary-origin-missing-cors": (_url, headers) => {
+  "vary-origin-missing-cors": (url, headers) => {
     // Only fires when the response actually uses dynamic CORS. Without
     // Access-Control-Allow-Origin (or with wildcard '*'), there is no
     // per-origin cache poisoning risk, so Vary: Origin is unnecessary.
     const acao = h(headers, "access-control-allow-origin");
     const vary = h(headers, "vary");
     if (!acao || acao === "*") return null;
+    // The scanner sends no Origin header, so a value naming the page itself
+    // cannot be a reflection. It is a constant, and a constant needs no Vary.
+    if (acao.trim().toLowerCase() === originOf(url)) return null;
     if (!vary || !/origin/i.test(vary)) {
       return `Access-Control-Allow-Origin: ${acao} is dynamic but Vary: Origin is missing — cache poisoning risk across origins.`;
     }

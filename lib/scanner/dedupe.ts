@@ -132,11 +132,19 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   "cookie-host-prefix-attribute-mismatch": "cookie-prefix-violation",
   "csp-allows-http-sources": "csp-http-sources",
   "csp-object-src-unsafe": "csp-object-src-unrestricted",
+  "csp-object-src-missing": "csp-object-src-unrestricted",
+  // A Report-Only policy and no enforcing one is a single fact, and it read as
+  // a high and a medium side by side.
+  "csp-missing": "csp-not-enforced",
+  "csp-report-only": "csp-not-enforced",
   // Page frameable by any site. code-clickjack-x-frame-options restates
-  // clickjack-missing's condition word for word, and the meta-tag PageCheck
-  // reports the same exposure with the reason the author thought it was fixed.
+  // clickjack-missing's condition word for word, csp-frame-ancestors-missing
+  // restates it for a page that happens to have a CSP, and the meta-tag
+  // PageCheck reports the same exposure with the reason the author thought it
+  // was fixed.
   "clickjack-missing": "clickjacking",
   "code-clickjack-x-frame-options": "clickjacking",
+  "csp-frame-ancestors-missing": "clickjacking",
   "target-blank-no-noopener": "anchor-target-blank-no-noopener",
   // GraphQL introspection. Two passive keyword checks and the live query that
   // confirms it; the survivor is the confirmed one whenever it ran.

@@ -211,6 +211,27 @@ const fixtures: PageCheckFixtures = {
       },
       expect: "skip",
     },
+    {
+      // csp-no-default-src is the one finding such a policy gets.
+      description: "a frame-ancestors-only policy is not a content policy",
+      headers: { "content-security-policy": "frame-ancestors 'none'" },
+      expect: "skip",
+    },
+    {
+      description: "no fetch directive among several others",
+      headers: {
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; upgrade-insecure-requests",
+      },
+      expect: "skip",
+    },
+    {
+      description: "a fetch directive in the second of two joined CSP headers",
+      headers: {
+        "content-security-policy": "frame-ancestors 'none', script-src 'self'",
+      },
+      expect: "fire",
+    },
   ],
   "page-csp-http-source-on-https-page": [
     {

@@ -14,9 +14,12 @@ import {
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 import { SRI_EXEMPT_HOSTS } from "./client-side";
+import { STATIC_ASSET_URL_RE } from "./configuration";
+import { cspHasDirective, cspRestrictsContent } from "./_csp-shape";
 import {
   anyOpenTags,
   hasTagWith,
+  openTags,
   openingTagOf,
   tagElements,
   tagsWith,
@@ -51,6 +54,85 @@ function getCspDirective(csp: string, name: string): string {
   return "";
 }
 
+/** hstspreload.org's floor, and the one this product holds every site to. */
+const HSTS_MIN_MAX_AGE = 31_536_000;
+
+interface HstsFacts {
+  maxAge: number | null;
+  includeSubDomains: boolean;
+  preload: boolean;
+}
+
+/**
+ * RFC 6797: directive names are case-insensitive (6.1), max-age may be quoted,
+ * and only the first header counts (8.1). Headers.get joins repeated headers
+ * with ", ", and no directive defined for this header contains a comma.
+ */
+function parseHsts(value: string): HstsFacts {
+  const facts: HstsFacts = {
+    maxAge: null,
+    includeSubDomains: false,
+    preload: false,
+  };
+  for (const part of value.split(",")[0].split(";")) {
+    const directive = part.trim();
+    const maxAge = /^max-age\s*=\s*(?:"(\d+)"|(\d+))$/i.exec(directive);
+    if (maxAge) facts.maxAge = parseInt(maxAge[1] ?? maxAge[2], 10);
+    else if (/^includesubdomains$/i.test(directive))
+      facts.includeSubDomains = true;
+    else if (/^preload$/i.test(directive)) facts.preload = true;
+  }
+  return facts;
+}
+
+/**
+ * The values of X-Frame-Options, upper-cased and without repeats. Headers.get
+ * joins repeated headers with ", ", and the same value sent twice is one
+ * policy: a server and a proxy each adding SAMEORIGIN is common and harmless.
+ */
+function xfoValues(raw: string): string[] {
+  return [
+    ...new Set(
+      raw
+        .split(",")
+        .map((value) => value.trim().toUpperCase())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+/**
+ * Whether the response is a document a browser navigates to. Framing, opener,
+ * embedder and feature policies are about the document, so on a JSON API root
+ * or a stylesheet their absence says nothing.
+ */
+function isHtmlDocument(headers: Headers): boolean {
+  const contentType = (h(headers, "content-type") || "").toLowerCase();
+  return (
+    contentType.includes("text/html") ||
+    contentType.includes("application/xhtml+xml")
+  );
+}
+
+/** An <iframe> on the page that loads from a host other than the page's. */
+function hasThirdPartyIframe(url: string, body: string): boolean {
+  let pageHost: string;
+  try {
+    pageHost = new URL(url).host.toLowerCase();
+  } catch {
+    return false;
+  }
+  return openTags(body, "iframe").some((tag) => {
+    const src = getTagSrc(tag);
+    if (!src || !/^(?:https?:)?\/\//i.test(src)) return false;
+    try {
+      return new URL(src, url).host.toLowerCase() !== pageHost;
+    } catch {
+      return false;
+    }
+  });
+}
+
 /**
  * Directives csp-wildcard-source leaves alone. Images and media from any
  * origin are an ordinary policy. The rest each have a check of their own:
@@ -80,7 +162,7 @@ export const detectors: Record<string, DetectFn> = {
     // RFC 6797 section 6.1: a header without a valid max-age is ignored as a
     // whole, so "present" and "in effect" are different claims. max-age=abc
     // reported clean here while giving no protection at all.
-    if (!/(?:^|;)\s*max-age\s*=\s*"?\d+"?\s*(?:;|$)/i.test(hsts)) {
+    if (parseHsts(hsts).maxAge === null) {
       return `Header 'Strict-Transport-Security' is present but has no valid max-age, so browsers ignore it: '${hsts}'.`;
     }
     return null;
@@ -94,17 +176,18 @@ export const detectors: Record<string, DetectFn> = {
     // without a CloudFront function, several CMS security plugins) was
     // being reported as having no CSP at all.
     if (getEffectiveCsp(headers, body)) return null;
+    if (hasHeader(headers, "content-security-policy-report-only")) {
+      return "Only Content-Security-Policy-Report-Only is sent; it reports violations but blocks nothing.";
+    }
     return "Header 'Content-Security-Policy' is not present in the response.";
   },
 
   "clickjack-missing": (_url, headers) => {
+    if (!isHtmlDocument(headers)) return null;
     const xfo = h(headers, "x-frame-options");
     const csp = h(headers, "content-security-policy");
     if (xfo) return null;
-    // Directive names are ASCII case-insensitive. csp-frame-ancestors-missing
-    // matched it that way and this check did not, so the two disagreed about a
-    // policy written as "Frame-Ancestors 'self'".
-    if (csp && /frame-ancestors/i.test(csp)) return null;
+    if (csp && cspHasDirective(csp, "frame-ancestors")) return null;
     return "Neither 'X-Frame-Options' header nor CSP 'frame-ancestors' directive is set.";
   },
 
@@ -131,6 +214,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "permissions-policy-missing": (_url, headers) => {
+    if (!isHtmlDocument(headers)) return null;
     if (
       hasHeader(headers, "permissions-policy") ||
       hasHeader(headers, "feature-policy")
@@ -140,11 +224,13 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "coop-missing": (_url, headers) => {
+    if (!isHtmlDocument(headers)) return null;
     if (hasHeader(headers, "cross-origin-opener-policy")) return null;
     return "Header 'Cross-Origin-Opener-Policy' is not present.";
   },
 
   "coep-missing": (_url, headers) => {
+    if (!isHtmlDocument(headers)) return null;
     if (hasHeader(headers, "cross-origin-embedder-policy")) return null;
     return "Header 'Cross-Origin-Embedder-Policy' is not present.";
   },
@@ -157,7 +243,7 @@ export const detectors: Record<string, DetectFn> = {
     // (the vast majority of default-config Nginx/static hosts) has no
     // caching-related exposure just because the header is absent. Mirrors
     // cache-control-no-store-missing's sensitive-path gate.
-    if (!isSensitivePath(url)) return null;
+    if (!isPostAuthPath(url)) return null;
     return "Neither 'Cache-Control' nor 'Pragma' headers are present.";
   },
 
@@ -249,6 +335,7 @@ export const detectors: Record<string, DetectFn> = {
   "csp-object-src-missing": (_url, headers, body) => {
     const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
+    if (!cspRestrictsContent(csp)) return null;
     if (csp.includes("object-src")) return null;
     if (/default-src\s+'none'/.test(csp)) return null;
     return "CSP exists but no object-src directive.";
@@ -456,16 +543,28 @@ export const detectors: Record<string, DetectFn> = {
   "hsts-no-preload": (_url, headers) => {
     const hsts = h(headers, "strict-transport-security");
     if (!hsts) return null;
+    const { maxAge, includeSubDomains, preload } = parseHsts(hsts);
+    // No usable max-age means the browser ignores the header, which is
+    // hsts-missing's finding.
+    if (maxAge === null) return null;
     const issues: string[] = [];
-    if (!hsts.includes("preload")) issues.push("missing preload");
-    // includeSubDomains has its own dedicated check
-    // (strict-transport-security-include-subdomains) — don't double-report it
-    // here too. ref: AUDIT-008#scanner-05
-    const maxAgeMatch = hsts.match(/max-age=(\d+)/);
-    if (maxAgeMatch && parseInt(maxAgeMatch[1]) < 31536000)
-      issues.push(`max-age too low (${maxAgeMatch[1]}, need 31536000+)`);
+    if (maxAge < HSTS_MIN_MAX_AGE) {
+      issues.push(
+        `max-age is ${maxAge} seconds, under one year (${HSTS_MIN_MAX_AGE})`,
+      );
+    }
+    // Leaving the token out is not reported: hstspreload.org does not
+    // recommend preloading for everyone. A token the list would refuse is a
+    // real misconfiguration, because the author believes the site is on a path
+    // it cannot be on. A header that merely lacks includeSubDomains stays with
+    // strict-transport-security-include-subdomains. ref: AUDIT-008#scanner-05
+    if (preload && (maxAge < HSTS_MIN_MAX_AGE || !includeSubDomains)) {
+      issues.push(
+        `the preload token is present but hstspreload.org would reject this header (it needs max-age of at least ${HSTS_MIN_MAX_AGE} and includeSubDomains)`,
+      );
+    }
     return issues.length > 0
-      ? `HSTS present but: ${issues.join(", ")}. Current: ${hsts}`
+      ? `HSTS present but: ${issues.join("; ")}. Current: ${hsts}`
       : null;
   },
 
@@ -587,18 +686,12 @@ export const detectors: Record<string, DetectFn> = {
 
   "cache-control-public-sensitive": (url, headers, body) => {
     const cc = h(headers, "cache-control");
-    if (!cc || !cc.includes("public")) return null;
+    if (!cc || !/\bpublic\b/i.test(cc)) return null;
     // /login, /signup, /register pages are pre-authentication by
     // definition -- the same static markup is served to every anonymous
     // visitor, so Cache-Control: public there isn't leaking user-specific
     // data even though the page happens to contain a password field.
-    let path: string;
-    try {
-      path = new URL(url).pathname.toLowerCase();
-    } catch {
-      path = url.toLowerCase();
-    }
-    if (/\/(?:login|signin|signup|register)(?:\/|$)/.test(path)) return null;
+    if (PRE_AUTH_PATH_RE.test(lowerPathOf(url))) return null;
     // ReDoS-safe bounding: unbounded [^>] gaps inside tag patterns are capped
     // ([^>]* -> [^>]{0,2000}, [^>]+ -> [^>]{1,2000}) so a body of many unclosed
     // tags can't drive O(n^2) backtracking; 2000 preserves every real match.
@@ -735,20 +828,38 @@ export const detectors: Record<string, DetectFn> = {
   "x-frame-options-invalid": (_url, headers) => {
     const xfo = h(headers, "x-frame-options");
     if (!xfo) return null;
-    const valid = ["DENY", "SAMEORIGIN"];
-    if (xfo.toUpperCase().startsWith("ALLOW-FROM ")) return null;
-    if (valid.includes(xfo.toUpperCase().trim())) return null;
+    const values = xfoValues(xfo);
+    // The HTML standard blocks framing outright when the values disagree.
+    if (
+      values.length > 1 &&
+      values.some((v) => ["DENY", "SAMEORIGIN", "ALLOWALL"].includes(v))
+    ) {
+      return `X-Frame-Options carries conflicting values (${values.join(", ")}), which browsers treat as a refusal to frame the page at all.`;
+    }
+    const only = values.length === 1 ? values[0] : "";
+    if (only === "DENY" || only === "SAMEORIGIN") return null;
     // ALLOWALL has its own dedicated, higher-severity check (x-frame-options-allowall).
     // Don't double-fire the generic "invalid value" finding for the same header value.
     // ref: AUDIT-008#scanner-05
-    if (xfo.toUpperCase().trim() === "ALLOWALL") return null;
-    return `X-Frame-Options has invalid value: '${xfo}'. Expected DENY, SAMEORIGIN, or ALLOW-FROM <origin>.`;
+    if (only === "ALLOWALL") return null;
+    if (
+      values.length > 0 &&
+      values.every((v) => /^ALLOW-FROM(?:\s|$)/.test(v))
+    ) {
+      // Only an enforcing policy stands in for it: a Report-Only
+      // frame-ancestors blocks nothing.
+      const csp = h(headers, "content-security-policy");
+      if (csp && cspHasDirective(csp, "frame-ancestors")) return null;
+      return `X-Frame-Options: ${xfo} uses ALLOW-FROM, which current browsers ignore completely, so it protects nothing. Use CSP frame-ancestors.`;
+    }
+    return `X-Frame-Options has invalid value: '${xfo}'. Expected DENY or SAMEORIGIN.`;
   },
 
   "x-frame-options-allowall": (_url, headers) => {
     const xfo = h(headers, "x-frame-options");
     if (!xfo) return null;
-    if (xfo.toUpperCase().trim() === "ALLOWALL") {
+    const values = xfoValues(xfo);
+    if (values.length === 1 && values[0] === "ALLOWALL") {
       return "X-Frame-Options: ALLOWALL explicitly disables framing protection.";
     }
     return null;
@@ -779,7 +890,7 @@ export const detectors: Record<string, DetectFn> = {
   "csp-frame-ancestors-missing": (_url, headers) => {
     const csp = h(headers, "content-security-policy");
     if (!csp) return null;
-    if (/frame-ancestors/i.test(csp)) return null;
+    if (cspHasDirective(csp, "frame-ancestors")) return null;
     // X-Frame-Options already blocks framing on its own; don't claim
     // clickjacking protection is missing (and double-fire alongside
     // clickjack-missing) when XFO covers it.
@@ -787,16 +898,20 @@ export const detectors: Record<string, DetectFn> = {
     return "CSP is present but lacks the frame-ancestors directive.";
   },
 
-  "csp-frame-src-missing": (_url, headers, body) => {
+  "csp-frame-src-missing": (url, headers, body) => {
     const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     // frame-src falls back to child-src and then to default-src (CSP3,
     // "Get the effective directive for request"), so a policy with either of
     // those already governs iframe sources. Flagging it anyway told a site
     // with default-src 'self' that its frames were unrestricted.
-    if (/(?:^|;)\s*(?:frame-src|child-src|default-src)\b/i.test(csp)) {
+    if (cspHasDirective(csp, "frame-src", "child-src", "default-src")) {
       return null;
     }
+    if (!cspRestrictsContent(csp)) return null;
+    // With no embedded third-party frame there is nothing the missing
+    // directive leaves open on this page.
+    if (!hasThirdPartyIframe(url, body)) return null;
     return "CSP has no frame-src, child-src or default-src, so iframe sources are unrestricted.";
   },
 
@@ -885,7 +1000,7 @@ export const detectors: Record<string, DetectFn> = {
   // ── Cache / Pragma / Expires ────────────────────────────────────────────
 
   "cache-control-no-store-missing": (url, headers) => {
-    if (!isSensitivePath(url)) return null;
+    if (!isPostAuthPath(url)) return null;
     const cc = h(headers, "cache-control");
     if (cc && cc.toLowerCase().includes("no-store")) return null;
     return "Sensitive page path detected but Cache-Control lacks 'no-store'.";
@@ -894,15 +1009,28 @@ export const detectors: Record<string, DetectFn> = {
   "pragma-no-cache-legacy": (_url, headers) => {
     const v = h(headers, "pragma");
     if (!v) return null;
-    if (v.toLowerCase().includes("no-cache")) {
-      return "Pragma: no-cache is set; this is a legacy HTTP/1.0 header and ignored by modern caches.";
+    if (!v.toLowerCase().includes("no-cache")) return null;
+    // Pragma beside a Cache-Control that already forbids caching is the
+    // standard belt-and-braces pair for old proxies, and it does no harm.
+    const cc = (h(headers, "cache-control") || "").toLowerCase();
+    if (/\b(?:no-store|no-cache|private)\b|\bmax-age\s*=\s*0\b/.test(cc)) {
+      return null;
     }
-    return null;
+    return "Pragma: no-cache is set but no Cache-Control directive forbids caching; HTTP/1.1 caches follow Cache-Control and do not act on Pragma in a response.";
   },
 
-  "expires-past": (_url, headers) => {
+  "expires-past": (url, headers) => {
     const v = h(headers, "expires");
     if (!v) return null;
+    // A past Expires is the supported way to say "do not cache" (RFC 9111
+    // reads even Expires: 0 as already expired). The only thing it can cost is
+    // caching on a file meant to be cached, and only when no Cache-Control
+    // says otherwise, since Cache-Control overrides it.
+    if (!STATIC_ASSET_URL_RE.test(url)) return null;
+    const cc = (h(headers, "cache-control") || "").toLowerCase();
+    if (/\b(?:max-age|s-maxage|no-store|no-cache|private)\b/.test(cc)) {
+      return null;
+    }
     const ts = Date.parse(v);
     if (Number.isNaN(ts)) return null;
     // Some servers/CDNs deliberately set Expires to the exact response
@@ -971,6 +1099,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "cross-origin-resource-policy-report-only-missing": (_url, headers) => {
+    if (!isHtmlDocument(headers)) return null;
     // CORP does not have a Report-Only variant (that's a CSP concept).
     // Only fire if the actual Cross-Origin-Resource-Policy header is missing AND
     // the response carries resources that should be cross-origin-isolated.
@@ -1199,9 +1328,20 @@ export const detectors: Record<string, DetectFn> = {
       /property=["']?og:image["']?/i,
       /content=["']?http:\/\//i,
     );
-    if (m)
-      return "OG image is HTTP (will fail social previews on HTTPS sites).";
-    return null;
+    if (!m) return null;
+    // The documented pairing: og:image for scrapers that want plain http and
+    // og:image:secure_url for those that want https.
+    if (
+      hasTagWith(
+        body,
+        "meta",
+        /property=["']?og:image:secure_url["']?/i,
+        /content=["']?https:\/\//i,
+      )
+    ) {
+      return null;
+    }
+    return "OG image is HTTP (will fail social previews on HTTPS sites).";
   },
   "charset-meta-missing": (_url, headers, body) => {
     if (!body) return null;
@@ -1435,26 +1575,32 @@ export const detectors: Record<string, DetectFn> = {
   },
 };
 
-/**
- * Path-segment-aware "is this a sensitive endpoint" check shared by
- * cache-control-missing and cache-control-no-store-missing. Segment-bounded
- * so public routes that merely contain these words as a substring --
- * /api/authors, /sessions/keynote-address, /accounting/reports -- don't
- * match "/api/auth", "/session", "/account" the way a plain .includes() did.
- */
-function isSensitivePath(url: string): boolean {
-  let path: string;
+function lowerPathOf(url: string): string {
   try {
-    path = new URL(url).pathname;
+    return new URL(url).pathname.toLowerCase();
   } catch {
-    path = url;
+    return url.toLowerCase();
   }
-  const lower = path.toLowerCase();
-  return (
-    /(?:^|\/)(?:login|signin|signup|register|admin|session|account)(?:\/|$)/.test(
-      lower,
-    ) || /(?:^|\/)api\/auth(?:\/|$)/.test(lower)
-  );
+}
+
+const PRE_AUTH_PATH_RE = /(?:^|\/)(?:login|signin|signup|register)(?:\/|$)/;
+
+const POST_AUTH_PATH_RE = /(?:^|\/)(?:admin|session|account|api\/auth)(?:\/|$)/;
+
+/**
+ * A path whose response can hold one user's data, shared by
+ * cache-control-missing and cache-control-no-store-missing. A sign-in or
+ * registration form is the same markup for every anonymous visitor wherever it
+ * is mounted (/account/login on every Shopify store), and
+ * cache-control-public-sensitive already says so; telling those pages to add
+ * no-store made the two checks contradict each other. Segment-bounded so
+ * public routes that merely contain these words as a substring --
+ * /api/authors, /sessions/keynote-address, /accounting/reports -- don't match
+ * "/api/auth", "/session", "/account" the way a plain .includes() did.
+ */
+function isPostAuthPath(url: string): boolean {
+  const path = lowerPathOf(url);
+  return POST_AUTH_PATH_RE.test(path) && !PRE_AUTH_PATH_RE.test(path);
 }
 
 // Third-party iframes that are widely embedded, functionally required, and

@@ -147,14 +147,145 @@ const fixtures: DetectorFixtures = {
 
   "vary-header-cookie": [
     {
-      description:
-        "cookies set but no Vary: Cookie (auth-gated content may cache wrong)",
+      // A cookie is not a shared-cache problem until something says a shared
+      // cache may keep the response.
+      description: "a cookie on a response nothing marks as shared-cacheable",
       cookies: ["SESSIONID=abc; HttpOnly"],
       headers: { "content-type": "text/html" },
-      expect: "fire",
+      expect: "skip",
     },
     {
-      description: "Vary: Cookie present (good)",
+      description: "the session cookie and a cf-cache-status HIT",
+      cookies: ["sid=abc; HttpOnly"],
+      headers: { "content-type": "text/html", "cf-cache-status": "HIT" },
+      expect: "fire",
+      evidenceIncludes: "sid",
+    },
+    {
+      description: "an X-Cache hit, including CloudFront's RefreshHit",
+      cookies: ["sid=abc; HttpOnly"],
+      headers: {
+        "content-type": "text/html",
+        "x-cache": "RefreshHit from cloudfront",
+      },
+      expect: "fire",
+      evidenceIncludes: "X-Cache",
+    },
+    {
+      description: "Age above zero means a cache served this",
+      cookies: ["sid=abc; HttpOnly"],
+      headers: { "content-type": "text/html", age: "120" },
+      expect: "fire",
+      evidenceIncludes: "Age: 120",
+    },
+    {
+      description: "s-maxage of one or more marks it shared-cacheable",
+      cookies: ["sid=abc; HttpOnly"],
+      headers: { "content-type": "text/html", "cache-control": "s-maxage=60" },
+      expect: "fire",
+      evidenceIncludes: "s-maxage",
+    },
+    {
+      description: "s-maxage=0 does not",
+      cookies: ["sid=abc; HttpOnly"],
+      headers: { "content-type": "text/html", "cache-control": "s-maxage=0" },
+      expect: "skip",
+    },
+    {
+      // A cached response with Set-Cookie replays that cookie to every visitor
+      // who sends none, and Vary: Cookie keys on exactly that absent header.
+      description: "Vary: Cookie does not stop the cookie being replayed",
+      cookies: ["sessionid=abc; HttpOnly"],
+      headers: {
+        "content-type": "text/html",
+        "cache-control": "public, max-age=600",
+        vary: "Cookie",
+      },
+      expect: "fire",
+      evidenceIncludes: "sessionid",
+    },
+    {
+      description: "the evidence names the cookie and never its value",
+      cookies: ["sessionid=s3cretvalue; HttpOnly"],
+      headers: {
+        "content-type": "text/html",
+        "cache-control": "public, max-age=600",
+      },
+      expect: "fire",
+      evidenceIncludes: "Cache-Control: public, max-age=600",
+      evidenceExcludes: "s3cretvalue",
+    },
+    {
+      // Recorded from www.npmjs.com: Cloudflare adds these after the cache.
+      description: "Cloudflare's own cookies on a cached public page",
+      cookies: ["__cf_bm=abc; Path=/", "_cfuvid=def; Path=/"],
+      headers: {
+        "content-type": "text/html",
+        "cache-control": "public, max-age=14400",
+        "cf-cache-status": "HIT",
+        age: "361",
+      },
+      expect: "skip",
+    },
+    {
+      description: "the edge list covers other CDNs and load balancers",
+      cookies: [
+        "AWSALB=a",
+        "AWSALBCORS=b",
+        "incap_ses_123_456=c",
+        "visid_incap_123=d",
+        "nlbi_123=e",
+        "ak_bmsc=f",
+        "bm_sz=g",
+        "bm_sv=h",
+        "_abck=i",
+        "datadome=j",
+      ],
+      headers: {
+        "content-type": "text/html",
+        "cache-control": "public, max-age=600",
+      },
+      expect: "skip",
+    },
+    {
+      description: "an application cookie among edge cookies is still reported",
+      cookies: ["__cf_bm=abc; Path=/", "cart=1; Path=/"],
+      headers: {
+        "content-type": "text/html",
+        "cache-control": "public, max-age=600",
+      },
+      expect: "fire",
+      evidenceIncludes: "cart",
+      evidenceExcludes: "__cf_bm",
+    },
+    {
+      // Recorded from gamba.com: DYNAMIC means Cloudflare did not cache it.
+      description: "an application cookie on a dynamic response",
+      cookies: ["locale=en; Path=/; SameSite=Lax"],
+      headers: { "content-type": "text/html", "cf-cache-status": "DYNAMIC" },
+      expect: "skip",
+    },
+    {
+      // Recorded from nullkommawein.de, a Shopify store.
+      description: "Shopify's cookies on a private response",
+      cookies: ["localization=DE; path=/", "cart_currency=EUR; path=/"],
+      headers: {
+        "content-type": "text/html",
+        "cache-control": "private, max-age=0, must-revalidate",
+        "cf-cache-status": "DYNAMIC",
+      },
+      expect: "skip",
+    },
+    {
+      description: "no cookies at all",
+      headers: {
+        "content-type": "text/html",
+        "cache-control": "public, max-age=600",
+      },
+      expect: "skip",
+    },
+    {
+      description: "Vary: Cookie with nothing marking it cacheable",
       cookies: ["SESSIONID=abc; HttpOnly"],
       headers: { "content-type": "text/html", vary: "Cookie" },
       expect: "skip",
@@ -177,14 +308,14 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
     {
-      description:
-        "Cache-Control: public still needs Vary: Cookie — a shared cache can store this one",
+      description: "Cache-Control: public means a shared cache can store this",
       cookies: ["SESSIONID=abc; HttpOnly"],
       headers: {
         "content-type": "text/html",
         "cache-control": "public, max-age=3600",
       },
       expect: "fire",
+      evidenceIncludes: "SESSIONID",
     },
     {
       // vary-cookie-on-static-resource reports Vary: Cookie on a static
@@ -195,7 +326,7 @@ const fixtures: DetectorFixtures = {
       description:
         "a bundled .js asset that happens to carry a Set-Cookie does not fire -- the body is the same bytes for every user",
       url: "https://example.com/_next/static/chunks/main.js",
-      cookies: ["__cf_bm=abc; Path=/"],
+      cookies: ["analytics=abc; Path=/"],
       headers: {
         "content-type": "application/javascript",
         "cache-control": "public, max-age=31536000",
@@ -219,6 +350,40 @@ const fixtures: DetectorFixtures = {
       url: "https://api.example.com/",
       headers: { "access-control-allow-origin": "https://app.example.com" },
       expect: "fire",
+      evidenceIncludes: "Vary: Origin",
+    },
+    {
+      // The scanner sends no Origin header, so a value naming the page itself
+      // is a constant, and a constant needs no Vary. Recorded on
+      // www.abercrombie.com.
+      description: "ACAO is the scanned page's own origin",
+      url: "https://www.example.com/some/page",
+      headers: { "access-control-allow-origin": "https://www.example.com" },
+      expect: "skip",
+    },
+    {
+      description: "the own-origin comparison ignores case",
+      url: "https://www.example.com/",
+      headers: { "access-control-allow-origin": "https://WWW.example.com" },
+      expect: "skip",
+    },
+    {
+      description: "a different port is a different origin",
+      url: "https://www.example.com/",
+      headers: {
+        "access-control-allow-origin": "https://www.example.com:8443",
+      },
+      expect: "fire",
+      evidenceIncludes: "Vary: Origin",
+    },
+    {
+      description: "Vary: Origin present",
+      url: "https://api.example.com/",
+      headers: {
+        "access-control-allow-origin": "https://app.example.com",
+        vary: "Origin",
+      },
+      expect: "skip",
     },
   ],
 

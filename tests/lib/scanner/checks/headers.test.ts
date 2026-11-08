@@ -48,6 +48,16 @@ const fixtures: DetectorFixtures = {
 
   "hsts-missing": [
     {
+      // Headers.get joins a repeated header with ", ", and the joined value
+      // used to read as having no valid max-age at all.
+      description: "the same HSTS header sent twice is in effect",
+      url: "https://example.com/",
+      headers: {
+        "strict-transport-security": "max-age=31536000, max-age=31536000",
+      },
+      expect: "skip",
+    },
+    {
       // RFC 6797 6.1: a header with no valid max-age is ignored as a whole.
       description: "HSTS present but max-age is not a number",
       url: "https://example.com/",
@@ -90,21 +100,21 @@ const fixtures: DetectorFixtures = {
 
   "hsts-no-preload": [
     {
-      description: "missing preload only (includeSubDomains present)",
+      // hstspreload.org itself says preloading is not recommended for
+      // everyone, so an absent token is a choice and not a defect.
+      description: "no preload token at all is not reported",
       url: "https://example.com/",
       headers: {
         "strict-transport-security": "max-age=31536000; includeSubDomains",
       },
-      expect: "fire",
-      evidenceIncludes: "missing preload",
+      expect: "skip",
     },
     {
-      // includeSubDomains has its own dedicated check now — this detector
-      // must not double-report it. ref: AUDIT-008#scanner-05
-      description:
-        "missing includeSubDomains only is not reported here (covered by the dedicated check)",
+      // includeSubDomains has its own dedicated check, which covers a header
+      // that simply lacks it. ref: AUDIT-008#scanner-05
+      description: "a year of max-age with no includeSubDomains or preload",
       url: "https://example.com/",
-      headers: { "strict-transport-security": "max-age=31536000; preload" },
+      headers: { "strict-transport-security": "max-age=31536000" },
       expect: "skip",
     },
     {
@@ -115,6 +125,83 @@ const fixtures: DetectorFixtures = {
           "max-age=31536000; includeSubDomains; preload",
       },
       expect: "skip",
+    },
+    {
+      // The evidence used to print the token it said was missing.
+      description: "directive names are case-insensitive (RFC 6797 6.1)",
+      url: "https://example.com/",
+      headers: {
+        "strict-transport-security":
+          "MAX-AGE=63072000; includeSubDomains; Preload",
+      },
+      expect: "skip",
+    },
+    {
+      description: "a quoted max-age is legal and is read",
+      url: "https://example.com/",
+      headers: {
+        "strict-transport-security":
+          'max-age="31536000"; includeSubDomains; preload',
+      },
+      expect: "skip",
+    },
+    {
+      // Headers.get joins repeated headers; RFC 6797 8.1 honours the first.
+      description:
+        "only the first of two joined headers counts, when it is good",
+      url: "https://example.com/",
+      headers: {
+        "strict-transport-security":
+          "max-age=63072000; includeSubDomains; preload, max-age=1",
+      },
+      expect: "skip",
+    },
+    {
+      description:
+        "only the first of two joined headers counts, when it is short",
+      url: "https://example.com/",
+      headers: {
+        "strict-transport-security":
+          "max-age=1, max-age=63072000; includeSubDomains; preload",
+      },
+      expect: "fire",
+      evidenceIncludes: "max-age is 1 seconds",
+    },
+    {
+      // hsts-missing already says the whole header is ignored.
+      description: "no valid max-age is hsts-missing's finding, not this one",
+      url: "https://example.com/",
+      headers: { "strict-transport-security": "max-age=abc; preload" },
+      expect: "skip",
+    },
+    {
+      description: "Shopify's default three-month max-age keeps firing",
+      url: "https://example.com/",
+      headers: { "strict-transport-security": "max-age=7889238" },
+      expect: "fire",
+      evidenceIncludes: "under one year",
+      evidenceExcludes: "preload",
+    },
+    {
+      description: "six months and a preload token the list would reject",
+      url: "https://example.com/",
+      headers: { "strict-transport-security": "max-age=15552000; preload" },
+      expect: "fire",
+      evidenceIncludes: "preload token",
+    },
+    {
+      description: "preload without includeSubDomains cannot be submitted",
+      url: "https://example.com/",
+      headers: { "strict-transport-security": "max-age=31536000; preload" },
+      expect: "fire",
+      evidenceIncludes: "includeSubDomains",
+    },
+    {
+      description: "max-age=0 switches HSTS off and keeps firing",
+      url: "https://example.com/",
+      headers: { "strict-transport-security": "max-age=0" },
+      expect: "fire",
+      evidenceIncludes: "max-age is 0",
     },
   ],
 
@@ -137,6 +224,19 @@ const fixtures: DetectorFixtures = {
   ],
 
   "csp-missing": [
+    {
+      // "is not present" read as false to anyone who looked at the response
+      // and saw a policy there.
+      description: "only a Report-Only policy is sent",
+      url: "https://example.com/",
+      headers: {
+        "content-type": "text/html",
+        "content-security-policy-report-only": "default-src 'self'",
+      },
+      expect: "fire",
+      evidenceIncludes: "blocks nothing",
+      evidenceExcludes: "is not present",
+    },
     {
       description: "HTML page without CSP",
       url: "https://example.com/",
@@ -190,19 +290,58 @@ const fixtures: DetectorFixtures = {
       // Directive names are case-insensitive.
       description: "frame-ancestors written with different casing",
       url: "https://example.com/",
-      headers: { "content-security-policy": "Frame-Ancestors 'self'" },
+      headers: {
+        "content-type": "text/html",
+        "content-security-policy": "Frame-Ancestors 'self'",
+      },
       expect: "skip",
     },
     {
       description: "no X-Frame-Options, no CSP frame-ancestors",
       url: "https://example.com/",
+      headers: { "content-type": "text/html; charset=utf-8" },
+      expect: "fire",
+      evidenceIncludes: "X-Frame-Options",
+    },
+    {
+      description: "an XHTML document is framed like any other",
+      url: "https://example.com/",
+      headers: { "content-type": "application/xhtml+xml" },
       expect: "fire",
       evidenceIncludes: "X-Frame-Options",
     },
     {
       description: "X-Frame-Options present",
       url: "https://example.com/",
-      headers: { "x-frame-options": "DENY" },
+      headers: { "content-type": "text/html", "x-frame-options": "DENY" },
+      expect: "skip",
+    },
+    {
+      // A substring match accepted this policy as protection.
+      description:
+        "the words frame-ancestors in a report path are not the directive",
+      url: "https://example.com/",
+      headers: {
+        "content-type": "text/html",
+        "content-security-policy":
+          "default-src 'self'; report-uri /x/frame-ancestors-report",
+      },
+      expect: "fire",
+      evidenceIncludes: "frame-ancestors",
+    },
+    {
+      description: "frame-ancestors in the second of two joined CSP headers",
+      url: "https://example.com/",
+      headers: {
+        "content-type": "text/html",
+        "content-security-policy": "default-src 'self', frame-ancestors 'none'",
+      },
+      expect: "skip",
+    },
+    {
+      description: "a JSON response is not a document anyone can frame",
+      url: "https://api.example.com/",
+      headers: { "content-type": "application/json" },
       expect: "skip",
     },
   ],
@@ -211,6 +350,15 @@ const fixtures: DetectorFixtures = {
     {
       description: "no X-Content-Type-Options",
       url: "https://example.com/",
+      expect: "fire",
+      evidenceIncludes: "X-Content-Type-Options",
+    },
+    {
+      // Unlike the document-only headers, nosniff protects scripts, styles
+      // and JSON too.
+      description: "a JSON response still needs nosniff",
+      url: "https://api.example.com/",
+      headers: { "content-type": "application/json" },
       expect: "fire",
       evidenceIncludes: "X-Content-Type-Options",
     },
@@ -418,13 +566,23 @@ const fixtures: DetectorFixtures = {
     {
       description: "neither Permissions-Policy nor Feature-Policy",
       url: "https://example.com/",
+      headers: { "content-type": "text/html" },
       expect: "fire",
       evidenceIncludes: "Permissions-Policy",
     },
     {
       description: "Permissions-Policy present",
       url: "https://example.com/",
-      headers: { "permissions-policy": "geolocation=()" },
+      headers: {
+        "content-type": "text/html",
+        "permissions-policy": "geolocation=()",
+      },
+      expect: "skip",
+    },
+    {
+      description: "a JSON response has no features to restrict",
+      url: "https://api.example.com/",
+      headers: { "content-type": "application/json" },
       expect: "skip",
     },
   ],
@@ -433,13 +591,23 @@ const fixtures: DetectorFixtures = {
     {
       description: "no Cross-Origin-Opener-Policy",
       url: "https://example.com/",
+      headers: { "content-type": "text/html" },
       expect: "fire",
       evidenceIncludes: "Cross-Origin-Opener-Policy",
     },
     {
       description: "COOP present",
       url: "https://example.com/",
-      headers: { "cross-origin-opener-policy": "same-origin" },
+      headers: {
+        "content-type": "text/html",
+        "cross-origin-opener-policy": "same-origin",
+      },
+      expect: "skip",
+    },
+    {
+      description: "a JSON response opens no window",
+      url: "https://api.example.com/",
+      headers: { "content-type": "application/json" },
       expect: "skip",
     },
   ],
@@ -448,13 +616,23 @@ const fixtures: DetectorFixtures = {
     {
       description: "no Cross-Origin-Resource-Policy",
       url: "https://example.com/",
+      headers: { "content-type": "text/html" },
       expect: "fire",
       evidenceIncludes: "Cross-Origin-Resource-Policy",
     },
     {
       description: "CORP present",
       url: "https://example.com/",
-      headers: { "cross-origin-resource-policy": "same-origin" },
+      headers: {
+        "content-type": "text/html",
+        "cross-origin-resource-policy": "same-origin",
+      },
+      expect: "skip",
+    },
+    {
+      description: "the document gate covers JSON too",
+      url: "https://api.example.com/",
+      headers: { "content-type": "application/json" },
       expect: "skip",
     },
   ],
@@ -530,13 +708,23 @@ const fixtures: DetectorFixtures = {
     {
       description: "no Cross-Origin-Embedder-Policy",
       url: "https://example.com/",
+      headers: { "content-type": "text/html" },
       expect: "fire",
       evidenceIncludes: "Cross-Origin-Embedder-Policy",
     },
     {
       description: "COEP present",
       url: "https://example.com/",
-      headers: { "cross-origin-embedder-policy": "require-corp" },
+      headers: {
+        "content-type": "text/html",
+        "cross-origin-embedder-policy": "require-corp",
+      },
+      expect: "skip",
+    },
+    {
+      description: "a JSON response embeds nothing",
+      url: "https://api.example.com/",
+      headers: { "content-type": "application/json" },
       expect: "skip",
     },
   ],
@@ -546,6 +734,14 @@ const fixtures: DetectorFixtures = {
       description: "no cache-control or pragma on a sensitive path",
       url: "https://example.com/account",
       expect: "fire",
+    },
+    {
+      // cache-control-public-sensitive calls these pages pre-authentication,
+      // so this check must not demand the opposite of them.
+      description:
+        "a login page is the same markup for every anonymous visitor",
+      url: "https://example.com/login",
+      expect: "skip",
     },
     {
       description:
@@ -575,6 +771,37 @@ const fixtures: DetectorFixtures = {
       url: "https://example.com/account",
       expect: "fire",
       evidenceIncludes: "Sensitive page path",
+    },
+    {
+      description: "/account served as publicly cacheable keeps firing",
+      url: "https://example.com/account",
+      headers: { "cache-control": "public, max-age=600" },
+      expect: "fire",
+      evidenceIncludes: "Sensitive page path",
+    },
+    {
+      description: "/api/auth is post-authentication",
+      url: "https://example.com/api/auth/session",
+      expect: "fire",
+      evidenceIncludes: "Sensitive page path",
+    },
+    {
+      // The Next.js default on a statically rendered login page.
+      description: "/login with s-maxage is pre-authentication",
+      url: "https://example.com/login",
+      headers: { "cache-control": "s-maxage=31536000" },
+      expect: "skip",
+    },
+    {
+      description: "/signup is pre-authentication",
+      url: "https://example.com/signup",
+      expect: "skip",
+    },
+    {
+      // Shopify's own paths for its sign-in and registration forms.
+      description: "/account/login is a login page, whatever it sits under",
+      url: "https://example.com/account/login",
+      expect: "skip",
     },
     {
       description: "sensitive path with Cache-Control: no-store present",
@@ -762,8 +989,8 @@ const fixtures: DetectorFixtures = {
 
   "expires-past": [
     {
-      description: "genuinely stale hardcoded epoch date fires",
-      url: "https://example.com/",
+      description: "a static asset whose only cache signal is a 1970 date",
+      url: "https://example.com/app.css",
       headers: { expires: "Thu, 01 Jan 1970 00:00:00 GMT" },
       expect: "fire",
       evidenceIncludes: "past date",
@@ -771,7 +998,7 @@ const fixtures: DetectorFixtures = {
     {
       description:
         "Expires set to the exact response Date (the common HTTP/1.0 no-cache idiom) does not fire, even though it is technically <= Date.now() by the time this check runs",
-      url: "https://example.com/",
+      url: "https://example.com/app.css",
       headers: {
         date: new Date().toUTCString(),
         expires: new Date().toUTCString(),
@@ -781,18 +1008,107 @@ const fixtures: DetectorFixtures = {
     {
       description:
         "Expires a few seconds behind Date.now() (test/network latency), no Date header to compare against, does not fire",
-      url: "https://example.com/",
+      url: "https://example.com/app.css",
       headers: { expires: new Date(Date.now() - 2000).toUTCString() },
       expect: "skip",
     },
     {
       description: "Expires meaningfully (>5min) before the Date header fires",
-      url: "https://example.com/",
+      url: "https://example.com/app.css",
       headers: {
         date: new Date().toUTCString(),
         expires: new Date(Date.now() - 10 * 60 * 1000).toUTCString(),
       },
       expect: "fire",
+      evidenceIncludes: "past date",
+    },
+    {
+      description: "a static asset with no Cache-Control lifetime at all",
+      url: "https://example.com/logo.png?v=2",
+      headers: {
+        expires: "Thu, 19 Nov 1981 08:52:00 GMT",
+        "cache-control": "public",
+      },
+      expect: "fire",
+      evidenceIncludes: "past date",
+    },
+    {
+      // RFC 9111 reads an invalid date, 0 included, as already expired, and
+      // on a page that is the supported way of saying do not cache.
+      description: "Expires: 0 on an HTML page is the do-not-cache idiom",
+      url: "https://example.com/",
+      headers: { expires: "0" },
+      expect: "skip",
+    },
+    {
+      description: "PHP's 1981 session date on an HTML page is the same idiom",
+      url: "https://example.com/",
+      headers: { expires: "Thu, 19 Nov 1981 08:52:00 GMT" },
+      expect: "skip",
+    },
+    {
+      description: "max-age on a static asset overrides Expires",
+      url: "https://example.com/app.js",
+      headers: {
+        expires: "Thu, 01 Jan 1970 00:00:00 GMT",
+        "cache-control": "max-age=3600",
+      },
+      expect: "skip",
+    },
+    {
+      description: "no-store on a static asset is a deliberate choice",
+      url: "https://example.com/app.js",
+      headers: {
+        expires: "Thu, 01 Jan 1970 00:00:00 GMT",
+        "cache-control": "no-store",
+      },
+      expect: "skip",
+    },
+  ],
+
+  "pragma-no-cache-legacy": [
+    {
+      description: "Pragma is the only thing asking not to be cached",
+      url: "https://example.com/",
+      headers: { pragma: "no-cache" },
+      expect: "fire",
+      evidenceIncludes: "Pragma",
+    },
+    {
+      description: "Pragma next to a Cache-Control that allows caching",
+      url: "https://example.com/",
+      headers: { pragma: "no-cache", "cache-control": "public, max-age=600" },
+      expect: "fire",
+      evidenceIncludes: "Pragma",
+    },
+    {
+      description: "the normal belt-and-braces pair with no-store",
+      url: "https://example.com/",
+      headers: { pragma: "no-cache", "cache-control": "no-store" },
+      expect: "skip",
+    },
+    {
+      description: "Pragma next to no-cache",
+      url: "https://example.com/",
+      headers: { pragma: "no-cache", "cache-control": "no-cache" },
+      expect: "skip",
+    },
+    {
+      description: "Pragma next to private",
+      url: "https://example.com/",
+      headers: { pragma: "no-cache", "cache-control": "private" },
+      expect: "skip",
+    },
+    {
+      description: "Pragma next to max-age=0",
+      url: "https://example.com/",
+      headers: { pragma: "no-cache", "cache-control": "max-age=0" },
+      expect: "skip",
+    },
+    {
+      description: "no Pragma header",
+      url: "https://example.com/",
+      expect: "skip",
     },
   ],
 
@@ -844,6 +1160,12 @@ const fixtures: DetectorFixtures = {
       expect: "fire",
     },
     {
+      description: "ALLOWALL sent twice",
+      url: "https://example.com/",
+      headers: { "x-frame-options": "ALLOWALL, ALLOWALL" },
+      expect: "fire",
+    },
+    {
       description: "X-Frame-Options: DENY (good)",
       url: "https://example.com/",
       headers: { "x-frame-options": "DENY" },
@@ -858,6 +1180,62 @@ const fixtures: DetectorFixtures = {
       headers: { "x-frame-options": "BANANA" },
       expect: "fire",
       evidenceIncludes: "invalid value",
+    },
+    {
+      description: "another value a browser does not recognise",
+      url: "https://example.com/",
+      headers: { "x-frame-options": "off" },
+      expect: "fire",
+      evidenceIncludes: "invalid value",
+      evidenceExcludes: "ALLOW-FROM",
+    },
+    {
+      // Headers.get joins a repeated header, and two identical values are one
+      // valid policy (HTML "check a navigation response's adherence").
+      description: "the same value sent twice is valid",
+      url: "https://example.com/",
+      headers: { "x-frame-options": "SAMEORIGIN, SAMEORIGIN" },
+      expect: "skip",
+    },
+    {
+      description: "the same value twice in different case is valid",
+      url: "https://example.com/",
+      headers: { "x-frame-options": "sameorigin, SAMEORIGIN" },
+      expect: "skip",
+    },
+    {
+      description: "two different values conflict",
+      url: "https://example.com/",
+      headers: { "x-frame-options": "DENY, SAMEORIGIN" },
+      expect: "fire",
+      evidenceIncludes: "conflicting",
+    },
+    {
+      // Silently accepted before, on a page that was in fact frameable.
+      description: "ALLOW-FROM is ignored by current browsers",
+      url: "https://example.com/",
+      headers: { "x-frame-options": "ALLOW-FROM https://a.test" },
+      expect: "fire",
+      evidenceIncludes: "ALLOW-FROM",
+    },
+    {
+      description: "ALLOW-FROM with CSP frame-ancestors doing the real work",
+      url: "https://example.com/",
+      headers: {
+        "x-frame-options": "ALLOW-FROM https://a.test",
+        "content-security-policy": "frame-ancestors 'self'",
+      },
+      expect: "skip",
+    },
+    {
+      description: "a report-only frame-ancestors enforces nothing",
+      url: "https://example.com/",
+      headers: {
+        "x-frame-options": "ALLOW-FROM https://a.test",
+        "content-security-policy-report-only": "frame-ancestors 'self'",
+      },
+      expect: "fire",
+      evidenceIncludes: "ALLOW-FROM",
     },
     {
       description: "DENY is valid",
@@ -987,6 +1365,14 @@ const fixtures: DetectorFixtures = {
       expect: "fire",
     },
     {
+      // The one honest finding for a policy that only restricts framing.
+      description: "a frame-ancestors-only policy has no default-src",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "frame-ancestors 'none'" },
+      expect: "fire",
+      evidenceIncludes: "default-src",
+    },
+    {
       description: "default-src set only via meta-tag CSP is not missing",
       url: "https://example.com/",
       body: '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'">',
@@ -1074,11 +1460,59 @@ const fixtures: DetectorFixtures = {
   "csp-frame-src-missing": [
     {
       description:
-        "a CSP with no frame-src, child-src or default-src leaves iframes unrestricted",
+        "a content policy with no frame-src, child-src or default-src, on a page embedding a third-party iframe",
       url: "https://example.com/",
       headers: { "content-security-policy": "script-src 'self'" },
+      body: '<iframe src="https://widgets.other.test/embed"></iframe>',
       expect: "fire",
       evidenceIncludes: "frame-src",
+    },
+    {
+      description: "a protocol-relative iframe on another host is third-party",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "script-src 'self'" },
+      body: "<iframe src=//widgets.other.test/embed></iframe>",
+      expect: "fire",
+      evidenceIncludes: "frame-src",
+    },
+    {
+      description: "the same content policy on a page with no iframe at all",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "script-src 'self'" },
+      body: "<html><body>hello</body></html>",
+      expect: "skip",
+    },
+    {
+      description: "an iframe on the page's own host is not third-party",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "script-src 'self'" },
+      body: '<iframe src="https://example.com/embed"></iframe><iframe src="/local"></iframe>',
+      expect: "skip",
+    },
+    {
+      description: "an iframe with no src has nothing to restrict",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "script-src 'self'" },
+      body: '<iframe srcdoc="<p>hi</p>"></iframe>',
+      expect: "skip",
+    },
+    {
+      // Shopify, Cloudflare and many others send this as the modern
+      // X-Frame-Options. It says nothing about what the page may load.
+      description: "a frame-ancestors-only policy is not a content policy",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "frame-ancestors 'none'" },
+      body: '<iframe src="https://widgets.other.test/embed"></iframe>',
+      expect: "skip",
+    },
+    {
+      description: "frame-src in the second of two joined CSP headers",
+      url: "https://example.com/",
+      headers: {
+        "content-security-policy": "script-src 'self', frame-src 'self'",
+      },
+      body: '<iframe src="https://widgets.other.test/embed"></iframe>',
+      expect: "skip",
     },
     {
       // This fixture used to be the "fire" case above, pinning a false
@@ -1117,6 +1551,63 @@ const fixtures: DetectorFixtures = {
         "meta CSP value containing single-quoted tokens ('self') is read in full, not truncated at the first quote",
       url: "https://example.com/",
       body: "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'; frame-src 'self'\">",
+      expect: "skip",
+    },
+  ],
+
+  "csp-object-src-missing": [
+    {
+      description: "a content policy that leaves object-src uncovered",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "script-src 'self'" },
+      expect: "fire",
+      evidenceIncludes: "object-src",
+    },
+    {
+      description: "a frame-ancestors-only policy is not a content policy",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "frame-ancestors 'none'" },
+      expect: "skip",
+    },
+    {
+      description: "object-src explicitly set",
+      url: "https://example.com/",
+      headers: {
+        "content-security-policy": "script-src 'self'; object-src 'none'",
+      },
+      expect: "skip",
+    },
+    {
+      description: "default-src 'none' covers object-src",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "default-src 'none'" },
+      expect: "skip",
+    },
+  ],
+
+  "csp-frame-ancestors-missing": [
+    {
+      description: "CSP without frame-ancestors or X-Frame-Options",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "default-src 'self'" },
+      expect: "fire",
+      evidenceIncludes: "frame-ancestors",
+    },
+    {
+      // Agrees with clickjack-missing, which reads the policy the same way.
+      description: "a report path naming frame-ancestors is not the directive",
+      url: "https://example.com/",
+      headers: {
+        "content-security-policy":
+          "default-src 'self'; report-uri /x/frame-ancestors-report",
+      },
+      expect: "fire",
+      evidenceIncludes: "frame-ancestors",
+    },
+    {
+      description: "the directive itself",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "frame-ancestors 'self'" },
       expect: "skip",
     },
   ],
@@ -1192,6 +1683,44 @@ const fixtures: DetectorFixtures = {
       url: "https://example.com/login",
       headers: { "cache-control": "public, max-age=3600" },
       body: '<html><body><form method="post"><input type="password" name="pw"></form></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "Cache-Control directive names are case-insensitive",
+      url: "https://example.com/account/settings",
+      headers: { "cache-control": "Public, max-age=3600" },
+      body: '<html><body><form method="post"><input type="password" name="pw"></form></body></html>',
+      expect: "fire",
+      evidenceIncludes: "sensitive forms",
+    },
+  ],
+
+  "open-graph-image-not-https": [
+    {
+      description: "only an http og:image",
+      url: "https://example.com/",
+      body: '<meta property="og:image" content="http://cdn.example.com/a.png">',
+      expect: "fire",
+      evidenceIncludes: "OG image",
+    },
+    {
+      // The documented pairing, and what Shopify emits on every store.
+      description: "http og:image with an https og:image:secure_url sibling",
+      url: "https://example.com/",
+      body: '<meta property="og:image" content="http://cdn.example.com/a.png"><meta property="og:image:secure_url" content="https://cdn.example.com/a.png">',
+      expect: "skip",
+    },
+    {
+      description: "a secure_url sibling that is not https does not count",
+      url: "https://example.com/",
+      body: '<meta property="og:image" content="http://cdn.example.com/a.png"><meta property="og:image:secure_url" content="http://cdn.example.com/a.png">',
+      expect: "fire",
+      evidenceIncludes: "OG image",
+    },
+    {
+      description: "an https og:image",
+      url: "https://example.com/",
+      body: '<meta property="og:image" content="https://cdn.example.com/a.png">',
       expect: "skip",
     },
   ],
