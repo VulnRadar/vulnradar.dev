@@ -35,16 +35,20 @@ describe("GET /api/security-txt", () => {
     expect(body).not.toContain("security@vulnradar.dev");
   });
 
-  it("expires in the future and under one year out, as the RFC recommends", async () => {
-    const before = new Date();
-    const body = await (await GET()).text();
-    const [expires] = field(body, "Expires");
+  // On a fixed clock, because the milliseconds are dropped: a value exactly a
+  // year out also lands below "now plus a year" whenever the clock is mid-second.
+  it("expires one day short of a year out, as the RFC recommends", async () => {
+    vi.useFakeTimers({
+      toFake: ["Date"],
+      now: new Date("2026-03-15T12:00:00.500Z"),
+    });
+    try {
+      const body = await (await GET()).text();
 
-    const oneYearOut = new Date(before);
-    oneYearOut.setUTCFullYear(oneYearOut.getUTCFullYear() + 1);
-
-    expect(Date.parse(expires)).toBeGreaterThan(before.getTime());
-    expect(Date.parse(expires)).toBeLessThan(oneYearOut.getTime());
+      expect(field(body, "Expires")).toEqual(["2027-03-14T12:00:00.000Z"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("points Policy at the site's security page and Acknowledgments at the changelog", async () => {

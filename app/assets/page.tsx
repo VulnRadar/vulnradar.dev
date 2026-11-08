@@ -44,10 +44,7 @@ export default function AssetsPage() {
   const [listError, setListError] = useState<string | null>(null);
   // Set when the server held back hosts past its cap, so the list and its
   // search are not mistaken for everything on file.
-  const [truncation, setTruncation] = useState<{
-    limit: number;
-    totalHosts: number;
-  } | null>(null);
+  const [truncatedTotal, setTruncatedTotal] = useState<number | null>(null);
   const [filter, setFilter] = useState("");
   // "mine" = the caller's own scanned hosts (default); "all" = every public
   // host on file (host_reputation, public-scan-only). Synced to ?scope=.
@@ -103,11 +100,7 @@ export default function AssetsPage() {
       const data = await res.json();
       setListError(null);
       setAssets(Array.isArray(data.assets) ? data.assets : []);
-      setTruncation(
-        data.truncated
-          ? { limit: data.limit, totalHosts: data.totalHosts }
-          : null,
-      );
+      setTruncatedTotal(data.truncated ? data.totalHosts : null);
     } catch {
       // Was setAssets([]), which turned a dropped connection into a positive
       // claim that this account has never scanned anything.
@@ -255,11 +248,11 @@ export default function AssetsPage() {
 
       {!loading && !listError && <AssetsStats assets={assets} />}
 
-      {!loading && !listError && truncation && (
+      {!loading && !listError && truncatedTotal !== null && (
         <AssetsTruncatedNotice
           scope={scope}
           shown={assets.length}
-          totalHosts={truncation.totalHosts}
+          totalHosts={truncatedTotal}
         />
       )}
 

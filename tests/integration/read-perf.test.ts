@@ -335,33 +335,40 @@ describeIntegration("read paths against real SQL", () => {
     it("spends the cap on hosts, however many times one host was scanned", async () => {
       const userId = await newUser();
       const busy = site("asset-busy");
-      const middle = site("asset-middle");
-      const quiet = site("asset-quiet");
+      const others = Array.from({ length: 11 }, (_, i) =>
+        site(`asset-other${i}`),
+      );
 
-      // Ten scans of one site are newer than everything else. Capping scan
-      // rows, as this route used to, returned only this host.
+      // Ten scans of one site are newer than everything else, and ten is the
+      // lowest value the setting accepts: below its floor the value is ignored
+      // and the shipped default applies. Capping scan rows, as this route used
+      // to, returned only this host.
       for (let i = 0; i < 10; i++) {
         await insertScan(userId, `https://${busy}/${i}`, { minutesAgo: i });
       }
-      await insertScan(userId, `https://${middle}/`, { minutesAgo: 100 });
-      await insertScan(userId, `https://${quiet}/`, { minutesAgo: 200 });
+      for (const [i, other] of others.entries()) {
+        await insertScan(userId, `https://${other}/`, { minutesAgo: 100 + i });
+      }
 
       auth.userId = userId;
-      await setSettings({ HISTORY_LIST_MAX_ROWS: 2 });
+      await setSettings({ HISTORY_LIST_MAX_ROWS: 10 });
       try {
         const capped = await assets();
-        expect(capped.assets.map((x: Asset) => x.host)).toEqual([busy, middle]);
+        expect(capped.assets.map((x: Asset) => x.host)).toEqual([
+          busy,
+          ...others.slice(0, 9),
+        ]);
         expect(capped.assets[0].scanCount).toBe(10);
         expect(capped).toMatchObject({
-          limit: 2,
-          totalHosts: 3,
-          totalScans: 12,
+          limit: 10,
+          totalHosts: 12,
+          totalScans: 21,
           truncated: true,
         });
 
-        await setSettings({ HISTORY_LIST_MAX_ROWS: 3 });
+        await setSettings({ HISTORY_LIST_MAX_ROWS: 12 });
         const exact = await assets();
-        expect(exact.assets).toHaveLength(3);
+        expect(exact.assets).toHaveLength(12);
         expect(exact.truncated).toBe(false);
       } finally {
         await clearSettings();
