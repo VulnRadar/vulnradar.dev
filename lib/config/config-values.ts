@@ -1241,8 +1241,9 @@ export const CONFIG_BILLING_ELITE_SUPPORTER_AI_TOKENS_PER_WINDOW = 8_000_000;
 // key -- it is a blunt guard against a single run pushing an enormous repo
 // through the model and ballooning cost or latency. The review stops at the
 // batch that would cross it and reports aiReviewStoppedAtRunCap with its
-// coverage, rather than refusing the scan; the pattern scan still covers
-// every file.
+// coverage, rather than refusing the scan, and skips and lists a file over it
+// on its own (aiReviewCoverage.filesSkippedOverRunCap); the pattern scan still
+// covers every file.
 export const CONFIG_GITHUB_REVIEW_MAX_TOKENS_PER_RUN = 300_000;
 
 // Per-batch HTTP timeout for each AI code-review call in runGithubAiReview
