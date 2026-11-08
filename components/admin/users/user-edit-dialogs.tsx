@@ -312,8 +312,8 @@ export function EditAccountDialog({
             </p>
           </div>
           <p className="text-xs text-muted-foreground">
-            They get one email listing what changed. A new email address is also
-            announced to the old one.
+            Name and plan changes go out in one email. An email change sends its
+            own notice to the old and the new address.
           </p>
         </div>
       </EditDialog>

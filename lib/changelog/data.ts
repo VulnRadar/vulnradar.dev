@@ -2318,7 +2318,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Mail,
         label: "Admin Account Edits Always Tell the User",
-        desc: "In the admin user panel, unticking the notify box on one save no longer carries into the next. Before, a later email, name, plan or role change could go out without telling the user, while the save where the box was unticked emailed them anyway. Name, email and plan changes now always send the user one email listing what changed, and the staff role and badge dialogs each have a notify box that applies to that save only.",
+        desc: "In the admin user panel, unticking the notify box on one save no longer carries into the next. Before, a later email, name, plan or role change could go out without telling the user, while the save where the box was unticked emailed them anyway. Name and plan changes now always send the user one email listing what changed, an email change sends its own notice to both the old and the new address, and the staff role and badge dialogs each have a notify box that applies to that save only.",
         category: "security",
       },
       {

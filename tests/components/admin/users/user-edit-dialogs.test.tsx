@@ -92,9 +92,26 @@ describe("EditAccountDialog", () => {
     expect(html).toContain(">Email address</label>");
     expect(html).toContain(">Plan</label>");
     expect(html).toContain("Changes are logged in the audit log.");
-    expect(html).toContain("They get one email listing what changed.");
+    // An email change is not folded into the batch: its security notice goes
+    // to both addresses, so "one email" is only true of the name and plan.
+    expect(html).toContain("Name and plan changes go out in one email.");
+    expect(html).toContain(
+      "An email change sends its own notice to the old and the new address.",
+    );
+    expect(html).not.toContain("They get one email");
     expect(html).toContain(">Cancel</button>");
     expect(html).toContain(">Save changes</button>");
+  });
+
+  it("the changelog does not count an email change into the one email", async () => {
+    const { CHANGELOG } = await import("@/lib/changelog/data");
+    const entry = CHANGELOG.flatMap((release) => release.changes).find(
+      (change) => change.label === "Admin Account Edits Always Tell the User",
+    );
+    expect(entry?.desc).toContain("Name and plan changes now always send");
+    expect(entry?.desc).toContain(
+      "an email change sends its own notice to both the old and the new address",
+    );
   });
 
   it("shows the name only to a role that cannot manage staff", () => {
