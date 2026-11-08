@@ -989,7 +989,7 @@ export async function validateScanTarget(
       return {
         safe: false,
         reason:
-          "Domain resolved to no addresses — cannot verify target is safe to scan.",
+          "Domain resolved to no addresses: cannot verify target is safe to scan.",
         code: "unreachable",
       };
     } catch (error) {
@@ -997,7 +997,7 @@ export async function validateScanTarget(
       // so we must refuse rather than let the actual fetch resolve independently.
       return {
         safe: false,
-        reason: "DNS resolution failed — cannot verify target is safe to scan.",
+        reason: "DNS resolution failed: cannot verify target is safe to scan.",
         code: "unreachable",
         cause: error,
       };

@@ -1248,7 +1248,7 @@ describe("safeFetch (thrown errors carry a code)", () => {
 
       expect(err.code).toBe("unreachable");
       expect(err.message).toBe(
-        "DNS resolution failed — cannot verify target is safe to scan.",
+        "DNS resolution failed: cannot verify target is safe to scan.",
       );
       expect(err.cause).toBe(dnsError);
       expect(fetchMock).not.toHaveBeenCalled();
@@ -1260,7 +1260,7 @@ describe("safeFetch (thrown errors carry a code)", () => {
       await expect(safeFetch("https://empty.example/")).rejects.toMatchObject({
         code: "unreachable",
         message:
-          "Domain resolved to no addresses — cannot verify target is safe to scan.",
+          "Domain resolved to no addresses: cannot verify target is safe to scan.",
       });
     });
 
