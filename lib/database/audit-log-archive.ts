@@ -54,12 +54,17 @@ export async function ensureAuditLogArchiveTable(
  *
  * Returns the number of rows purged and archived. HAVING is what keeps an
  * empty purge from leaving an empty batch behind.
+ *
+ * The parameter is not called `executor` on purpose. db:create reads every
+ * `executor.query` in this file as schema DDL (moduleStepStatements in
+ * scripts/_lib/_lib.schema-parity.mjs), so that name would run this purge
+ * during a clone, with no parameter to bind.
  */
 export async function purgeExpiredAdminAuditLog(
-  executor: Pool | PoolClient,
+  db: Pool | PoolClient,
   retentionDays: number,
 ): Promise<number> {
-  const { rows } = await executor.query<{ row_count: number }>(
+  const { rows } = await db.query<{ row_count: number }>(
     `WITH purged AS (
        DELETE FROM admin_audit_log
        WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')
