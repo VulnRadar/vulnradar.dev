@@ -200,6 +200,61 @@ describe("PATCH /api/v3/webhooks (send a test payload)", () => {
     expect(res.status).toBe(200);
     expect(json.success).toBe(true);
   });
+
+  // A row saved as discord before Discord's /slack and /github endpoints were
+  // told apart keeps that type. Its scan notifications already pick the
+  // payload by deliveryFormat; the test message has to match, or it arrives
+  // as an embed those endpoints do not read.
+  it.each<[string, string, string, (body: Record<string, unknown>) => void]>([
+    [
+      "a stored discord row on Discord's /slack endpoint gets the Slack payload",
+      "discord",
+      "https://discord.com/api/webhooks/1/tok/slack",
+      (body) => {
+        expect(body).toHaveProperty("blocks");
+        expect(body).toHaveProperty("text");
+        expect(body).not.toHaveProperty("embeds");
+      },
+    ],
+    [
+      "a stored discord row on Discord's /github endpoint gets the generic payload",
+      "discord",
+      "https://discord.com/api/webhooks/1/tok/github",
+      (body) => {
+        expect(body).toMatchObject({ event: "test" });
+        expect(body).not.toHaveProperty("embeds");
+      },
+    ],
+    [
+      "an ordinary Discord webhook still gets an embed",
+      "discord",
+      "https://discord.com/api/webhooks/1/tok",
+      (body) => expect(body).toHaveProperty("embeds"),
+    ],
+    [
+      "a discord type pinned on a proxy is kept",
+      "discord",
+      "https://proxy.example/hooks/slack",
+      (body) => expect(body).toHaveProperty("embeds"),
+    ],
+  ])("%s", async (_label, type, url, check) => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 10, url, name: "Prod", type, user_id: 7, team_id: null }],
+    });
+    const { safeFetch } = await import("@/lib/scanner/safe-fetch");
+    vi.mocked(safeFetch).mockReset();
+    vi.mocked(safeFetch).mockResolvedValue(new Response("ok", { status: 200 }));
+
+    const res = await PATCH(patchRequest({ id: 10 }));
+
+    expect(res.status).toBe(200);
+    const [sentTo, init] = vi.mocked(safeFetch).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect(sentTo).toBe(url);
+    check(JSON.parse(init.body as string));
+  });
 });
 
 describe("DELETE /api/v3/webhooks", () => {

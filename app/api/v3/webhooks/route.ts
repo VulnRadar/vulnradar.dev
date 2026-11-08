@@ -18,6 +18,7 @@ import {
   planLimitMessage,
 } from "@/lib/billing/plan-limits";
 import {
+  deliveryFormat,
   resolveWebhookType,
   WEBHOOK_TYPE_ERROR,
 } from "@/lib/webhooks/detect-type";
@@ -254,9 +255,13 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  // Build test payload based on webhook type
+  // The payload a real delivery to this row gets (deliveryFormat), not its
+  // stored type: a row saved as discord before /slack and /github were told
+  // apart still holds that type, and its test was sent an embed those
+  // endpoints do not read, while its scan notifications already worked.
+  const format = deliveryFormat(webhook.type, webhook.url);
   const testPayload =
-    webhook.type === "discord"
+    format === "discord"
       ? {
           content: null,
           embeds: [
@@ -273,7 +278,7 @@ export async function PATCH(request: NextRequest) {
             },
           ],
         }
-      : webhook.type === "slack"
+      : format === "slack"
         ? {
             text: `${APP_NAME} Test Webhook`,
             blocks: [
