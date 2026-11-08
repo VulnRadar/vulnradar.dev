@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { Check } from "lucide-react";
 import {
   SOURCE_FILES,
   WORDMARK_COLOURS,
+  sourceLockupSize,
   type LockupLayout,
   type LockupVariant,
 } from "@/lib/brand/kit";
@@ -31,6 +33,9 @@ const OPTIONS: { variant: LockupVariant; label: string; surface: string }[] = [
   },
 ];
 
+const HORIZONTAL = sourceLockupSize("horizontal");
+const STACKED = sourceLockupSize("stacked");
+
 /**
  * The lockup downloads, one variant at a time. The preview is drawn from the
  * same SVG sources the PNGs were rasterised from, on the surface that
@@ -39,32 +44,47 @@ const OPTIONS: { variant: LockupVariant; label: string; surface: string }[] = [
 export function LockupDownloads({ slots }: { slots: LockupSlotView[] }) {
   const [variant, setVariant] = useState<LockupVariant>("on-dark");
   const option = OPTIONS.find((o) => o.variant === variant)!;
+  const audience = option.label.toLowerCase();
 
   return (
     <div>
       <div
         role="group"
         aria-label="Lockup variant"
-        className="mb-4 inline-flex flex-wrap gap-1 rounded-md border border-border bg-card p-1"
+        // One option per row on a phone: side by side, the tick pushed the
+        // second one onto a line of its own.
+        className="mb-4 grid gap-1 rounded-md border border-border bg-card p-1 sm:inline-flex"
       >
-        {OPTIONS.map((o) => (
-          <button
-            key={o.variant}
-            type="button"
-            aria-pressed={o.variant === variant}
-            onClick={() => setVariant(o.variant)}
-            className={cn(
-              "min-h-11 rounded-md px-3 text-sm font-medium transition-colors sm:min-h-9",
-              o.variant === variant
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              focus.ring,
-            )}
-          >
-            {o.label}
-          </button>
-        ))}
+        {OPTIONS.map((o) => {
+          const pressed = o.variant === variant;
+          return (
+            <button
+              key={o.variant}
+              type="button"
+              aria-pressed={pressed}
+              onClick={() => setVariant(o.variant)}
+              className={cn(
+                "inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors sm:min-h-9",
+                pressed
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                focus.ring,
+              )}
+            >
+              {/* The tick is the selected state's non-colour cue. It is
+                  always laid out, so choosing a variant moves nothing. */}
+              <Check
+                aria-hidden
+                className={cn("h-4 w-4 shrink-0", !pressed && "invisible")}
+              />
+              {o.label}
+            </button>
+          );
+        })}
       </div>
+      <p role="status" className="sr-only">
+        Showing lockups {audience}
+      </p>
 
       <figure className="mb-8">
         {/* `dark` on the dark surface re-points every token inside it at the
@@ -78,16 +98,16 @@ export function LockupDownloads({ slots }: { slots: LockupSlotView[] }) {
         >
           <KitImage
             path={SOURCE_FILES.lockup.horizontal[variant]}
-            alt="VulnRadar logo"
-            width={553}
-            height={100}
+            alt="VulnRadar logo, horizontal"
+            width={HORIZONTAL.width}
+            height={HORIZONTAL.height}
             className="h-auto w-full max-w-[34rem]"
           />
           <KitImage
             path={SOURCE_FILES.lockup.stacked[variant]}
             alt="VulnRadar logo, stacked"
-            width={240}
-            height={165}
+            width={STACKED.width}
+            height={STACKED.height}
             className="mx-auto h-auto w-full max-w-[11rem]"
           />
         </div>
@@ -101,7 +121,7 @@ export function LockupDownloads({ slots }: { slots: LockupSlotView[] }) {
       </figure>
 
       <ul
-        aria-label={`Lockup PNGs, ${option.label.toLowerCase()}`}
+        aria-label={`Lockup PNGs, ${audience}`}
         className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7"
       >
         {slots.map((slot) => {
@@ -112,8 +132,8 @@ export function LockupDownloads({ slots }: { slots: LockupSlotView[] }) {
               <DownloadChip
                 path={file.path}
                 label={`${slot.width} × ${slot.height}`}
-                detail={`${layout}, ${file.size}`}
-                title={`Lockup ${option.label.toLowerCase()}, ${slot.width} by ${slot.height} PNG, ${file.size}`}
+                detail={`${layout} PNG, ${file.size}`}
+                context={`lockup ${audience}`}
               />
             </li>
           );

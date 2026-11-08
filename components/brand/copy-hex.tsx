@@ -10,8 +10,13 @@ import { cn } from "@/lib/ui/utils";
 
 /**
  * A colour value that copies itself. The hex is the button's visible label,
- * so the accessible name ("Copy #60a5fa") contains what a speech-input user
- * sees and says.
+ * so the accessible name ("Copy Primary, light theme, #61a6fa") contains
+ * what a speech-input user sees and says, and the colour's name tells apart
+ * two buttons that copy the same hex.
+ *
+ * The negative margin is on the left only: it lines the hex up with the
+ * column while the hover fill reaches into the gap before it. On the right
+ * it would push the fill past the end of the row.
  */
 export function CopyHex({ value, name }: { value: string; name: string }) {
   const { copied, copy } = useCopyFeedback();
@@ -20,13 +25,12 @@ export function CopyHex({ value, name }: { value: string; name: string }) {
       <button
         type="button"
         onClick={() => copy(value)}
-        title={`Copy ${name}, ${value}`}
         className={cn(
-          "-mx-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 font-mono text-sm text-foreground transition-colors hover:bg-muted sm:min-h-8",
+          "-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 font-mono text-sm text-foreground transition-colors hover:bg-muted sm:min-h-8",
           focus.ring,
         )}
       >
-        <span className="sr-only">Copy </span>
+        <span className="sr-only">Copy {name}, </span>
         {value}
         {copied ? (
           <Check aria-hidden className="h-3.5 w-3.5 text-primary" />
@@ -34,7 +38,7 @@ export function CopyHex({ value, name }: { value: string; name: string }) {
           <Copy aria-hidden className="h-3.5 w-3.5 text-muted-foreground" />
         )}
       </button>
-      <CopiedAnnouncement copied={copied} noun={`${name} ${value}`} />
+      <CopiedAnnouncement copied={copied} noun={`${name}, ${value}`} />
     </>
   );
 }

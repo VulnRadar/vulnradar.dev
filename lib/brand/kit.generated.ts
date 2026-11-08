@@ -4,12 +4,12 @@
 // prints real sizes, and a hash of the ZIP. The page appends the hash to every
 // download URL: Cloudflare caches PNGs and ZIPs at the edge by path, and a
 // redrawn logo would otherwise keep being served from the old bytes.
-export const BRAND_KIT_HASH = "061d92bc";
+export const BRAND_KIT_HASH = "af39ff84";
 
-export const BRAND_KIT_ZIP_BYTES = 446504;
+export const BRAND_KIT_ZIP_BYTES = 446505;
 
 export const BRAND_KIT_FILE_BYTES: Readonly<Record<string, number>> = {
-  "README.md": 3060,
+  "README.md": 3057,
   "lockup/vulnradar-lockup-on-dark-1200x300.png": 13805,
   "lockup/vulnradar-lockup-on-dark-1200x630.png": 14484,
   "lockup/vulnradar-lockup-on-dark-1500x500.png": 17574,

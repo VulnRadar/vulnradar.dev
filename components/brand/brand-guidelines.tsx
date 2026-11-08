@@ -12,6 +12,7 @@ import {
   WORDMARK_FACE,
   WORDMARK_VIEWBOX,
   contrastRatio,
+  sourceLockupSize,
 } from "@/lib/brand/kit";
 import { cn } from "@/lib/ui/utils";
 import { CopyHex } from "./copy-hex";
@@ -48,6 +49,9 @@ function Swatch({ hex, size = 40 }: { hex: string; size?: number }) {
 const ratio = (a: string, b: string) => `${contrastRatio(a, b).toFixed(1)}:1`;
 
 const background = UI_PALETTE.find((t) => t.token === "background")!;
+const primary = UI_PALETTE.find((t) => t.token === "primary")!;
+const arcs = LOGO_PALETTE.find((c) => c.name === "Arcs")!;
+const HORIZONTAL = sourceLockupSize("horizontal");
 
 export function BrandColour() {
   return (
@@ -57,9 +61,9 @@ export function BrandColour() {
       title="Colour"
       intro={
         <p>
-          The logo has five colours and never changes them. The interface has
-          its own tokens, which shift between the light and the dark theme. In
-          code, use the token (
+          The mark has five colours and never changes them; only the wordmark
+          switches, between two. The interface has its own tokens, which shift
+          between the light and the dark theme. In code, use the token (
           <code className="font-mono text-sm">text-primary</code>,{" "}
           <code className="font-mono text-sm">bg-card</code>), not the hex.
         </p>
@@ -96,7 +100,11 @@ export function BrandColour() {
             In the interface
           </h3>
           <p className="mb-4 text-sm text-muted-foreground leading-relaxed">
-            The tokens in app/globals.css, as each theme renders them.
+            The tokens in app/globals.css, as each theme renders them. Primary
+            is the logo&apos;s <span className="font-mono">{arcs.hex}</span>{" "}
+            written as HSL; converted back it rounds to{" "}
+            <span className="font-mono">{primary.light.hex}</span>, the same
+            blue.
           </p>
           <table className="w-full border-y border-border/50 text-left text-sm">
             <thead>
@@ -116,6 +124,9 @@ export function BrandColour() {
               {UI_PALETTE.map((t) => (
                 <TokenRow key={t.token} entry={t} use={t.use} />
               ))}
+            </tbody>
+            {/* Its own tbody, so the rowgroup header heads only these rows. */}
+            <tbody className="divide-y divide-border/50 border-t border-border/50">
               <tr>
                 <th
                   scope="rowgroup"
@@ -165,7 +176,7 @@ function TokenRow({
             <Swatch hex={entry[theme].hex} size={28} />
             <CopyHex
               value={entry[theme].hex}
-              name={`${entry.name}, ${theme} theme,`}
+              name={`${entry.name}, ${theme} theme`}
             />
           </div>
         </td>
@@ -174,34 +185,59 @@ function TokenRow({
   );
 }
 
-const HIERARCHY = [
+/**
+ * Tailwind's type scale in CSS pixels at the default 16px root.
+ * tests/components/brand/brand-kit.test.tsx checks it against the installed
+ * tailwindcss/theme.css.
+ */
+export const TEXT_PX = {
+  base: 16,
+  lg: 18,
+  xl: 20,
+  "2xl": 24,
+  "3xl": 30,
+  "4xl": 36,
+} as const;
+
+/** "30 px, 36 px from sm", read off the class names the sample is set in. */
+export function typeSizeLabel(className: string) {
+  const step = (prefix: string) => {
+    const match = className.match(
+      new RegExp(
+        `(?:^|\\s)${prefix}text-(${Object.keys(TEXT_PX).join("|")})(?=\\s|$)`,
+      ),
+    );
+    return match ? TEXT_PX[match[1] as keyof typeof TEXT_PX] : undefined;
+  };
+  const base = step("");
+  const sm = step("sm:");
+  if (base === undefined) throw new Error(`No text size in "${className}"`);
+  return sm === undefined ? `${base} px` : `${base} px, ${sm} px from sm`;
+}
+
+export const HIERARCHY = [
   {
     role: "Page title (Tier A)",
-    size: "30 px, 36 px from sm",
     sample: "Report a security issue",
     className: "text-3xl sm:text-4xl font-semibold tracking-tight",
   },
   {
     role: "Marketing section title",
-    size: "24 px, 30 px from sm",
     sample: "Run it twice, get the same answer twice",
     className: "text-2xl sm:text-3xl font-semibold tracking-tight",
   },
   {
     role: "Sub-page title (Tier B)",
-    size: "20 px, 24 px from sm",
     sample: "Attack surface",
     className: "text-xl sm:text-2xl font-semibold tracking-tight",
   },
   {
     role: "Panel-group heading",
-    size: "18 px",
     sample: "Billing overview",
     className: "text-lg font-semibold tracking-tight",
   },
   {
     role: "Panel heading",
-    size: "16 px",
     sample: "Verified domains",
     className: "text-base font-semibold tracking-tight",
   },
@@ -231,7 +267,7 @@ export function BrandType() {
             <dd className="text-foreground">
               {WORDMARK_FACE.family} SemiBold, version {WORDMARK_FACE.version}
             </dd>
-            <dt className="text-muted-foreground">License</dt>
+            <dt className="text-muted-foreground">Licence</dt>
             <dd className="text-foreground">{WORDMARK_FACE.license}</dd>
             <dt className="text-muted-foreground">Tracking</dt>
             <dd className="text-foreground">
@@ -300,7 +336,7 @@ export function BrandType() {
             </p>
             <p className="text-sm text-muted-foreground">
               <span className="text-foreground">{level.role}</span>,{" "}
-              {level.size}
+              {typeSizeLabel(level.className)}
             </p>
           </li>
         ))}
@@ -324,7 +360,7 @@ const VOICE = [
   },
   {
     instead: "Comprehensive security coverage",
-    write: `Paste a URL and get ${TOTAL_CHECKS_LABEL} security checks back, each with evidence and a fix.`,
+    write: `Paste a URL and get ${TOTAL_CHECKS_LABEL} security checks back, from headers, CSP, TLS and cookies to exposed .env files and leaked API keys, each with evidence and a fix.`,
   },
   { instead: "Get Started", write: "Create an account" },
   {
@@ -384,7 +420,7 @@ export function BrandVoice() {
             </tbody>
           </table>
           <p className="mt-3 text-xs text-muted-foreground">
-            Every line on the right is copy the product ships today.
+            Every line on the right is taken from copy the product ships today.
           </p>
         </div>
       </div>
@@ -418,8 +454,8 @@ const DOS: Example[] = [
       <KitImage
         path={SOURCE_FILES.lockup.horizontal["on-light"]}
         alt=""
-        width={553}
-        height={100}
+        width={HORIZONTAL.width}
+        height={HORIZONTAL.height}
         className="h-auto w-4/5"
       />
     ),
@@ -456,7 +492,9 @@ const DONTS: Example[] = [
     art: (
       <span className="flex items-center gap-2">
         {MARK("h-10 w-10 sm:h-10 sm:w-10")}
-        <span className="font-serif text-2xl italic text-[#0f172a]">
+        {/* aria-hidden: it is a picture of a mistake, and read aloud it
+            would be the page saying the product's name out of nowhere. */}
+        <span aria-hidden className="font-serif text-2xl italic text-[#0f172a]">
           VulnRadar
         </span>
       </span>
@@ -504,7 +542,9 @@ export function BrandDoDont() {
       intro={
         <p>
           Drawn live on the real mark, so each one is exactly the mistake it
-          names. Resizing is fine. Everything else here is not.
+          names. Resizing is fine. Everything else here is not, with one
+          exception to the last: a header that sets the name as live text, as
+          described under Accessibility.
         </p>
       }
     >
@@ -561,9 +601,10 @@ export function BrandAccessibility() {
             </div>
             <div>
               <p className="mb-2">
-                Beside the name set as text, as in the site header, the mark is
-                decoration. An empty alt stops a screen reader saying the name
-                twice:
+                Everywhere else, use the lockup file. The one exception is a
+                header that has to carry the name as live text, as the site
+                header does. There the mark is decoration, and an empty alt
+                stops a screen reader saying the name twice:
               </p>
               <pre className="whitespace-pre-wrap break-words rounded-md border border-border bg-card px-3 py-2 font-mono text-xs text-foreground">
                 {`<img src="vulnradar-logo-32x32.png" alt=""> ${APP_NAME}`}

@@ -19,6 +19,14 @@ export const BRAND_KIT_ZIP = "vulnradar-brand-kit.zip";
  *  downloads folder makes one folder rather than four plus a README. */
 export const BRAND_KIT_ZIP_ROOT = "vulnradar-brand-kit";
 
+/**
+ * What the files may be used for, in the one wording both /brand and the
+ * kit's README print. The code is GPL-3.0; this sentence is the only grant
+ * for the artwork, so it says what is allowed rather than "free to use".
+ */
+export const USE_TERMS =
+  "Free to use when you write about VulnRadar, link to it, or show that something works with it.";
+
 // ─── The mark ──────────────────────────────────────────────────────────────
 //
 // public/favicon.svg draws the mark on a 24-unit square: a disc of radius 11
@@ -146,6 +154,21 @@ export function lockupBox(layout: LockupLayout): LockupBox {
   };
 }
 
+/** The disc's diameter in the source lockup SVGs, in SVG units. */
+export const SOURCE_LOCKUP_DISC = 100;
+
+/**
+ * A source lockup SVG's size in whole pixels, for the width and height of an
+ * <img> that shows it. The SVG itself writes the unrounded value.
+ */
+export function sourceLockupSize(layout: LockupLayout) {
+  const box = lockupBox(layout);
+  return {
+    width: Math.round(box.width * SOURCE_LOCKUP_DISC),
+    height: Math.round(box.height * SOURCE_LOCKUP_DISC),
+  };
+}
+
 export interface LockupFit {
   layout: LockupLayout;
   /** Disc diameter in pixels. */
@@ -221,6 +244,14 @@ export const PROFILE_NAVY_SIZES = [512, 1024] as const;
 
 /** The disc's colour, which the -navy profile pictures fill the square with. */
 export const PROFILE_NAVY = "#0f172a";
+
+/**
+ * How large the -navy profile pictures draw the radar, as a fraction of the
+ * square. The disc is the same navy as the fill, so it vanishes and only the
+ * radar reads; drawing it smaller leaves the arcs a margin inside a circular
+ * crop.
+ */
+export const PROFILE_NAVY_SCALE = 0.8;
 
 export type BrandFileKind = "logo" | "lockup" | "profile" | "source" | "readme";
 

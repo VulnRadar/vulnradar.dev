@@ -23,14 +23,17 @@ import {
   PROFILE_NAVY_SIZES,
   PROFILE_SIZES,
   SEVERITY_PALETTE,
+  README_FILE,
   SOURCE_FILES,
   UI_PALETTE,
+  USE_TERMS,
   WORDMARK_COLOURS,
   WORDMARK_VIEWBOX,
   brandKitFiles,
   contrastRatio,
   fitLockup,
   lockupBox,
+  sourceLockupSize,
 } from "@/lib/brand/kit";
 import {
   BRAND_KIT_FILE_BYTES,
@@ -172,8 +175,27 @@ describe("the sources", () => {
         expect(svg).toContain(
           `fill="${WORDMARK_COLOURS[variant]}" d="${wordmarkPath}"`,
         );
+        // The page sizes its <img> of this file from sourceLockupSize.
+        const [, w, h] = svg.match(
+          /<svg[^>]* width="([\d.]+)" height="([\d.]+)"/,
+        )!;
+        expect([Math.round(Number(w)), Math.round(Number(h))]).toEqual([
+          sourceLockupSize(layout).width,
+          sourceLockupSize(layout).height,
+        ]);
       }
     }
+  });
+
+  it("writes the README's rules from kit.ts, in the page's words", () => {
+    const readme = read(README_FILE).toString("utf8");
+    expect(readme).toContain(USE_TERMS);
+    expect(readme).toContain(
+      `X is ${CLEAR_SPACE * 100}% of the disc's diameter`,
+    );
+    expect(readme).toContain(
+      `Mark ${MARK_MIN_PX} px. Lockup ${LOCKUP_MIN_WIDTH_PX} px wide.`,
+    );
   });
 });
 

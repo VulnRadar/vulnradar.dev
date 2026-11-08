@@ -1,15 +1,14 @@
 # VulnRadar brand kit
 
-The logo, the lockup and the colours, as files you can drop straight in. Use
-them when you write about VulnRadar, link to it, or show that something works
-with it. The same kit, with live examples, is at https://vulnradar.dev/brand.
+The logo, the lockup and the colours, as files you can drop straight in.
+Free to use when you write about VulnRadar, link to it, or show that something works with it. The same kit, with live examples, is at https://vulnradar.dev/brand.
 
 ## The short version
 
 | | |
 |---|---|
 | **Logo** | A navy disc with a radar sweep. Use the mark on its own when space is tight. |
-| **Clear space** | X on every side, where X is a quarter of the disc's diameter. |
+| **Clear space** | X on every side, where X is 25% of the disc's diameter. |
 | **Minimum size** | Mark 16 px. Lockup 96 px wide. Below that, the mark alone. |
 | **Never** | Recolour, stretch, rotate, add a shadow or an outline, or set the wordmark in a font. |
 | **Wordmark** | JetBrains Mono SemiBold, outlined to paths. You do not need the font. |

@@ -11,11 +11,18 @@ import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { BrandKit } from "@/components/brand/brand-kit";
 import {
+  HIERARCHY,
+  TEXT_PX,
+  typeSizeLabel,
+} from "@/components/brand/brand-guidelines";
+import {
   BRAND_KIT_ZIP,
+  CLEAR_SPACE,
   LOCKUP_SLOTS,
   LOGO_SIZES,
   PROFILE_NAVY_SIZES,
   PROFILE_SIZES,
+  USE_TERMS,
   brandKitFiles,
 } from "@/lib/brand/kit";
 import { BRAND_KIT_HASH } from "@/lib/brand/kit.generated";
@@ -27,10 +34,15 @@ const ROOT = process.cwd();
 const html = renderToStaticMarkup(<BrandKit />);
 const text = html.replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/g, " ");
 
-/** Every <a> on the page, with its href and download attribute. */
-const links = [...html.matchAll(/<a\b([^>]*)>/g)].map((m) => ({
+/** Every <a> on the page, with its href, download attribute and text. */
+const links = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map((m) => ({
   href: m[1].match(/href="([^"]+)"/)?.[1] ?? "",
   download: m[1].match(/download="([^"]*)"/)?.[1],
+  name: m[2]
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim(),
 }));
 const kitLinks = links.filter((l) => l.href.startsWith("/brand/"));
 const kitPath = (url: string) =>
@@ -112,6 +124,28 @@ describe("the /brand page", () => {
     );
   });
 
+  it("names what each download is, not only its size", () => {
+    const named = (path: string) =>
+      kitLinks.find((l) => kitPath(l.href) === path)?.name;
+    expect(named("logo/vulnradar-logo-512x512.png")).toMatch(
+      /^512 × 512, PNG, \d+(\.\d)? KB, the mark$/,
+    );
+    expect(named("profile/vulnradar-profile-1024x1024.png")).toMatch(
+      /^1024 × 1024, Transparent PNG, .+, transparent profile picture$/,
+    );
+    expect(named("lockup/vulnradar-lockup-on-dark-970x250.png")).toMatch(
+      /^970 × 250, Horizontal PNG, .+, lockup for dark backgrounds$/,
+    );
+    expect(named(BRAND_KIT_ZIP)).toMatch(
+      /^Download everything, ZIP, \d+(\.\d)? KB$/,
+    );
+  });
+
+  it("states the terms and the clear space from kit.ts", () => {
+    expect(text).toContain(USE_TERMS);
+    expect(text).toContain(`X is ${CLEAR_SPACE * 100}% of the disc`);
+  });
+
   it("uses no em dash, en dash or middle dot in its copy", () => {
     expect(text).not.toMatch(/[–—·]/);
   });
@@ -139,5 +173,29 @@ describe("the /brand route", () => {
     // A standalone page and directory of its own, not a prefix of anything
     // private: the app has no other route starting with "/brand".
     expect(ROUTES.BRAND).toBe("/brand");
+  });
+});
+
+describe("the type hierarchy", () => {
+  it("knows the px of each Tailwind text size it labels", () => {
+    const theme = readFileSync(
+      join(ROOT, "node_modules", "tailwindcss", "theme.css"),
+      "utf8",
+    );
+    for (const [step, px] of Object.entries(TEXT_PX)) {
+      const rem = theme.match(new RegExp(`--text-${step}:\\s*([\\d.]+)rem;`));
+      expect(rem, step).not.toBeNull();
+      expect(Number(rem![1]) * 16, step).toBe(px);
+    }
+  });
+
+  it("labels every level from its own class names", () => {
+    expect(HIERARCHY.map((level) => typeSizeLabel(level.className))).toEqual([
+      "30 px, 36 px from sm",
+      "24 px, 30 px from sm",
+      "20 px, 24 px from sm",
+      "18 px",
+      "16 px",
+    ]);
   });
 });

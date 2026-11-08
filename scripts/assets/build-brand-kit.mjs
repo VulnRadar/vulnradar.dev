@@ -153,17 +153,16 @@ const markSvg = (size) => svg(size, size, markInner, "0 0 24 24");
 const profileSvg = (size) => svg(size, size, markInner, "1 1 22 22");
 
 /**
- * The opaque avatar: navy square, the radar drawn at 80% so a circular crop
- * leaves the arcs a margin. The disc is the same navy as the square, so it
- * disappears into it and only the radar reads.
+ * The opaque avatar: navy square, the radar drawn at kit.PROFILE_NAVY_SCALE
+ * so a circular crop leaves the arcs a margin. The disc is the same navy as
+ * the square, so it disappears into it and only the radar reads.
  */
-const PROFILE_NAVY_SCALE = 0.8;
 const profileNavySvg = (size) =>
   svg(
     size,
     size,
     `<rect width="24" height="24" fill="${kit.PROFILE_NAVY}"/>
-<g transform="translate(12 12) scale(${PROFILE_NAVY_SCALE}) translate(-12 -12)">
+<g transform="translate(12 12) scale(${kit.PROFILE_NAVY_SCALE}) translate(-12 -12)">
 ${markInner}
 </g>`,
     "0 0 24 24",
@@ -177,7 +176,7 @@ function bannerSvg(variant, width, height) {
 /** A source lockup, tight to its ink, with the disc 100 units across. */
 function sourceLockupSvg(layout, variant) {
   const box = kit.lockupBox(layout);
-  const d = 100;
+  const d = kit.SOURCE_LOCKUP_DISC;
   return svg(
     num(box.width * d),
     num(box.height * d),
@@ -384,16 +383,15 @@ function readme() {
   ).join("\n");
   return `# VulnRadar brand kit
 
-The logo, the lockup and the colours, as files you can drop straight in. Use
-them when you write about VulnRadar, link to it, or show that something works
-with it. The same kit, with live examples, is at ${appUrl}/brand.
+The logo, the lockup and the colours, as files you can drop straight in.
+${kit.USE_TERMS} The same kit, with live examples, is at ${appUrl}/brand.
 
 ## The short version
 
 | | |
 |---|---|
 | **Logo** | A navy disc with a radar sweep. Use the mark on its own when space is tight. |
-| **Clear space** | X on every side, where X is a quarter of the disc's diameter. |
+| **Clear space** | X on every side, where X is ${kit.CLEAR_SPACE * 100}% of the disc's diameter. |
 | **Minimum size** | Mark ${kit.MARK_MIN_PX} px. Lockup ${kit.LOCKUP_MIN_WIDTH_PX} px wide. Below that, the mark alone. |
 | **Never** | Recolour, stretch, rotate, add a shadow or an outline, or set the wordmark in a font. |
 | **Wordmark** | ${kit.WORDMARK_FACE.family} SemiBold, outlined to paths. You do not need the font. |

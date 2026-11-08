@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatBytes } from "@/components/admin/utils";
 import { ROUTES } from "@/lib/config/client-constants";
 import {
   BRAND_KIT_ZIP,
@@ -13,16 +12,19 @@ import {
   MARK_DISC_DIAMETER,
   MARK_GRID,
   MARK_MIN_PX,
+  PROFILE_NAVY_SCALE,
   PROFILE_NAVY_SIZES,
   PROFILE_SIZES,
   README_FILE,
   SOURCE_FILES,
+  USE_TERMS,
   brandKitFiles,
   fitLockup,
   lockupBox,
   lockupFile,
   logoFile,
   profileFile,
+  sourceLockupSize,
   type LockupVariant,
 } from "@/lib/brand/kit";
 import {
@@ -30,6 +32,7 @@ import {
   BRAND_KIT_ZIP_BYTES,
 } from "@/lib/brand/kit.generated";
 import { focus } from "@/lib/ui/animations";
+import { formatBytes } from "@/lib/ui/format-bytes";
 import { cn } from "@/lib/ui/utils";
 import {
   BrandAccessibility,
@@ -61,6 +64,16 @@ const WORDMARK_SHARE = Math.round(
 );
 /** X at the size the site header draws the mark, 24px square. */
 const HEADER_X = ((24 * MARK_DISC_DIAMETER) / MARK_GRID) * CLEAR_SPACE;
+const HORIZONTAL = sourceLockupSize("horizontal");
+const ZIP_SIZE = formatBytes(BRAND_KIT_ZIP_BYTES);
+
+/**
+ * The accent for lines and labels in the diagrams. --primary is a fill
+ * colour and measures under 2:1 on the light page; --primary-text is the
+ * same blue pitched for text and lines, and the tiles re-point it.
+ */
+const accentStroke = "stroke-[hsl(var(--primary-text))]";
+const accentFill = "fill-[hsl(var(--primary-text))]";
 
 const inlineLink = cn(
   "rounded-sm py-1.5 text-primary underline underline-offset-4 decoration-primary/40 hover:decoration-primary",
@@ -106,7 +119,7 @@ function Hero() {
             <p className="mb-8 max-w-xl text-base text-muted-foreground leading-relaxed text-pretty sm:text-lg">
               The mark at {LOGO_SIZES.length} sizes, the lockup cut to{" "}
               {LOCKUP_SLOTS.length} banner slots for light and dark backgrounds,
-              avatars and the SVG sources, free to use with no sign-in.
+              avatars and the SVG sources. {USE_TERMS} No sign-in.
             </p>
             <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
               <Button
@@ -122,10 +135,11 @@ function Hero() {
                 >
                   <Download className="h-4 w-4" aria-hidden />
                   Download everything
+                  <span className="sr-only">, ZIP, {ZIP_SIZE}</span>
                 </a>
               </Button>
               <p className="text-sm text-muted-foreground">
-                ZIP, {formatBytes(BRAND_KIT_ZIP_BYTES)}, {FILE_COUNT} files.{" "}
+                ZIP, {ZIP_SIZE}, {FILE_COUNT} files.{" "}
                 <a
                   href={kitHref(README_FILE)}
                   className={inlineLink}
@@ -198,7 +212,7 @@ function ConstructionDrawing() {
           cy={c}
           r={MARK_DISC_DIAMETER / 2}
           fill="none"
-          className="stroke-primary"
+          className={accentStroke}
           strokeWidth={1.5}
           strokeDasharray="5 4"
           vectorEffect="non-scaling-stroke"
@@ -315,10 +329,14 @@ function TheLogo() {
                   Not from the parts
                 </dt>
                 <dd className="text-muted-foreground">
-                  Do not put the mark next to &ldquo;VulnRadar&rdquo; typed in a
-                  font. The site header does that, as live text, so screen
-                  readers and search engines can read the name. Everywhere else,
-                  use the files.
+                  Use the lockup file, not the mark beside
+                  &ldquo;VulnRadar&rdquo; typed in a font. The one exception is
+                  a header that has to carry the name as live text for screen
+                  readers and search engines, as ours does:{" "}
+                  <a href="#accessibility" className={inlineLink}>
+                    Accessibility
+                  </a>{" "}
+                  says how.
                 </dd>
               </div>
             </dl>
@@ -335,7 +353,7 @@ function TheLogo() {
                 >
                   <KitImage
                     path={SOURCE_FILES.mark}
-                    alt="VulnRadar logo"
+                    alt="VulnRadar mark"
                     width={64}
                     height={64}
                     className="h-16 w-16"
@@ -343,8 +361,8 @@ function TheLogo() {
                   <KitImage
                     path={SOURCE_FILES.lockup.horizontal[variant]}
                     alt="VulnRadar logo"
-                    width={553}
-                    height={100}
+                    width={HORIZONTAL.width}
+                    height={HORIZONTAL.height}
                     className="h-auto w-full"
                   />
                 </div>
@@ -396,7 +414,7 @@ function ClearSpaceDiagram({ kind }: { kind: "mark" | "lockup" }) {
       <rect
         width={w}
         height={h}
-        className="fill-primary/5 stroke-primary/60"
+        className={cn("fill-primary/5", accentStroke)}
         strokeDasharray="4 3"
         vectorEffect="non-scaling-stroke"
       />
@@ -416,7 +434,7 @@ function ClearSpaceDiagram({ kind }: { kind: "mark" | "lockup" }) {
         width={box.width}
         height={box.height}
         fill="none"
-        className="stroke-primary/60"
+        className={accentStroke}
         vectorEffect="non-scaling-stroke"
       />
       <text
@@ -425,7 +443,7 @@ function ClearSpaceDiagram({ kind }: { kind: "mark" | "lockup" }) {
         fontSize={x * 0.55}
         textAnchor="middle"
         dominantBaseline="central"
-        className="fill-primary font-mono font-semibold"
+        className={cn(accentFill, "font-mono font-semibold")}
       >
         X
       </text>
@@ -464,10 +482,10 @@ function ClearSpace() {
       title="Clear space and minimum size"
       intro={
         <p>
-          X is a quarter of the disc&apos;s diameter. Keep at least X clear on
-          every side of the mark and of the lockup: no text, no icon, no edge of
-          the page or of the card it sits on. Every banner file already has it
-          built in.
+          X is {CLEAR_SPACE * 100}% of the disc&apos;s diameter. Keep at least X
+          clear on every side of the mark and of the lockup: no text, no icon,
+          no edge of the page or of the card it sits on. Every banner file
+          already has it built in.
         </p>
       }
     >
@@ -561,7 +579,7 @@ function MarkDownloads() {
               path={logoFile(size)}
               label={`${size} × ${size}`}
               detail={`PNG, ${sizeOf(logoFile(size))}`}
-              title={`The mark, ${size} by ${size} PNG`}
+              context="the mark"
             />
           </li>
         ))}
@@ -570,7 +588,7 @@ function MarkDownloads() {
             path={SOURCE_FILES.mark}
             label="Any size"
             detail={`SVG, ${sizeOf(SOURCE_FILES.mark)}`}
-            title="The mark as SVG"
+            context="the mark"
           />
         </li>
       </ul>
@@ -593,10 +611,10 @@ function LockupSection() {
   const sources = [
     ["Mark", SOURCE_FILES.mark],
     ["Wordmark", SOURCE_FILES.wordmark],
-    ["Lockup, dark bg", SOURCE_FILES.lockup.horizontal["on-dark"]],
-    ["Lockup, light bg", SOURCE_FILES.lockup.horizontal["on-light"]],
-    ["Stacked, dark bg", SOURCE_FILES.lockup.stacked["on-dark"]],
-    ["Stacked, light bg", SOURCE_FILES.lockup.stacked["on-light"]],
+    ["Lockup, on dark", SOURCE_FILES.lockup.horizontal["on-dark"]],
+    ["Lockup, on light", SOURCE_FILES.lockup.horizontal["on-light"]],
+    ["Stacked, on dark", SOURCE_FILES.lockup.stacked["on-dark"]],
+    ["Stacked, on light", SOURCE_FILES.lockup.stacked["on-light"]],
   ] as const;
 
   return (
@@ -668,7 +686,7 @@ function ProfilePictures() {
               className="h-28 w-28 rounded-lg sm:h-32 sm:w-32"
             />
             <figcaption className="mt-2 text-sm text-muted-foreground">
-              Navy, for no transparency
+              Navy, for slots that reject transparency
             </figcaption>
           </figure>
         </div>
@@ -677,14 +695,15 @@ function ProfilePictures() {
           <div className="mb-6 space-y-3 text-muted-foreground leading-relaxed text-pretty">
             <p>
               The disc fills the whole square, so a platform that crops avatars
-              to a circle shows the mark and nothing round it. GitHub and
+              to a circle shows the mark and nothing around it. GitHub and
               Discord keep transparency: use these there.
             </p>
             <p>
               The navy ones are for a slot that flattens transparency. A JPEG
               has none at all, and Apple rejects an App Store icon that has any.
               They fill the square with the disc&apos;s navy and draw the radar
-              at 80%, so a circular crop still leaves the arcs a margin.
+              at {PROFILE_NAVY_SCALE * 100}%, so a circular crop still leaves
+              the arcs a margin.
             </p>
           </div>
           <ul
@@ -696,7 +715,8 @@ function ProfilePictures() {
                 <DownloadChip
                   path={profileFile(size)}
                   label={`${size} × ${size}`}
-                  detail={`Transparent, ${sizeOf(profileFile(size))}`}
+                  detail={`Transparent PNG, ${sizeOf(profileFile(size))}`}
+                  context="transparent profile picture"
                 />
               </li>
             ))}
@@ -705,7 +725,8 @@ function ProfilePictures() {
                 <DownloadChip
                   path={profileFile(size, true)}
                   label={`${size} × ${size}`}
-                  detail={`Navy, ${sizeOf(profileFile(size, true))}`}
+                  detail={`Navy PNG, ${sizeOf(profileFile(size, true))}`}
+                  context="profile picture on navy"
                 />
               </li>
             ))}

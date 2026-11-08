@@ -8,7 +8,7 @@ import { ROUTES } from "@/lib/config/client-constants";
 // knowledge.mjs reads this string for the assistant's feature inventory and
 // drops a description whose ${} it cannot resolve.
 const DESCRIPTION =
-  "Download the VulnRadar logo as transparent PNGs, the lockup cut for common banner slots, avatars, SVG sources and one ZIP, with the clear space, colour, type and voice rules. No sign-in.";
+  "The VulnRadar logo and lockup as transparent PNGs, SVG sources, one ZIP, banner sizes and avatars, with clear space, colour and type rules. No sign-in.";
 
 export const metadata: Metadata = pageMetadata({
   title: "Brand kit",

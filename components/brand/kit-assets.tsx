@@ -51,24 +51,27 @@ export function KitImage({
  * One download. The `download` attribute keeps the file's own name, so the
  * cache-busting query string never ends up in somebody's downloads folder.
  * 44px tall on a phone, the floor for a main action there; 40px above sm.
+ *
+ * The link's name is the visible label and detail, then `context` for a
+ * screen reader: "512 × 512, PNG, 31 KB, the mark". A list label is not link
+ * context, so a chip whose label is only a size has to say what it is itself.
  */
 export function DownloadChip({
   path,
   label,
   detail,
-  title,
+  context,
 }: {
   path: string;
   label: ReactNode;
   detail: string;
-  /** Full description, for a chip whose label is only a size. */
-  title?: string;
+  /** What the file is, when the visible label is only a size. */
+  context?: string;
 }) {
   return (
     <a
       href={kitHref(path)}
       download={kitFileName(path)}
-      title={title}
       className={cn(
         "flex min-h-11 flex-col justify-center rounded-md border border-border bg-card px-3 py-1.5 transition-colors hover:border-primary/40 hover:bg-primary/5 sm:min-h-10",
         focus.ring,
@@ -77,7 +80,9 @@ export function DownloadChip({
       <span className="text-sm font-medium tabular-nums text-foreground">
         {label}
       </span>
+      <span className="sr-only">, </span>
       <span className="text-xs text-muted-foreground">{detail}</span>
+      {context && <span className="sr-only">, {context}</span>}
     </a>
   );
 }

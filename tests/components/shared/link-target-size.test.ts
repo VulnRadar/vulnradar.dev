@@ -172,9 +172,10 @@ const INLINE_IN_SENTENCE: Record<string, string[]> = {
   "components/legal/legal-section.tsx": [],
   "components/changelog/changelog-release.tsx": [],
   // /brand is a page of download links, so every chip and the hero's ZIP
-  // link are held to the floor; the two in-sentence links are padded inline.
+  // link are held to the floor; the in-sentence links are padded inline.
   "components/brand/brand-kit.tsx": [
     "README",
+    "Accessibility",
     "Ask for it on the contact page",
   ],
   "components/brand/kit-assets.tsx": [],
