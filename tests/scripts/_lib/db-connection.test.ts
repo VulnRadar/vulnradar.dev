@@ -169,7 +169,10 @@ describe("pgToolConnection", () => {
   });
 
   it("leaves the caller's environment object alone", async () => {
-    const base = { DATABASE_SSL: "true", DATABASE_SSL_CA: CA };
+    const base = {
+      DATABASE_SSL: "true",
+      DATABASE_SSL_CA: CA,
+    } as unknown as NodeJS.ProcessEnv;
     const { cleanup } = await pgToolConnection(URL_WITH_TLS, base);
     expect(Object.keys(base)).toEqual(["DATABASE_SSL", "DATABASE_SSL_CA"]);
     await cleanup();

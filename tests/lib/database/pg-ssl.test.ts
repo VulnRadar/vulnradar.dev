@@ -21,7 +21,7 @@ const verified = { DATABASE_SSL: "true", DATABASE_SSL_CA: CA };
 const BASE = "postgresql://user:pa%40ss@db.example.test:5432/app";
 
 /** What node-pg actually connects with, given what the app passes it. */
-function effectiveSsl(url: string, env: Record<string, string>) {
+function effectiveSsl(url: string, env: Record<string, string | undefined>) {
   return new ConnectionParameters({
     connectionString: pgConnectionString(url, env),
     ssl: pgSslConfig(env),

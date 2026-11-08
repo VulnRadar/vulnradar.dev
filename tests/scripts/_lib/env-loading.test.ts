@@ -20,6 +20,14 @@ const ENV_MODULE = pathToFileURL(
   resolve(import.meta.dirname, "../../../scripts/_lib/_lib.env.mjs"),
 ).href;
 
+/** A child with nothing inherited; Windows needs SystemRoot to start one. */
+function childEnv(extra: Record<string, string> = {}) {
+  return {
+    SystemRoot: process.env.SystemRoot ?? "",
+    ...extra,
+  } as unknown as NodeJS.ProcessEnv;
+}
+
 let root: string;
 
 beforeEach(async () => {
@@ -54,7 +62,7 @@ async function load(
     ["--input-type=module", "-e", script],
     {
       encoding: "utf8",
-      env: { SystemRoot: process.env.SystemRoot ?? "", ...shell },
+      env: childEnv(shell),
     },
   );
   expect(result.stderr).toBe("");
@@ -163,10 +171,7 @@ describe("parsing follows the app's rules", () => {
       {
         encoding: "utf8",
         cwd: resolve(import.meta.dirname, "../../.."),
-        env: {
-          SystemRoot: process.env.SystemRoot ?? "",
-          NODE_ENV: "production",
-        },
+        env: childEnv({ NODE_ENV: "production" }),
       },
     );
     const theirs = JSON.parse(result.stdout) as Record<string, string>;
@@ -186,7 +191,7 @@ describe("requireDatabaseUrl", () => {
     const result = spawnSync(
       process.execPath,
       ["--input-type=module", "-e", script],
-      { encoding: "utf8", env: { SystemRoot: process.env.SystemRoot ?? "" } },
+      { encoding: "utf8", env: childEnv() },
     );
     expect(result.status).toBe(1);
     const output = result.stdout + result.stderr;

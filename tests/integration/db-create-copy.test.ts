@@ -126,7 +126,7 @@ describeIntegration("db:create clones a 3.x database", () => {
     const plan = planTableCopy({
       sourceTables: summary.tables,
       targetTables: summary.tables,
-      counts: summary.counts,
+      counts: summary.counts as Record<string, number>,
       fkEdges: await getForeignKeys(target),
     });
     const copied: { table: string; count: number }[] = [];
