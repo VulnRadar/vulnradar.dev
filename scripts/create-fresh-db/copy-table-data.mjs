@@ -8,14 +8,15 @@
 import pg from "pg";
 import { success, warn } from "../_lib/_lib.output.mjs";
 
-// Hard-coded defaults for v1 -> v2 columns that are NOT NULL but missing in source.
+// Hard-coded defaults for v1 -> v2 columns that are NOT NULL but missing in
+// source. Values, not SQL: they are bound as parameters like every copied value.
 const COLUMN_DEFAULTS = {
   scan_history: {
-    summary: "'{}'::jsonb",
-    findings: "'[]'::jsonb",
+    summary: "{}",
+    findings: "[]",
     findings_count: "0",
     duration: "0",
-    source: "'web'",
+    source: "web",
   },
 };
 
@@ -95,13 +96,14 @@ export async function copyTableData(originalPool, newPool, table, rowCount) {
     targetCols,
   );
   const targetNames = [...mapping.values()];
+  const mappedTargets = new Set(targetNames);
 
   // Find NOT NULL columns in target that aren't covered by mapping or defaults.
   const defaults = COLUMN_DEFAULTS[table] || {};
   const extraCols = [];
   const extraVals = [];
   for (const [name, targetColumnInfo] of targetInfo) {
-    if (mapping.has(name)) continue;
+    if (mappedTargets.has(name)) continue;
     if (defaults[name] !== undefined) {
       extraCols.push(name);
       extraVals.push(defaults[name]);

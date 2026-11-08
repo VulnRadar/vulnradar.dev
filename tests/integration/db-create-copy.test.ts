@@ -215,6 +215,47 @@ describeIntegration("db:create clones a 3.x database", () => {
     },
   );
 
+  it("clones a v1 scan_history with a renamed column and missing NOT NULL ones", async () => {
+    const url = new URL(process.env.INTEGRATION_DATABASE_URL as string);
+    const base =
+      decodeURIComponent(url.pathname.replace(/^\//, "")) || "postgres";
+    const v1 = await createScratch(url, base, "copy_v1");
+    const clone = await createScratch(url, base, "copy_v1_dst");
+    try {
+      await buildSchema(v1);
+      await buildSchema(clone);
+      await v1.query(
+        "ALTER TABLE scan_history RENAME COLUMN findings TO results",
+      );
+      await v1.query(
+        "ALTER TABLE scan_history DROP COLUMN summary, DROP COLUMN source",
+      );
+      for (const pool of [v1, clone]) {
+        await pool.query(
+          `INSERT INTO users (id, email, password_hash)
+           VALUES (7, 'v1@example.test', 'not-a-real-hash')`,
+        );
+      }
+      await v1.query(
+        `INSERT INTO scan_history (user_id, url, results)
+         VALUES (7, 'https://v1.example.test/', '[{"id":"x"}]')`,
+      );
+
+      expect(await copyTableData(v1, clone, "scan_history", 1)).toBe(true);
+
+      const copied = await clone.query(
+        `SELECT findings::text AS findings, summary::text AS summary, source
+         FROM scan_history`,
+      );
+      expect(copied.rows).toEqual([
+        { findings: '[{"id": "x"}]', summary: "{}", source: "web" },
+      ]);
+    } finally {
+      await v1.end().catch(() => {});
+      await clone.end().catch(() => {});
+    }
+  }, 120_000);
+
   it("does not collapse a JSON null into SQL NULL", async () => {
     const query = `SELECT response_headers IS NULL AS sql_null,
                           jsonb_typeof(response_headers) AS kind
