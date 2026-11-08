@@ -28,6 +28,12 @@ import {
   planLimitMessage,
 } from "@/lib/billing/plan-limits";
 import { teamsDisabledResponse } from "@/lib/teams/feature-gate";
+import { parseRowId } from "@/lib/teams/parse-id";
+import {
+  readTeamAuditLabel,
+  recordTeamAudit,
+  teamAuditLabel,
+} from "@/lib/teams/team-audit";
 import { withErrorHandling } from "@/lib/api/api-utils";
 
 /**
@@ -74,22 +80,6 @@ async function dropOrphanedTicketShares(
   }
 }
 
-/**
- * A user id out of a JSON body: a whole number, or the digits of one. Anything
- * else is null, so the caller can answer 400 instead of handing Postgres a
- * string it rejects with 22P02 (a 500 that names no one). The upper bound is
- * the INTEGER column's own, for the same reason.
- */
-function parseUserId(value: unknown): number | null {
-  const n =
-    typeof value === "number"
-      ? value
-      : typeof value === "string" && /^\d{1,10}$/.test(value)
-        ? Number(value)
-        : NaN;
-  return Number.isInteger(n) && n > 0 && n <= 2147483647 ? n : null;
-}
-
 // Get team members
 export const GET = withErrorHandling(async (request: Request) => {
   const session = await getSession();
@@ -103,9 +93,15 @@ export const GET = withErrorHandling(async (request: Request) => {
   if (gate) return gate;
 
   const { searchParams } = new URL(request.url);
-  const teamId = searchParams.get("teamId");
-  if (!teamId)
+  const rawTeamId = searchParams.get("teamId");
+  if (!rawTeamId)
     return NextResponse.json({ error: "teamId required." }, { status: 400 });
+  const teamId = parseRowId(rawTeamId);
+  if (teamId === null)
+    return NextResponse.json(
+      { error: "teamId must be a whole number." },
+      { status: 400 },
+    );
 
   // Verify membership
   const memberCheck = await pool.query(
@@ -149,10 +145,16 @@ export const POST = withErrorHandling(async (request: Request) => {
   const gate = await teamsDisabledResponse();
   if (gate) return gate;
 
-  const { teamId, email, role = "viewer" } = await request.json();
-  if (!teamId || !email)
+  const { teamId: rawTeamId, email, role = "viewer" } = await request.json();
+  if (!rawTeamId || !email)
     return NextResponse.json(
       { error: "teamId and email required." },
+      { status: 400 },
+    );
+  const teamId = parseRowId(rawTeamId);
+  if (teamId === null)
+    return NextResponse.json(
+      { error: "teamId must be a whole number." },
       { status: 400 },
     );
   // Derived from TEAM_ROLES itself, not a second hand-typed list -- OWNER
@@ -390,6 +392,9 @@ export const POST = withErrorHandling(async (request: Request) => {
         to: email.trim().toLowerCase(),
         ...emailPayload,
         unsubscribeToken,
+        // Without the column sendEmail leaves the List-Unsubscribe headers
+        // off, so the mail client never offers the one-click link.
+        unsubscribeColumn: "email_team_invite",
       }).catch((err) => {
         console.error("Team invite email failed:", err);
       });
@@ -438,10 +443,17 @@ export const DELETE = withErrorHandling(async (request: Request) => {
   const gate = await teamsDisabledResponse();
   if (gate) return gate;
 
-  const { teamId, userId, inviteId } = await request.json();
+  const { teamId: rawTeamId, userId, inviteId } = await request.json();
+  const teamId = parseRowId(rawTeamId);
 
   // Handle cancel invite
   if (inviteId) {
+    const inviteRowId = parseRowId(inviteId);
+    if (teamId === null || inviteRowId === null)
+      return NextResponse.json(
+        { error: "teamId and inviteId must be whole numbers." },
+        { status: 400 },
+      );
     const memberRes = await pool.query(
       "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
       [teamId, session.userId],
@@ -455,16 +467,36 @@ export const DELETE = withErrorHandling(async (request: Request) => {
         { status: 403 },
       );
     }
-    await pool.query(
-      "DELETE FROM team_invites WHERE id = $1 AND team_id = $2",
-      [inviteId, teamId],
+    const cancelled = await pool.query<{ email: string; role: string }>(
+      "DELETE FROM team_invites WHERE id = $1 AND team_id = $2 RETURNING email, role",
+      [inviteRowId, teamId],
     );
+    // Only for a row that went. The id comes from the caller and the statement
+    // is scoped to their team, so an id from another team deletes nothing and
+    // must not leave a record saying it did.
+    const invite = cancelled.rows[0];
+    if (invite) {
+      await recordTeamAudit(async (ip) =>
+        logAction(
+          session.userId,
+          null,
+          "team_invite.cancelled",
+          `Cancelled invite #${inviteRowId} for ${invite.email} (${invite.role}) on team ${await readTeamAuditLabel(teamId)}.`,
+          ip,
+        ),
+      );
+    }
     return NextResponse.json({ success: true });
   }
 
-  if (!teamId || !userId)
+  if (!rawTeamId || !userId)
     return NextResponse.json(
       { error: "teamId and userId required." },
+      { status: 400 },
+    );
+  if (teamId === null)
+    return NextResponse.json(
+      { error: "teamId must be a whole number." },
       { status: 400 },
     );
 
@@ -474,7 +506,7 @@ export const DELETE = withErrorHandling(async (request: Request) => {
   // be `userId === session.userId`, so "self" never matched and fell through
   // to the manage_members check (a 403 for a member or viewer) and from there
   // into a query that cast "self" to an integer (a 500 for an admin).
-  const targetUserId = userId === "self" ? session.userId : parseUserId(userId);
+  const targetUserId = userId === "self" ? session.userId : parseRowId(userId);
   if (targetUserId === null)
     return NextResponse.json(
       { error: 'userId must be a whole number, or "self" to leave.' },
@@ -494,16 +526,29 @@ export const DELETE = withErrorHandling(async (request: Request) => {
     if (myRole.rows[0].role === TEAM_ROLES.OWNER) {
       return NextResponse.json(
         {
-          error: "Owners cannot leave. Transfer ownership or delete the team.",
+          error:
+            "Owners cannot leave, and there is no ownership transfer. Delete the team, or ask support.",
         },
         { status: 400 },
       );
     }
-    await pool.query(
+    const left = await pool.query(
       "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
       [teamId, targetUserId],
     );
     await dropOrphanedTicketShares(teamId, targetUserId);
+    if (left.rowCount) {
+      const roleWhenLeft = myRole.rows[0].role;
+      await recordTeamAudit(async (ip) =>
+        logAction(
+          session.userId,
+          null,
+          "team_member.left",
+          `Left team ${await readTeamAuditLabel(teamId)}, role was ${roleWhenLeft}.`,
+          ip,
+        ),
+      );
+    }
     return NextResponse.json({ success: true });
   }
 
@@ -563,15 +608,28 @@ export const DELETE = withErrorHandling(async (request: Request) => {
     ]),
   ]);
 
-  await pool.query(
+  const removed = await pool.query(
     "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
     [teamId, targetUserId],
   );
   await dropOrphanedTicketShares(teamId, targetUserId);
 
+  const teamName = teamRow.rows[0]?.name;
+  if (removed.rowCount) {
+    const roleWhenRemoved = targetRole.rows[0].role;
+    await recordTeamAudit((ip) =>
+      logAction(
+        session.userId,
+        targetUserId,
+        "team_member.removed",
+        `Removed from team ${teamAuditLabel(teamId, teamName)}, role was ${roleWhenRemoved}.`,
+        ip,
+      ),
+    );
+  }
+
   // Notify the removed member. Gated on the team_changes preference and
   // best-effort: a mail failure must never fail the removal itself.
-  const teamName = teamRow.rows[0]?.name;
   const removedEmail = removedUser.rows[0]?.email;
   if (teamName && removedEmail) {
     setImmediate(() => {
@@ -601,10 +659,17 @@ export const PATCH = withErrorHandling(async (request: Request) => {
   const gate = await teamsDisabledResponse();
   if (gate) return gate;
 
-  const { teamId, userId, role } = await request.json();
-  if (!teamId || !userId || !role)
+  const { teamId: rawTeamId, userId: rawUserId, role } = await request.json();
+  if (!rawTeamId || !rawUserId || !role)
     return NextResponse.json(
       { error: "teamId, userId and role required." },
+      { status: 400 },
+    );
+  const teamId = parseRowId(rawTeamId);
+  const userId = parseRowId(rawUserId);
+  if (teamId === null || userId === null)
+    return NextResponse.json(
+      { error: "teamId and userId must be whole numbers." },
       { status: 400 },
     );
 
@@ -640,7 +705,7 @@ export const PATCH = withErrorHandling(async (request: Request) => {
 
   // Changing your own role through here would let an admin lock themselves
   // out of manage_members mid-request; keep it simple and disallow it.
-  if (Number(userId) === session.userId) {
+  if (userId === session.userId) {
     return NextResponse.json(
       { error: "You can't change your own role." },
       { status: 400 },
@@ -692,7 +757,7 @@ export const PATCH = withErrorHandling(async (request: Request) => {
     return NextResponse.json({ success: true, role });
   }
 
-  await pool.query(
+  const changed = await pool.query(
     "UPDATE team_members SET role = $1 WHERE team_id = $2 AND user_id = $3",
     [role, teamId, userId],
   );
@@ -704,12 +769,22 @@ export const PATCH = withErrorHandling(async (request: Request) => {
     [teamId],
   );
   const teamName = teamRow.rows[0]?.name;
+  if (changed.rowCount) {
+    await recordTeamAudit((ip) =>
+      logAction(
+        session.userId,
+        userId,
+        "team_member.role_changed",
+        `Changed role on team ${teamAuditLabel(teamId, teamName)} from ${oldRole} to ${role}.`,
+        ip,
+      ),
+    );
+  }
   const targetEmail = targetRes.rows[0].email;
   if (teamName && targetEmail) {
-    const targetUserId = Number(userId);
     setImmediate(() => {
       sendNotificationEmail({
-        userId: targetUserId,
+        userId,
         userEmail: targetEmail,
         type: "team_changes",
         emailContent: teamRoleChangedEmail(teamName, oldRole, role),

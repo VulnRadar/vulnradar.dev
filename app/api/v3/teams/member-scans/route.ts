@@ -4,6 +4,7 @@ import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { teamsDisabledResponse } from "@/lib/teams/feature-gate";
 import { scanTeamMatchSql } from "@/lib/teams/scan-teams";
+import { parseRowId } from "@/lib/teams/parse-id";
 
 /** Rows returned per request. Named so the response can report it. */
 const MEMBER_SCAN_LIMIT = 50;
@@ -21,12 +22,20 @@ export async function GET(request: NextRequest) {
   if (gate) return gate;
 
   const { searchParams } = new URL(request.url);
-  const teamId = searchParams.get("teamId");
-  const userId = searchParams.get("userId");
+  const rawTeamId = searchParams.get("teamId");
+  const rawUserId = searchParams.get("userId");
 
-  if (!teamId || !userId) {
+  if (!rawTeamId || !rawUserId) {
     return NextResponse.json(
       { error: "teamId and userId required." },
+      { status: 400 },
+    );
+  }
+  const teamId = parseRowId(rawTeamId);
+  const userId = parseRowId(rawUserId);
+  if (teamId === null || userId === null) {
+    return NextResponse.json(
+      { error: "teamId and userId must be whole numbers." },
       { status: 400 },
     );
   }

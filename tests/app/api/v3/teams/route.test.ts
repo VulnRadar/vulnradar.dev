@@ -68,6 +68,15 @@ vi.mock("@/lib/rate-limiting/daily-limits", () => ({
   getUserPlan: (...args: unknown[]) => mockGetUserPlan(...args),
 }));
 
+const mockLogAction = vi.fn();
+vi.mock("@/lib/auth/authorization", () => ({
+  logAction: (...args: unknown[]) => mockLogAction(...args),
+}));
+
+vi.mock("@/lib/api/request-utils", () => ({
+  getClientIp: vi.fn(async () => "127.0.0.1"),
+}));
+
 const { GET, POST, PATCH, DELETE } = await import("@/app/api/v3/teams/route");
 
 function jsonRequest(body: unknown): Request {
@@ -79,6 +88,8 @@ function jsonRequest(body: unknown): Request {
 }
 
 beforeEach(() => {
+  mockLogAction.mockReset();
+  mockLogAction.mockResolvedValue(undefined);
   mockQuery.mockReset();
   mockConnect.mockReset();
   mockClientQuery.mockReset();
@@ -120,12 +131,22 @@ describe("GET /api/v3/teams", () => {
           owner_avatar_url: null,
           created_at: "now",
           role: "owner",
-          member_count: "1",
+          member_count: 1,
         },
       ],
     });
     mockQuery.mockResolvedValueOnce({ rows: stamps });
   }
+
+  it("casts the member count, so the JSON carries a number and not a bigint string", async () => {
+    mockTeamList();
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(String(mockQuery.mock.calls[0][0])).toContain("COUNT(*)::int");
+    expect(json.teams[0].member_count).toBe(1);
+  });
 
   it("scopes the team list to the session user via the team_members join", async () => {
     mockTeamList();
@@ -183,7 +204,7 @@ describe("GET /api/v3/teams", () => {
    *  where that create failed must still be able to list teams. */
   it("still lists teams when the picture lookup fails outright", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1, name: "Acme", role: "owner", member_count: "1" }],
+      rows: [{ id: 1, name: "Acme", role: "owner", member_count: 1 }],
     });
     mockQuery.mockRejectedValueOnce(
       new Error('relation "team_avatars" does not exist'),
@@ -439,6 +460,62 @@ describe("PATCH /api/v3/teams", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ["a word", "abc"],
+    ["a fraction", 1.5],
+    ["more than an INTEGER holds", 99999999999],
+  ])("answers 400 for a teamId that is %s", async (_label, teamId) => {
+    const res = await PATCH(patchRequest({ teamId, name: "New Name" }));
+
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("records the rename with both names", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "admin", team_name: "Old Name" }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await PATCH(patchRequest({ teamId: "1", name: " New Name " }));
+
+    expect(mockLogAction).toHaveBeenCalledTimes(1);
+    const [actor, target, action, details, ip] = mockLogAction.mock.calls[0];
+    expect([actor, target, action, ip]).toEqual([
+      42,
+      null,
+      "team.renamed",
+      "127.0.0.1",
+    ]);
+    expect(details).toBe('Renamed team "Old Name" (#1) to "New Name".');
+  });
+
+  it("records nothing when the name did not change", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "admin", team_name: "Same" }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await PATCH(patchRequest({ teamId: 1, name: "Same" }));
+
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("still answers success when the audit row cannot be written", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockLogAction.mockRejectedValue(new Error("connection terminated"));
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "admin", team_name: "Old Name" }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await PATCH(patchRequest({ teamId: 1, name: "New Name" }));
+
+    expect(res.status).toBe(200);
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
   it("allows an admin to rename the team", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ role: "admin" }] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
@@ -577,6 +654,41 @@ describe("DELETE /api/v3/teams", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["a word", "abc"],
+    ["a fraction", 1.5],
+    ["more than an INTEGER holds", 99999999999],
+  ])("answers 400 for a teamId that is %s", async (_label, teamId) => {
+    const res = await DELETE(deleteRequest({ teamId }));
+
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("records the deletion, naming the team that is now gone", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ name: "Acme" }] });
+
+    await DELETE(deleteRequest({ teamId: "1" }));
+
+    expect(mockLogAction).toHaveBeenCalledTimes(1);
+    const [actor, target, action, details] = mockLogAction.mock.calls[0];
+    expect([actor, target, action]).toEqual([42, null, "team.deleted"]);
+    expect(details).toBe('Deleted team "Acme" (#1).');
+  });
+
+  it("records nothing when a racing request already deleted the team", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await DELETE(deleteRequest({ teamId: 1 }));
+
+    expect(res.status).toBe(200);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
   it("rejects a requester who is not a team member", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
@@ -597,7 +709,7 @@ describe("DELETE /api/v3/teams", () => {
   it("allows the owner to delete, cascading invites and members via one atomic DELETE", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] }); // membership
     mockQuery.mockResolvedValueOnce({ rows: [] }); // roster, read for the notices
-    mockQuery.mockResolvedValueOnce({}); // DELETE teams (cascades invites + members)
+    mockQuery.mockResolvedValueOnce({ rows: [{ name: "Acme" }] }); // DELETE teams (cascades invites + members)
 
     const res = await DELETE(deleteRequest({ teamId: 1 }));
     const json = await res.json();

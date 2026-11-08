@@ -198,12 +198,6 @@ export function TeamsList({
                       {team.name}
                     </p>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {/* pluralize() coerces before comparing. member_count is
-                          typed number here but arrives as the string "1":
-                          GET /api/v3/teams reads it from a COUNT(*), which
-                          node-postgres returns as a bigint string, so the old
-                          `!== 1` test was true on a one-person team and every
-                          row read "1 members". */}
                       {pluralize(team.member_count, "member")}
                       {team.role === "owner"
                         ? ", yours"

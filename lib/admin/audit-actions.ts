@@ -668,6 +668,52 @@ export const AUDIT_ACTIONS = {
     verb: "sent a team invite to",
     icon: "user-plus",
   },
+  // Also user actions, separate from edit_team and delete_team, which are
+  // staff acting on someone else's team from the admin panel. The team is
+  // named in the details; a target is set only when the row is about one
+  // other account.
+  "team_invite.cancelled": {
+    category: "data",
+    tone: "muted",
+    label: "Team Invite Cancelled",
+    verb: "cancelled a team invite",
+    icon: "mail-x",
+  },
+  "team_member.removed": {
+    category: "data",
+    tone: "destructive",
+    label: "Team Member Removed",
+    verb: "removed team member",
+    icon: "user-x",
+  },
+  "team_member.left": {
+    category: "data",
+    tone: "neutral",
+    label: "Left Team",
+    verb: "left a team",
+    icon: "log-out",
+  },
+  "team_member.role_changed": {
+    category: "data",
+    tone: "primary",
+    label: "Team Role Changed",
+    verb: "changed the team role of",
+    icon: "shield",
+  },
+  "team.renamed": {
+    category: "data",
+    tone: "neutral",
+    label: "Team Renamed by Member",
+    verb: "renamed their team",
+    icon: "users",
+  },
+  "team.deleted": {
+    category: "data",
+    tone: "destructive",
+    label: "Team Deleted by Owner",
+    verb: "deleted their team",
+    icon: "trash-2",
+  },
 
   // ── Logs & data: the records themselves. Clearing, exporting, backing up
   // or purging them is what an insider review asks about first.

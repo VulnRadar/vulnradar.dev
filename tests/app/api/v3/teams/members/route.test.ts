@@ -97,7 +97,8 @@ vi.mock("@/lib/billing/plan-limits", async (importOriginal) => {
   };
 });
 
-const { GET, POST, DELETE } = await import("@/app/api/v3/teams/members/route");
+const { GET, POST, DELETE, PATCH } =
+  await import("@/app/api/v3/teams/members/route");
 
 beforeEach(async () => {
   // A removal sends its mail on setImmediate, so the previous test's can still
@@ -110,6 +111,7 @@ beforeEach(async () => {
   mockGetSession.mockReset();
   mockCheckRateLimit.mockReset();
   mockLogAction.mockReset();
+  mockLogAction.mockResolvedValue(undefined);
   mockSendEmail.mockReset();
   mockSendEmail.mockResolvedValue(undefined);
   mockTeamInviteEmail.mockClear();
@@ -444,11 +446,32 @@ function deleteRequest(body: unknown): NextRequest {
  * dropOrphanedTicketShares adds one more. `roles` maps a user id to that
  * user's role on the team; an id that is absent is not a member.
  */
-function routeMemberQueries(roles: Record<number, string>) {
+function routeMemberQueries(
+  roles: Record<number, string>,
+  invite: { email: string; role: string } | null = {
+    email: "bob@example.com",
+    role: "viewer",
+  },
+) {
   mockQuery.mockImplementation(async (sql: string, params: unknown[]) => {
     if (sql.startsWith("SELECT role FROM team_members")) {
       const role = roles[params[1] as number];
       return { rows: role ? [{ role }] : [] };
+    }
+    if (sql.includes("FROM team_members tm JOIN users u")) {
+      const role = roles[params[1] as number];
+      return {
+        rows: role ? [{ role, email: "target@example.com", name: "T" }] : [],
+      };
+    }
+    if (
+      sql.startsWith("DELETE FROM team_members") ||
+      sql.startsWith("UPDATE team_members")
+    ) {
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.startsWith("DELETE FROM team_invites")) {
+      return { rows: invite ? [invite] : [], rowCount: invite ? 1 : 0 };
     }
     if (sql.includes("SELECT name FROM teams")) {
       return { rows: [{ name: "Acme" }] };
@@ -740,6 +763,7 @@ describe("DELETE /api/v3/teams/members", () => {
       expect(res.status).toBe(400);
       expect(json.error).toContain("owner");
       expect(membershipDelete()).toBeUndefined();
+      expect(mockLogAction).not.toHaveBeenCalled();
     });
 
     it("keeps the role ceiling: a manager cannot remove an admin", async () => {
@@ -789,6 +813,277 @@ describe("DELETE /api/v3/teams/members", () => {
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
   });
+});
+
+describe("the invite mail", () => {
+  it("names its notification column, so the one-click unsubscribe headers are sent", async () => {
+    queueUpToInsert({ existingUserId: 2 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ name: "Acme" }] }); // team
+    mockQuery.mockResolvedValueOnce({ rows: [{ name: "Ada" }] }); // inviter
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ unsubscribe_token: "tok" }],
+    });
+
+    await POST(postRequest({ teamId: 1, email: "bob@example.com" }));
+    await new Promise((resolve) => queueMicrotask(() => resolve(null)));
+
+    expect(mockSendEmail.mock.calls[0][0]).toMatchObject({
+      unsubscribeToken: "tok",
+      unsubscribeColumn: "email_team_invite",
+    });
+  });
+});
+
+describe("audit rows for what happens to a team", () => {
+  function patchRequest(body: unknown): NextRequest {
+    return new NextRequest("http://localhost/api/v3/teams/members", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("records a member leaving, naming the team", async () => {
+    routeMemberQueries({ 1: "member" });
+
+    await DELETE(deleteRequest({ teamId: 5, userId: "self" }));
+
+    expect(mockLogAction).toHaveBeenCalledTimes(1);
+    const [actor, target, action, details, ip] = mockLogAction.mock.calls[0];
+    expect([actor, target, action, ip]).toEqual([
+      1,
+      null,
+      "team_member.left",
+      "127.0.0.1",
+    ]);
+    expect(details).toBe('Left team "Acme" (#5), role was member.');
+  });
+
+  it("records a removal against the member who was removed", async () => {
+    routeMemberQueries({ 1: "admin", 2: "member" });
+
+    await DELETE(deleteRequest({ teamId: 5, userId: 2 }));
+
+    expect(mockLogAction).toHaveBeenCalledTimes(1);
+    const [actor, target, action, details] = mockLogAction.mock.calls[0];
+    expect([actor, target, action]).toEqual([1, 2, "team_member.removed"]);
+    expect(details).toBe('Removed from team "Acme" (#5), role was member.');
+  });
+
+  it("writes nothing when a racing request already removed the member", async () => {
+    routeMemberQueries({ 1: "admin", 2: "member" });
+    const answer = mockQuery.getMockImplementation()!;
+    mockQuery.mockImplementation(async (sql: string, params: unknown[]) =>
+      sql.startsWith("DELETE FROM team_members")
+        ? { rows: [], rowCount: 0 }
+        : answer(sql, params),
+    );
+
+    const res = await DELETE(deleteRequest({ teamId: 5, userId: 2 }));
+
+    expect(res.status).toBe(200);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("records nothing for someone who was not on the team", async () => {
+    routeMemberQueries({ 1: "admin" });
+
+    await DELETE(deleteRequest({ teamId: 5, userId: 77 }));
+
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("records a cancelled invite, with the address and role it was for", async () => {
+    routeMemberQueries({ 1: "manager" });
+
+    await DELETE(deleteRequest({ teamId: 5, inviteId: 9 }));
+
+    expect(mockLogAction).toHaveBeenCalledTimes(1);
+    const [actor, target, action, details] = mockLogAction.mock.calls[0];
+    expect([actor, target, action]).toEqual([1, null, "team_invite.cancelled"]);
+    expect(details).toBe(
+      'Cancelled invite #9 for bob@example.com (viewer) on team "Acme" (#5).',
+    );
+  });
+
+  it("does not record a cancel that deleted nothing", async () => {
+    // An id from another team: the statement is scoped to this team, so
+    // nothing goes, and a row saying it did would be a false record.
+    routeMemberQueries({ 1: "manager" }, null);
+
+    const res = await DELETE(deleteRequest({ teamId: 5, inviteId: 9 }));
+
+    expect(res.status).toBe(200);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("records a role change with both roles", async () => {
+    routeMemberQueries({ 1: "owner", 2: "member" });
+
+    const res = await PATCH(
+      patchRequest({ teamId: 5, userId: 2, role: "admin" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockLogAction).toHaveBeenCalledTimes(1);
+    const [actor, target, action, details] = mockLogAction.mock.calls[0];
+    expect([actor, target, action]).toEqual([1, 2, "team_member.role_changed"]);
+    expect(details).toBe(
+      'Changed role on team "Acme" (#5) from member to admin.',
+    );
+  });
+
+  it("records nothing for a role change that changes nothing", async () => {
+    routeMemberQueries({ 1: "owner", 2: "member" });
+
+    await PATCH(patchRequest({ teamId: 5, userId: 2, role: "member" }));
+
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("still answers success when the audit row cannot be written", async () => {
+    // The removal has happened by then. A 500 would say it had not, and would
+    // skip the mail telling the member.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    routeMemberQueries({ 1: "admin", 2: "member" });
+    mockLogAction.mockRejectedValue(new Error("connection terminated"));
+
+    const res = await DELETE(deleteRequest({ teamId: 5, userId: 2 }));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(res.status).toBe(200);
+    expect(mockSendNotificationEmail).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
+describe("the error an owner gets for trying to leave", () => {
+  it("does not offer a transfer that does not exist", async () => {
+    routeMemberQueries({ 1: "owner" });
+
+    const res = await DELETE(deleteRequest({ teamId: 5, userId: "self" }));
+    const { error } = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(error).toBe(
+      "Owners cannot leave, and there is no ownership transfer. Delete the team, or ask support.",
+    );
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+});
+
+describe("ids that are not ids", () => {
+  const BAD_IDS: [string, unknown][] = [
+    ["a word", "abc"],
+    ["a fraction", 1.5],
+    ["a boolean", true],
+    ["an array", [1]],
+    ["a negative number", -4],
+    ["trailing text", "7; DROP TABLE users"],
+    ["more than an INTEGER holds", 99999999999],
+  ];
+
+  function patchRequest(body: unknown): NextRequest {
+    return new NextRequest("http://localhost/api/v3/teams/members", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it.each(BAD_IDS)(
+    "PATCH answers 400 for a teamId that is %s",
+    async (_l, id) => {
+      const res = await PATCH(
+        patchRequest({ teamId: id, userId: 2, role: "admin" }),
+      );
+      expect(res.status).toBe(400);
+      expect(mockQuery).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(BAD_IDS)(
+    "PATCH answers 400 for a userId that is %s",
+    async (_l, id) => {
+      const res = await PATCH(
+        patchRequest({ teamId: 5, userId: id, role: "admin" }),
+      );
+      expect(res.status).toBe(400);
+      expect(mockQuery).not.toHaveBeenCalled();
+    },
+  );
+
+  it("PATCH binds integers when the ids arrive as digit strings", async () => {
+    routeMemberQueries({ 1: "owner", 2: "member" });
+
+    const res = await PATCH(
+      patchRequest({ teamId: "5", userId: "2", role: "admin" }),
+    );
+
+    expect(res.status).toBe(200);
+    const update = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).startsWith("UPDATE team_members"),
+    );
+    expect(update?.[1]).toEqual(["admin", 5, 2]);
+  });
+
+  it("PATCH refuses your own id as a digit string", async () => {
+    routeMemberQueries({ 1: "admin" });
+
+    const res = await PATCH(
+      patchRequest({ teamId: 5, userId: "1", role: "viewer" }),
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("your own role");
+  });
+
+  it("GET answers 400 for a teamId that is not a number", async () => {
+    const res = await GET(
+      new NextRequest("http://localhost/api/v3/teams/members?teamId=abc"),
+    );
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("GET binds an integer", async () => {
+    routeMemberQueries({ 1: "viewer" });
+
+    const res = await GET(
+      new NextRequest("http://localhost/api/v3/teams/members?teamId=5"),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockQuery.mock.calls[0][1]).toEqual([5, 1]);
+  });
+
+  it.each(BAD_IDS)(
+    "POST answers 400 for a teamId that is %s",
+    async (_l, id) => {
+      const res = await POST(postRequest({ teamId: id, email: "a@b.com" }));
+      expect(res.status).toBe(400);
+      expect(mockQuery).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(BAD_IDS)(
+    "DELETE answers 400 for a teamId that is %s",
+    async (_l, id) => {
+      const res = await DELETE(deleteRequest({ teamId: id, userId: "self" }));
+      expect(res.status).toBe(400);
+      expect(mockQuery).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(BAD_IDS)(
+    "DELETE answers 400 for an inviteId that is %s",
+    async (_l, id) => {
+      const res = await DELETE(deleteRequest({ teamId: 5, inviteId: id }));
+      expect(res.status).toBe(400);
+      expect(mockQuery).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("the other members handlers", () => {

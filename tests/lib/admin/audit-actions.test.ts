@@ -176,6 +176,25 @@ describe("audit action registry", () => {
     }
   });
 
+  it("registers what people do to their own teams, apart from the staff actions", () => {
+    for (const name of [
+      "team_invite.cancelled",
+      "team_member.removed",
+      "team_member.left",
+      "team_member.role_changed",
+      "team.renamed",
+      "team.deleted",
+    ]) {
+      expect(isAuditAction(name), name).toBe(true);
+      expect(AUDIT_ACTIONS[name as keyof typeof AUDIT_ACTIONS].label).not.toBe(
+        AUDIT_ACTIONS.delete_team.label,
+      );
+      expect(AUDIT_ACTIONS[name as keyof typeof AUDIT_ACTIONS].label).not.toBe(
+        AUDIT_ACTIONS.edit_team.label,
+      );
+    }
+  });
+
   it("puts every known action in a real category with a label and a verb", () => {
     const categories = new Set<string>(AUDIT_CATEGORIES.map((c) => c.id));
     for (const [name, def] of Object.entries(KNOWN_AUDIT_ACTIONS)) {

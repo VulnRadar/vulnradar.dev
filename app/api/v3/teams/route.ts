@@ -13,6 +13,9 @@ import {
   planLimitMessage,
 } from "@/lib/billing/plan-limits";
 import { teamsDisabledResponse } from "@/lib/teams/feature-gate";
+import { parseRowId } from "@/lib/teams/parse-id";
+import { recordTeamAudit, teamAuditLabel } from "@/lib/teams/team-audit";
+import { logAction } from "@/lib/auth/authorization";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { teamDeletedEmail } from "@/lib/email/email";
 import {
@@ -49,12 +52,12 @@ export async function GET() {
     owner_avatar_url: string | null;
     created_at: Date;
     role: string;
-    member_count: string;
+    member_count: number;
   }>(
     `SELECT t.id, t.name, t.slug, t.owner_id, t.created_at, tm.role,
        u.name AS owner_name, u.email AS owner_email,
        u.avatar_url AS owner_avatar_url,
-       (SELECT COUNT(*) FROM team_members tm2 WHERE tm2.team_id = t.id) as member_count
+       (SELECT COUNT(*)::int FROM team_members tm2 WHERE tm2.team_id = t.id) as member_count
      FROM teams t
      JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = $1
      LEFT JOIN users u ON u.id = t.owner_id
@@ -216,12 +219,19 @@ export async function PATCH(request: Request) {
   const gate = await teamsDisabledResponse();
   if (gate) return gate;
 
-  const { teamId, name, avatarUrl } = await request.json();
+  const { teamId: rawTeamId, name, avatarUrl } = await request.json();
   const wantsRename = name !== undefined;
   const wantsAvatar = typeof avatarUrl === "string";
 
-  if (!teamId || (!wantsRename && !wantsAvatar)) {
+  if (!rawTeamId || (!wantsRename && !wantsAvatar)) {
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
+  }
+  const teamId = parseRowId(rawTeamId);
+  if (teamId === null) {
+    return NextResponse.json(
+      { error: "teamId must be a whole number." },
+      { status: 400 },
+    );
   }
 
   const maxTeamNameLength = await getSetting("MAX_TEAM_NAME_LENGTH");
@@ -242,9 +252,12 @@ export async function PATCH(request: Request) {
   // TEAM_ROLE_PERMISSIONS in lib/config/constants.ts. The same permission
   // covers the picture: it is the team's public face inside the app, so
   // changing it is exactly as consequential as renaming it, and a plain
-  // member or viewer must not be able to.
-  const memberRes = await pool.query(
-    "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
+  // member or viewer must not be able to. The current name comes along for the
+  // audit row below, the one place the old name survives a rename.
+  const memberRes = await pool.query<{ role: string; team_name: string }>(
+    `SELECT tm.role, t.name AS team_name
+       FROM team_members tm JOIN teams t ON t.id = tm.team_id
+      WHERE tm.team_id = $1 AND tm.user_id = $2`,
     [teamId, session.userId],
   );
   if (
@@ -280,6 +293,18 @@ export async function PATCH(request: Request) {
       name.trim(),
       teamId,
     ]);
+    const previousName = memberRes.rows[0].team_name;
+    if (previousName !== name.trim()) {
+      await recordTeamAudit((ip) =>
+        logAction(
+          session.userId,
+          null,
+          "team.renamed",
+          `Renamed team ${teamAuditLabel(teamId, previousName)} to "${name.trim()}".`,
+          ip,
+        ),
+      );
+    }
   }
 
   return NextResponse.json({
@@ -303,9 +328,15 @@ export async function DELETE(request: Request) {
   const gate = await teamsDisabledResponse();
   if (gate) return gate;
 
-  const { teamId } = await request.json();
-  if (!teamId)
+  const { teamId: rawTeamId } = await request.json();
+  if (!rawTeamId)
     return NextResponse.json({ error: "teamId required." }, { status: 400 });
+  const teamId = parseRowId(rawTeamId);
+  if (teamId === null)
+    return NextResponse.json(
+      { error: "teamId must be a whole number." },
+      { status: 400 },
+    );
 
   // "delete_team" is owner-only -- deleting is a strictly bigger blast
   // radius than renaming, so it's its own permission, not folded into
@@ -354,7 +385,21 @@ export async function DELETE(request: Request) {
     console.error("Failed to read team roster for deletion notices:", err);
   }
 
-  await pool.query("DELETE FROM teams WHERE id = $1", [teamId]);
+  const deleted = await pool.query<{ name: string }>(
+    "DELETE FROM teams WHERE id = $1 RETURNING name",
+    [teamId],
+  );
+  if (deleted.rows.length > 0) {
+    await recordTeamAudit((ip) =>
+      logAction(
+        session.userId,
+        null,
+        "team.deleted",
+        `Deleted team ${teamAuditLabel(teamId, deleted.rows[0].name)}.`,
+        ip,
+      ),
+    );
+  }
 
   void (async () => {
     for (const member of roster) {

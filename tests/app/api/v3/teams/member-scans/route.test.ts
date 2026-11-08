@@ -77,6 +77,17 @@ describe("GET /api/v3/teams/member-scans", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["teamId", { teamId: "abc", userId: "99" }],
+    ["userId", { teamId: "3", userId: "1.5" }],
+    ["teamId past INTEGER", { teamId: "99999999999", userId: "99" }],
+  ])("answers 400 for a bad %s, before any query", async (_label, params) => {
+    const res = await GET(getRequest(params));
+
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
   it("rejects with 403 when the requester is not on the specified team at all", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] }); // requesterCheck: no membership row
 
@@ -90,7 +101,7 @@ describe("GET /api/v3/teams/member-scans", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("WHERE team_id = $1 AND user_id = $2");
-    expect(params).toEqual(["3", 42]);
+    expect(params).toEqual([3, 42]);
   });
 
   it("rejects with 403 when the requester is a member of a different team than the one specified", async () => {
@@ -104,7 +115,7 @@ describe("GET /api/v3/teams/member-scans", () => {
 
     expect(res.status).toBe(403);
     const [, params] = mockQuery.mock.calls[0];
-    expect(params[0]).toBe("3");
+    expect(params[0]).toBe(3);
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
@@ -121,7 +132,7 @@ describe("GET /api/v3/teams/member-scans", () => {
     expect(mockQuery).toHaveBeenCalledTimes(2);
     const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("WHERE team_id = $1 AND user_id = $2");
-    expect(params).toEqual(["3", "99"]);
+    expect(params).toEqual([3, 99]);
   });
 
   it("returns 200 with scans scoped to the target user only when both are team members", async () => {
@@ -159,7 +170,7 @@ describe("GET /api/v3/teams/member-scans", () => {
     expect(sql).toContain("FROM scan_history_teams sht");
     expect(sql).toContain("sht.team_id = $2");
     expect(sql).toContain("sh.team_id = $2");
-    expect(params).toEqual(["99", "3", 50]);
+    expect(params).toEqual([99, 3, 50]);
 
     // The 50-row cap used to be invisible: the panel drove its paginator from
     // the returned array's length, so it reported the truncated count as the
@@ -178,8 +189,8 @@ describe("GET /api/v3/teams/member-scans", () => {
 
     const [, params] = mockQuery.mock.calls[2];
     expect(params).not.toEqual([42]);
-    expect(params).toEqual(["99", "3", 50]);
+    expect(params).toEqual([99, 3, 50]);
     // The count that backs the reported total is scoped identically.
-    expect(mockQuery.mock.calls[3][1]).toEqual(["99", "3"]);
+    expect(mockQuery.mock.calls[3][1]).toEqual([99, 3]);
   });
 });
