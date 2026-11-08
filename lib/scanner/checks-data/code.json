@@ -7,12 +7,12 @@
     "severity": "critical",
     "description": "An HTTPS page contains a form that submits data to an HTTP endpoint.",
     "evidence": "Found form posting to HTTP on HTTPS page.",
-    "riskImpact": "User credentials and form inputs are transmitted in plaintext.",
-    "explanation": "When a secure page sends form data to an insecure endpoint, all submitted data travels unencrypted.",
+    "riskImpact": "Everything in the form, passwords included, crosses the network in plaintext. Anyone on the same Wi-Fi, an ISP or a compromised router can read or change it, even though the page showed a padlock.",
+    "explanation": "The page being HTTPS does not protect the submit: the browser sends to whatever the action attribute says. Confirm by reading the form's action in the page source. A redirect from that http:// endpoint to HTTPS does not fix it, because the POST body has already travelled in the clear on the first request.",
     "fixSteps": [
       "Change all form action URLs to use HTTPS.",
       "Use relative URLs so forms inherit the page protocol.",
-      "Implement HSTS."
+      "Send HSTS so the browser upgrades any http:// request for the host before it leaves the machine."
     ],
     "codeExamples": [
       {
@@ -62,14 +62,15 @@
     "title": "Potential Command Injection Vectors",
     "category": "code",
     "severity": "high",
-    "description": "Code patterns that execute system commands, potentially vulnerable to command injection.",
+    "description": "Code in the response calls exec, spawn, execSync, system or popen with a value concatenated from a request object (req., params., query. and similar).",
     "evidence": "Command execution patterns detected.",
-    "riskImpact": "Command injection allows attackers to execute arbitrary system commands.",
-    "explanation": "Executing system commands with user-controlled input is extremely dangerous.",
+    "riskImpact": "If this runs on the server, whoever sends that parameter runs commands as the web process: reading files and environment variables, downloading a second stage, moving on to the internal network. A public route needs no login for any of it.",
+    "explanation": "The check matches the code, not a live exploit. That code being in a response at all usually means source or a source map is being served, so find out why. To confirm the bug, trace the value back to the request and try a harmless payload on a test system, such as \";sleep 5\", and see whether the response is delayed. Shell metacharacters are only half of it: with no shell, input can still add flags to the program being called.",
     "fixSteps": [
-      "Never pass user input to system command functions.",
-      "Use language-native APIs instead of shell commands.",
-      "Run with minimal privileges."
+      "Replace the subprocess with a library call where one exists: fs.unlink rather than rm.",
+      "Where a subprocess is needed, use execFile or spawn with an argument array and no shell.",
+      "Validate each value against an allowlist and put -- before user-supplied arguments.",
+      "Run the process as a user that can reach only what it needs."
     ],
     "codeExamples": [
       {
@@ -121,10 +122,10 @@
     "title": "Potential Path Traversal Vulnerability",
     "category": "code",
     "severity": "high",
-    "description": "File operations with user-controlled paths that could allow directory traversal.",
+    "description": "Server code in the response passes a request value into readFile, readFileSync or createReadStream through concatenation or a template string.",
     "evidence": "Suspicious file operation patterns.",
-    "riskImpact": "Path traversal allows attackers to read arbitrary files on the server.",
-    "explanation": "Path traversal occurs when user input is used to construct file paths without validation.",
+    "riskImpact": "A value such as ../../etc/passwd walks out of the intended directory, so anyone can read what the server process can: config files, private keys, .env, source code.",
+    "explanation": "Filtering for ../ alone tends to fail: input can be URL encoded, doubled as ....//, or absolute, and backslashes work on Windows. The reliable test runs on the final path: resolve it against a fixed base and check that the result is still inside. path.join does not help, because it normalizes ../ rather than blocking it. Code like this in a public response also means source is being served, so look at how it got there.",
     "fixSteps": [
       "Never use user input directly in file paths.",
       "Validate resolved path is within expected directory.",
@@ -152,10 +153,10 @@
     "title": "Insecure Authentication Mechanisms Detected",
     "category": "code",
     "severity": "high",
-    "description": "Authentication security issues that could compromise user sessions.",
+    "description": "The response contains a Basic Authorization header, a password in a URL, or a username and password written as a pair.",
     "evidence": "Authentication security issues detected.",
     "riskImpact": "Weak authentication allows credential theft, session hijacking, or authentication bypass.",
-    "explanation": "Secure authentication requires proper cookie flags, token handling in headers, and avoiding Basic authentication.",
+    "explanation": "Each of those hands a usable login to anyone reading the response. Basic credentials are base64 of user:password and never expire, URLs get written to logs and history, and a hardcoded pair works until someone remembers to change it. Translation strings such as password: \"Password\" are filtered out, so a hit here is generally a real value. Find which account it belongs to and change that password before you clean up the code.",
     "fixSteps": [
       "Use secure session cookies with HttpOnly, Secure, SameSite=Strict.",
       "Never pass authentication tokens in URLs.",
@@ -182,10 +183,10 @@
     "title": "Potential Insecure Deserialization",
     "category": "code",
     "severity": "high",
-    "description": "Deserialization operations on potentially untrusted data.",
+    "description": "Code in the response passes request data to PHP unserialize, Python pickle.loads or yaml.load.",
     "evidence": "Deserialization patterns detected.",
-    "riskImpact": "Insecure deserialization can allow remote code execution.",
-    "explanation": "Deserializing untrusted data can instantiate arbitrary objects or execute code.",
+    "riskImpact": "These parsers can build arbitrary objects, and building them is enough to run code: a crafted cookie or upload becomes remote code execution under the web server's account.",
+    "explanation": "The format decides the risk. JSON can only make plain data, so it cannot run anything. Pickle, PHP serialize and unrestricted YAML can name classes and functions, and the parser acts on them before your code gets a chance to validate the result. Signing the payload with an HMAC only helps if the key stays secret and the signature is checked first.",
     "fixSteps": [
       "Only deserialize data from trusted sources.",
       "Use safe formats like JSON.",
@@ -295,13 +296,15 @@
     "type": "body-pattern",
     "title": "document.write DOM XSS Sink",
     "category": "code",
-    "severity": "high",
-    "description": "document.write() call detected.",
+    "severity": "medium",
+    "description": "A document.write() or writeln() call builds its argument from concatenation, JSON.parse, location, document.referrer, document.URL or window.name.",
     "evidence": "document.write usage found.",
-    "riskImpact": "Can completely overwrite page content with attacker-controlled HTML.",
-    "explanation": "document.write is a powerful and dangerous DOM manipulation method.",
+    "riskImpact": "If any of those values can be set by a visitor or a link, the HTML parser runs it as markup, which is DOM XSS. The check sees the shape of the call, not a proven path from input.",
+    "explanation": "document.write feeds the parser directly with no escaping step. To confirm, find where the argument comes from: a constant built by concatenation is safe, while location.search or window.name is not. Browsers may also ignore scripts injected this way on slow connections, so it costs you reliability even where it is not a security bug.",
     "fixSteps": [
-      "Replace with appendChild or insertAdjacentHTML with sanitization."
+      "Replace it with createElement and textContent.",
+      "Where you must insert HTML, sanitize it with DOMPurify first.",
+      "Load third-party tags with an async script element instead of writing them into the page."
     ],
     "codeExamples": [
       {
@@ -383,12 +386,14 @@
     "title": "Path Traversal Indicators",
     "category": "code",
     "severity": "high",
-    "description": "Path traversal sequences in URL parameters.",
+    "description": "The response contains a URL whose file, path, dir, folder or include parameter holds ../ or its encoded form ..%2F.",
     "evidence": "Path traversal patterns found.",
-    "riskImpact": "Could access files outside intended directory.",
-    "explanation": "../sequences can escape the web root to read sensitive files.",
+    "riskImpact": "If that parameter reaches a file read on the server, ../ walks out of the intended folder. Attackers go straight for /etc/passwd, application config, .env files and private keys, and an include parameter can run the file it loads, which turns a read into code execution.",
+    "explanation": "A link carrying ../ usually means an app builds file paths from request values. Sometimes it is only a scanner's or attacker's URL reflected back into the page. To confirm, request the same endpoint on a test system with file=../../../etc/passwd and try the encoded forms too. Filters that remove ../ once are defeated by ....// and double encoding, so the check has to run on the resolved path.",
     "fixSteps": [
-      "Validate paths, use basename(), never concatenate user input."
+      "Map user input to an allowlist of known files or IDs instead of accepting a path.",
+      "Otherwise resolve the path against a fixed base directory and reject anything that lands outside it.",
+      "Reject null bytes, and decode input fully before checking it."
     ],
     "codeExamples": [
       {
@@ -411,11 +416,15 @@
     "title": "Template Injection Indicators",
     "category": "code",
     "severity": "high",
-    "description": "Template syntax detected in output.",
+    "description": "A literal {{7*7}} style expression (digits multiplied inside double curly braces) appears in the output.",
     "evidence": "Template syntax in output.",
-    "riskImpact": "Server-Side Template Injection can lead to RCE.",
-    "explanation": "Unescaped template expressions can execute arbitrary code.",
-    "fixSteps": ["Escape all user input before template rendering."],
+    "riskImpact": "If a server-side template engine evaluates user input, the template language becomes the attack. Jinja2 and Twig expressions can reach Python or PHP internals, and from there read configuration or run commands.",
+    "explanation": "{{7*7}} is the standard probe for template injection. Seeing it unrendered in a page is not proof of a bug: it usually means someone tried it and the app stored the text safely. The vulnerable result looks different, because the page shows 49 where the probe was. To confirm, submit {{7*6}} through the field that produced this and look for 42. Angular and Vue evaluate these in the browser too, which is XSS rather than server compromise.",
+    "fixSteps": [
+      "Pass user input to templates as data, never as part of the template source.",
+      "Use a sandboxed engine mode for any template users are allowed to edit.",
+      "Find what stored this expression and check your logs for other payloads from the same source."
+    ],
     "codeExamples": [
       {
         "label": "Never pass user input directly to template engines",
@@ -465,12 +474,14 @@
     "title": "Function Constructor Usage",
     "category": "code",
     "severity": "high",
-    "description": "new Function() usage detected.",
+    "description": "Inline script calls new Function() to compile a string into code.",
     "evidence": "Function constructor found.",
-    "riskImpact": "Similar to eval(), can execute arbitrary code.",
-    "explanation": "Function constructor creates functions from strings.",
+    "riskImpact": "The code runs in global scope with the page's full access. If the string includes anything from a URL, storage or a message, that is script injection. It also forces a CSP to allow 'unsafe-eval'.",
+    "explanation": "new Function is a close relative of eval: it cannot see local variables, but parsing and running arbitrary text carries the same risk. A constant string is harmless for security and still costs you a strict CSP. Template compilers and older bundles are common legitimate sources, so check whether the code is yours and then whether its argument is ever dynamic.",
     "fixSteps": [
-      "Avoid Function constructor, use direct function definitions."
+      "Replace it with a real function, or a lookup table of functions keyed by name.",
+      "If a library is the source, switch to its CSP-safe build.",
+      "Once none remain, remove 'unsafe-eval' from your Content-Security-Policy."
     ],
     "codeExamples": [
       {
@@ -698,10 +709,12 @@
     "severity": "high",
     "description": "setInterval('code', 1000) is implicitly eval(). Pass a function reference instead.",
     "evidence": "Source-code pattern matched for `code-eval-setinterval-string`.",
-    "riskImpact": "Use setInterval(function() {}, 1000) instead of setInterval('...', 1000)",
-    "explanation": "setInterval('code', 1000) is implicitly eval(). Pass a function reference instead.",
+    "riskImpact": "A string passed to setInterval or setTimeout is compiled and run the way eval runs it. If the string is built from input, that is script injection, and it repeats on every tick of the timer.",
+    "explanation": "Browsers kept this legacy form for compatibility, and the string runs in global scope. Beyond the injection risk it also blocks a strict CSP, which refuses to compile the string without 'unsafe-eval'. An arrow function does the same work with neither problem. The check also fires when the first argument is concatenated, so look at what builds it.",
     "fixSteps": [
-      "Use setInterval(function() {}, 1000) instead of setInterval('...', 1000)"
+      "Pass a function: setInterval(() => tick(), 1000).",
+      "Pass arguments after the delay rather than concatenating them into a string.",
+      "Once none remain, remove 'unsafe-eval' from your Content-Security-Policy."
     ],
     "codeExamples": [
       {
@@ -855,12 +868,14 @@
     "title": "jQuery .html() with user input",
     "category": "code",
     "severity": "high",
-    "description": "$el.html(userInput) executes arbitrary HTML. Always escape or use .text().",
+    "description": "$el.html(value) parses its argument as HTML and can run scripts it contains. This check flags calls where the argument is not a plain string literal.",
     "evidence": "Source-code pattern matched for `code-jquery-html`.",
-    "riskImpact": "Use .text() or escape user input via a DOMPurify-like library",
-    "explanation": "$el.html(userInput) executes arbitrary HTML. Always escape or use .text().",
+    "riskImpact": "Whoever controls the value can run JavaScript in your origin. jQuery also runs script elements passed to .html(), where plain innerHTML would leave them inert.",
+    "explanation": "Look at the argument. A variable built from fixed markup is fine. Anything fed by an AJAX response containing user content, a URL parameter or a form value is DOM XSS. Older jQuery adds its own trouble, since versions before 3.5 could turn sanitized HTML back into live markup in its manipulation methods.",
     "fixSteps": [
-      "Use .text() or escape user input via a DOMPurify-like library"
+      "Use .text() for anything that should be plain text.",
+      "Where HTML is required, pass it through DOMPurify first.",
+      "Upgrade jQuery to 3.5 or later."
     ],
     "codeExamples": [
       {
@@ -2557,10 +2572,10 @@
     "title": "XML external entity (XXE) risk",
     "category": "code",
     "severity": "high",
-    "description": "XML is being parsed without explicit external entity restrictions.",
+    "description": "The response contains an XML entity declaration with an external SYSTEM or PUBLIC identifier.",
     "evidence": "XML parsing without entity restrictions detected at {{url}}.",
     "riskImpact": "An XXE attack using a crafted XML payload can read server-side files, make SSRF requests, or cause denial-of-service via recursive entity expansion (billion laughs attack).",
-    "explanation": "XML parsers that allow SYSTEM/PUBLIC entities can be abused to load external content at the server level.",
+    "explanation": "XXE lives in the parser's defaults: entity declarations are part of the XML standard and many libraries honor them unless told otherwise. A SYSTEM entity pointing at file:///etc/passwd pulls that file into the parsed document, and one pointing at an internal URL makes the server send a request. A declaration in a response means someone wrote or submitted one, so check whether this endpoint accepts XML at all. SOAP, SAML, DOCX and SVG are common ways in.",
     "fixSteps": [
       "Set processEntities: false in fast-xml-parser",
       "Disable DOCTYPE declarations at the parser level",
@@ -2652,7 +2667,7 @@
     "description": "Vendor default usernames or passwords detected in configuration or source.",
     "evidence": "Default or well-known vendor credentials detected at {{url}}.",
     "riskImpact": "Default credentials (admin/admin, root/root, admin/password) are the first thing attackers try. They are published in vendor documentation and widely known, making any system using them trivially compromised.",
-    "explanation": "Software shipped with default credentials must have them changed before first exposure to any network.",
+    "explanation": "This matches pairs like admin/admin or root/root written in the page, skipping banners that tell you to change them. A pair in a page is a strong clue that the documented login still works, and the only way to know is to try it on a system you own. Automated scanners spray exactly these combinations across the internet, so an exposed default login will be tried.",
     "fixSteps": [
       "Change all default credentials immediately on installation",
       "Disable default admin accounts and create named service accounts",
@@ -2680,10 +2695,10 @@
     "title": "Hard-coded secret values in source",
     "category": "code",
     "severity": "critical",
-    "description": "API keys, tokens, or secret strings are embedded directly in the source code.",
+    "description": "API keys, tokens, or secret strings are embedded directly in the source code, including OpenAI (sk-proj-) and Anthropic (sk-ant-) API keys.",
     "evidence": "Hard-coded secret value detected in JavaScript at {{url}}.",
     "riskImpact": "Secrets embedded in source code are committed to version history, included in build artifacts, and potentially exposed in client-side bundles, giving anyone with the code or the deployed JS file access to your third-party services, databases, and APIs.",
-    "explanation": "Secrets in source are nearly impossible to fully remove once committed: use environment variables and rotate immediately.",
+    "explanation": "Secrets in source are nearly impossible to fully remove once committed: use environment variables and rotate immediately. Model-provider keys are a common case now. OpenAI project keys start with sk-proj- and Anthropic keys with sk-ant-, and either one in a client bundle lets anyone run requests billed to your account.",
     "fixSteps": [
       "Remove the secret from source code and git history (BFG Repo Cleaner)",
       "Move to environment variables or a secrets manager",

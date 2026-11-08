@@ -36,15 +36,15 @@
     "type": "body-pattern",
     "title": "Directory Listing Appears Enabled",
     "category": "content",
-    "severity": "high",
-    "description": "The response contains patterns indicating directory listing is enabled.",
+    "severity": "medium",
+    "description": "The response looks like a server-generated directory index: an Index of / title or heading, an IIS [To Parent Directory] link, or a pre-formatted list of links with dates.",
     "evidence": "Response contains directory listing indicators.",
-    "riskImpact": "Attackers can browse your server's file structure, discovering sensitive files.",
-    "explanation": "Directory listing allows anyone to see all files in a directory when no index file is present.",
+    "riskImpact": "Nobody has to guess file names any more. A listing shows backups, archives, config copies and uploads that were never linked from the site, and each can be downloaded directly. The listing itself is only a map: how bad it is depends on what is in the folder.",
+    "explanation": "Servers generate these pages when a directory has no index file and autoindex (Nginx) or Options +Indexes (Apache) is on. To confirm, open the URL and read what is listed. Public downloads in a folder meant to be browsed are fine. Files like .sql, .zip, .bak or a user uploads folder are the real finding, and should be treated as already copied, since search engines index these pages. Turning listing off does not protect the files: they stay reachable to anyone who has the URL.",
     "fixSteps": [
-      "Disable directory listing in your web server configuration.",
-      "Ensure every directory has an index file.",
-      "Review exposed directories for sensitive files."
+      "Turn listing off: autoindex off in Nginx, Options -Indexes in Apache, directoryBrowse enabled=false in IIS, and no browse option on a Caddy file_server.",
+      "Read the listing before you close it, move or delete backups, dumps and config copies, and rotate any credential they held.",
+      "Keep private files outside the web root, behind application authentication."
     ],
     "codeExamples": [
       {
@@ -103,7 +103,7 @@
     "type": "body-pattern",
     "title": "Potentially Outdated JavaScript Libraries",
     "category": "content",
-    "severity": "high",
+    "severity": "medium",
     "description": "The page references JavaScript libraries that are either below a version with known security vulnerabilities, or are deprecated/in maintenance mode with no further security patches.",
     "evidence": "Detected outdated or deprecated libraries.",
     "riskImpact": "Outdated libraries contain publicly known vulnerabilities that attackers can exploit.",
@@ -193,14 +193,14 @@
     "type": "body-pattern",
     "title": "Potentially Dangerous Inline JavaScript",
     "category": "content",
-    "severity": "medium",
-    "description": "The page contains inline JavaScript with potentially dangerous patterns like eval(), document.write().",
+    "severity": "low",
+    "description": "The page contains inline JavaScript with potentially dangerous patterns such as document.write(), new Function() or a string passed to setTimeout.",
     "evidence": "Found inline script blocks with dangerous patterns.",
     "riskImpact": "Dangerous JavaScript patterns can be exploited via XSS.",
-    "explanation": "Patterns like eval(), document.write(), and direct innerHTML assignment with user input are common XSS vectors.",
+    "explanation": "Patterns like document.write() and new Function() are common XSS vectors when they are given user input. This check sees the pattern and not the data flow, so read the call and find out where its argument comes from.",
     "fixSteps": [
-      "Replace eval() with JSON.parse().",
-      "Use textContent instead of innerHTML.",
+      "Replace document.write() with DOM methods and textContent.",
+      "Pass a function to setTimeout and setInterval rather than a string.",
       "Move inline scripts to external files.",
       "Use DOMPurify to sanitize HTML."
     ],
@@ -208,7 +208,7 @@
       {
         "label": "Safe alternatives",
         "language": "javascript",
-        "code": "const data = JSON.parse(jsonString);\nelement.textContent = userInput;\nimport DOMPurify from 'dompurify';\nelement.innerHTML = DOMPurify.sanitize(htmlContent);"
+        "code": "element.textContent = userInput;\nsetTimeout(() => refresh(), 1000);\nimport DOMPurify from 'dompurify';\nelement.innerHTML = DOMPurify.sanitize(htmlContent);"
       }
     ],
     "_idx": 11,
@@ -259,7 +259,7 @@
     "type": "body-pattern",
     "title": "Sensitive Keywords in HTML Comments",
     "category": "content",
-    "severity": "medium",
+    "severity": "low",
     "description": "HTML comments containing potentially sensitive information detected.",
     "evidence": "Detected comments with sensitive keywords.",
     "riskImpact": "HTML comments are visible to anyone viewing page source.",
@@ -293,7 +293,7 @@
     "description": "Debug/error indicators that reveal internal application details detected.",
     "evidence": "Debug headers, stack traces, or error messages found.",
     "riskImpact": "Debug output exposes internal file paths, framework versions, database types, and application logic.",
-    "explanation": "Debug mode and verbose error messages are invaluable during development but catastrophic in production.",
+    "explanation": "Detection covers X-Debug-Token headers (Symfony's profiler), Python tracebacks, Node stack traces, SQLSTATE errors and PHP fatal errors in the response. Each reveals how the app is built: absolute paths, package versions, SQL fragments. Symfony's profiler, when reachable, goes further and shows request data for past requests. To confirm, load the URL in a private window: if you see a stack trace without logging in, so does every visitor.",
     "fixSteps": [
       "Disable debug mode in production.",
       "Configure custom error pages.",
@@ -357,10 +357,10 @@
     "title": "Authentication Tokens Exposed in Page Source",
     "category": "content",
     "severity": "high",
-    "description": "Tokens or session identifiers exposed in the HTML source.",
+    "description": "A session identifier (PHPSESSID, JSESSIONID or ASP.NET_SessionId) appears with its value in the page source.",
     "evidence": "JWT tokens, Bearer tokens, or session IDs found in page source.",
-    "riskImpact": "Exposed tokens allow session hijacking.",
-    "explanation": "Authentication tokens should never appear in HTML source. They can be captured by browser extensions, cached by CDNs, or logged by proxies.",
+    "riskImpact": "Whoever holds the value is that user until the session expires.",
+    "explanation": "A session ID printed into HTML defeats the HttpOnly flag on the cookie, because any script on the page can now read it from the DOM. The usual culprits are a debug panel, a diagnostics comment or a URL with the ID appended. If the page is cached by a CDN, one visitor's session can be served to another, so check the cache headers as well.",
     "fixSteps": [
       "Store tokens in HTTP-only Secure cookies.",
       "If tokens must be passed to JavaScript, inject them via a secure API call.",
@@ -388,20 +388,20 @@
     "title": "Missing Autocomplete Attributes on Sensitive Fields",
     "category": "content",
     "severity": "low",
-    "description": "Sensitive input fields without proper autocomplete attributes.",
-    "evidence": "Password or credit card fields missing autocomplete directives.",
-    "riskImpact": "Browsers may cache sensitive form data on shared or compromised devices.",
-    "explanation": "The autocomplete attribute tells browsers how to handle form autofill.",
+    "description": "Payment card fields have no autocomplete token.",
+    "evidence": "Credit card fields missing autocomplete tokens.",
+    "riskImpact": "This is a usability gap more than a security hole. Without the token, browsers guess what the field is, so card details can be filled into the wrong box or not offered at all, and people retype them. autocomplete=\"off\" does not stop browsers from saving data, so it is not a fix.",
+    "explanation": "The autocomplete attribute tells browsers what a field holds. Card fields have their own tokens: cc-number, cc-exp, cc-csc and cc-name. Password fields are covered by a separate check, page-password-field-autocomplete-wrong.",
     "fixSteps": [
-      "Add autocomplete=\"new-password\" for registration fields.",
-      "Add autocomplete=\"current-password\" for login fields.",
-      "Add appropriate autocomplete values for payment fields."
+      "Add autocomplete=\"cc-number\" to the card number field.",
+      "Add autocomplete=\"cc-exp\" and autocomplete=\"cc-csc\" to the expiry and security code fields.",
+      "Add autocomplete=\"cc-name\" to the cardholder name field."
     ],
     "codeExamples": [
       {
-        "label": "Proper autocomplete",
+        "label": "Card field tokens",
         "language": "html",
-        "code": "<input type=\"password\" autocomplete=\"current-password\" />\n<input type=\"password\" autocomplete=\"new-password\" />"
+        "code": "<input name=\"cardnumber\" autocomplete=\"cc-number\" inputmode=\"numeric\" />\n<input name=\"exp\" autocomplete=\"cc-exp\" />\n<input name=\"cvc\" autocomplete=\"cc-csc\" inputmode=\"numeric\" />"
       }
     ],
     "_idx": 19,
@@ -474,7 +474,7 @@
     "description": "The page uses a <base> tag with an HTTP URL, making all relative URLs resolve insecurely.",
     "evidence": "Found <base> tag(s) pointing to insecure HTTP origin.",
     "riskImpact": "All relative links, scripts, images resolve against the insecure base URL.",
-    "explanation": "The HTML <base> tag sets the base URL for all relative URLs in the document.",
+    "explanation": "The base URL applies to every relative URL on the page, and only an HTTPS page with an http:// <base> href reaches this finding. Browsers block most scripts and stylesheets resolved this way as mixed content, which usually shows up as a broken page, while forms and links still go over HTTP. An attacker on the network can then read form data and rewrite what comes back.",
     "fixSteps": [
       "Change the <base> tag to use HTTPS.",
       "Remove the <base> tag if not needed.",
@@ -529,10 +529,10 @@
     "title": "Dangerous HTML Attributes Detected",
     "category": "content",
     "severity": "high",
-    "description": "Potentially dangerous HTML attributes like inline event handlers, javascript: URIs.",
+    "description": "Inline event handlers whose code calls eval, document.write, fetch, XMLHttpRequest or alert, or assigns to location or innerHTML.",
     "evidence": "Found dangerous HTML attributes.",
     "riskImpact": "Inline event handlers and javascript: URIs are common XSS vectors.",
-    "explanation": "Inline event handlers, javascript: protocol links, and data: URIs embedding HTML/JS are all classic XSS injection points.",
+    "explanation": "An on* attribute is script with no script tag, and these do something powerful: navigate, write HTML or make a network request. If any part of the value comes from user data, an escaping mistake becomes code execution, because attribute contents are HTML-decoded before they run. A strict CSP blocks inline handlers entirely, so moving them to addEventListener is also what makes that CSP possible. alert( in a handler is worth a look by itself, since injected test payloads use it.",
     "fixSteps": [
       "Remove all javascript: protocol links.",
       "Move inline event handlers to external JavaScript files.",
@@ -562,7 +562,7 @@
     "description": "A JSON Web Token was found embedded in a URL within the page HTML.",
     "evidence": "Found JWT in URL parameter.",
     "riskImpact": "The token appears in browser history, proxy logs, server logs, and Referer headers.",
-    "explanation": "JWTs in URLs persist in numerous locations, creating many avenues for token theft.",
+    "explanation": "A JWT is a bearer credential and works until it expires for whoever has it. In a query string it is copied to browser history, to web server and CDN access logs, and to the Referer header sent to third-party scripts and linked sites. Unlike a session ID, a JWT usually cannot be revoked, so those copies stay valid. Decode the middle segment, which is plain base64url, to see its exp claim and what it grants.",
     "fixSteps": [
       "Transmit tokens in HTTP headers (Authorization: Bearer) instead of URLs.",
       "Use HTTP-only secure cookies.",
@@ -589,20 +589,20 @@
     "title": "Sensitive Information in Meta Tags",
     "category": "content",
     "severity": "low",
-    "description": "Meta tags that expose sensitive or unnecessary information.",
+    "description": "A meta tag's name contains token, api-key, secret, session or internal.",
     "evidence": "Sensitive meta tags found.",
-    "riskImpact": "Meta tag contents are visible in page source.",
-    "explanation": "Generator tags reveal exact software versions with known CVEs. CSRF tokens in meta tags are accessible to any script.",
+    "riskImpact": "Meta tag contents are visible in page source and to every script on the page, so a real credential here is exposed to every visitor.",
+    "explanation": "A value here only matters if it grants something, such as an api-secret holding a live key. A CSRF token in a meta tag is the documented Laravel and Rails pattern and is not a leak: it is tied to the visitor's own session, and any same-origin script could read a hidden input just as easily.",
     "fixSteps": [
-      "Remove generator meta tags in production.",
-      "Move CSRF tokens to HTTP-only cookies.",
-      "Never store API keys in meta tags."
+      "Remove credential values from meta tags and keep them on the server.",
+      "If the browser needs to call a service, proxy the call through your backend or issue a short-lived token.",
+      "Leave CSRF tokens where your framework puts them."
     ],
     "codeExamples": [
       {
-        "label": "WordPress",
-        "language": "php",
-        "code": "remove_action('wp_head', 'wp_generator');"
+        "label": "Keep credentials out of meta tags",
+        "language": "html",
+        "code": "<!-- BAD: every visitor receives this key -->\n<meta name=\"api-secret\" content=\"sk_live_...\">\n\n<!-- FINE: tied to this visitor's session -->\n<meta name=\"csrf-token\" content=\"{{ csrf_token() }}\">"
       }
     ],
     "_idx": 28,
@@ -701,10 +701,10 @@
     "title": "Deprecated Cipher or Hash Algorithm in Page Code",
     "category": "content",
     "severity": "high",
-    "description": "Weak or broken cryptographic algorithms in client-side JavaScript.",
+    "description": "Code in the page calls MD5 or SHA-1, or uses DES, RC2, RC4, Blowfish or ECB mode.",
     "evidence": "Weak cryptography patterns detected.",
     "riskImpact": "Weak cryptography provides a false sense of security. MD5/SHA-1 can be forged, DES/RC4 broken, Math.random() is predictable.",
-    "explanation": "Cryptographic algorithms become weak as computing power increases. MD5 collisions can be generated in seconds.",
+    "explanation": "What matters is what the algorithm is used for. MD5 or SHA-1 as a cache key or checksum harms nobody, while MD5 over a password is a real break, and practical collisions exist for both hashes. DES has a 56-bit key that modern hardware exhausts quickly, and ECB leaks patterns because identical blocks encrypt identically. Encryption done in client code is suspect anyway, since the key ships to the user.",
     "fixSteps": [
       "Replace MD5/SHA-1 with SHA-256 or SHA-3.",
       "Replace DES/RC4 with AES-256-GCM.",
@@ -795,10 +795,10 @@
     "title": "Potential Server-Side Request Forgery (SSRF) Vectors",
     "category": "content",
     "severity": "high",
-    "description": "User-controlled input may be used in server-side HTTP requests.",
+    "description": "Server-style code in the response passes a request object straight to an HTTP client (req. or request. inside fetch, axios, requests or urllib).",
     "evidence": "Suspicious request patterns found.",
     "riskImpact": "SSRF allows attackers to access internal resources, cloud metadata services, or internal networks.",
-    "explanation": "SSRF occurs when an application fetches a remote resource without validating the user-supplied URL.",
+    "explanation": "If that code runs on the server, a user can aim the request at http://169.254.169.254/ and collect cloud credentials, or reach databases and admin panels bound to localhost. Seeing it in a response also suggests source is being served to the public. Trace the argument back to confirm that it is user input, and validate the resolved IP rather than the hostname.",
     "fixSteps": [
       "Validate URLs against an allowlist.",
       "Block requests to private IP ranges.",
@@ -1085,11 +1085,15 @@
     "title": "AWS Metadata Endpoint Reference",
     "category": "content",
     "severity": "critical",
-    "description": "Reference to AWS metadata endpoint (169.254.169.254) detected.",
+    "description": "The response contains the link-local metadata address 169.254.169.254, or a latest/meta-data or /metadata/instance path.",
     "evidence": "AWS metadata IP found.",
-    "riskImpact": "SSRF to metadata endpoint can steal IAM credentials.",
-    "explanation": "The AWS metadata service provides instance credentials.",
-    "fixSteps": ["Block metadata access from applications; use IMDSv2."],
+    "riskImpact": "From inside a cloud instance, that address returns temporary credentials for the instance's role. A server-side request forgery bug pointed at it turns a URL parameter into access to the cloud account.",
+    "explanation": "A mention in a page is not itself a breach, but application code has no reason to show it to visitors, so look at what put it there: a leaked config, a debug dump, an error from a failed internal request, or a submitted URL reflected back. To check your exposure, run curl http://169.254.169.254/latest/meta-data/ on the instance. With IMDSv2 required it answers 401 without a session token, which stops most SSRF because the attacker cannot send the PUT request and header.",
+    "fixSteps": [
+      "Require IMDSv2 on every instance (HttpTokens=required) and set the hop limit to 1.",
+      "Block 169.254.169.254 in the application's outbound HTTP client, and at the network layer if the app does not need it.",
+      "Find out why the address appears in this response and remove it."
+    ],
     "codeExamples": [
       {
         "label": "Block access to AWS metadata endpoint",
@@ -1111,16 +1115,31 @@
     "title": ".git Directory Paths Exposed",
     "category": "content",
     "severity": "high",
-    "description": ".git directory paths found in page source.",
+    "description": "A link or asset on the page points into a .git directory: /.git/HEAD, config, objects or refs.",
     "evidence": ".git/ paths detected.",
-    "riskImpact": "Exposed .git allows downloading entire source code history.",
-    "explanation": "If .git is accessible, attackers can reconstruct your entire repository.",
-    "fixSteps": ["Block access to .git directory in web server config."],
+    "riskImpact": "A readable .git directory is the whole repository. Tools such as git-dumper rebuild it from the object files, which gives an attacker your source code, every past commit, and anything that was ever committed and later deleted, including API keys and database passwords.",
+    "explanation": "This check reads the page's links, so it shows that something references .git, not that the directory is served. To confirm, run curl -si https://your-site/.git/HEAD. A 200 whose body starts with ref: refs/heads/ means it is exposed, and a 403 or 404 means the rule is working. Directory listing does not have to be on, because object names can be found by following refs from known paths. It usually happens when a site is deployed with git clone or git pull into the web root.",
+    "fixSteps": [
+      "Deny .git at the web server: the Nginx, Apache and Caddy rules are below.",
+      "On a static host (Netlify, Vercel, GitHub Pages, Cloudflare Pages, an S3 bucket) there is no server block to add a rule to: publish only the build output directory and keep dotfiles out of it, then request the path to confirm a 404.",
+      "Deploy build output rather than a checkout, so no .git directory exists in the web root.",
+      "If the directory was reachable, rotate every secret that has ever been in the repository's history, not just the current ones."
+    ],
     "codeExamples": [
       {
-        "label": "Block access to .git directory",
+        "label": "Nginx",
         "language": "nginx",
-        "code": "# Block .git and other VCS directories\nlocation ~ /\\.git {\n  deny all;\n  return 404;\n}\n\n# Apache:\n# <DirectoryMatch \"^\\.git\">\n#   Require all denied\n# </DirectoryMatch>"
+        "code": "# Block .git and other VCS directories\nlocation ~ /\\.git {\n  deny all;\n  return 404;\n}"
+      },
+      {
+        "label": "Apache (vhost or .htaccess)",
+        "language": "apache",
+        "code": "RedirectMatch 404 /\\.git(/|$)"
+      },
+      {
+        "label": "Caddy",
+        "language": "caddy",
+        "code": "example.com {\n  @git path */.git */.git/*\n  respond @git 404\n\n  root * /var/www/site\n  file_server\n}"
       }
     ],
     "_idx": 63,
@@ -1138,16 +1157,31 @@
     "title": ".env File Reference Detected",
     "category": "content",
     "severity": "critical",
-    "description": "References to .env file found in page source.",
+    "description": "A link or asset on the page points at a .env file (.env, .env.local, .env.production and similar).",
     "evidence": ".env file reference detected.",
-    "riskImpact": "Exposed .env files contain database credentials, API keys, and secrets.",
-    "explanation": ".env files should never be web-accessible.",
-    "fixSteps": ["Block .env access in web server config."],
+    "riskImpact": "A .env file is normally the complete list of an app's secrets: database URL, API keys, mail credentials, the session signing key. One GET returns all of them in plain text, and automated scanners request /.env on every host they find.",
+    "explanation": "The check reads links in the page, so it proves the reference exists, not that the file is served. Confirm with curl -si https://your-site/.env and read the body: a list of KEY=value lines is a leak, while a 200 that returns your normal HTML is a single-page app's catch-all and harmless. Frameworks do not protect you if a copy of the project sits in a web root. If the file was served, every value in it is burned.",
+    "fixSteps": [
+      "Deny .env at the web server: the Nginx, Apache and Caddy rules are below.",
+      "On a static host (Netlify, Vercel, GitHub Pages, Cloudflare Pages, an S3 bucket) there is no server block to add a rule to: publish only the build output directory and keep dotfiles out of it, then request the path to confirm a 404.",
+      "Keep .env files outside the web root, and inject values through the host's environment settings or a secrets manager.",
+      "If the file was reachable, rotate every value in it, starting with database credentials and signing keys."
+    ],
     "codeExamples": [
       {
-        "label": "Block access to .env files via web server",
+        "label": "Nginx",
         "language": "nginx",
-        "code": "# Block .env and related files from being served\nlocation ~* /\\.env {\n  deny all;\n  return 404;\n}\n\n# Store .env files outside the web root\n# In Next.js: .env.local is never served, but verify your web server config\n# For Docker: use ARG/ENV in Dockerfile or a secrets manager, not .env files"
+        "code": "# Block .env and related files from being served\nlocation ~* /\\.env {\n  deny all;\n  return 404;\n}"
+      },
+      {
+        "label": "Apache (vhost or .htaccess)",
+        "language": "apache",
+        "code": "RedirectMatch 404 /\\.env(\\.[a-z]+)?$"
+      },
+      {
+        "label": "Caddy",
+        "language": "caddy",
+        "code": "example.com {\n  @dotenv path */.env */.env.*\n  respond @dotenv 404\n\n  root * /var/www/site\n  file_server\n}"
       }
     ],
     "_idx": 64,
@@ -1165,13 +1199,15 @@
     "title": "phpinfo() Page Exposed",
     "category": "content",
     "severity": "critical",
-    "description": "phpinfo() page or reference detected.",
+    "description": "The page is a phpinfo() report, or it links to a phpinfo.php file.",
     "evidence": "phpinfo() detected in page.",
-    "riskImpact": "phpinfo() exposes complete server configuration, PHP settings, and environment variables.",
-    "explanation": "This diagnostic page should never be accessible in production.",
+    "riskImpact": "phpinfo() prints the PHP version and loaded modules, filesystem paths, every php.ini setting and all environment variables, which on many hosts include database passwords and API keys. It also shows the session and upload settings that make other attacks easier to plan.",
+    "explanation": "The report echoes the HTTP request as well, cookies included, so a phpinfo page defeats HttpOnly: XSS elsewhere on the site can fetch it and read the session cookie out of the output. To confirm, open the URL and read the Environment and PHP Variables tables for credentials. These files are normally left over from debugging a server setup, under names like info.php, phpinfo.php or test.php.",
     "fixSteps": [
-      "Remove phpinfo() files from production.",
-      "Block access in web server config."
+      "Delete the file, and search the web root for other files that call phpinfo().",
+      "Rotate any credential shown in the Environment or PHP Variables tables.",
+      "Add phpinfo to disable_functions in the production php.ini so a forgotten file prints nothing.",
+      "Block the common filenames in the web server if the files cannot be deleted right away."
     ],
     "codeExamples": [
       {
@@ -1252,13 +1288,15 @@
     "title": "Spring Boot Actuator Endpoints Exposed",
     "category": "content",
     "severity": "high",
-    "description": "Spring Boot Actuator endpoints found in page source.",
+    "description": "The page references a Spring Boot Actuator endpoint under /actuator: health, env, info, beans or mappings.",
     "evidence": "Actuator endpoint references detected.",
-    "riskImpact": "Actuator endpoints expose env vars, beans, mappings, and health status.",
-    "explanation": "Spring Boot Actuator provides operational endpoints that should be secured.",
+    "riskImpact": "/actuator/env lists configuration properties, /actuator/heapdump (when enabled) downloads the JVM's memory with live secrets and session tokens, and /actuator/mappings lists every route in the app. A writable env endpoint combined with certain libraries has been used for remote code execution.",
+    "explanation": "This finding means the path appears in the response. It does not prove the endpoints answer, and a public /actuator/health on its own is common and low risk. Confirm with curl -si https://your-site/actuator, which lists the exposed endpoints as JSON links when Actuator is reachable, then try env and heapdump specifically. Current Spring Boot versions expose only health over HTTP by default, so a wider list comes from a management.endpoints.web.exposure.include setting someone changed, often to *.",
     "fixSteps": [
-      "Restrict actuator endpoints to internal access only.",
-      "Use Spring Security to protect actuator."
+      "Set management.endpoints.web.exposure.include to health only.",
+      "Move management to a separate internal port with management.server.port.",
+      "Protect anything else with Spring Security and a role that only operators hold.",
+      "If env or heapdump were reachable, rotate the credentials they could have shown."
     ],
     "codeExamples": [
       {
@@ -1328,11 +1366,15 @@
     "title": "postMessage() With Wildcard Origin",
     "category": "content",
     "severity": "high",
-    "description": "postMessage called with * origin target.",
+    "description": "postMessage is called with * as its target origin.",
     "evidence": "postMessage with wildcard origin.",
-    "riskImpact": "Sensitive data sent to any listening window.",
-    "explanation": "Using * as target origin means any page can receive the message.",
-    "fixSteps": ["Specify the exact target origin instead of *."],
+    "riskImpact": "Whatever window is at the other end receives the message, even if it has navigated to an attacker's page. Tokens, user details or form contents posted this way can be read by that page.",
+    "explanation": "The target origin argument is the only check on who receives the message. With *, a popup or iframe your page opened can be navigated by someone else and the data still arrives. It is harmless for a resize event, so read the message body first. OAuth popups that post tokens back to the opener are the classic bad case. Check the receiving side as well: a listener that does not test event.origin is the matching bug.",
+    "fixSteps": [
+      "Pass the exact origin of the receiving window, such as https://app.example.com.",
+      "Never post tokens or personal data with * as the target.",
+      "On the receiving side, check event.origin before trusting event.data."
+    ],
     "codeExamples": [
       {
         "label": "Replace \"*\" targetOrigin with explicit origin",
@@ -1357,9 +1399,13 @@
     "severity": "high",
     "description": "JSON Web Token found in HTML source.",
     "evidence": "JWT pattern detected in HTML.",
-    "riskImpact": "Exposed tokens allow session hijacking.",
-    "explanation": "JWTs in page source can be stolen by XSS attacks.",
-    "fixSteps": ["Never embed JWTs in HTML; use HttpOnly cookies."],
+    "riskImpact": "Anyone who reads the page source, and any script on the page, can send this token and be treated as its subject until it expires.",
+    "explanation": "Detected by three base64url segments where the first two begin with eyJ, the encoding of an opening brace and quote. Decode the middle part to find out what it is. A token with a sub claim and a future exp in a cached page is a session someone else can use. The signature only protects integrity: the payload is readable, so it also leaks whatever claims it holds.",
+    "fixSteps": [
+      "Never embed session JWTs in HTML. Use HttpOnly cookies.",
+      "If script needs a token, fetch a short-lived one after page load and hold it in memory.",
+      "Mark pages that carry per-user data as private so that CDNs do not cache them."
+    ],
     "codeExamples": [
       {
         "label": "Remove JWTs from HTML: use HttpOnly cookies",
@@ -1381,13 +1427,14 @@
     "title": "Base64 Credentials in Page Source",
     "category": "content",
     "severity": "high",
-    "description": "Basic authentication credentials (Base64) found.",
+    "description": "An Authorization or Proxy-Authorization header with Basic credentials appears in the page source.",
     "evidence": "Basic auth Base64 strings detected.",
     "riskImpact": "Base64 credentials are trivially decodable.",
-    "explanation": "Basic auth headers encode credentials in Base64 which is not encryption.",
+    "explanation": "Base64 is an encoding: run echo VALUE | base64 -d and you have the username and password. In page source this usually belongs to an API call in front-end code or a copied curl command, so every visitor gets the login. Basic credentials have no expiry and keep working until the password changes. Decode it to see which account it is, and change that password first.",
     "fixSteps": [
-      "Remove hardcoded credentials from page source.",
-      "Use token-based authentication."
+      "Change the password for the account the header decodes to.",
+      "Remove the credentials from page source and make the call from your backend.",
+      "Use token-based authentication with an expiry instead of Basic credentials."
     ],
     "codeExamples": [
       {
@@ -1473,9 +1520,11 @@
     "description": "Form with password field uses GET method.",
     "evidence": "GET form with password field.",
     "riskImpact": "Credentials appear in URL, browser history, and server logs.",
-    "explanation": "GET requests encode form data in the URL query string.",
+    "explanation": "A GET form puts each field in the query string, so the password lands in browser history, in server and proxy access logs, and in the Referer header of any request the next page makes. Address-bar suggestions can then offer it to the next person on that computer. A form with no method attribute defaults to GET, which is how this usually happens by accident.",
     "fixSteps": [
-      "Change form method to POST for all forms with sensitive data."
+      "Set method=\"post\" on every form with a password or other sensitive field.",
+      "Check that the server rejects credentials sent in a query string.",
+      "Remove logged URLs containing passwords, and ask affected users to change them."
     ],
     "codeExamples": [
       {
@@ -1558,8 +1607,12 @@
     "description": "Password parameter found in URL.",
     "evidence": "Content-level finding for `information-disclosure-password-in-get` on the response body.",
     "riskImpact": "Credentials exposed in browser history, server logs, referrer.",
-    "explanation": "GET parameters appear in URL and are logged everywhere.",
-    "fixSteps": ["Use POST for all forms with passwords."],
+    "explanation": "Password parameters in URLs outlive the request: access logs, analytics tools, browser history, link previews in chat and the Referer header all capture them. If this came from a link in a page, everyone who loaded it received that password. Look through your logs for how long the pattern has been in use, since every value logged is a password someone may also use elsewhere.",
+    "fixSteps": [
+      "Use POST for all forms with passwords, and send API credentials in a header.",
+      "Make the server reject requests with a password in the query string.",
+      "Purge or restrict the logs that captured these URLs, and force a reset for affected accounts."
+    ],
     "codeExamples": [
       {
         "label": "Use POST for password submission, never GET",
@@ -1636,11 +1689,16 @@
     "title": "OAuth URL Missing State Parameter",
     "category": "content",
     "severity": "high",
-    "description": "OAuth authorization URL without state parameter.",
+    "description": "An OAuth authorization URL in the page has client_id or response_type but no state parameter.",
     "evidence": "OAuth without state.",
-    "riskImpact": "Vulnerable to CSRF attacks on OAuth flow.",
-    "explanation": "State parameter prevents cross-site request forgery in OAuth.",
-    "fixSteps": ["Always include a cryptographically random state parameter."],
+    "riskImpact": "Without state, an attacker can make a victim's browser finish an OAuth flow the attacker started, linking the attacker's account to the victim's session. The attacker can then sign in as them, or the victim's data gets saved to the attacker's account.",
+    "explanation": "state is a random value bound to the user's session. The app stores it before redirecting to the provider and rejects the callback unless the same value returns, which proves this browser started this login. PKCE gives similar protection for the code exchange, so check whether code_challenge is also missing before ranking this. To confirm the bug, complete a login with the state removed from the callback URL: if it still works, the value is not being enforced.",
+    "fixSteps": [
+      "Generate at least 128 random bits for each login attempt and store them in the server session or a signed HttpOnly cookie.",
+      "Send the value as state on the authorization URL and reject any callback where it does not match.",
+      "Use each value once and then delete it.",
+      "Add PKCE with S256 as well."
+    ],
     "codeExamples": [
       {
         "label": "Always use and validate OAuth state parameter",
@@ -1743,12 +1801,14 @@
     "type": "body-pattern",
     "title": "CDN Scripts Without Fallback",
     "category": "content",
-    "severity": "low",
-    "description": "CDN-hosted scripts without local fallback.",
+    "severity": "info",
+    "description": "A script from a public CDN has no local fallback if the CDN fails to load it.",
     "evidence": "CDN scripts without fallback.",
-    "riskImpact": "Site breaks if CDN is unavailable or compromised.",
-    "explanation": "SRI helps but local fallback ensures availability.",
-    "fixSteps": ["Add onerror fallback to local copy for critical scripts."],
+    "riskImpact": "If the CDN is down or blocked for a visitor, the script does not load and features that depend on it stop working. This is about availability: Subresource Integrity is what protects against a compromised CDN.",
+    "explanation": "A fallback is an availability preference, and many sites reasonably go without one. It is worth adding when a CDN script is required for the page to work at all.",
+    "fixSteps": [
+      "For scripts the page cannot work without, test for the library after the tag and load a local copy if it is missing, or self-host the file."
+    ],
     "codeExamples": [
       {
         "label": "Add SRI and a local fallback for CDN resources",
@@ -1796,7 +1856,7 @@
     "description": "End-of-life AngularJS framework detected.",
     "evidence": "AngularJS 1.x found.",
     "riskImpact": "No longer receives security updates.",
-    "explanation": "AngularJS reached EOL Dec 2021, migrate to Angular.",
+    "explanation": "AngularJS reached end of life on 31 December 2021 and gets no more patches from Google, so anything found since then stays open unless you pay for third-party long-term support. Its expression sandbox was removed in 1.6 because it could always be escaped, so user input reaching a template is script execution. The migration is a rewrite rather than an upgrade, since Angular 2 and later is a different framework.",
     "fixSteps": ["Migrate to Angular (2+) or another modern framework."],
     "codeExamples": [
       {
@@ -1923,8 +1983,12 @@
     "description": "Social Security Number pattern in content.",
     "evidence": "Content-level finding for `information-disclosure-ssn-pattern` on the response body.",
     "riskImpact": "Severe privacy violation, identity theft risk.",
-    "explanation": "SSNs should never appear in page content.",
-    "fixSteps": ["Mask SSNs, never display in full."],
+    "explanation": "The check fires on three or more values shaped like NNN-NN-NNNN outside code samples. Phone extensions, part numbers and test data can have this shape, so read the values before escalating. If they are real, this is a reportable breach in many US states, with notification duties that begin when you learn of it. Involve whoever owns privacy or legal right away.",
+    "fixSteps": [
+      "Confirm whether the values are real Social Security Numbers.",
+      "Take the page down rather than editing it in place, then purge CDN caches and request removal from search engines.",
+      "Show at most the last four digits, and check who is authorized to see the record."
+    ],
     "codeExamples": [
       {
         "label": "Encrypt SSNs at rest and in transit",
@@ -1974,9 +2038,13 @@
     "severity": "high",
     "description": "Bearer token found in page source.",
     "evidence": "Bearer token exposed.",
-    "riskImpact": "Direct credential exposure.",
-    "explanation": "Bearer tokens grant API access.",
-    "fixSteps": ["Never embed tokens in HTML, use secure storage."],
+    "riskImpact": "Anyone who reads the page can call the API as the token's owner, with its full scope, until it expires or is revoked.",
+    "explanation": "A bearer token needs no key or proof of possession: whoever presents it is the holder, which is what the name means. In source it normally arrives through a hardcoded fetch header or a config object rendered on the server, and it also appears when a request is echoed into a debug page. Find which API it belongs to, check its expiry and scopes, and revoke it there.",
+    "fixSteps": [
+      "Revoke the token at the API that issued it.",
+      "Remove it from the page, and make the call from your backend.",
+      "If script must hold a token, fetch a short-lived one after load and keep it in memory."
+    ],
     "codeExamples": [
       {
         "label": "Remove bearer tokens from HTML and client-visible locations",
@@ -2002,8 +2070,12 @@
     "description": "API key found in URL parameter.",
     "evidence": "Content-level finding for `content-api-key-in-url` on the response body.",
     "riskImpact": "Key leaked in referrer, history, logs.",
-    "explanation": "API keys in URLs are exposed in many places.",
-    "fixSteps": ["Pass API keys in headers instead of URLs."],
+    "explanation": "A query string is the least private part of a request. Over HTTPS it is encrypted on the wire but stored in plain text at both ends: browser history, server and CDN logs, analytics, and the Referer header on outgoing links. Some APIs require this, Google Maps being the best known, and for those the key must be restricted by referrer or IP. This finding comes from the URL you scanned, so check where that URL came from.",
+    "fixSteps": [
+      "Send the key in a header such as Authorization or X-API-Key.",
+      "Rotate any key that has appeared in a URL, because logs keep it.",
+      "If the provider requires a key in the URL, restrict it by referrer or IP address."
+    ],
     "codeExamples": [
       {
         "label": "Move API keys out of URLs into request headers",
@@ -2026,11 +2098,16 @@
     "title": "AWS Credentials Pattern Detected",
     "category": "content",
     "severity": "critical",
-    "description": "AWS access key pattern found in source.",
+    "description": "The response contains an AWS access key ID (AKIA followed by 16 characters) or an aws_secret_access_key assignment with a 40-character value. AWS's published example keys are ignored.",
     "evidence": "AWS credentials pattern.",
-    "riskImpact": "Full AWS account compromise possible.",
-    "explanation": "AWS keys grant access to cloud resources.",
-    "fixSteps": ["Rotate exposed credentials immediately."],
+    "riskImpact": "Anyone who reads this response holds the credential, and AWS keys work from anywhere unless a policy restricts them. The attacker gets what the IAM user could do: read S3 buckets, start instances for crypto mining, create a new IAM user as a back door. The bill and any data loss land on your account.",
+    "explanation": "The ID alone cannot sign a request, so look for the 40-character secret near it or elsewhere in the bundle, and treat the pair as burned if it is there. Attackers find these by crawling, and their usual next call is aws sts get-caller-identity, which shows whose key it is. To check without using the key, look it up in IAM by its ID, read Last used, and search CloudTrail for its events from addresses you do not recognize. Keys reach responses through bundled .env values, NEXT_PUBLIC_ or VITE_ variables, and source maps.",
+    "fixSteps": [
+      "Deactivate the key in IAM now, before you look for how it leaked, then create a replacement if the workload still needs one.",
+      "Search CloudTrail for every event made with that access key ID, including any users, roles or keys it created, and remove those.",
+      "Remove the value from source, build output and git history, and rebuild so old bundles stop being served.",
+      "Move the workload to an IAM role or OIDC federation so no long-lived key exists to leak."
+    ],
     "codeExamples": [
       {
         "label": "Rotate exposed AWS credentials immediately",
@@ -2053,11 +2130,16 @@
     "title": "Private Key Detected in Source",
     "category": "content",
     "severity": "critical",
-    "description": "Private key pattern found in page.",
+    "description": "The response contains a PEM block that starts with -----BEGIN PRIVATE KEY-----, or the RSA, EC, DSA, OPENSSH or PGP form of it. Public keys and certificates do not match.",
     "evidence": "Private key pattern.",
-    "riskImpact": "Complete compromise of encrypted data.",
-    "explanation": "Private keys should never be in HTML.",
-    "fixSteps": ["Rotate keys, investigate how they were exposed."],
+    "riskImpact": "A private key cannot be changed the way a password can: everything that trusted it has to be replaced. Depending on what it belongs to, the holder can impersonate your server in a TLS handshake, sign JWTs your API accepts, log in over SSH, or decrypt files and traffic encrypted to it.",
+    "explanation": "The first question is what the key is for, because the cleanup differs. Compare its public half with your certificate (openssl pkey -pubout against openssl x509 -noout -pubkey), your JWKS or your authorized_keys files. If old TLS traffic was recorded on connections without forward secrecy, it can be decrypted as well. These blocks usually reach a page from a config file under the web root, a debug dump, or a bundle that inlined a signing key. A sample key from a tutorial matches too, so check whether this one is yours.",
+    "fixSteps": [
+      "Work out what the key is used for: TLS certificate, JWT signing, SSH, PGP or a service account.",
+      "Generate a new key pair and replace every place that trusted the old one. Do not reuse the old key with a new certificate.",
+      "For TLS, ask the CA to revoke the certificate. For JWT signing, rotate the key and invalidate issued tokens. For SSH, remove the public half from every authorized_keys file.",
+      "Remove the key from the web root, the build and git history, and keep the new one in a KMS or secrets manager."
+    ],
     "codeExamples": [
       {
         "label": "Revoke and replace exposed private keys",
@@ -2141,9 +2223,13 @@
     "severity": "high",
     "description": "SendGrid API key pattern found.",
     "evidence": "SendGrid key exposed.",
-    "riskImpact": "Email sending abuse, phishing.",
-    "explanation": "SendGrid keys allow email sending.",
-    "fixSteps": ["Rotate API key immediately."],
+    "riskImpact": "A key with Mail Send permission lets someone send email from your verified domains. SendGrid may then suspend the account for spam, which stops your legitimate mail too.",
+    "explanation": "SendGrid keys start with SG. and have a fixed shape, so scrapers find them quickly. Mail sent this way passes your SPF and DKIM, which makes phishing far more convincing than ordinary spoofing. Check the Activity feed for sends you do not recognize, and look at which permissions the key had before deciding how far the exposure goes.",
+    "fixSteps": [
+      "Delete the key under Settings, API Keys. It stops working at once.",
+      "Review the Activity feed for mail sent during the exposure.",
+      "Create a replacement restricted to Mail Send, and keep it on the server."
+    ],
     "codeExamples": [
       {
         "label": "Rotate exposed SendGrid API key",
@@ -2193,11 +2279,16 @@
     "title": "GitHub Token Pattern Detected",
     "category": "content",
     "severity": "critical",
-    "description": "GitHub personal access token found.",
+    "description": "The response contains a GitHub token in a recognized format: classic personal access token (ghp_), fine-grained token (github_pat_) or OAuth token (gho_).",
     "evidence": "GitHub token pattern.",
-    "riskImpact": "Repository access, code manipulation.",
-    "explanation": "GitHub tokens grant repo access.",
-    "fixSteps": ["Revoke token immediately, use fine-grained tokens."],
+    "riskImpact": "The token acts as the person or app that created it. A classic token with repo scope reaches every private repository that account can see, and with workflow scope it can change CI, which is how a leaked token turns into stolen deployment secrets or a poisoned release.",
+    "explanation": "To confirm it is live, call GET https://api.github.com/user with the token: a 200 means it works, and the X-OAuth-Scopes response header lists what a classic token can do. GitHub's secret scanning revokes tokens it finds in public repositories, but it does not see your website, so a token in a page can stay valid indefinitely. Tokens land in pages when front-end code calls the GitHub API directly. The right shape is a server route that holds the token and makes the call.",
+    "fixSteps": [
+      "Revoke the token in GitHub's Developer settings, or in the organization's token list for a fine-grained token.",
+      "Review the audit log for clones, new deploy keys, new workflow files and pushes made while it was exposed.",
+      "Rotate any repository or organization secrets the token could read through CI.",
+      "Replace it with a fine-grained token scoped to specific repositories with an expiry, or the Actions GITHUB_TOKEN."
+    ],
     "codeExamples": [
       {
         "label": "Revoke exposed GitHub token immediately",
@@ -2219,12 +2310,17 @@
     "type": "body-pattern",
     "title": "Google API Key Exposed",
     "category": "content",
-    "severity": "medium",
-    "description": "Google API key found in source.",
+    "severity": "low",
+    "description": "A Google API key (AIza...) appears in the page. Maps JavaScript API keys are embedded in pages by design, so the question is whether this key is restricted.",
     "evidence": "Content-level finding for `content-google-api-key-exposed` on the response body.",
-    "riskImpact": "Quota theft, billing abuse.",
-    "explanation": "Unrestricted Google keys can be abused.",
-    "fixSteps": ["Restrict key to specific APIs and referrers."],
+    "riskImpact": "An unrestricted key can be used from any site or script against every API enabled on the project, and the usage is billed to you. A key restricted by HTTP referrer and API is much less useful to anyone else.",
+    "explanation": "A key in a page is not a leak by itself when it is a Maps or Firebase web key: browser keys are public and are protected by the restrictions set in the Cloud console. To test, call an enabled API with the key using curl and no referrer. If that works, the key is unrestricted. A key used for server-side APIs should never be in a page at all.",
+    "fixSteps": [
+      "In the Google Cloud console under APIs and Services, Credentials, restrict the key by HTTP referrer to your own domains.",
+      "Restrict the key to the specific APIs the page uses.",
+      "Set per-API quotas and a billing alert.",
+      "Use a separate key, restricted by IP address, for server-side calls."
+    ],
     "codeExamples": [
       {
         "label": "Restrict Google API key by referrer and API scope",
@@ -2249,9 +2345,13 @@
     "severity": "high",
     "description": "Mailchimp API key pattern found.",
     "evidence": "Mailchimp key exposed.",
-    "riskImpact": "Email list access, campaign manipulation.",
-    "explanation": "Mailchimp keys grant full account access.",
-    "fixSteps": ["Regenerate API key immediately."],
+    "riskImpact": "A Mailchimp key can export every audience with its personal data, or send a campaign to your whole list from your own address.",
+    "explanation": "The suffix after the dash is the data center, so the key tells an attacker which API host to call. An export of the list is a personal data breach under GDPR and similar laws if it holds EU subscribers, so check the account's export and API activity for the period the key was exposed, and involve whoever owns privacy if you find any.",
+    "fixSteps": [
+      "Generate a new key and disable the old one in Account, Extras, API keys.",
+      "Review recent exports and campaigns for activity you did not start.",
+      "Call Mailchimp from your backend only, so the key never reaches a browser."
+    ],
     "codeExamples": [
       {
         "label": "Rotate exposed Mailchimp API key",
@@ -2276,9 +2376,14 @@
     "severity": "critical",
     "description": "Heroku API key pattern found.",
     "evidence": "Content-level finding for `content-heroku-api-key-exposed` on the response body.",
-    "riskImpact": "Full Heroku account control.",
-    "explanation": "Heroku keys allow app deployment and deletion.",
-    "fixSteps": ["Regenerate API key immediately."],
+    "riskImpact": "The key acts as the owning account on every app it can access: it can read config vars, deploy new code, scale dynos and delete apps.",
+    "explanation": "Most Heroku apps keep DATABASE_URL and other secrets in config vars, and the Platform API returns those to anyone holding this key, so a leaked key is also a leak of each secret in each app. Heroku's key is a bare UUID, which this check only matches when the words heroku and api key sit close to it.",
+    "fixSteps": [
+      "Regenerate the key in Heroku's account settings. The old one stops working at once.",
+      "Assume every config var on every app was read: rotate database credentials and third-party keys.",
+      "Check heroku releases on each app for deployments you did not make.",
+      "Use scoped authorization tokens from heroku authorizations:create instead of the account key."
+    ],
     "codeExamples": [
       {
         "label": "Revoke exposed Heroku API key",
@@ -2303,9 +2408,13 @@
     "severity": "high",
     "description": "NPM authentication token found.",
     "evidence": "Content-level finding for `content-npm-token-exposed` on the response body.",
-    "riskImpact": "Package publishing, supply chain attack.",
-    "explanation": "NPM tokens allow package publishing.",
-    "fixSteps": ["Revoke token, publish with 2FA."],
+    "riskImpact": "A token with write access can publish new versions of every package it covers, which runs the attacker's code on every machine that upgrades.",
+    "explanation": "Install scripts run at npm install, and that is how worms have moved through the registry. Check the version history on npm for releases you did not make, and deprecate or unpublish those at once. Granular tokens limited to one package with an expiry reduce the damage, and trusted publishing from CI removes the token entirely.",
+    "fixSteps": [
+      "Revoke the token on npmjs.com under Access Tokens, or with npm token revoke.",
+      "Review every package the token could publish for versions you did not release.",
+      "Replace it with a granular token or trusted publishing, and require 2FA for publishing."
+    ],
     "codeExamples": [
       {
         "label": "Revoke exposed npm token",
@@ -2328,16 +2437,22 @@
     "title": "Docker Hub Token Exposed",
     "category": "content",
     "severity": "high",
-    "description": "Docker Hub credentials found.",
+    "description": "The response contains a Docker Hub access token, either personal (dckr_pat_) or organization (dckr_oat_).",
     "evidence": "Docker token exposed.",
-    "riskImpact": "Container image manipulation.",
-    "explanation": "Docker tokens allow image push/pull.",
-    "fixSteps": ["Regenerate token immediately."],
+    "riskImpact": "A token with write permission can push to any repository it reaches, so an attacker can replace the image behind a tag your servers or customers already pull, and whatever deploys from that tag then runs their code. Even a read-only token exposes private images, which often contain source code and baked-in secrets.",
+    "explanation": "Docker tags are mutable: pushing to :latest or :1.2 leaves the name unchanged, so nothing downstream notices. To check for damage, compare each recent tag's digest in Docker Hub with the digest your CI build logged. These tokens usually leak through a CI script or a config.json published with the site. docker login -p is how they end up in shell history and process listings, which is why the example below reads the token from stdin.",
+    "fixSteps": [
+      "Delete the token in Docker Hub's account settings. It stops working at once.",
+      "Compare every tag's digest with what CI built, and rebuild and push anything that does not match.",
+      "Issue a replacement with the narrowest permission that works, read-only for jobs that only pull.",
+      "In CI, read the token from a secret and log in with --password-stdin.",
+      "Pin production images by digest (image@sha256:...) so a pushed tag cannot change what you deploy."
+    ],
     "codeExamples": [
       {
         "label": "Revoke exposed Docker Hub token",
         "language": "bash",
-        "code": "# Revoke at: hub.docker.com > Account Settings > Security > Access Tokens\n# Create a new token with minimum required permissions (Read-only for pull)\n\n# In CI: use DOCKER_HUB_TOKEN as a secret env var\ndocker login -u \"$DOCKER_HUB_USER\" -p \"$DOCKER_HUB_TOKEN\"\n\n# For private registries, consider ECR or GHCR with OIDC (no long-lived tokens)"
+        "code": "# Revoke at: hub.docker.com > Account Settings > Security > Access Tokens\n# Create a new token with minimum required permissions (Read-only for pull)\n\n# In CI: keep DOCKER_HUB_TOKEN as a secret env var, and pass it on stdin\nprintf '%s' \"$DOCKER_HUB_TOKEN\" | docker login -u \"$DOCKER_HUB_USER\" --password-stdin\n\n# For private registries, consider ECR or GHCR with OIDC (no long-lived tokens)"
       }
     ],
     "_idx": 132,
@@ -2358,8 +2473,12 @@
     "description": "A raw PHP, .NET, Django, MySQL, or PostgreSQL error message was found in the response.",
     "evidence": "Framework or database error in output.",
     "riskImpact": "Reveals internal file paths, stack traces, and technology details that help an attacker map the application; when the error is database-related it can also reveal schema details.",
-    "explanation": "Uncaught framework exceptions and raw database errors expose internal implementation details that should never reach an end user.",
-    "fixSteps": ["Use custom error pages, log errors server-side."],
+    "explanation": "Uncaught framework exceptions and raw database errors should never reach an end user. SQL syntax errors are especially informative, because they confirm that a parameter reached the query unescaped, which is where an attacker starts. To confirm, load the URL in a private window and see whether the message still appears.",
+    "fixSteps": [
+      "Turn off error display in production: display_errors=Off in PHP, DEBUG=False in Django, custom errors on in ASP.NET.",
+      "Return a generic error page and log the details on the server with a request ID.",
+      "If a SQL error came from a parameter, treat that route as a possible injection point and test it."
+    ],
     "codeExamples": [
       {
         "label": "Return generic errors to clients",
@@ -2384,9 +2503,13 @@
     "severity": "high",
     "description": "NoSQL/MongoDB error found in response.",
     "evidence": "NoSQL error exposed.",
-    "riskImpact": "Reveals database type and query structure.",
-    "explanation": "NoSQL errors aid injection attacks.",
-    "fixSteps": ["Use custom error pages, handle errors gracefully."],
+    "riskImpact": "The message reveals the database type and the shape of the query that failed, which tells an attacker what to try next.",
+    "explanation": "Mongo errors describe the failed operation. E11000 names the index and the duplicate value, and Cast to ObjectId failed shows a field and type, which means an unexpected value reached Mongoose unchecked. An error triggered by a strange value is often the first sign of a NoSQL injection point, so test that route with a value like { \"$ne\": null } on a system you own.",
+    "fixSteps": [
+      "Catch database errors and return a generic message, logging the details on the server.",
+      "Validate the type of each field before it reaches the query.",
+      "Test the route that produced this error for operator injection."
+    ],
     "codeExamples": [
       {
         "label": "Catch and mask NoSQL errors",
@@ -2585,11 +2708,15 @@
     "title": "SVG with Script Content",
     "category": "content",
     "severity": "high",
-    "description": "SVG containing script elements.",
+    "description": "An inline <svg> element in the page contains a <script> element.",
     "evidence": "Content-level finding for `content-svg-script-injection` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under content. Severity reflects the realistic worst-case impact under default configurations.",
-    "explanation": "SVG can contain executable JavaScript.",
-    "fixSteps": ["Sanitize SVG uploads, use CSP."],
+    "riskImpact": "Script inside an SVG runs with the full privileges of the page it is embedded in. If the SVG came from a user upload or a third party, that is stored XSS: session theft, account changes, whatever the page can do.",
+    "explanation": "Browsers execute SVG scripts when the SVG is inlined in HTML or opened directly at its own URL, and not when it is loaded through <img> or CSS. Uploaded files served from your main domain are the common trap, because opening the file's URL runs the script in your origin.",
+    "fixSteps": [
+      "Sanitize SVG uploads and remove script elements before storing them, for example with DOMPurify's SVG profile.",
+      "Serve user uploads from a separate domain with Content-Disposition: attachment where possible.",
+      "Use a CSP that blocks inline script."
+    ],
     "codeExamples": [
       {
         "label": "Block SVG script execution and sanitize SVG content",
@@ -2613,9 +2740,13 @@
     "severity": "high",
     "description": "Script tag using data: URI source.",
     "evidence": "data: script source.",
-    "riskImpact": "Inline script execution via data URI.",
-    "explanation": "data: URIs can embed script content.",
-    "fixSteps": ["Block data: in CSP script-src."],
+    "riskImpact": "The script runs in your page with no URL that a host allowlist could inspect, so it slips past filters and leaves little trace in network logs.",
+    "explanation": "A build rarely emits this, so if you did not put it there, decode it and read what it does: injected card skimmers use this form too. A CSP should not include data: in script-src, since that permits any payload an attacker can place.",
+    "fixSteps": [
+      "Decode the script and work out where it came from.",
+      "Move legitimate code into a file served from your own origin.",
+      "Leave data: out of script-src in your Content-Security-Policy."
+    ],
     "codeExamples": [
       {
         "label": "Block data: URI script execution via CSP",
@@ -2732,11 +2863,15 @@
     "title": "Password Field Type is Text",
     "category": "content",
     "severity": "high",
-    "description": "Password stored in text input instead of password type.",
+    "description": "An input whose name or id contains password uses type=\"text\", so what is typed is shown on screen.",
     "evidence": "Password in text field.",
-    "riskImpact": "Password visible on screen.",
-    "explanation": "Password fields should mask input.",
-    "fixSteps": ["Use type='password' for password inputs."],
+    "riskImpact": "The password can be seen by anyone nearby and captured by screen recording or session-replay tools. Browsers also keep text fields for form autofill and do not treat the value as a password.",
+    "explanation": "A show-password toggle is fine: the field starts as type=\"password\" and flips only when the user asks. The issue is a field that starts visible. The check matches on the name or id, so a field such as password_hint fires as well, and it is worth checking what the field really holds.",
+    "fixSteps": [
+      "Use type=\"password\" for password inputs.",
+      "If you offer a reveal button, start hidden and switch only on request.",
+      "Exclude the field from any session-replay tool."
+    ],
     "codeExamples": [
       {
         "label": "Default password fields to type=\"password\" (hidden)",
@@ -2895,10 +3030,12 @@
     "severity": "high",
     "description": "A <form action=\"javascript:...\"> executes JavaScript on submit and is a classic XSS vector if the action is partially attacker-controlled.",
     "evidence": "Content-level finding for `content-form-action-javascript-scheme` on the response body.",
-    "riskImpact": "Replace action=\"javascript:...\" with action=\"/endpoint\" and handle submit via JS or server",
-    "explanation": "A <form action=\"javascript:...\"> executes JavaScript on submit and is a classic XSS vector if the action is partially attacker-controlled.",
+    "riskImpact": "Submitting the form runs script in your origin. If any part of the action value comes from user data, that is XSS triggered by one click, and the payload needs no angle brackets.",
+    "explanation": "A form that submits to a javascript: URL does nothing without script and also needs 'unsafe-inline' in a CSP, so it stands in the way of a strict policy. Giving the form a real endpoint and attaching a submit listener keeps it working if script fails to load.",
     "fixSteps": [
-      "Replace action=\"javascript:...\" with action=\"/endpoint\" and handle submit via JS or server"
+      "Replace action=\"javascript:...\" with a real endpoint.",
+      "Handle submission from a listener in an external script.",
+      "Reject javascript: wherever an action or URL value is built from data."
     ],
     "codeExamples": [
       {
@@ -2946,12 +3083,14 @@
     "title": "Sandboxed iframe allows both scripts and same-origin",
     "category": "content",
     "severity": "high",
-    "description": "Combining sandbox='allow-scripts allow-same-origin' removes most of the sandbox protection and lets the iframe access the parent origin.",
+    "description": "An iframe sets sandbox with both allow-scripts and allow-same-origin. This is only an escape when the framed document has the same origin as the page embedding it.",
     "evidence": "Content-level finding for `content-iframe-allow-scripts-allow-same-origin` on the response body.",
-    "riskImpact": "Drop allow-same-origin (or allow-scripts) - together they fully re-enable same-origin script execution",
-    "explanation": "Combining sandbox='allow-scripts allow-same-origin' removes most of the sandbox protection and lets the iframe access the parent origin.",
+    "riskImpact": "A same-origin framed document can reach up into the embedding page's DOM, remove the sandbox attribute from its own iframe and reload with no restriction at all. The sandbox then protects nothing, and user-supplied content in the frame runs as your site.",
+    "explanation": "The escape needs both flags and a same-origin document: a same-origin or relative src, or srcdoc. A cross-origin iframe with both flags keeps the browser's cross-origin boundary, and that combination is the documented embed for many widgets, Discord's among them. For content generated from user input, render it on a separate origin or drop allow-same-origin so that it gets an opaque origin.",
     "fixSteps": [
-      "Drop allow-same-origin (or allow-scripts) - together they fully re-enable same-origin script execution"
+      "If the frame shows user-generated or third-party content on your own origin, drop allow-same-origin.",
+      "Better still, serve that content from a separate domain so same-origin can never apply.",
+      "Keep both flags only for a cross-origin embed that needs them, such as a vendor widget."
     ],
     "codeExamples": [
       {
@@ -2976,10 +3115,12 @@
     "severity": "high",
     "description": "An <svg onload=\"...\"> attribute fires JavaScript when the SVG renders and is equivalent to inline script for XSS purposes.",
     "evidence": "Content-level finding for `content-svg-onload-handler` on the response body.",
-    "riskImpact": "Move event handlers to addEventListener in external JS; sanitize SVG uploads",
-    "explanation": "An <svg onload=\"...\"> attribute fires JavaScript when the SVG renders and is equivalent to inline script for XSS purposes.",
+    "riskImpact": "The handler runs as soon as the SVG renders, with no click needed, in the page's origin. Attackers favor <svg onload> because it is short and gets past filters that look only for <script>.",
+    "explanation": "If your own team wrote the SVG this is a CSP and hygiene issue. If it was uploaded or contains user text, it is stored XSS. onload fires when the SVG is inlined in HTML or opened as a document, and not when it is referenced from an <img> tag.",
     "fixSteps": [
-      "Move event handlers to addEventListener in external JS; sanitize SVG uploads"
+      "Move event handlers to addEventListener in external JavaScript.",
+      "Sanitize SVG uploads so that handlers are removed before storage.",
+      "Serve user-supplied SVG through <img> or from a separate domain."
     ],
     "codeExamples": [
       {
@@ -3004,10 +3145,12 @@
     "severity": "critical",
     "description": "An <svg> with an external entity reference like <!ENTITY xxe SYSTEM \"file:///...\"> can leak local files when the SVG is rendered server-side.",
     "evidence": "Content-level finding for `content-svg-external-entity-reference` on the response body.",
-    "riskImpact": "Strip DOCTYPE and external entities when ingesting SVG; use a hardened parser",
-    "explanation": "An <svg> with an external entity reference like <!ENTITY xxe SYSTEM \"file:///...\"> can leak local files when the SVG is rendered server-side.",
+    "riskImpact": "If a server-side XML parser processes this SVG with entity expansion on, it can read local files such as /etc/passwd into the image or make requests to internal hosts. A converter that renders it to PNG then hands the file contents back as a picture.",
+    "explanation": "Browsers do not load external entities in SVG, so the risk is on the server: image converters, PDF generators and thumbnailers that accept SVG uploads. Seeing the declaration in a page means someone saved one, possibly on purpose as a probe, so find out who and check your logs for the upload.",
     "fixSteps": [
-      "Strip DOCTYPE and external entities when ingesting SVG; use a hardened parser"
+      "Strip DOCTYPE and entity declarations when ingesting SVG.",
+      "Configure the parser to disable external entities and DTD loading.",
+      "Run image conversion in a sandbox with no network or filesystem access to anything sensitive."
     ],
     "codeExamples": [
       {
@@ -3088,14 +3231,14 @@
     "title": "Base tag with insecure or dynamic href",
     "category": "content",
     "severity": "medium",
-    "description": "The HTML base element sets the base URL for all relative links. A user-controlled or HTTP base tag enables base tag hijacking attacks.",
+    "description": "The page has a <base> element and no base-uri restriction was found. A cross-origin or plain HTTP href redirects every relative URL on the page.",
     "evidence": "HTML base tag with insecure href detected at {{url}}.",
-    "riskImpact": "An attacker who can inject a base tag pointing to their server can redirect all relative resource requests, loading attacker-controlled scripts, images, and forms while keeping the original domain in the address bar.",
-    "explanation": "The base tag should be set to a fixed HTTPS absolute URL and never derived from user input.",
+    "riskImpact": "A <base> pointing at another origin or at HTTP sends relative scripts, images and form submissions there while the original domain stays in the address bar. A same-origin value such as <base href=\"/\"> is normal for app shells and carries no such risk.",
+    "explanation": "A base tag that already exists adds no hijack risk by itself, since an injected <base> placed before it would win either way. What matters is the value: resolve it against the page URL and check that it stays on your own origin over HTTPS, and that it is never derived from user input. A base-uri directive in your CSP stops an injected <base> from taking effect.",
     "fixSteps": [
-      "Set base href to an absolute HTTPS URL you control",
-      "Never derive the base href from query parameters or cookies",
-      "Validate base tag values as part of your template security review"
+      "Keep the base href on your own origin over HTTPS.",
+      "Never derive the base href from query parameters or cookies.",
+      "Add base-uri 'self' to your Content-Security-Policy."
     ],
     "codeExamples": [
       {
@@ -3394,7 +3537,7 @@
     "description": "Laravel's APP_DEBUG=true is enabled in production, showing detailed error pages with application code, stack traces, and environment variables.",
     "evidence": "Laravel Ignition debug page detected at {{url}}.",
     "riskImpact": "Laravel debug mode exposes full stack traces, local variables, all configuration values (including database credentials if they appear in traces), and can allow code execution via the Ignition debug interface on older versions.",
-    "explanation": "APP_DEBUG must be false in production environments.",
+    "explanation": "The Whoops or Ignition page prints source around the failing line, the full stack and, in many versions, request data and environment values. Ignition before 2.5.2 with debug on also had CVE-2021-3129, unauthenticated remote code execution. To confirm, open the URL without logging in. Because configuration shows on this page, rotate APP_KEY and any credential visible in it, knowing that rotating APP_KEY invalidates encrypted cookies.",
     "fixSteps": [
       "Set APP_DEBUG=false in .env for production",
       "Set APP_ENV=production",
@@ -3476,23 +3619,23 @@
   {
     "id": "clipboard-access",
     "type": "body-pattern",
-    "title": "Clipboard API Referenced",
+    "title": "Page Script Reads the Clipboard",
     "category": "content",
     "severity": "low",
-    "description": "The page references navigator.clipboard or document.execCommand('copy'). This check only detects the API reference; it does not verify whether the call is gated behind user interaction. The single most common use of this API is a benign \"copy to clipboard\" button.",
-    "evidence": "Clipboard API access detected at {{url}}.",
-    "riskImpact": "If genuinely ungated, reading the clipboard without user intent violates privacy since it may contain passwords, 2FA codes, or other sensitive data. Manually confirm the call site before treating this as a gesture-gating issue.",
-    "explanation": "Clipboard read/write must be triggered by user gesture and clearly communicate why it needs clipboard access.",
+    "description": "A script on the page calls navigator.clipboard.read(), navigator.clipboard.readText() or document.execCommand('paste'). A copy button only writes to the clipboard and is not what this check is about.",
+    "evidence": "Clipboard read call detected at {{url}}.",
+    "riskImpact": "The clipboard can hold passwords, 2FA codes or other data copied from other apps. A read that is not tied to something the user asked for exposes all of that to the page.",
+    "explanation": "Browsers gate clipboard reads behind a user gesture, a permission prompt or a paste confirmation, depending on the browser. A paste-from-clipboard button is a normal feature, so confirm that the call runs from a click and that the page says why it wants access.",
     "fixSteps": [
-      "Only call navigator.clipboard.readText() in response to an explicit user gesture",
-      "Explain to users why clipboard access is needed",
-      "Prefer clipboard.write() over read() where possible"
+      "Only call navigator.clipboard.readText() in response to an explicit user gesture.",
+      "Explain to users why clipboard access is needed.",
+      "If the page only needs to copy, use writeText() and remove the read call."
     ],
     "codeExamples": [
       {
-        "label": "Request clipboard access with user gesture",
+        "label": "Read the clipboard only from a user gesture",
         "language": "javascript",
-        "code": "// Always request clipboard inside a user gesture handler\ndocument.querySelector('#copy-btn').addEventListener('click', async () => {\n  try {\n    await navigator.clipboard.writeText(text);\n  } catch (err) {\n    console.warn('Clipboard access denied:', err);\n  }\n});"
+        "code": "document.querySelector('#paste-btn').addEventListener('click', async () => {\n  try {\n    input.value = await navigator.clipboard.readText();\n  } catch (err) {\n    console.warn('Clipboard access denied:', err);\n  }\n});"
       }
     ],
     "references": [
@@ -3533,10 +3676,10 @@
     "title": "HTML injection pattern detected",
     "category": "content",
     "severity": "high",
-    "description": "User-controlled input appears to be reflected in the HTML response without proper encoding, enabling HTML injection.",
+    "description": "The response contains markup shaped like an injection payload: a <script> straight after </title>, or an <img> whose onerror handler runs payload-style code such as alert(), eval() or a cookie read.",
     "evidence": "HTML injection pattern detected in response at {{url}}.",
-    "riskImpact": "HTML injection allows attackers to insert arbitrary HTML content into the page: creating fake login forms (phishing), modifying page appearance, injecting links, or redirecting users, and may escalate to XSS if script tags can be injected.",
-    "explanation": "All user-controlled values that appear in HTML output must be HTML-encoded to prevent injection.",
+    "riskImpact": "If a visitor can put that markup in the page, they control what the page does: fake login forms, altered content, or script running in your origin. The scanner sees one response, so it cannot tell who wrote the markup.",
+    "explanation": "A harmless onerror that hides a broken image is not reported. To confirm a hit, find where the matching text comes from: a value from the URL, a form or stored user content that reaches the page without HTML encoding is the bug, and markup your own templates produced is not. All user-controlled values in HTML output have to be encoded for that context.",
     "fixSteps": [
       "HTML-encode all user-controlled values before inserting into HTML context",
       "Use a templating engine that auto-escapes by default",
@@ -3769,10 +3912,10 @@
     "type": "body-pattern",
     "title": "Sensitive source code comment in response",
     "category": "content",
-    "severity": "medium",
-    "description": "An HTML comment in the response contains potentially sensitive information such as file paths, credentials, or developer notes.",
+    "severity": "info",
+    "description": "An HTML comment in the response contains a developer note: TODO, FIXME, XXX, HACK, a console.log call or the word debugger.",
     "evidence": "Sensitive HTML comment detected in response at {{url}}.",
-    "riskImpact": "HTML comments are visible to anyone who views source, revealing internal paths, developer notes about security weaknesses, API endpoints, or occasionally credentials that were left during development.",
+    "riskImpact": "HTML comments are visible to anyone who views source. A note on its own is untidy rather than dangerous, but it can point at unfinished or weak parts of the app. A comment that holds a credential is reported separately as sensitive-comments.",
     "explanation": "Production HTML responses should not contain developer comments.",
     "fixSteps": [
       "Remove all HTML comments from production templates",
