@@ -1495,10 +1495,10 @@ export const CONFIG_CONTACT_MESSAGE_MAX_LENGTH = 5000;
 // widgets (GET /api/v3/dashboard).
 export const CONFIG_DASHBOARD_WIDGET_LIMIT = 6;
 
-// Server-enforced avatar upload size cap, after base64 decode
-// (lib/uploads/avatar.ts). The profile page's client-side pre-check
-// (components/profile/tabs/profile-general-tab.tsx) uses this exact value
-// too, so the two can never drift out of sync again.
+// Largest source image the profile page lets into its crop dialog
+// (components/profile/tabs/profile-general-tab.tsx). The dialog re-encodes it
+// to 256x256, and what the server stores has its own, much smaller cap in
+// lib/uploads/avatar.ts.
 export const CONFIG_MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024;
 
 // NOTIFICATION BELL CONFIGURATION - UPDATE IF NEEDED

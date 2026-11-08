@@ -3384,7 +3384,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_MAX_AVATAR_UPLOAD_BYTES,
     group: "Advanced",
     label: "Avatar upload max size (bytes)",
-    help: "Server-enforced avatar upload cap, after base64 decode; the profile page's client-side pre-check uses this exact value too.",
+    help: "Largest source image the profile page lets into its crop dialog. The dialog re-encodes it to 256x256, so this does not change the 320 KiB the server accepts for the finished avatar.",
     min: 65536,
     max: 20971520,
   },

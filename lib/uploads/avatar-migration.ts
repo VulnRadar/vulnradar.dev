@@ -36,7 +36,7 @@ const MIME_BY_EXT: Record<string, "image/png" | "image/jpeg"> = {
   jpeg: "image/jpeg",
 };
 
-/** 5 MiB, matching lib/uploads/avatar.ts's upload cap. */
+/** 5 MiB, what these files were held to when they were uploaded. */
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -170,7 +170,7 @@ export async function migrateAvatarFilesToDatabase(): Promise<number> {
  * Idempotent: a user that already has a user_avatars row is skipped, and a
  * converted row's avatar_url no longer matches the data:image filter, so a
  * re-run finds it zero times. Best-effort: a single row whose data URL fails
- * validation (wrong magic bytes, over the 5 MiB cap, undecodable) is logged
+ * validation (wrong magic bytes, over the size cap, undecodable) is logged
  * and skipped -- one bad row never aborts the backfill or blocks boot.
  */
 export async function migrateBase64AvatarsToDatabase(): Promise<number> {
@@ -201,7 +201,7 @@ export async function migrateBase64AvatarsToDatabase(): Promise<number> {
       if (existing.rows.length > 0) continue;
 
       // Reuse the exact upload-time validation (MIME allowlist, magic
-      // bytes, 5 MiB cap, SVG rejection) so the backfill never stores
+      // bytes, size cap, SVG rejection) so the backfill never stores
       // anything the app itself would have rejected.
       const result = validateAvatarDataUrl(row.avatar_url);
       if (!result.valid) {
