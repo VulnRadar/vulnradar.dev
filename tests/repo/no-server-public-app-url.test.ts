@@ -54,7 +54,6 @@ const HOMES: Record<string, string> = {
 
 /** Reads that predate this test, by file. Lower a count as reads move. */
 const DEBT: Record<string, number> = {
-  "app/api/security-txt/route.ts": 1,
   "app/api/v3/openapi.json/route.ts": 1,
   "app/api/v3/scan/github-issue/route.ts": 1,
   "app/api/v3/stripe/setup-webhook/route.ts": 1,

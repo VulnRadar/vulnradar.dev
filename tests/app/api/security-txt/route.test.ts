@@ -3,11 +3,15 @@
  * /security.txt (RFC 9116). Only the settings resolver is mocked.
  */
 import { describe, it, expect, vi } from "vitest";
-import { APP_URL } from "@/lib/config/constants";
+
+const APP_URL = "https://scanner.operator.test";
 
 vi.mock("@/lib/config/runtime-config", () => ({
   getSetting: vi.fn(async (key: string) =>
     key === "SECURITY_EMAIL" ? "disclosure@operator.test" : undefined,
+  ),
+  getStoredSetting: vi.fn(async (key: string) =>
+    key === "APP_URL" ? "https://scanner.operator.test" : null,
   ),
 }));
 

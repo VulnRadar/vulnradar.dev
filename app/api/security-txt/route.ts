@@ -1,5 +1,6 @@
-import { APP_URL, ROUTES } from "@/lib/config/constants";
+import { ROUTES } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
+import { serverAppUrl } from "@/lib/config/server-app-url";
 
 // RFC 9116 (https://www.rfc-editor.org/rfc/rfc9116). This is the single
 // source of truth for security.txt: next.config.mjs rewrites both
@@ -36,14 +37,17 @@ function expiresJustUnderOneYearFromNow(): string {
 }
 
 export async function GET() {
-  const securityEmail = await getSetting("SECURITY_EMAIL");
+  const [securityEmail, appUrl] = await Promise.all([
+    getSetting("SECURITY_EMAIL"),
+    serverAppUrl(),
+  ]);
   const body = `Contact: mailto:${securityEmail}
-Contact: ${APP_URL}${ROUTES.CONTACT}
+Contact: ${appUrl}${ROUTES.CONTACT}
 Expires: ${expiresJustUnderOneYearFromNow()}
 Preferred-Languages: en
-Canonical: ${APP_URL}/.well-known/security.txt
-Policy: ${APP_URL}/security
-Acknowledgments: ${APP_URL}${ROUTES.CHANGELOG}
+Canonical: ${appUrl}/.well-known/security.txt
+Policy: ${appUrl}/security
+Acknowledgments: ${appUrl}${ROUTES.CHANGELOG}
 `;
 
   return new Response(body, {
