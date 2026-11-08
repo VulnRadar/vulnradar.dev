@@ -7,7 +7,7 @@ import {
   decryptApiKey,
   isEncryptionConfigured,
 } from "@/lib/auth/crypto";
-import { parseKeyHex } from "@/lib/auth/key-hex";
+import { isKeyHex, parseKeyHex } from "@/lib/auth/key-hex";
 import {
   getClientIp,
   getUserAgent,
@@ -74,8 +74,7 @@ function getLocatorSecret(): Buffer {
  */
 function getPreviousLocatorSecret(): Buffer | null {
   const hex = process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY;
-  if (!hex || hex.length !== 64 || !/^[0-9a-fA-F]+$/.test(hex)) return null;
-  return Buffer.from(hex, "hex");
+  return isKeyHex(hex) ? Buffer.from(hex, "hex") : null;
 }
 
 // Compute a deterministic 8-hex-char locator for indexed O(1) lookup.
