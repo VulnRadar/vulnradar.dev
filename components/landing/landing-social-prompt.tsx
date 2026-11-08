@@ -132,7 +132,7 @@ export function LandingSocialPrompt() {
 
       <Link
         href={ROUTES.CHANGELOG}
-        className="mt-2 inline-block text-sm text-primary hover:underline"
+        className="mt-0.5 -mb-1.5 inline-block rounded-sm py-1.5 text-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         onClick={dismiss}
       >
         Read the changelog

@@ -83,7 +83,7 @@ function buildFaq(checkCount: string, categoryCount: number): FaqItem[] {
     {
       question: "How long does a scan take?",
       answer:
-        "Under 3 seconds for a standard scan. Checks run in parallel, and the same URL produces the same finding IDs every time, so two runs can be diffed against each other.",
+        "It depends on the target. Checks run in parallel, so slow DNS or a long certificate chain sets the pace, and the report tells you how long yours took. The same URL produces the same finding IDs every time, so two runs can be diffed against each other.",
     },
     {
       question: "Can I self-host it?",
@@ -101,7 +101,7 @@ function buildFaq(checkCount: string, categoryCount: number): FaqItem[] {
     {
       question: "Is there an API?",
       answer:
-        "Yes. Everything the interface can do is available over REST with bearer token auth, plus webhooks for delivering results and scheduled scans for recurring checks.",
+        "Yes. Scans, bulk and crawl scans, scan history and report exports are available over REST with a bearer token, so a pipeline can start a scan and read the result. Webhooks and scheduled scans are set up in the app, and from then on they deliver results and re-scan on their own.",
     },
     // Imported, not retyped. Every vendor on the comparison pages shipped an
     // agentic AI pentest in 2026, so "why not just buy one of those" is a live

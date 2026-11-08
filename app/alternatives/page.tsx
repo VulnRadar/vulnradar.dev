@@ -5,7 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { pageMetadata } from "@/lib/seo/metadata";
 import { BreadcrumbStructuredData } from "@/components/seo/structured-data";
 import { SeoPageShell, Breadcrumbs, ScanCta } from "@/lib/seo/seo-ui";
-import { getAllAlternatives } from "@/lib/seo/alternatives";
+import { CHEAPEST_PAID, getAllAlternatives } from "@/lib/seo/alternatives";
 import { APP_NAME } from "@/lib/config/constants";
 import { focus } from "@/lib/ui/animations";
 import { cn } from "@/lib/ui/utils";
@@ -54,9 +54,10 @@ export default async function AlternativesIndexPage() {
           </h1>
           <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
             {APP_NAME} is an open-source, GPL-3.0 web vulnerability scanner you
-            can self-host, with a free tier and paid plans from $5 a month. Here
-            is an honest look at where it fits next to the better-known
-            commercial tools. No invented competitor prices, no disparagement.
+            can self-host, with a free tier and paid plans from ${CHEAPEST_PAID}{" "}
+            a month. Here is an honest look at where it fits next to the
+            better-known commercial tools. No invented competitor prices, no
+            disparagement.
           </p>
         </header>
 

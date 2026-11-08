@@ -7,7 +7,7 @@ import { getPaidPlans } from "@/lib/billing/plans";
 // this file applied to everyone except us: a comparison page that gets its own
 // price wrong is the one error a competitor will screenshot.
 const PAID_PRICES = getPaidPlans().map((plan) => plan.priceInCents / 100);
-const CHEAPEST_PAID = Math.min(...PAID_PRICES);
+export const CHEAPEST_PAID = Math.min(...PAID_PRICES);
 const DEAREST_PAID = Math.max(...PAID_PRICES);
 /** "$5, $10, or $20" for three tiers; degrades correctly for any other count. */
 const PAID_PRICE_LIST =
@@ -220,8 +220,8 @@ const COMPETITORS: Alternative[] = [
     ],
     differentiators: [
       "Open source engine you can audit and self-host, not a managed black box.",
-      "No per-target pricing: a plan's quota is scans per day, not assets under license.",
-      "Every finding links to a page with the risk, fix steps, and framework-specific code.",
+      "No per-target pricing: a plan meters scans per day, plus caps on schedules and bulk size, not assets under license.",
+      "Most findings link to a public page with the risk, fix steps, and a copyable snippet in the language the fix needs.",
     ],
     faq: [
       {
@@ -231,7 +231,7 @@ const COMPETITORS: Alternative[] = [
       {
         question: `Does ${APP_NAME} price per asset like Intruder?`,
         answer:
-          "No. Plans are metered by scans per day, not by how many targets you have under license, and a self-hosted instance has no limit at all.",
+          "No. Plans meter scans per day, plus caps on schedules and bulk size, not how many targets you have under license, and a self-hosted instance has no plan limits.",
       },
     ],
   },
@@ -287,7 +287,7 @@ const COMPETITORS: Alternative[] = [
     differentiators: [
       "Open source and self-hostable, so scanning can stay entirely inside your own infrastructure.",
       `Free tier and $${CHEAPEST_PAID}-${DEAREST_PAID}/mo paid tiers instead of per-target enterprise pricing.`,
-      "The full check set is public, each with fix steps and copyable code.",
+      "The full check set is public in the repo, and most checks have their own page with fix steps and copyable code.",
     ],
     faq: [
       {
@@ -350,7 +350,7 @@ const COMPETITORS: Alternative[] = [
       "No agents or appliances: a scan starts from a URL in the browser.",
       "Open source and self-hostable, with the engine readable in the repo.",
       "Small-team pricing instead of an enterprise contract.",
-      "Every check is documented as a public page with a concrete fix.",
+      "Most checks are documented as a public page with a concrete fix.",
     ],
     faq: [
       {
@@ -387,7 +387,7 @@ const COMPETITORS: Alternative[] = [
  */
 export const AGENTIC_PENTEST_FAQ = {
   question: `Does ${APP_NAME} do AI pentesting?`,
-  answer: `No, on purpose. The detection engine is deterministic: the same URL produces the same finding IDs every run, which is what lets you fail a build on a specific ID and diff Tuesday's scan against Friday's. A model is used to triage and explain findings, never to decide whether one exists. Active probing, where ${APP_NAME} does send real payloads, is opt-in and only runs against domains you have proven you own. If you want an agent that autonomously exploits a live target and writes the report, that is a different product and this is not trying to be it.`,
+  answer: `No, on purpose. URL scans are deterministic: the same URL produces the same finding IDs every run, which is what lets you fail a build on a specific ID and diff Tuesday's scan against Friday's. On URL scans a model is used to triage and explain findings, never to decide whether one exists. The one place a model does decide is the optional AI code review on GitHub repo scans, and those findings are labelled "AI code review" with a confidence score. Active probing, where ${APP_NAME} does send real payloads, is opt-in and only runs against domains you have proven you own. If you want an agent that autonomously exploits a live target and writes the report, that is a different product and this is not trying to be it.`,
 };
 
 const ALTERNATIVES: Alternative[] = COMPETITORS.map((alt) => ({

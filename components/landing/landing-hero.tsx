@@ -62,7 +62,6 @@ export function LandingHero({ checkCount, categoryCount }: LandingHeroProps) {
   const stats: [string, string][] = [
     [checkCount, "checks"],
     [String(categoryCount), "categories"],
-    ["<3s", "per scan"],
     ["GPL-3.0", "licensed"],
   ];
 
@@ -88,8 +87,7 @@ export function LandingHero({ checkCount, categoryCount }: LandingHeroProps) {
               and the request goes out from our servers, not your browser:{" "}
               {checkCount} checks come back with the response evidence behind
               each one, a finding ID that does not change between runs, and a
-              config snippet you can paste straight into Nginx, Caddy, Express,
-              or Next.js.
+              copyable snippet in the language the fix needs.
             </p>
 
             <p className="text-sm text-muted-foreground leading-relaxed mb-8 max-w-xl text-pretty">

@@ -46,7 +46,14 @@ function classTextOf(
     (p): p is ts.JsxAttribute =>
       ts.isJsxAttribute(p) && p.name.getText(sf) === "className",
   );
-  return attr?.initializer?.getText(sf) ?? "";
+  const raw = attr?.initializer?.getText(sf) ?? "";
+  // className={linkClass}: the contract is in the const, a few lines up.
+  const name = raw.match(/^\{(\w+)\}$/)?.[1];
+  if (!name) return raw;
+  const declared = sf.text.match(
+    new RegExp(`const ${name}\\s*=\\s*(["'\`][^;]*);`),
+  );
+  return declared?.[1] ?? raw;
 }
 
 function linksIn(rel: string): Link[] {
@@ -179,6 +186,9 @@ const INLINE_IN_SENTENCE: Record<string, string[]> = {
     "Ask for it on the contact page",
   ],
   "components/brand/kit-assets.tsx": [],
+  "components/landing/landing-sample-finding.tsx": [],
+  "components/landing/landing-open-source.tsx": [],
+  "components/landing/landing-social-prompt.tsx": [],
 };
 
 /** A floor on how many links each file is expected to hold, so a parser miss
@@ -198,6 +208,9 @@ const MIN_LINKS: Record<string, number> = {
   "components/changelog/changelog-release.tsx": 1,
   "components/brand/brand-kit.tsx": 3,
   "components/brand/kit-assets.tsx": 1,
+  "components/landing/landing-sample-finding.tsx": 1,
+  "components/landing/landing-open-source.tsx": 3,
+  "components/landing/landing-social-prompt.tsx": 1,
 };
 
 describe.each(Object.keys(INLINE_IN_SENTENCE))("%s", (rel) => {

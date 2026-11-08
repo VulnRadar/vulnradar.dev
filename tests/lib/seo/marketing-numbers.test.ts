@@ -14,7 +14,7 @@
  * so a `.tsx` cannot be rendered. What can be checked is that the literal is not
  * in the file and that the derived value equals the catalog.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { PLANS, getPaidPlans, getFreePlan } from "@/lib/billing/plans";
@@ -25,6 +25,7 @@ import {
   WHAT_PAYING_BUYS,
 } from "@/components/pricing/what-paying-buys";
 import { BULK_URLS_FREE, BULK_URLS_TOP } from "@/components/landing/plan-facts";
+import { CHEAPEST_PAID } from "@/lib/seo/alternatives";
 
 const ROOT = path.resolve(__dirname, "../../..");
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
@@ -128,6 +129,13 @@ describe("prices", () => {
     }
   });
 
+  it("derives the /alternatives lede's price instead of writing it out", () => {
+    const source = read("app/alternatives/page.tsx");
+    expect(copyOnly(source)).not.toMatch(/\$\d/);
+    expect(source).toContain("CHEAPEST_PAID");
+    expect(CHEAPEST_PAID).toBe(Math.min(...paid));
+  });
+
   it("derives the /pricing title's price instead of writing it out", () => {
     const source = read("app/pricing/layout.tsx");
     expect(copyOnly(source)).not.toMatch(/From \$\d/);
@@ -135,16 +143,79 @@ describe("prices", () => {
   });
 });
 
-describe("self-audit count on the landing page", () => {
-  it("matches the audits actually committed to the repo", () => {
-    // The claim links straight at audits/ on GitHub, so a reader can count them.
-    const committed = fs
-      .readdirSync(path.join(ROOT, "audits"), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && /^AUDIT-\d+$/.test(entry.name));
+describe("self-audit fact on the landing page", () => {
+  it("states no count of its own and links the directory that proves it", () => {
+    // The number sat in the copy by hand. It cannot be read from
+    // audits/registry.json either: .dockerignore keeps audits/ out of the build
+    // context, so importing it would break every image build.
     const source = read("components/landing/landing-open-source.tsx");
-    const claim = source.match(/value:\s*"(\d+), committed in the repo"/);
-    expect(claim, "the Self-audits fact changed shape").not.toBeNull();
-    expect(Number(claim![1])).toBe(committed.length);
+    const fact = source.match(/label:\s*"Self-audits",\s*value:\s*"([^"]+)"/);
+    expect(fact, "the Self-audits fact changed shape").not.toBeNull();
+    expect(fact![1]).not.toMatch(/\d/);
+    expect(source).toContain("/tree/main/audits");
+  });
+
+  it("does not import from a directory the Docker build never sees", () => {
+    expect(read(".dockerignore")).toMatch(/^audits$/m);
+    expect(read("components/landing/landing-open-source.tsx")).not.toMatch(
+      /from\s+"[^"]*audits\//,
+    );
+  });
+});
+
+describe("scan duration", () => {
+  it("is not promised on the landing page", () => {
+    // Nothing measures it, and the slow targets are the ones a visitor is
+    // likely to try first. The report states how long a scan really took.
+    for (const file of [
+      "app/landing/page.tsx",
+      "components/landing/landing-hero.tsx",
+      "components/landing/landing-how-it-works.tsx",
+    ]) {
+      const copy = copyOnly(read(file)).replace(/\s+/g, " ");
+      expect(copy, file).not.toMatch(/under (3|three) seconds/i);
+      expect(copy, file).not.toContain("<3s");
+    }
+  });
+});
+
+describe("signup description", () => {
+  const copy = copyOnly(read("app/signup/layout.tsx"));
+
+  it("reads the free allowance from the plan limits", () => {
+    // The negative sign is the sentinel being handled, not a typed-in number.
+    expect(copy).not.toMatch(/(?<!-)\b\d+ scans a day/);
+    expect(copy).toContain("BILLING_PLAN_LIMITS.free");
+  });
+
+  it("stays a template literal the features-knowledge compiler can read", () => {
+    // scripts/knowledge/compile-features-knowledge.mjs takes the text straight
+    // after `description:` and resolves `${BILLING_PLAN_LIMITS.free}`. A local
+    // holding a ternary would resolve to nothing and drop the route's summary.
+    expect(copy).toMatch(
+      /description:\s*`Create a free \$\{APP_NAME\} account\. \$\{BILLING_PLAN_LIMITS\.free\} scans a day/,
+    );
+  });
+
+  async function descriptionFor(free: number): Promise<string> {
+    vi.resetModules();
+    vi.doMock("@/lib/config/constants", async (original) => ({
+      ...(await original<typeof import("@/lib/config/constants")>()),
+      BILLING_PLAN_LIMITS: { free },
+    }));
+    const { metadata } = await import("@/app/signup/layout");
+    vi.doUnmock("@/lib/config/constants");
+    return String(metadata.description);
+  }
+
+  it("states the configured number", async () => {
+    expect(await descriptionFor(40)).toContain(" 40 scans a day,");
+  });
+
+  it("never publishes the unlimited sentinel as a number", async () => {
+    const description = await descriptionFor(-1);
+    expect(description).not.toContain("-1");
+    expect(description).toContain("Unlimited scans,");
   });
 });
 

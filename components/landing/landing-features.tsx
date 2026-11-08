@@ -5,7 +5,7 @@ const SUPPORTING = [
   },
   {
     title: "Fixes, not lectures",
-    desc: "Each finding ships with a config snippet for Nginx, Caddy, Express, and Next.js. Copy it, deploy, rescan, watch it disappear.",
+    desc: "Each finding comes with fix steps and a copyable snippet in the language the fix needs: server config for a header, code for a code bug, a record for DNS. Copy it, deploy, rescan, watch it disappear.",
   },
   {
     title: "The report an auditor asks for",

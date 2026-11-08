@@ -21,9 +21,11 @@ const FACTS: { label: string; value: string; href?: string }[] = [
     value: "Public, on GitHub",
     href: `https://github.com/${APP_REPO}/issues`,
   },
+  // No count here. audits/ stays out of the Docker build context, so it cannot
+  // be read at build time, and the link lets a reader count them.
   {
     label: "Self-audits",
-    value: "14, committed in the repo",
+    value: "Committed in the repo",
     href: `https://github.com/${APP_REPO}/tree/main/audits`,
   },
   {
@@ -117,13 +119,13 @@ export function LandingOpenSource() {
               <dt className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">
                 {label}
               </dt>
-              <dd className="text-sm font-medium text-foreground leading-snug">
+              <dd className="flow-root text-sm font-medium text-foreground leading-snug">
                 {href ? (
                   <a
                     href={href}
                     target="_blank"
                     rel="noreferrer"
-                    className="rounded-sm hover:text-primary hover:underline transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                    className="-my-1.5 block w-fit rounded-sm py-1.5 hover:text-primary hover:underline transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {value}
                   </a>

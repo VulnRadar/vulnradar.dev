@@ -43,9 +43,9 @@ export function LandingHowItWorks({ categoryCount }: LandingHowItWorksProps) {
             the rule is in the public repo.
           </p>
           <p>
-            Most scans are done in under three seconds. Targets with slow DNS or
-            a long certificate chain take longer, and the report tells you how
-            long yours took.
+            How long that takes depends on the target. Slow DNS or a long
+            certificate chain sets the pace, and the report tells you how long
+            yours took.
           </p>
         </div>
       </div>
