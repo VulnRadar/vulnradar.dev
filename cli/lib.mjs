@@ -76,7 +76,7 @@ export const INCOMPLETE_LABELS = {
   "authenticated-session": "The signed-in view of this page",
   "page-checks": "Some page checks",
   "bot-challenge":
-    "The page, its headers and its files: the site showed the scanner a bot challenge instead",
+    "The page, its headers and its files: the site refused the scanner or showed it a bot challenge instead",
   "page-unreachable":
     "The page itself: the scanner could not fetch it, so only the checks that never read a page ran",
 };
