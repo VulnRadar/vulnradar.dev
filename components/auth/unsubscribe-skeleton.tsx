@@ -11,9 +11,8 @@ import { PREF_GROUPS } from "./unsubscribe-prefs";
  * useSearchParams call needs, which renders before the content component
  * exists at all.
  *
- * Row counts come from PREF_GROUPS itself, not from a hand-typed
- * [5, 4, 4, 4, 2] that nobody would think to update when a nineteenth
- * preference becomes a twentieth.
+ * Row counts come from PREF_GROUPS itself, not from a hand-typed list of
+ * numbers that nobody would think to update when a preference is added.
  */
 export function UnsubscribePrefsSkeleton() {
   return (
@@ -32,8 +31,9 @@ export function UnsubscribePrefsSkeleton() {
                 <div
                   key={row.key}
                   // py-3.5 and the card tint, both of which the loaded row has
-                  // and this did not: 19 rows at 4px short is 76px of drift,
-                  // and the list went from transparent to tinted on arrival.
+                  // and this did not: 4px short on every row adds up to a
+                  // visible jump, and the list went from transparent to
+                  // tinted on arrival.
                   className="flex items-start justify-between gap-4 bg-card/30 px-4 py-3.5"
                 >
                   <div className="min-w-0 flex-1 space-y-1">
