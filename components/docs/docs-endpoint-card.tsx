@@ -126,7 +126,7 @@ export function EndpointCard({
                   size="sm"
                   className="text-primary"
                 />
-                <span>{note}</span>
+                <span className="min-w-0 wrap-break-word">{note}</span>
               </div>
             ))}
           </div>
@@ -147,7 +147,7 @@ export function EndpointCard({
                   <Badge variant="outline" className="text-xs font-mono">
                     {error.code}
                   </Badge>
-                  <span className="text-muted-foreground text-xs">
+                  <span className="min-w-0 wrap-break-word text-muted-foreground text-xs">
                     {error.description}
                   </span>
                 </div>

@@ -177,27 +177,33 @@ export function DangerScoreTrend({
             keyboard: the tooltip is the only way to read a value and it is
             mouse-only. The table below is the text alternative; the chart
             itself is then marked presentational so the same numbers are not
-            announced twice. */}
-        <table className="sr-only">
-          <caption>
-            Risk score for each of the last {data.length} public scans, on a
-            scale of 0 to 10
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">Scan date</th>
-              <th scope="col">Risk score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((point) => (
-              <tr key={point.date}>
-                <th scope="row">{point.date}</th>
-                <td>{point.dangerScore}</td>
+            announced twice.
+
+            The div carries sr-only, not the table: a table ignores width: 1px
+            and overflow: hidden, so an sr-only table stayed about 470px wide
+            and widened the layout viewport on a phone. */}
+        <div className="sr-only">
+          <table>
+            <caption>
+              Risk score for each of the last {data.length} public scans, on a
+              scale of 0 to 10
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Scan date</th>
+                <th scope="col">Risk score</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.map((point) => (
+                <tr key={point.date}>
+                  <th scope="row">{point.date}</th>
+                  <td>{point.dangerScore}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         <ChartContainer
           aria-hidden="true"
           config={chartConfig}
