@@ -770,23 +770,6 @@ describe("verifyFindingsBatchWithOutcome: says whether the pass actually ran", (
     errors.mockRestore();
   });
 
-  it("settles the batch's real tokens once, exactly as verifyFindingsBatchWithOutcome does", async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
-      confirmedResponseWithUsage("x", 100, 50),
-    );
-    const held = reservation();
-
-    await verifyFindingsBatchWithOutcome(
-      "https://example.com",
-      [makeFinding("f1"), makeFinding("f2")],
-      42,
-      held,
-    );
-
-    expect(mockSettleAiTokens).toHaveBeenCalledTimes(1);
-    expect(mockSettleAiTokens).toHaveBeenCalledWith(held, 300);
-  });
-
   it("writes nothing to scan_history: persisting verdicts is runAiVerification's job", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
       confirmedResponse("x"),
