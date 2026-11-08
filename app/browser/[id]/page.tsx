@@ -22,6 +22,12 @@ import {
   BROWSERBASE_VIEWPORT,
 } from "@/lib/config/client-constants";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
+import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
+import {
+  createLogsPoller,
+  readLogs,
+  type LogsPoller,
+} from "@/lib/browserbase/logs-poller";
 import type { NetworkRequest } from "@/lib/browserbase/client";
 import {
   fitEmbed,
@@ -105,7 +111,6 @@ export default function BrowserViewerPage({ params }: PageProps) {
   const [showLogs, setShowLogs] = useState(false);
   const [networkRequests, setNetworkRequests] = useState<NetworkRequest[]>([]);
   const [logsError, setLogsError] = useState<string | null>(null);
-  const logsPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // The remote-session safety notice. Dismissible and remembered: it used to
   // hold a permanent full-width row above the fold on every session, which on a
@@ -340,60 +345,33 @@ export default function BrowserViewerPage({ params }: PageProps) {
     setVirtualExpiresAt((t) => (t ?? Date.now()) + 60_000);
   }
 
-  // Poll network logs while the dock is open and session is live.
+  // Poll network logs while the dock is open and session is live. The timer is
+  // useVisibleInterval with no hidden-tab period, so a backgrounded viewer
+  // stops spending the session's upstream rate limit on a log nobody can see
+  // and refreshes once on the way back. The poller owns the other two ways it
+  // used to waste calls: overlapping requests and re-rendering an unchanged log.
+  const logsPollerRef = useRef<LogsPoller | null>(null);
+  const logsActive = showLogs && isLive;
+
   useEffect(() => {
-    if (!showLogs || !isLive) {
-      if (logsPollingRef.current) {
-        clearInterval(logsPollingRef.current);
-        logsPollingRef.current = null;
-      }
-      return;
-    }
-
-    async function fetchLogs() {
-      try {
-        const res = await fetch(
-          `${API.BROWSER_SESSION_LOGS}?id=${encodeURIComponent(sessionId)}`,
-        );
-        const data = await res.json().catch(() => null);
-        if (!res.ok) {
-          // 429 = rate limited by Browserbase, back off silently, don't show an error.
-          if (res.status === 429) return;
-          // The API's own error copy is written for people; a bare
-          // `HTTP 502` is not, so it stays in the console and the panel gets a
-          // sentence instead.
-          const apiError = (data as { error?: string } | null)?.error;
-          console.error(
-            "[network-panel] logs fetch failed:",
-            apiError || `HTTP ${res.status}`,
-          );
-          setLogsError(
-            apiError ||
-              "The network log for this session is not available right now.",
-          );
-          return;
-        }
-        setLogsError(null);
-        const requests =
-          (data as { requests?: NetworkRequest[] } | null)?.requests || [];
-        if (requests.length > 0) setNetworkRequests(requests);
-      } catch (err) {
-        console.error("[network-panel] logs fetch error:", err);
-        setLogsError(
-          "Could not reach the server for this session's network log.",
-        );
-      }
-    }
-
-    void fetchLogs();
-    logsPollingRef.current = setInterval(fetchLogs, LOGS_POLL_MS);
+    if (!logsActive) return;
+    const url = `${API.BROWSER_SESSION_LOGS}?id=${encodeURIComponent(sessionId)}`;
+    const poller = createLogsPoller(() => readLogs(url), {
+      onRequests: setNetworkRequests,
+      onError: setLogsError,
+    });
+    logsPollerRef.current = poller;
+    void poller.poll();
     return () => {
-      if (logsPollingRef.current) {
-        clearInterval(logsPollingRef.current);
-        logsPollingRef.current = null;
-      }
+      poller.dispose();
+      logsPollerRef.current = null;
     };
-  }, [showLogs, isLive, sessionId, LOGS_POLL_MS]);
+  }, [logsActive, sessionId]);
+
+  useVisibleInterval(
+    () => void logsPollerRef.current?.poll(),
+    logsActive ? LOGS_POLL_MS : null,
+  );
 
   return (
     <div

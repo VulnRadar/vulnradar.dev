@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/ui/utils";
 import { formatMmSs, secondsRemaining } from "@/lib/browserbase/viewer-session";
+import { countdownAnnouncement } from "@/lib/browserbase/countdown-announcement";
 
 interface SessionCountdownProps {
   /** The user-controlled deadline, epoch ms. */
@@ -22,6 +23,11 @@ interface SessionCountdownProps {
  * network dock) re-rendered sixty times a minute to move one number. Ending the
  * session is the page's job and runs off a single timeout; this is display
  * only.
+ *
+ * The ticking digits are a role="timer" (a timer is not a live region by
+ * default), so a screen reader is not read a new number every second. What it
+ * hears comes from the separate status element below, which changes only on
+ * load, at 30 and 10 seconds, on expiry and when the session is extended.
  */
 export function SessionCountdown({
   expiresAt,
@@ -38,6 +44,15 @@ export function SessionCountdown({
   }, []);
 
   const remaining = secondsRemaining(expiresAt, now);
+  const message = countdownAnnouncement(remaining, minutesAllocated);
+  // Empty at first and filled in an effect: a live region only announces text
+  // that arrives after it is in the page, so a value present on first render
+  // would be skipped and "Session lasts 1 minute" would never be heard.
+  const [announced, setAnnounced] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setAnnounced(message), 0);
+    return () => clearTimeout(id);
+  }, [message]);
   const expiresSoon = remaining <= 60;
   const expiresCritical = remaining <= 20;
 
@@ -54,7 +69,7 @@ export function SessionCountdown({
     >
       <div
         className="flex items-center gap-1.5 px-2.5 text-xs font-medium tabular-nums"
-        aria-live="polite"
+        role="timer"
         title={`Session time remaining: ${formatMmSs(remaining)}`}
       >
         <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
@@ -107,6 +122,9 @@ export function SessionCountdown({
       >
         +1m
       </button>
+      <span role="status" className="sr-only">
+        {announced}
+      </span>
     </div>
   );
 }

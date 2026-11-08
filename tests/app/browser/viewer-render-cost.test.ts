@@ -34,9 +34,10 @@ describe("the viewer page", () => {
   it("holds no clock state and runs no interval of its own for the countdown", () => {
     expect(src).not.toMatch(/\[now,\s*setNow\]/);
     expect(src).not.toContain("setNow(");
-    // The network dock's poll is the one interval left on this page.
-    expect(src.match(/setInterval\(/g)).toHaveLength(1);
-    expect(src).toContain("setInterval(fetchLogs, LOGS_POLL_MS)");
+    // The network dock's poll runs through useVisibleInterval, so the page
+    // owns no raw timer at all.
+    expect(src).not.toMatch(/setInterval\(/);
+    expect(src).toContain("useVisibleInterval(");
   });
 
   it("ends the session off one timeout for the earlier of the two deadlines", () => {
@@ -88,7 +89,8 @@ describe("SessionCountdown", () => {
   it("keeps the extend button's accessible name and limits", () => {
     expect(src).toContain('aria-label="Extend session by 1 minute"');
     expect(src).toContain("disabled={!canExtend}");
-    expect(src).toContain('aria-live="polite"');
+    // The ticking digits are not a live region (see countdown-a11y.test.ts).
+    expect(src).not.toContain("aria-live");
   });
 
   it("keeps the 60 and 20 second warning thresholds", () => {
