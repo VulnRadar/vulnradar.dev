@@ -50,6 +50,8 @@ const TEST_FILE = /\.(?:test|spec)\./;
 const HOMES: Record<string, string> = {
   "lib/config/client-constants.ts": "defines the build-time APP_URL",
   "lib/config/server-app-url.ts": "reads the variables at runtime",
+  "lib/database/boot/app-url-drift.ts":
+    "compares the build value with the runtime one at boot, builds no link",
 };
 
 /** Reads that predate this test, by file. Lower a count as reads move. */

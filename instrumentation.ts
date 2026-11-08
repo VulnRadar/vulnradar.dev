@@ -22,18 +22,21 @@
  *
  *   1. env validation          fail fast, with a message naming the missing var
  *   2. error log capture       installed first so it captures phases 3 onward
- *   3. schema version gate     refuses to touch a database that is too old
- *   4. release check           banner, and "is there a newer version"
- *   5. boot advisory lock      one process at a time from here down
+ *   3. release check           banner, and "is there a newer version"
+ *   4. boot advisory lock      one process at a time from here down
+ *   5. schema version gate     refuses to touch a database that is too old
  *   6. schema                  every CREATE/ALTER/DROP, in one ordered list
  *   7. backfills               data repair, all of it after the schema exists
- *   8. cleanup + workers       the long-lived timers
+ *   8. workers + cleanup       the long-lived timers, then a first pass nobody
+ *                              waits for
  *   9. safety nets             stale scans, required tables, sequences
- *  10. graceful shutdown       close the pool on SIGTERM/SIGINT
+ *  10. graceful shutdown       drain, then close the pool on SIGTERM/SIGINT
  *
- * Phases 6 to 9 are inside the advisory lock and inside one try/catch: a
- * failure anywhere in them alerts and exits rather than serving traffic
- * against a database this process cannot vouch for (AUDIT-010, prodready-07).
+ * The release check is before the lock so a slow network call is not held
+ * across it. Phases 5 to 9 are inside the advisory lock and inside one
+ * try/catch: a failure anywhere in them alerts and exits rather than serving
+ * traffic against a database this process cannot vouch for (AUDIT-010,
+ * prodready-07).
  *
  * The file also exports onRequestError, Next's hook for errors nothing caught.
  */
@@ -107,14 +110,9 @@ export async function register() {
       );
     }
 
-    // ── Schema version gate (BEFORE any table creation) ────────────────
-    const { ensureSchemaVersion } =
-      await import("./lib/database/boot/schema-version");
-    await ensureSchemaVersion(pool, {
-      appName: APP_NAME,
-      appVersion: APP_VERSION,
-      minSchemaVersion: MIN_SCHEMA_VERSION,
-    });
+    const { proxyTrustWarning } = await import("./lib/server/http-front.mjs");
+    const proxyWarning = proxyTrustWarning(process.env);
+    if (proxyWarning) console.error(`[${APP_NAME}] ${proxyWarning}`);
 
     // ── Startup banner + update check ──────────────────────────────────
     const { reportRunningVersion } =
@@ -142,6 +140,18 @@ export async function register() {
     const schemaLock = await acquireBootSchemaLock(pool, APP_NAME);
 
     try {
+      // ── Schema version gate (BEFORE any table creation) ──────────────
+      // Under the lock because its first statement creates the meta table, and
+      // two first boots on an empty database raced that CREATE TABLE IF NOT
+      // EXISTS into a crash on pg_type's unique index (bug-db-9).
+      const { ensureSchemaVersion } =
+        await import("./lib/database/boot/schema-version");
+      await ensureSchemaVersion(pool, {
+        appName: APP_NAME,
+        appVersion: APP_VERSION,
+        minSchemaVersion: MIN_SCHEMA_VERSION,
+      });
+
       const { applyBootSchema } =
         await import("./lib/database/boot/apply-boot-schema");
       await applyBootSchema(pool, APP_NAME);
@@ -150,26 +160,45 @@ export async function register() {
         await import("./lib/database/boot/backfills");
       await runBootBackfills(pool, APP_NAME);
 
-      const { runInitialCleanup, startBackgroundWorkers } =
-        await import("./lib/database/boot/workers");
-      await runInitialCleanup(APP_NAME);
+      const { reportAppUrlDrift } =
+        await import("./lib/database/boot/app-url-drift");
+      await reportAppUrlDrift(APP_NAME);
+
+      const {
+        runInitialCleanup,
+        startBackgroundWorkers,
+        stopBackgroundWorkers,
+      } = await import("./lib/database/boot/workers");
       await startBackgroundWorkers(APP_NAME);
+      // Not awaited: Next serves nothing until register() resolves, so a full
+      // retention pass here made the health probe wait on it, and the time to
+      // first request grew with the database. runInitialCleanup catches its
+      // own failures.
+      void runInitialCleanup(APP_NAME);
 
       const { runBootSafetyNets } =
         await import("./lib/database/boot/safety-nets");
       await runBootSafetyNets(pool, APP_NAME);
 
       // ── Graceful shutdown ─────────────────────────────────────────
-      const gracefulShutdown = async () => {
-        try {
-          await pool.end();
-          console.log(`[${APP_NAME}] Database pool closed on shutdown.`);
-        } catch (err) {
-          console.error(`[${APP_NAME}] Error closing database pool:`, err);
-        }
-      };
-      process.on("SIGTERM", gracefulShutdown);
-      process.on("SIGINT", gracefulShutdown);
+      // Only when told to own it. Without NEXT_MANUAL_SIG_HANDLE Next has its
+      // own handler that drains the server and exits, and a second one here
+      // would close the pool underneath that drain.
+      if (process.env.NEXT_MANUAL_SIG_HANDLE) {
+        const { createGracefulShutdown, countRecentInFlightScans } =
+          await import("./lib/database/boot/graceful-shutdown");
+        const { staleScanGraceSeconds } =
+          await import("./lib/scanner/scan-jobs");
+        const shutdown = createGracefulShutdown({
+          appName: APP_NAME,
+          stopWorkers: () => stopBackgroundWorkers(APP_NAME),
+          countInFlightScans: async () =>
+            countRecentInFlightScans(pool, await staleScanGraceSeconds()),
+          pool,
+        });
+        process.on("SIGTERM", () => void shutdown());
+        process.on("SIGINT", () => void shutdown());
+      }
     } catch (error) {
       // A failure partway through the schema used to just log and fall through,
       // leaving the app to boot and serve traffic against a database that might

@@ -29,6 +29,10 @@ export async function runInitialCleanup(appName: string): Promise<void> {
   }
 }
 
+// The one worker with no stop function of its own: its schedule call hands the
+// timer back instead.
+let scheduledScansTimer: NodeJS.Timeout | undefined;
+
 export async function startBackgroundWorkers(appName: string): Promise<void> {
   // Cleanup runs every CONFIG_DB_CLEANUP_INTERVAL_MS, five minutes as shipped.
   // The shortest meaningful user-facing TTL is email_2fa_codes (10 min), so a
@@ -76,7 +80,7 @@ export async function startBackgroundWorkers(appName: string): Promise<void> {
   try {
     const { schedulePeriodicScheduledScans } =
       await import("@/lib/scanner/scheduled-scans-worker");
-    schedulePeriodicScheduledScans();
+    scheduledScansTimer = schedulePeriodicScheduledScans();
     console.log(`[${appName}] Scheduled the scheduled-scans worker.`);
   } catch (scheduleError) {
     console.error(
@@ -132,5 +136,40 @@ export async function startBackgroundWorkers(appName: string): Promise<void> {
       `[${appName}] Failed to schedule the periodic backup worker:`,
       scheduleError,
     );
+  }
+}
+
+/**
+ * Clear every timer startBackgroundWorkers armed, so a pass cannot start while
+ * the process is draining. Each stop is on its own for the same reason each
+ * schedule is: one failing must not leave the rest running.
+ */
+export async function stopBackgroundWorkers(appName: string): Promise<void> {
+  clearInterval(scheduledScansTimer);
+  const stops: Array<() => Promise<void>> = [
+    async () => (await import("@/lib/database/cleanup")).stopPeriodicCleanup(),
+    async () =>
+      (
+        await import("@/lib/scanner/stale-scan-sweep")
+      ).stopPeriodicStaleScanSweep(),
+    async () =>
+      (
+        await import("@/lib/notifications/posture-digest")
+      ).stopPeriodicPostureDigest(),
+    async () =>
+      (
+        await import("@/lib/domains/reverify-worker")
+      ).stopPeriodicDomainReverify(),
+    async () =>
+      (
+        await import("@/lib/backup/scheduled-backup-worker")
+      ).stopPeriodicBackup(),
+  ];
+  for (const stop of stops) {
+    try {
+      await stop();
+    } catch (err) {
+      console.error(`[${appName}] Failed to stop a background worker:`, err);
+    }
   }
 }
