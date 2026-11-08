@@ -26,6 +26,7 @@ import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { getQueryParam, setQueryParams } from "@/lib/ui/url-state";
 import { markGithubLinkStarted } from "@/components/modals/github-link-marker";
 import { ProviderReauthDialog } from "./provider-reauth-dialog";
+import { socialErrorCopy } from "./social-error-copy";
 import type { ProfileTabProps } from "../types";
 
 const DiscordIcon = () => (
@@ -562,7 +563,7 @@ export function ProfileSocialTab({
 
   // Google linking lands back here as a full page redirect
   // (app/api/v3/auth/oauth/[provider]/callback/route.ts's handleOAuthLink)
-  // with either `google_connected=true` or `error`/`message` in the URL.
+  // with either `google_connected=true` or an `error` code in the URL.
   // Surface it as the same toast every other profile action uses (see the
   // "Toast messages" block in app/profile/page.tsx), then strip the params
   // so a refresh doesn't re-show it. Reads window.location directly via
@@ -582,23 +583,13 @@ export function ProfileSocialTab({
   useEffect(() => {
     const googleConnected = getQueryParam("google_connected") === "true";
     const error = getQueryParam("error");
-    const message = getQueryParam("message");
 
     if (!googleConnected && !error) return;
 
     if (googleConnected) setSuccess("Google account connected.");
-    else if (error) {
-      setError(message || "We could not complete that connection. Try again.");
-    }
+    else if (error) setError(socialErrorCopy(error));
 
-    setQueryParams(
-      {
-        google_connected: null,
-        error: null,
-        message: null,
-      },
-      { replace: true },
-    );
+    setQueryParams({ google_connected: null, error: null }, { replace: true });
     // Runs once on mount to consume the redirect's query params -- setError/
     // setSuccess are stable setters from the parent's useState.
     // oxlint-disable-next-line react-hooks/exhaustive-deps

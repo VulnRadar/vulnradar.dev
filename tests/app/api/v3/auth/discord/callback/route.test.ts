@@ -53,7 +53,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   if (s.includes("SELECT s.user_id"))
     return { rows: sessionRow ? [sessionRow] : [] };
   if (s.startsWith("SELECT key, value FROM system_settings"))
-    return { rows: [] };
+    return { rows: settingsRows };
   if (
     s.startsWith(
       "SELECT user_id FROM discord_connections WHERE discord_id = $1",
@@ -125,6 +125,7 @@ vi.mock("@/lib/email/email", async (importOriginal) => {
 
 let tokenExchangeOk = true;
 let userFetchOk = true;
+let settingsRows: { key: string; value: string }[] = [];
 let discordUserFixture = {
   id: "999888777",
   username: "TestDiscordUser",
@@ -215,6 +216,7 @@ beforeEach(async () => {
   emailCodeInsertCalls = [];
   tokenExchangeOk = true;
   userFetchOk = true;
+  settingsRows = [];
   invalidateSettingsCache();
 });
 
@@ -349,7 +351,7 @@ describe("GET /api/v3/auth/discord/callback", () => {
       expect(location.searchParams.get("error")).toBe(
         "discord_impersonation_blocked",
       );
-      expect(location.searchParams.get("message")).toMatch(/admin/i);
+      expect(location.searchParams.has("message")).toBe(false);
       expect(mockFetch).not.toHaveBeenCalled();
       expect(connectionUpsertCalls).toHaveLength(0);
       expect(discordIdUpdateCalls).toHaveLength(0);
@@ -371,6 +373,9 @@ describe("GET /api/v3/auth/discord/callback", () => {
 
       const location = locationOf(res);
       expect(location.pathname).toBe("/profile");
+      // The Social tab is the one that shows this code. On tab=account the
+      // page falls back to General and the error is never read.
+      expect(location.searchParams.get("tab")).toBe("social");
       expect(location.searchParams.get("error")).toBe("discord_already_linked");
       expect(connectionUpsertCalls).toHaveLength(0);
     });
@@ -403,9 +408,7 @@ describe("GET /api/v3/auth/discord/callback", () => {
         expect(location.searchParams.get("error")).toBe(
           "discord_creating_identity",
         );
-        expect(location.searchParams.get("message")).toContain(
-          "created with Discord",
-        );
+        expect(location.searchParams.has("message")).toBe(false);
         expect(connectionUpsertCalls).toHaveLength(0);
         expect(discordIdUpdateCalls).toHaveLength(0);
       });
@@ -519,6 +522,26 @@ describe("GET /api/v3/auth/discord/callback", () => {
       expect(locationOf(res).searchParams.get("error")).toBe(
         "discord_invalid_state",
       );
+      expect(sessionInsertCalls).toHaveLength(0);
+    });
+
+    it("sends a paused sign-in to the login page with a code and no sentence", async () => {
+      settingsRows = [{ key: "PAUSE_LOGINS", value: "true" }];
+      existingConnectionUserId = 42;
+      twoFAConfigRow = {
+        totp_enabled: false,
+        two_factor_method: "app",
+        email: "u@example.com",
+      };
+
+      const res = await GET(
+        callbackRequest({ code: "somecode", state: loginState() }),
+      );
+
+      const location = locationOf(res);
+      expect(location.pathname).toBe("/login");
+      expect(location.searchParams.get("error")).toBe("logins_paused");
+      expect(location.searchParams.has("message")).toBe(false);
       expect(sessionInsertCalls).toHaveLength(0);
     });
 

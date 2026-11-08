@@ -574,14 +574,9 @@ async function handleOAuthLink(
 
   // The start route refuses this too, but a state issued to the real owner is
   // still good for its whole lifetime, and this is the point that writes.
-  const impersonating = refuseWhileImpersonating(
-    session,
-    "Linking a sign-in provider",
-  );
-  if (impersonating) {
-    const { error: message } = await impersonating.json();
+  if (refuseWhileImpersonating(session, "Linking a sign-in provider")) {
     return NextResponse.redirect(
-      `${profileUrl}&error=oauth_impersonation_blocked&message=${encodeURIComponent(message)}`,
+      `${profileUrl}&error=oauth_impersonation_blocked`,
     );
   }
 
@@ -615,11 +610,7 @@ async function handleOAuthLink(
       [userInfo.id],
     );
     if (existing.rows.length > 0 && existing.rows[0].id !== session.userId) {
-      const label = OAUTH_PROVIDERS[provider].label;
-      const message = `This ${label} account is already connected to a different VulnRadar account.`;
-      return NextResponse.redirect(
-        `${profileUrl}&error=oauth_already_linked&message=${encodeURIComponent(message)}`,
-      );
+      return NextResponse.redirect(`${profileUrl}&error=oauth_already_linked`);
     }
 
     if (
@@ -629,10 +620,8 @@ async function handleOAuthLink(
         emailVerified: userInfo.emailVerified,
       })
     ) {
-      const label = OAUTH_PROVIDERS[provider].label;
-      const message = `This account was created with ${label}, so it can only connect the ${label} account that uses its email address.`;
       return NextResponse.redirect(
-        `${profileUrl}&error=oauth_creating_identity&message=${encodeURIComponent(message)}`,
+        `${profileUrl}&error=oauth_creating_identity`,
       );
     }
 
@@ -694,10 +683,8 @@ async function handleOAuthLink(
       // into the same user-facing message as the pre-check above instead
       // of a raw 500.
       if ((err as { code?: string }).code === "23505") {
-        const label = OAUTH_PROVIDERS[provider].label;
-        const message = `This ${label} account is already connected to a different VulnRadar account.`;
         return NextResponse.redirect(
-          `${profileUrl}&error=oauth_already_linked&message=${encodeURIComponent(message)}`,
+          `${profileUrl}&error=oauth_already_linked`,
         );
       }
       throw err;

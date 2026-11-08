@@ -1234,9 +1234,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
       const location = locationOf(res);
       expect(location.searchParams.get("error")).toBe("oauth_already_linked");
-      expect(
-        decodeURIComponent(location.searchParams.get("message") || ""),
-      ).toContain("already connected to a different VulnRadar account");
+      expect(location.searchParams.has("message")).toBe(false);
       expect(googleLinkUpdateCalls).toHaveLength(0);
     });
 
@@ -1285,9 +1283,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
         expect(location.searchParams.get("error")).toBe(
           "oauth_creating_identity",
         );
-        expect(location.searchParams.get("message")).toContain(
-          "created with Google",
-        );
+        expect(location.searchParams.has("message")).toBe(false);
         expect(googleLinkUpdateCalls).toHaveLength(0);
       });
 
@@ -1436,7 +1432,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       expect(location.searchParams.get("error")).toBe(
         "oauth_impersonation_blocked",
       );
-      expect(location.searchParams.get("message")).toMatch(/admin/i);
+      expect(location.searchParams.has("message")).toBe(false);
       expect(mockFetch).not.toHaveBeenCalled();
       expect(googleLinkUpdateCalls).toHaveLength(0);
       expect(queries.some((q) => q.sql.startsWith("UPDATE users"))).toBe(false);

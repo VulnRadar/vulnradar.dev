@@ -955,7 +955,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Package] **[IMPROVED]** **Test Tooling Removed From Production Installs**
   Vitest and the bundler under it no longer ship in the production image. An unused UI package was removed, and any new package install script now fails a repository check until it is reviewed.
 - [ShieldAlert] **[SECURITY]** **Sign-In Error Messages Can No Longer Be Written by a Link**
-  The login and signup pages now pick their error sentence from a fixed list. Text placed in a link no longer appears in the error alert, and a stray percent sign no longer crashes the page.
+  The login page, the signup page and the connected accounts tab of your profile now pick their error sentence from a fixed list. Text placed in a link no longer appears in the error alert, and a stray percent sign no longer crashes the page.
 - [Link2] **[SECURITY]** **Sign-In Forms Check Where They Send You**
   After a password or two-factor code is accepted, the forms only navigate to a path on this site, so a crafted link cannot send a freshly signed-in person somewhere else.
 - [Link2] **[IMPROVED]** **Your Destination Survives Sign-Up and Provider Sign-In**

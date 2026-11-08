@@ -3032,7 +3032,7 @@ const CHANGELOG: Release[] = [
       {
         icon: ShieldAlert,
         label: "Sign-In Error Messages Can No Longer Be Written by a Link",
-        desc: "The login and signup pages now pick their error sentence from a fixed list. Text placed in a link no longer appears in the error alert, and a stray percent sign no longer crashes the page.",
+        desc: "The login page, the signup page and the connected accounts tab of your profile now pick their error sentence from a fixed list. Text placed in a link no longer appears in the error alert, and a stray percent sign no longer crashes the page.",
         category: "security",
       },
       {

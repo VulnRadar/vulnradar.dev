@@ -139,14 +139,9 @@ export async function GET(request: Request) {
     // is still good for its whole lifetime, and this is the branch that
     // writes. Checked before Discord is called: the guild join is a side
     // effect as well.
-    const impersonating = refuseWhileImpersonating(
-      session,
-      "Linking a sign-in provider",
-    );
-    if (impersonating) {
-      const { error: message } = await impersonating.json();
+    if (refuseWhileImpersonating(session, "Linking a sign-in provider")) {
       return NextResponse.redirect(
-        `${baseUrl}/profile?tab=social&error=discord_impersonation_blocked&message=${encodeURIComponent(message)}`,
+        `${baseUrl}/profile?tab=social&error=discord_impersonation_blocked`,
       );
     }
   }
@@ -265,7 +260,7 @@ export async function GET(request: Request) {
         existingConnection.rows[0].user_id !== session.userId
       ) {
         return NextResponse.redirect(
-          `${baseUrl}/profile?tab=account&error=discord_already_linked`,
+          `${baseUrl}/profile?tab=social&error=discord_already_linked`,
         );
       }
 
@@ -276,10 +271,8 @@ export async function GET(request: Request) {
           emailVerified: discordUser.verified === true,
         })
       ) {
-        const message =
-          "This account was created with Discord, so it can only connect the Discord account that uses its email address.";
         return NextResponse.redirect(
-          `${baseUrl}/profile?tab=social&error=discord_creating_identity&message=${encodeURIComponent(message)}`,
+          `${baseUrl}/profile?tab=social&error=discord_creating_identity`,
         );
       }
 
@@ -355,11 +348,8 @@ export async function GET(request: Request) {
       // this is a browser finishing a full-page round trip. Discord never
       // auto-creates accounts (an unlinked Discord id was already turned away
       // above), so this path needs no signup gate.
-      const pausedReason = await loginsPausedReasonFor(user2FA?.role);
-      if (pausedReason) {
-        return NextResponse.redirect(
-          `${baseUrl}/login?error=logins_paused&message=${encodeURIComponent(pausedReason)}`,
-        );
+      if (await loginsPausedReasonFor(user2FA?.role)) {
+        return NextResponse.redirect(`${baseUrl}/login?error=logins_paused`);
       }
 
       if (user2FA?.totp_enabled) {
