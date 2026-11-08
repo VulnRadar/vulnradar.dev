@@ -182,6 +182,9 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version-file: .nvmrc
+          # security: see the same line in the publish-npm job. Here it also
+          # keeps a run that executed package code from saving a cache.
+          package-manager-cache: false
 
       - name: Build + package browser extension
         # release: the workflow_run trigger does NOT check out the tagged
@@ -733,6 +736,13 @@ jobs:
         with:
           node-version-file: .nvmrc
           registry-url: "https://registry.npmjs.org"
+          # security: setup-node restores ~/.npm by itself when package.json
+          # names a packageManager, which ours does, under a key made from the
+          # root lockfile alone. That is the same key every `npm ci` in ci.yml
+          # saves under with install scripts on, so a poisoned package there
+          # could plant a doctored npm in the cache, and the next step installs
+          # npm in the one job holding the OIDC token.
+          package-manager-cache: false
 
       - name: Install npm 11.21.1
         # Trusted publishing (OIDC, no stored token) is only implemented from

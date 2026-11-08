@@ -123,6 +123,21 @@ describe("release.yml separates package code from credentials", () => {
     expect(installs).toEqual(['npm install --global "npm@11.21.1"']);
   });
 
+  it("restores no npm cache in any job", () => {
+    // setup-node turns its cache on by itself when package.json names a
+    // packageManager, under a key every `npm ci` in ci.yml shares. A planted
+    // entry would reach the one npm install in the job holding the OIDC token.
+    const setups = workflowSteps(release).filter((s) =>
+      /uses: actions\/setup-node@/.test(s.code),
+    );
+    expect(setups.length).toBeGreaterThan(0);
+    for (const step of setups) {
+      expect(step.code).toMatch(/^\s+package-manager-cache:\s*false\s*$/m);
+      expect(step.code).not.toMatch(/^\s+cache:/m);
+    }
+    expect(release).not.toMatch(/uses: actions\/cache/);
+  });
+
   it("publishes the tag's own cli/, not a file another job produced", () => {
     // An artifact out of the build job has been on a runner where package
     // code ran. The CLI has no dependencies, so nothing needs that risk.
@@ -193,6 +208,10 @@ describe("release.yml separates package code from credentials", () => {
       /git show "\$\{TAG\}:extension\/package\.json"/,
     );
     expect(signing.code).toMatch(/git show "\$\{TAG\}:cli\/package\.json"/);
+    // These go to GITHUB_ENV and into file names, so the shape is enforced.
+    expect(signing.code).toContain(
+      String.raw`VERSION_PATTERN='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'`,
+    );
   });
 
   it("sets persist-credentials: false on every checkout", () => {
