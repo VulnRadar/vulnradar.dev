@@ -318,8 +318,8 @@ describe("secrets and hosts", () => {
 describe("prebuilt image or your own build", () => {
   const section = between(flat, 'id="image-or-build"', 'id="hardware"');
 
-  it("states the baked-in URL and what a NEXT_PUBLIC value costs", () => {
-    expect(section).toContain("only if you accept the upstream URL baked");
+  it("states the compiled URL and what a NEXT_PUBLIC value costs", () => {
+    expect(section).toContain("only if you accept the upstream URL compiled");
     expect(section).toContain("docker compose up -d --build");
   });
 

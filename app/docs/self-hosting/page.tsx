@@ -429,13 +429,16 @@ export default function SelfHostingPage() {
         </p>
         <DocsSubSection title="Prebuilt image">
           <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-            Use the GHCR image only if you accept the upstream URL baked into
-            it. It was built with <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode>{" "}
-            set to upstream&rsquo;s own domain and with no Turnstile or Stripe
-            publishable key, so Turnstile and Stripe Checkout cannot work on it.
-            In return there is no build on your server, and an upgrade is: edit
-            the tag, pull, migrate, up. Take both files from the release you
-            want to run, then skip to{" "}
+            Use the GHCR image only if you accept the upstream URL compiled into
+            its pages. It was built with{" "}
+            <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> empty, which leaves
+            links on pages, the sitemap and canonical tags on upstream&rsquo;s
+            own domain, while token links in email come from the URL you give
+            the container. It also has no Turnstile or Stripe publishable key,
+            so Turnstile and Stripe Checkout cannot work on it. In return there
+            is no build on your server, and an upgrade is: edit the tag, pull,
+            migrate, up. Take both files from the release you want to run, then
+            skip to{" "}
             <a
               href="#env"
               className="text-primary underline-offset-2 hover:underline"
@@ -819,9 +822,9 @@ docker compose logs -f app   # watch startup`}
           when both are present a plain{" "}
           <InlineCode>docker compose up</InlineCode> pulls the published image
           rather than building yours. That image was built from upstream&rsquo;s{" "}
-          <InlineCode>config-values.ts</InlineCode> and with{" "}
-          <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> baked in as{" "}
-          upstream&rsquo;s own domain, so the edits from the previous steps
+          <InlineCode>config-values.ts</InlineCode> with{" "}
+          <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> empty, so its pages carry
+          upstream&rsquo;s own domain and the edits from the previous steps
           would silently not be there.
         </p>
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">

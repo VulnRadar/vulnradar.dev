@@ -707,12 +707,13 @@ export default function ConfigPage() {
           >
             <p>
               The published image is built with{" "}
-              <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> set to
-              upstream&rsquo;s own domain, and the image deliberately does not
-              copy that build value into the running container&rsquo;s
-              environment: if it did, a pulled image&rsquo;s OAuth redirects
-              would fall back to upstream instead of to the address the request
-              arrived on. So a pulled image and one you built yourself both need{" "}
+              <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> empty, so its
+              compiled code uses <InlineCode>CONFIG_APP_URL</InlineCode>,
+              upstream&rsquo;s own domain. No image copies its build value into
+              the running container&rsquo;s environment: if one did, a
+              self-built image&rsquo;s OAuth redirects would fall back to that
+              value instead of to the address the request arrived on. So a
+              pulled image and one you built yourself both need{" "}
               <InlineCode>APP_URL</InlineCode> or{" "}
               <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> set when the
               container starts. Both compose files pass{" "}
@@ -867,8 +868,8 @@ export default function ConfigPage() {
           <InlineCode>docker compose up -d app</InlineCode> picks it up.
         </p>
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-          The published image is built with only{" "}
-          <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> set, to upstream&rsquo;s
+          The published image is built with every one of these empty, so its
+          pages use <InlineCode>CONFIG_APP_URL</InlineCode>, upstream&rsquo;s
           domain. Turnstile, Stripe checkout and your own domain therefore need
           a source build from a checkout. A Docker build does not see{" "}
           <InlineCode>.env</InlineCode> as a file: only the names{" "}
