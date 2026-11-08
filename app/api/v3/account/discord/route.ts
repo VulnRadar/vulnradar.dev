@@ -6,6 +6,7 @@ import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 import { decryptApiKey } from "@/lib/auth/crypto";
 import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 import { revokeDiscordTokens } from "@/lib/discord/revoke";
+import { noticeProfileNameChanged } from "@/lib/notifications/profile-name-changed";
 import {
   DiscordReauthRequiredError,
   refreshDiscordAccessToken,
@@ -345,7 +346,7 @@ export async function PATCH(req: Request) {
     return ApiResponse.unauthorized();
   }
 
-  let body: { syncAvatar?: boolean; syncName?: boolean };
+  let body: { syncAvatar?: boolean; syncName?: boolean } | null;
   try {
     body = await req.json();
   } catch {
@@ -355,7 +356,7 @@ export async function PATCH(req: Request) {
     );
   }
 
-  const { syncAvatar, syncName } = body;
+  const { syncAvatar, syncName } = body ?? {};
   if (!syncAvatar && !syncName) {
     return NextResponse.json({ success: true, updated: [] });
   }
@@ -385,9 +386,10 @@ export async function PATCH(req: Request) {
       // uploaded local file so it doesn't linger as an orphan.
       await deleteAvatarFilesIfLocal(session.userId);
     }
-    if (syncName && discord_username) {
+    const newName = syncName ? String(discord_username ?? "").trim() : "";
+    if (newName) {
       sets.push(`name = $${sets.length + 1}`);
-      vals.push(discord_username);
+      vals.push(newName);
       updated.push("name");
     }
 
@@ -397,6 +399,7 @@ export async function PATCH(req: Request) {
         `UPDATE users SET ${sets.join(", ")}, updated_at = NOW() WHERE id = $${vals.length}`,
         vals,
       );
+      if (newName) noticeProfileNameChanged(session, newName);
     }
 
     return NextResponse.json({ success: true, updated });

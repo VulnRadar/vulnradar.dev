@@ -30,6 +30,11 @@ vi.mock("@/lib/uploads/avatar-storage", () => ({
     mockDeleteAvatarFilesIfLocal(...args),
 }));
 
+const mockNotice = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/notifications/profile-name-changed", () => ({
+  noticeProfileNameChanged: mockNotice,
+}));
+
 vi.mock("@/lib/auth/crypto", () => ({
   decryptApiKey: (v: string) => `decrypted:${v}`,
 }));
@@ -71,6 +76,7 @@ beforeEach(() => {
   mockGetSession.mockResolvedValue({ userId: 3 });
   mockDeleteAvatarFilesIfLocal.mockReset();
   mockDeleteAvatarFilesIfLocal.mockResolvedValue(undefined);
+  mockNotice.mockReset();
   delete process.env.DISCORD_BOT_TOKEN;
   delete process.env.DISCORD_GUILD_ID;
   process.env.DISCORD_CLIENT_ID = "client-1";
@@ -593,6 +599,52 @@ describe("PATCH /api/v3/account/discord", () => {
     expect(json.updated.sort()).toEqual(["avatar", "name"]);
     expect(mockQuery).toHaveBeenCalledTimes(2);
     expect(mockDeleteAvatarFilesIfLocal).toHaveBeenCalledWith(3);
+  });
+
+  // The dialog used to save through PATCH /auth/update, which mails the owner
+  // about a name change. Moving the save here must not lose that.
+  it("tells the owner when a sync changes the name", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          discord_id: "123",
+          discord_username: "  vulnbot ",
+          discord_avatar: null,
+        },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await PATCH(patchRequest({ syncName: true }));
+
+    expect(res.status).toBe(200);
+    expect(mockQuery.mock.calls[1][1]).toEqual(["vulnbot", 3]);
+    expect(mockNotice).toHaveBeenCalledWith({ userId: 3 }, "vulnbot");
+  });
+
+  it("sends no name notice for an avatar-only sync", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          discord_id: "123",
+          discord_username: "vulnbot",
+          discord_avatar: "abc",
+        },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await PATCH(patchRequest({ syncAvatar: true }));
+
+    expect(mockNotice).not.toHaveBeenCalled();
+  });
+
+  it("treats a JSON null body as nothing asked for, not a server error", async () => {
+    const res = await PATCH(patchRequest(null));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ success: true, updated: [] });
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("skips the avatar update field when the account has no avatar set", async () => {

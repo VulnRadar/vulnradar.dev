@@ -25,6 +25,11 @@ vi.mock("@/lib/uploads/avatar-storage", () => ({
     mockDeleteAvatarFilesIfLocal(...args),
 }));
 
+const mockNotice = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/notifications/profile-name-changed", () => ({
+  noticeProfileNameChanged: mockNotice,
+}));
+
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
@@ -48,6 +53,7 @@ beforeEach(() => {
   mockGetSession.mockResolvedValue({ userId: 3 });
   mockDeleteAvatarFilesIfLocal.mockReset();
   mockDeleteAvatarFilesIfLocal.mockResolvedValue(undefined);
+  mockNotice.mockReset();
   process.env.GITHUB_CLIENT_ID = "gh-client";
   process.env.GITHUB_CLIENT_SECRET = "gh-secret";
 });
@@ -375,16 +381,72 @@ describe("PATCH /api/v3/account/github", () => {
     expect(mockDeleteAvatarFilesIfLocal).toHaveBeenCalledWith(3);
   });
 
-  it("never stores an avatar that is not on GitHub's own CDN", async () => {
+  it.each([
+    "https://evil.example/x.png",
+    "https://avatars.githubusercontent.com.evil.example/x.png",
+    "https://avatars.githubusercontent.com@evil.example/x.png",
+    "http://avatars.githubusercontent.com/u/42",
+    "javascript:alert(1)//avatars.githubusercontent.com",
+    "not a url",
+  ])(
+    "never stores an avatar that is not on GitHub's own CDN: %s",
+    async (url) => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ ...linked, github_avatar_url: url }],
+      });
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+
+      const res = await PATCH(
+        patchRequest({ syncAvatar: true, syncName: true }),
+      );
+
+      expect((await res.json()).updated).toEqual(["name"]);
+      expect(mockDeleteAvatarFilesIfLocal).not.toHaveBeenCalled();
+    },
+  );
+
+  // The dialog used to save through PATCH /auth/update, which mails the owner
+  // about a name change. Moving the save here must not lose that.
+  it("tells the owner when a sync changes the name", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ ...linked, github_avatar_url: "https://evil.example/x.png" }],
+      rows: [{ ...linked, github_name: "  Real Name " }],
     });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    const res = await PATCH(patchRequest({ syncAvatar: true, syncName: true }));
+    const res = await PATCH(patchRequest({ syncName: true }));
 
-    expect((await res.json()).updated).toEqual(["name"]);
-    expect(mockDeleteAvatarFilesIfLocal).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(mockQuery.mock.calls[1][1]).toEqual(["Real Name", 3]);
+    expect(mockNotice).toHaveBeenCalledWith({ userId: 3 }, "Real Name");
+  });
+
+  it("does not write a name that is only whitespace", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ ...linked, github_name: "   " }],
+    });
+
+    const res = await PATCH(patchRequest({ syncName: true }));
+
+    expect((await res.json()).updated).toEqual([]);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockNotice).not.toHaveBeenCalled();
+  });
+
+  it("sends no name notice for an avatar-only sync", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [linked] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await PATCH(patchRequest({ syncAvatar: true }));
+
+    expect(mockNotice).not.toHaveBeenCalled();
+  });
+
+  it("treats a JSON null body as nothing asked for, not a server error", async () => {
+    const res = await PATCH(patchRequest(null));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ success: true, updated: [] });
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });
 

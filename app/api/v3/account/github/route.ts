@@ -11,6 +11,7 @@ import { logError } from "@/lib/logging/log";
 import pool from "@/lib/database/db";
 import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
+import { noticeProfileNameChanged } from "@/lib/notifications/profile-name-changed";
 
 /** What a linked GitHub sign-in can offer the profile, from the users row
  *  (handleOAuthLink writes it; repo access in github_connections is separate
@@ -143,9 +144,9 @@ export const PATCH = withErrorHandling(async (request: Request) => {
   const parsed = await parseBody<{
     syncAvatar?: unknown;
     syncName?: unknown;
-  }>(request);
+  } | null>(request);
   if (!parsed.success) return ApiResponse.badRequest(parsed.error);
-  const { syncAvatar, syncName } = parsed.data;
+  const { syncAvatar, syncName } = parsed.data ?? {};
   if (!syncAvatar && !syncName) {
     return NextResponse.json({ success: true, updated: [] });
   }
@@ -174,9 +175,10 @@ export const PATCH = withErrorHandling(async (request: Request) => {
       // Same as the Discord sync: an external avatar replaces the upload.
       await deleteAvatarFilesIfLocal(session.userId);
     }
-    if (syncName && profile.name) {
+    const newName = syncName ? (profile.name ?? "").trim() : "";
+    if (newName) {
       sets.push(`name = $${sets.length + 1}`);
-      vals.push(profile.name);
+      vals.push(newName);
       updated.push("name");
     }
 
@@ -186,6 +188,7 @@ export const PATCH = withErrorHandling(async (request: Request) => {
         `UPDATE users SET ${sets.join(", ")}, updated_at = NOW() WHERE id = $${vals.length}`,
         vals,
       );
+      if (newName) noticeProfileNameChanged(session, newName);
     }
 
     return NextResponse.json({ success: true, updated });
