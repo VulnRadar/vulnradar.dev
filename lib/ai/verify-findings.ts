@@ -495,13 +495,16 @@ function askableFindings(findings: Vulnerability[]): Vulnerability[] {
 /**
  * Whether v3 POST /scan/verify-batch takes this findings[] element.
  *
- * v3 changes only by addition, so the route refuses only what used to take
- * the request down with a 500: an element the prompt builder cannot turn into
- * text, such as an id, title, category, severity or evidence that is an
- * object with a toString that is not a function, or one with no prototype to
- * convert with. Everything 3.9.1 took is still taken: a numeric, missing,
- * empty or long id, a primitive element, and a null element, which the pass
- * carries through untouched. The stricter id rule belongs to the v4 contract.
+ * v3 changes only by addition, so the route refuses one kind of element: one
+ * the prompt builder cannot turn into text, such as an id, title, category,
+ * severity, evidence or evidenceExcerpts that is an object with a toString
+ * that is not a function, or one with no prototype to convert with. Pricing
+ * builds the prompt before the gate, so such an element answered 500 there.
+ * 3.9.1 built it inside the call and handed the finding back unverified
+ * without saying why. Everything else 3.9.1 took is still taken: a numeric,
+ * missing, empty or long id, a primitive element, and a null element, which
+ * the pass carries through untouched. The stricter id rule belongs to the v4
+ * contract.
  */
 export function isAcceptedBatchElement(element: unknown): boolean {
   if (element === null) return true;

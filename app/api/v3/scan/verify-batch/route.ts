@@ -143,10 +143,11 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  // v3 changes only by addition, so this refuses only what used to answer
-  // 500: an element the prompt builder cannot turn into text. A numeric,
-  // missing, empty or long id, a primitive element and a null element are
-  // all still taken (see isAcceptedBatchElement).
+  // v3 changes only by addition, so this refuses only an element the prompt
+  // builder cannot turn into text, which pricing would otherwise answer with
+  // a 500 (3.9.1 handed it back unverified). A numeric, missing, empty or
+  // long id, a primitive element and a null element are all still taken
+  // (see isAcceptedBatchElement).
   const unreadable = findings.findIndex((f) => !isAcceptedBatchElement(f));
   if (unreadable !== -1) {
     return NextResponse.json(
