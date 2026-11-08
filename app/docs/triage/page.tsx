@@ -233,8 +233,10 @@ export default function TriageDocsPage() {
           title="Assignee, note, and due date"
         >
           <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-            Once a finding is anything other than Open, three optional fields
-            appear:
+            Once a finding is anything other than Open, the control offers{" "}
+            <strong className="text-foreground">Add details</strong>, or{" "}
+            <strong className="text-foreground">Edit details</strong> once
+            something is saved. It opens a dialog with three optional fields:
           </p>
           <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
             <li>
@@ -304,9 +306,12 @@ remediation key = (user_id, finding_id, finding_url)`}
             fresh scan can surface dozens. The findings list on your own scan
             has an opt-in <strong className="text-foreground">Select</strong>{" "}
             mode: the list stays clean (no checkboxes) until you turn it on, and
-            only then do row checkboxes and a sticky bulk bar appear. Pick a
-            status, optionally an assignee and a due date, and apply it to
-            everything you selected, up to 200 findings per request.
+            only then do row checkboxes and a sticky bulk bar appear. The bar
+            holds the count,{" "}
+            <strong className="text-foreground">Set status</strong> and Cancel.
+            Set status opens a dialog: pick a status, optionally an assignee and
+            a due date, and apply it to everything you selected, up to 200
+            findings per request.
           </p>
           <CodeBlock
             language="json"
@@ -326,7 +331,7 @@ remediation key = (user_id, finding_id, finding_url)`}
           >
             <p>
               Status is always applied. Assignee and due date are applied only
-              when you actually set them in the bar, so a bulk &quot;mark
+              when you actually set them in the dialog, so a bulk &quot;mark
               fixed&quot; does not wipe assignees or dates you set on individual
               findings. The per-finding note is never touched by a bulk action.
               Setting the bulk status to Open clears each selected row, exactly

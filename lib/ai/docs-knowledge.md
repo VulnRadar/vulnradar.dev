@@ -3056,7 +3056,7 @@ overwritten.
 
 > **WARNING: Bulk is deliberately conservative**
 > Status is always applied. Assignee and due date are applied only
-when you actually set them in the bar, so a bulk "mark
+when you actually set them in the dialog, so a bulk "mark
 fixed" does not wipe assignees or dates you set on individual
 findings. The per-finding note is never touched by a bulk action.
 Setting the bulk status to Open clears each selected row, exactly
@@ -3075,11 +3075,11 @@ bounded separately by the 20-open-tickets cap.
 - The HTTP endpoints below live under /api/v3/, the same base as the rest of the app. The support ticket UI lives on the Contact page under the Support Ticket option.
 - Open any finding on your own scan and you get a Your remediation tracking control: a status, and once the status leaves Open, a note, an assignee, and a due date. It is stored per finding, per user, and it is remembered the next time you scan the same target.
 - Five states, in the order they appear in the control. Open is the default and is never stored as a row; the other four persist.
-- Once a finding is anything other than Open, three optional fields appear:
+- Once a finding is anything other than Open, the control offers Add details, or Edit details once something is saved. It opens a dialog with three optional fields:
 - The control seeds from the status the server attached to the finding, then re-confirms against the API on open, so a change made in another tab or session shows up rather than being silently overwritten.
 - This is the part that makes tracking worth doing. A remediation row is keyed on the finding, not on the scan that surfaced it. The finding id is deterministic: the same check firing against the same URL always produces the same id, which is the same identity the compare, diff, and regression-alert features already rely on.
 - So a finding you marked fixed on Monday still reads fixed when you rescan the same host on Friday, even though that is a brand new scan row. The status is attached only on the owner's own result-load paths (scan status and history); the public /shared/[token] and /host/[hostname] views never read it, so your private tracking never leaks onto a link you share. If the underlying table has not been migrated yet, the read fails soft to an empty map and the result page still loads.
-- Setting one finding at a time is fine for a couple of them, but a fresh scan can surface dozens. The findings list on your own scan has an opt-in Select mode: the list stays clean (no checkboxes) until you turn it on, and only then do row checkboxes and a sticky bulk bar appear. Pick a status, optionally an assignee and a due date, and apply it to everything you selected, up to 200 findings per request.
+- Setting one finding at a time is fine for a couple of them, but a fresh scan can surface dozens. The findings list on your own scan has an opt-in Select mode: the list stays clean (no checkboxes) until you turn it on, and only then do row checkboxes and a sticky bulk bar appear. The bar holds the count, Set status and Cancel. Set status opens a dialog: pick a status, optionally an assignee and a due date, and apply it to everything you selected, up to 200 findings per request.
 
 ### Code examples
 ```json
