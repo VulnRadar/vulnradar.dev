@@ -25,8 +25,8 @@
  * cannot roll back or block any other user's already-committed fix.
  *
  * Before any UPDATE runs, every row about to be touched is written to a
- * timestamped JSON file under scripts/storage/2fa-repair-backups/
- * (already gitignored via the repo's existing "scripts/storage/" entry).
+ * timestamped JSON file under <BACKUP_DIR or ./backups>/2fa-repair/
+ * (./backups is gitignored).
  * The backup records the user id and which categories were found, never
  * the actual secret/hash values -- those are unrecoverable either way,
  * so persisting them would only create a second place for them to leak
@@ -92,7 +92,11 @@ const REQUIRED_USER_COLUMNS = [
  * @returns {string} the path written
  */
 export function defaultWriteBackupFile({ timestamp, adminId, entries }) {
-  const dir = resolve(ROOT, "scripts", "storage", "2fa-repair-backups");
+  // See defaultWriteBackupFile in db-repair.mjs for why not under scripts/.
+  const dir = resolve(
+    process.env.BACKUP_DIR || resolve(ROOT, "backups"),
+    "2fa-repair",
+  );
   mkdirSync(dir, { recursive: true });
   const iso = timestamp.toISOString().replace(/[:.]/g, "-");
   const file = resolve(dir, `2fa-repair-${iso}.json`);

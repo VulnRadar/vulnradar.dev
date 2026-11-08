@@ -6,7 +6,7 @@
  * Same safety model as scripts/maintenance/db-repair-2fa.mjs:
  *   - Dry run by default. Real writes require --apply --admin-id=<id>.
  *   - A JSON backup (fact-of-what-was-found, never raw secret/token
- *     values) is written under scripts/storage/db-repair-backups/
+ *     values) is written under <BACKUP_DIR or ./backups>/db-repair/
  *     before any UPDATE/DELETE runs.
  *   - Every real change is logged to admin_audit_log
  *     (action = "data_integrity_repair").
@@ -58,7 +58,14 @@ import {
 } from "../_lib/_lib.corruption-orchestrator.mjs";
 
 export function defaultWriteBackupFile({ timestamp, adminId, entries }) {
-  const dir = resolve(ROOT, "scripts", "storage", "db-repair-backups");
+  // BACKUP_DIR and not a folder under scripts/: the published image's code is
+  // root-owned, so its user could not create one there, and this directory is
+  // a volume in both compose files. A subfolder, because everything that lists
+  // BACKUP_DIR filters on the "vulnradar-backup-" prefix and leaves one alone.
+  const dir = resolve(
+    process.env.BACKUP_DIR || resolve(ROOT, "backups"),
+    "db-repair",
+  );
   mkdirSync(dir, { recursive: true });
   const iso = timestamp.toISOString().replace(/[:.]/g, "-");
   const file = resolve(dir, `db-repair-${iso}.json`);
