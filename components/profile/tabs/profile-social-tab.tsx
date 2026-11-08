@@ -443,7 +443,8 @@ function GithubRepoAccessSection({
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-xs text-muted-foreground">
             VulnRadar has read and write access to {status?.githubUsername}
-            &apos;s repos and only ever reads them.{" "}
+            &apos;s repos. Scans only read; the one write is an issue you ask it
+            to file.{" "}
             {repoCount > 0
               ? `${repoCount} repo${repoCount === 1 ? "" : "s"} in your working set.`
               : "No repos in your working set yet."}
@@ -476,7 +477,8 @@ function GithubRepoAccessSection({
             Finds hardcoded secrets, SQL/command injection, and other code-level
             issues an AI review can catch. This is separate from signing in
             above. GitHub only grants read and write access together for private
-            repos; VulnRadar only ever reads.
+            repos. Scans only read; the one write is an issue you ask it to
+            file.
           </p>
           <Button
             size="sm"
