@@ -232,7 +232,9 @@ export async function endBrowserSession(id: string): Promise<void> {
         body: JSON.stringify({ status: "REQUEST_RELEASE" }),
       },
     );
-    if (!res.ok) {
+    // 404 and 409 mean the session is gone or already ending: nothing is
+    // billing, so there is nothing for anyone to look into.
+    if (!res.ok && res.status !== 404 && res.status !== 409) {
       logError("browserbase", "session release was refused", undefined, {
         sessionId: id,
         status: res.status,

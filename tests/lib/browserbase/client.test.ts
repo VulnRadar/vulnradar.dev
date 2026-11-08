@@ -200,6 +200,19 @@ describe("endBrowserSession", () => {
     errSpy.mockRestore();
   });
 
+  it.each([404, 409])(
+    "treats a %i as already released and logs nothing",
+    async (status) => {
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      fetchMock.mockResolvedValue(jsonResponse({ message: "gone" }, status));
+
+      await expect(endBrowserSession("sess_done")).resolves.toBeUndefined();
+
+      expect(errSpy).not.toHaveBeenCalled();
+      errSpy.mockRestore();
+    },
+  );
+
   it("logs nothing for a release Browserbase accepted", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     fetchMock.mockResolvedValue(jsonResponse({ id: "sess_ok" }));
