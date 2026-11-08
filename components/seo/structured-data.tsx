@@ -288,11 +288,14 @@ export function TechArticleStructuredData({
   title,
   description,
   path,
+  dateModified,
   nonce,
 }: {
   title: string;
   description: string;
   path: string;
+  /** YYYY-MM-DD. Left out rather than guessed when a page has no real date. */
+  dateModified?: string;
   nonce?: string;
 }) {
   return (
@@ -304,6 +307,7 @@ export function TechArticleStructuredData({
         headline: title,
         description,
         url: `${APP_URL}${path}`,
+        ...(dateModified ? { dateModified } : {}),
         inLanguage: SEO_LANGUAGE,
         author: { "@id": ORGANIZATION_ID },
         publisher: { "@id": ORGANIZATION_ID },

@@ -3,7 +3,13 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { pageMetadata, clampText } from "@/lib/seo/metadata";
-import { buildCheckTitle, buildCheckDescription } from "@/lib/seo/check-meta";
+import {
+  buildCheckTitle,
+  buildCheckDescription,
+  isGeneratedFiller,
+} from "@/lib/seo/check-meta";
+import { getCheckSeeAlso } from "@/lib/seo/check-see-also";
+import { checkOgImagePath } from "@/app/_og/check-card";
 import {
   BreadcrumbStructuredData,
   TechArticleStructuredData,
@@ -20,12 +26,13 @@ import {
 import {
   getAllChecks,
   getCheckById,
-  getChecksInCategory,
+  getRelatedChecks,
   getCategoryLabel,
   getCategorySeo,
   type SeoCheck,
 } from "@/lib/seo/checks-content";
-import { APP_NAME } from "@/lib/config/constants";
+import { APP_NAME, ROUTES } from "@/lib/config/constants";
+import { CHECK_CATEGORY_LAST_MODIFIED } from "@/lib/config/check-stats.generated";
 
 // The root layout reads headers() for its CSP nonce, so the whole app already
 // renders per-request. generateStaticParams still declares the valid id space;
@@ -38,6 +45,10 @@ export function generateStaticParams() {
 
 function checkPath(id: string) {
   return `/checks/${id}`;
+}
+
+function isActiveProbe(check: SeoCheck) {
+  return check.category === "active-probes";
 }
 
 export async function generateMetadata({
@@ -64,7 +75,7 @@ export async function generateMetadata({
     // convention: pageMetadata always sets openGraph.images, and an explicit
     // value wins over the convention, so without this every check page would
     // keep unfurling with the site-wide marketing card.
-    image: `${checkPath(check.id)}/opengraph-image`,
+    image: checkOgImagePath(check),
     keywords: [
       `how to fix ${check.title.toLowerCase()}`,
       check.title.toLowerCase(),
@@ -86,11 +97,16 @@ function buildFaq(check: SeoCheck, label: string) {
   const items: { question: string; answer: string }[] = [
     {
       question: `How severe is ${check.title}?`,
-      answer: `${APP_NAME} rates this ${check.severity} severity in the ${label.toLowerCase()} category. The severity is fixed per check, not scored per site, so the same finding is the same severity on every scan.`,
+      answer: `${APP_NAME} rates this ${check.severity} severity in the ${label.toLowerCase()} category. The severity is fixed per check, not scored per site, so the same finding is the same severity every time it fires.`,
     },
     {
       question: `Does ${APP_NAME} check for this automatically?`,
-      answer: `Yes. It runs as part of every scan under the check id ${check.id}, which stays the same between runs so you can filter, diff, or gate CI on it.`,
+      // These submit real payloads, so the scan route refuses them without a
+      // verified domain. "Yes, on every scan" was wrong on exactly the pages
+      // people reach by searching for SQL injection and XSS.
+      answer: isActiveProbe(check)
+        ? `Only when active probing is switched on, and only for a domain you have verified you own. A standard scan does not submit these payloads. When it does run, the finding carries the check id ${check.id}, which stays the same between runs so you can filter, diff, or gate CI on it.`
+        : `Yes. It runs as part of every scan under the check id ${check.id}, which stays the same between runs so you can filter, diff, or gate CI on it.`,
     },
   ];
   if (check.cwe || check.owasp) {
@@ -127,9 +143,12 @@ export default async function CheckPage({
   const categoryPath = `/checks/category/${check.category}`;
   const faq = buildFaq(check, label);
 
-  const siblings = getChecksInCategory(check.category)
-    .filter((c) => c.id !== check.id)
-    .slice(0, 8);
+  const siblings = getRelatedChecks(check, 8);
+  const seeAlso = getCheckSeeAlso(check);
+  const mitreUrl = check.cwe ? cweUrl(check.cwe) : null;
+  // 284 checks also list the MITRE page among their references, and the row
+  // below prints it with a readable label.
+  const references = check.references.filter((ref) => ref !== mitreUrl);
 
   const breadcrumb = [
     { name: "Home", path: "/" },
@@ -144,6 +163,8 @@ export default async function CheckPage({
         title={`How to fix: ${check.title}`}
         description={clampText(check.description, 300)}
         path={checkPath(check.id)}
+        // The date the sitemap publishes for this page, so the two agree.
+        dateModified={CHECK_CATEGORY_LAST_MODIFIED[check.category]}
         nonce={nonce}
       />
       <BreadcrumbStructuredData items={breadcrumb} nonce={nonce} />
@@ -199,10 +220,12 @@ export default async function CheckPage({
           </p>
           {/* Not when it repeats a paragraph already shown: 117 checks have
               an explanation identical to their description, and printed it
-              twice, once at the top and again here. */}
+              twice, once at the top and again here. Nor when it is the
+              generated sentence, which says nothing about this check. */}
           {check.explanation &&
             check.explanation !== check.riskImpact &&
-            check.explanation !== check.description && (
+            check.explanation !== check.description &&
+            !isGeneratedFiller(check.explanation) && (
               <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
                 {check.explanation}
               </p>
@@ -270,7 +293,7 @@ export default async function CheckPage({
               References
             </h2>
             <ul className="space-y-2 text-sm">
-              {check.references.map((ref, i) => (
+              {references.map((ref, i) => (
                 <li
                   key={i}
                   // flow-root: a plain block parent lets the link's negative
@@ -291,10 +314,10 @@ export default async function CheckPage({
                   </a>
                 </li>
               ))}
-              {check.cwe && cweUrl(check.cwe) && (
+              {mitreUrl && (
                 <li className="flow-root">
                   <a
-                    href={cweUrl(check.cwe)!}
+                    href={mitreUrl}
                     target="_blank"
                     rel="noopener noreferrer nofollow"
                     className="-my-1.5 block rounded-sm py-1.5 text-primary hover:underline wrap-break-word focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
@@ -308,10 +331,88 @@ export default async function CheckPage({
         )}
 
         <p className="mt-10 text-sm text-muted-foreground">
-          Detected automatically by {APP_NAME}. The check id is{" "}
-          <InlineCode>{check.id}</InlineCode>, stable across every scan so you
-          can filter or diff on it.
+          {isActiveProbe(check) ? (
+            <>
+              Runs only when active probing is switched on, against a domain you
+              have verified on the{" "}
+              <Link
+                href={ROUTES.ATTACK_SURFACE}
+                // Inline box: the padding grows the target without moving a
+                // line of the sentence.
+                className="rounded-sm py-1.5 text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Attack surface
+              </Link>{" "}
+              page. The check id is <InlineCode>{check.id}</InlineCode>, the
+              same between runs so you can filter or diff on it.
+            </>
+          ) : (
+            <>
+              Detected automatically by {APP_NAME}. The check id is{" "}
+              <InlineCode>{check.id}</InlineCode>, stable across every scan so
+              you can filter or diff on it.
+            </>
+          )}
         </p>
+
+        {seeAlso.merged.length > 0 && (
+          <section className="mt-10 space-y-3" aria-labelledby="merged">
+            <h2
+              id="merged"
+              className="text-lg sm:text-xl font-semibold tracking-tight border-b border-border/50 pb-2"
+            >
+              Reported as one finding
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              These detect the same issue. When more than one fires on it, a
+              scan keeps one finding and lists the others under it, so you fix
+              it once.
+            </p>
+            <ul className="space-y-2 text-sm">
+              {seeAlso.merged.map((sibling) => (
+                <li key={sibling.id} className="flow-root">
+                  {sibling.check ? (
+                    <Link
+                      href={checkPath(sibling.id)}
+                      className="-my-1.5 block rounded-sm py-1.5 text-primary hover:underline wrap-break-word focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {sibling.check.title}
+                    </Link>
+                  ) : (
+                    <InlineCode>{sibling.id}</InlineCode>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {seeAlso.related.length > 0 && (
+          <section className="mt-10 space-y-3" aria-labelledby="separate">
+            <h2
+              id="separate"
+              className="text-lg sm:text-xl font-semibold tracking-tight border-b border-border/50 pb-2"
+            >
+              Related, reported separately
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Close to this check but a different problem, so a scan can report
+              both and each needs its own fix.
+            </p>
+            <ul className="space-y-2 text-sm">
+              {seeAlso.related.map((c) => (
+                <li key={c.id} className="flow-root">
+                  <Link
+                    href={checkPath(c.id)}
+                    className="-my-1.5 block rounded-sm py-1.5 text-primary hover:underline wrap-break-word focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {c.title}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {siblings.length > 0 && (
           <section className="mt-10 space-y-3" aria-labelledby="related">
@@ -368,10 +469,17 @@ export default async function CheckPage({
         <ContributeCheckCta className="mt-12" />
       </article>
 
-      <ScanCta
-        heading={`Scan your own site for ${check.title.toLowerCase()}`}
-        body={`${APP_NAME} runs this check and hundreds more against a URL in seconds. No agent to install, just paste a URL.`}
-      />
+      {isActiveProbe(check) ? (
+        <ScanCta
+          heading={`Test a domain you own for ${check.title.toLowerCase()}`}
+          body="Active probing is opt-in and only runs against a domain you have verified. Verify yours on the Attack surface page, then switch this probe on in the scan form."
+        />
+      ) : (
+        <ScanCta
+          heading={`Scan your own site for ${check.title.toLowerCase()}`}
+          body={`${APP_NAME} runs this check and hundreds more against a URL in seconds. No agent to install, just paste a URL.`}
+        />
+      )}
     </SeoPageShell>
   );
 }

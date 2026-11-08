@@ -23,6 +23,15 @@ import {
   type SeoCheck,
 } from "@/lib/seo/checks-content";
 
+// The templated sentence 51 code-category entries shipped as their explanation.
+// It names the check id back at the reader and describes every check the same
+// way, so a page is better with no paragraph here than with this one.
+const GENERATED_FILLER = /check verifies that the server does not expose/i;
+
+export function isGeneratedFiller(explanation: string): boolean {
+  return GENERATED_FILLER.test(explanation);
+}
+
 /** Titles minus " | VulnRadar" (12 chars) against the ~60-char display width. */
 const TITLE_BUDGET = 48;
 
