@@ -234,13 +234,14 @@ describe("ScanTags (components/history/scan-tags.tsx)", () => {
   const file = parse("components/history/scan-tags.tsx");
 
   it("lifts every control above the row's overlay", () => {
-    // Two remove buttons (auto and user tags), the add-tag button, and the
-    // wrapper around the open input. Each has to be positioned with a z-index
-    // or the URL button's ::after paints over it and swallows the click.
+    // Two remove buttons (auto and user tags) and the add-tag button. Each has
+    // to be positioned with a z-index or the URL button's ::after paints over
+    // it and swallows the click. The tag field is no longer in the row: it
+    // opens in a dialog, which renders in a portal above the overlay.
     const lifted = stringLiterals(file).filter((s) =>
       s.includes("relative z-10"),
     );
-    expect(lifted.length).toBeGreaterThanOrEqual(4);
+    expect(lifted.length).toBeGreaterThanOrEqual(3);
   });
 
   it("does not stop click propagation for a row that no longer has a click handler", () => {

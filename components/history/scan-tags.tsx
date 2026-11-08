@@ -5,6 +5,9 @@ import { Tag, Sparkles, Plus, X } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { tourAnchor } from "@/lib/tour/anchors";
 import { CONFIG_MAX_TAG_LENGTH } from "@/lib/config/config-values";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { EditDialog } from "@/components/shared/edit-dialog";
 import type { ScanTag, TagMutationResult } from "./history-types";
 
 /**
@@ -27,6 +30,48 @@ const MAX_CLIENT_TAG_LENGTH = 50;
  * promising a number as a hard rule.
  */
 const SERVER_TAG_LENGTH = CONFIG_MAX_TAG_LENGTH;
+
+export const TAG_INPUT_MAX_LENGTH = Math.min(
+  SERVER_TAG_LENGTH,
+  MAX_CLIENT_TAG_LENGTH,
+);
+
+/**
+ * The two checks that run before a tag is sent. Returns the trimmed tag, or
+ * the sentence the dialog shows instead of sending it.
+ */
+export function checkNewTag(
+  input: string,
+  tags: ScanTag[],
+): { ok: true; tag: string } | { ok: false; error: string } {
+  const trimmed = input.trim();
+  if (trimmed.length > SERVER_TAG_LENGTH) {
+    return {
+      ok: false,
+      error: `Tags are shortened to ${SERVER_TAG_LENGTH} characters when saved.`,
+    };
+  }
+  const userTagNames = new Set(
+    tags.filter((t) => t.source === "user").map((t) => t.tag.toLowerCase()),
+  );
+  if (userTagNames.has(trimmed.toLowerCase())) {
+    return { ok: false, error: "That tag is already on this scan." };
+  }
+  return { ok: true, tag: trimmed };
+}
+
+/** The add dialog's save: null when the tag stuck, otherwise the message to
+ *  show while the dialog stays open with the text in it. */
+export async function submitNewTag(
+  scanId: string | number,
+  input: string,
+  tags: ScanTag[],
+  onAdd: ScanTagsProps["onAdd"],
+): Promise<string | null> {
+  const checked = checkNewTag(input, tags);
+  if (!checked.ok) return checked.error;
+  return (await onAdd(scanId, checked.tag)) || null;
+}
 
 interface ScanTagsProps {
   // Opaque public_id (History list) or a numeric id (the dashboard's
@@ -74,57 +119,19 @@ export function ScanTags({
   className,
 }: ScanTagsProps) {
   const [adding, setAdding] = useState(false);
-  const [newTag, setNewTag] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  // a11y (SC 1.3.1 / 3.3.1): the tag-rejected message was tied to the input
-  // by nothing but sitting under it, so a screen-reader user typing an
-  // invalid tag got no announcement and no way to find out why nothing
-  // happened. aria-describedby links them and role="alert" announces it.
-  const errorId = useId();
-
-  const userTagNames = new Set(
-    tags.filter((t) => t.source === "user").map((t) => t.tag.toLowerCase()),
-  );
-
-  async function submitTag() {
-    if (pending) return;
-    const trimmed = newTag.trim();
-    if (!trimmed) {
-      setAdding(false);
-      setNewTag("");
-      return;
-    }
-    if (trimmed.length > SERVER_TAG_LENGTH) {
-      setError(
-        `Tags are shortened to ${SERVER_TAG_LENGTH} characters when saved.`,
-      );
-      return;
-    }
-    if (userTagNames.has(trimmed.toLowerCase())) {
-      setError("That tag is already on this scan.");
-      return;
-    }
-    setPending(true);
-    const failure = await onAdd(scanId, trimmed);
-    setPending(false);
-    if (failure) {
-      // Keep the input open with the text in it, same reasoning as the
-      // notes editor: a closed input reads as a saved tag.
-      setError(failure);
-      return;
-    }
-    setAdding(false);
-    setNewTag("");
-    setError(null);
-  }
 
   async function removeTag(tag: string) {
     if (pending) return;
     setPending(true);
+    setRemoveError(null);
     const failure = await onRemove(scanId, tag);
     setPending(false);
-    if (failure) setError(failure);
+    // Shown beside the chips. It used to be set into the add input's error
+    // slot, which only rendered while that input was open, so a failed
+    // remove said nothing at all.
+    if (failure) setRemoveError(failure);
   }
 
   return (
@@ -183,54 +190,7 @@ export function ScanTags({
         ),
       )}
 
-      {readOnly ? null : adding ? (
-        // relative z-10, like the buttons here: on the history list the row's
-        // URL button stretches an overlay over the whole row, and the input
-        // has to sit above it to be clickable at all.
-        <span className="relative z-10 inline-flex flex-col items-start gap-1">
-          <span className="inline-flex items-center gap-1">
-            <input
-              type="text"
-              aria-label="Tag name"
-              aria-invalid={!!error}
-              aria-describedby={error ? errorId : undefined}
-              value={newTag}
-              onChange={(e) => {
-                setNewTag(e.target.value);
-                if (error) setError(null);
-              }}
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  submitTag();
-                }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setAdding(false);
-                  setNewTag("");
-                  setError(null);
-                }
-              }}
-              onBlur={submitTag}
-              placeholder="tag"
-              maxLength={Math.min(SERVER_TAG_LENGTH, MAX_CLIENT_TAG_LENGTH)}
-              disabled={pending}
-              className="w-20 text-base sm:text-xs px-1.5 py-0.5 rounded-md border border-primary/30 bg-background text-foreground focus:outline-hidden focus:ring-2 focus:ring-ring disabled:opacity-60"
-              autoFocus
-            />
-          </span>
-          {error && (
-            <span
-              id={errorId}
-              role="alert"
-              className="text-[10px] text-destructive"
-            >
-              {error}
-            </span>
-          )}
-        </span>
-      ) : (
+      {!readOnly && (
         <button
           type="button"
           aria-label="Add tag"
@@ -249,9 +209,8 @@ export function ScanTags({
               "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto",
           )}
           onClick={() => {
+            setRemoveError(null);
             setAdding(true);
-            setNewTag("");
-            setError(null);
           }}
         >
           <Plus className="h-2.5 w-2.5" aria-hidden />
@@ -261,6 +220,77 @@ export function ScanTags({
           {!revealOnHover && "Add tag"}
         </button>
       )}
+
+      {removeError && (
+        <span role="alert" className="text-[10px] text-destructive">
+          {removeError}
+        </span>
+      )}
+
+      {/* Mounted only while open: every history row has its own ScanTags,
+          so a dialog kept closed in the tree would be one per row. It also
+          means each opening starts from an empty field. */}
+      {adding && !readOnly && (
+        <AddTagDialog
+          scanId={scanId}
+          tags={tags}
+          onAdd={onAdd}
+          onClose={() => setAdding(false)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * One field, saved by Enter or the Save button and by nothing else. The inline
+ * input this replaced also saved on blur, so clicking anywhere else on the row
+ * after a typo added the typo.
+ */
+export function AddTagDialog({
+  scanId,
+  tags,
+  onAdd,
+  onClose,
+}: {
+  scanId: string | number;
+  tags: ScanTag[];
+  onAdd: ScanTagsProps["onAdd"];
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const fieldId = useId();
+
+  return (
+    <EditDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title="Add a tag"
+      saveLabel="Add tag"
+      tier="compact"
+      size="sm"
+      dirty={draft.trim() !== ""}
+      canSave={draft.trim() !== ""}
+      onSave={() => submitNewTag(scanId, draft, tags, onAdd)}
+    >
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={fieldId}>Tag</Label>
+        <Input
+          id={fieldId}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          // A React portal still bubbles through the history row, so keys
+          // typed here would otherwise reach the page's shortcuts. Enter
+          // still submits: that is the form's default action, not a bubble.
+          onKeyDown={(e) => e.stopPropagation()}
+          maxLength={TAG_INPUT_MAX_LENGTH}
+          placeholder="e.g. staging"
+          autoComplete="off"
+          autoFocus
+        />
+      </div>
+    </EditDialog>
   );
 }
