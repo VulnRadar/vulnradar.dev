@@ -5,10 +5,9 @@
  * (365-day shipped default) with no durable copy kept anywhere -- the
  * platform's own compliance record of admin actions disappeared forever
  * the moment retention expired. This module adds a JSONB-blob archive
- * table plus a helper that copies the about-to-be-deleted rows into it
- * inside the SAME transaction as the DELETE, so archive-then-purge is
- * atomic: a purge can never run without its rows landing in the archive
- * first, and a mid-transaction failure rolls back both together.
+ * table plus a helper that deletes the expired rows and archives them in
+ * ONE statement, so a purge can never run without its rows landing in the
+ * archive, and a failure takes back both together.
  *
  * Table creation follows instrumentation.ts's CREATE TABLE IF NOT EXISTS
  * pattern but lives in this file rather than inline in instrumentation.ts;
@@ -19,22 +18,12 @@
  */
 import type { Pool, PoolClient } from "pg";
 
-export interface ArchivedAuditLogRow {
-  id: number;
-  admin_id: number;
-  target_user_id: number | null;
-  action: string;
-  details: string | null;
-  ip_address: string | null;
-  created_at: string;
-}
-
 /**
  * Idempotent CREATE TABLE IF NOT EXISTS for the archive table. Called once
  * per boot from instrumentation.ts's STAFF INVITES + ADMIN AUDIT LOG
- * ARCHIVE block, and from nowhere else: it used to also run from
- * archiveAdminAuditLogBeforePurge below, which put DDL inside the nightly
- * cleanup's long transaction on every pass (AUDIT-013 schema-02).
+ * ARCHIVE block, and from nowhere else: it used to also run on every cleanup
+ * pass, which put DDL inside the nightly cleanup's long transaction
+ * (AUDIT-013 schema-02).
  */
 export async function ensureAuditLogArchiveTable(
   executor: Pool | PoolClient,
@@ -53,41 +42,36 @@ export async function ensureAuditLogArchiveTable(
 }
 
 /**
- * Copy every admin_audit_log row older than `retentionDays` into
- * admin_audit_log_archive as a single JSONB-array batch, BEFORE the
- * caller runs its own DELETE against the same cutoff. Must be called with
- * the same transactional client the subsequent DELETE runs on (see
- * lib/database/cleanup.ts) -- within one transaction Postgres's NOW() is
- * stable for the whole transaction, so the SELECT here and the DELETE
- * that follows see the identical cutoff and therefore the identical row
- * set, with no race window between the two.
+ * Delete every admin_audit_log row older than `retentionDays` and write them
+ * to admin_audit_log_archive as a single JSONB-array batch.
  *
- * Returns the number of rows archived. Writes nothing when there are no
- * rows to archive -- an empty purge shouldn't leave an empty batch row
- * behind.
+ * The batch is built from the DELETE's own RETURNING rather than from a SELECT
+ * before it. With a SELECT, two overlapping passes (the timer and the admin's
+ * on-demand run) both read the same expired rows and both archived them, and
+ * the archive is what a compliance count gets taken from. A row can only be
+ * returned by the DELETE that actually removed it, so a second pass waits on
+ * the first one's row locks, finds nothing left, and writes no batch.
  *
- * No CREATE TABLE here: instrumentation.ts creates the table at boot, so
- * running the DDL again would only add a catalog write inside the cleanup
- * transaction on every pass (AUDIT-013 schema-02).
+ * Returns the number of rows purged and archived. HAVING is what keeps an
+ * empty purge from leaving an empty batch behind.
  */
-export async function archiveAdminAuditLogBeforePurge(
-  client: PoolClient,
+export async function purgeExpiredAdminAuditLog(
+  executor: Pool | PoolClient,
   retentionDays: number,
 ): Promise<number> {
-  const { rows } = await client.query<ArchivedAuditLogRow>(
-    `SELECT id, admin_id, target_user_id, action, details, ip_address, created_at
-     FROM admin_audit_log
-     WHERE created_at < NOW() - ($1 * INTERVAL '1 day')`,
+  const { rows } = await executor.query<{ row_count: number }>(
+    `WITH purged AS (
+       DELETE FROM admin_audit_log
+       WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')
+       RETURNING *
+     )
+     INSERT INTO admin_audit_log_archive (retention_days, row_count, rows)
+     SELECT $1::int, count(*), jsonb_agg(purged ORDER BY purged.id)
+     FROM purged
+     HAVING count(*) > 0
+     RETURNING row_count`,
     [retentionDays],
   );
 
-  if (rows.length === 0) return 0;
-
-  await client.query(
-    `INSERT INTO admin_audit_log_archive (retention_days, row_count, rows)
-     VALUES ($1, $2, $3)`,
-    [retentionDays, rows.length, JSON.stringify(rows)],
-  );
-
-  return rows.length;
+  return rows[0]?.row_count ?? 0;
 }

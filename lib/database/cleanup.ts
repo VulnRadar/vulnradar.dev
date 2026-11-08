@@ -5,7 +5,7 @@
 import pool from "@/lib/database/db";
 import { DB_CLEANUP_INTERVAL } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
-import { archiveAdminAuditLogBeforePurge } from "@/lib/database/audit-log-archive";
+import { purgeExpiredAdminAuditLog } from "@/lib/database/audit-log-archive";
 import { createFailureEscalator } from "@/lib/admin/failure-escalation";
 import { recordBrowserbaseSeconds } from "@/lib/billing/browserbase-usage";
 import { releaseConcurrencySlot } from "@/lib/browserbase/concurrency-queue";
@@ -37,6 +37,44 @@ const CLEANUP_INTERVAL_MS = DB_CLEANUP_INTERVAL;
  */
 const WEBHOOK_DELIVERIES_RETENTION_DAYS = 30;
 
+/**
+ * How old a rate_limits row has to be before the pass may delete it: the
+ * longest window any limiter can be configured to (DEMO_WINDOW_HOURS tops out
+ * at 168 hours; every RATE_LIMIT_*_WINDOW_MINUTES at 1440).
+ *
+ * A row is keyed by the START of its bucket, so a bucket is still counting
+ * until window_start + its own window. This was a flat 1 day, which wiped the
+ * count of any longer window part way through: a demo cap set to 72 hours
+ * really reset every 24. The rows that wait longer now are only those of keys
+ * nobody came back to, since checkRateLimit trims a returning key's old
+ * buckets itself.
+ */
+const RATE_LIMIT_PRUNE_AFTER_SECONDS = 7 * 24 * 60 * 60;
+
+/**
+ * The note lib/ai/verify-findings.ts writes on a feedback row it pre-filled
+ * from an AI verdict. Until those rows have a real source column this text is
+ * the only thing that tells them apart from a person's verdict, and the
+ * feedback prune has to, because they are kept (owner decision T2).
+ */
+const AI_FEEDBACK_NOTE = "Set automatically from an AI verify verdict.";
+
+/**
+ * The shortest browserbase_usage retention the setting can produce. The table
+ * is bucketed by calendar month and 62 days is the longest two months in a row
+ * can be, so a row this stale belongs to a period that ended at least a whole
+ * period ago.
+ */
+const BROWSERBASE_USAGE_MIN_RETENTION_DAYS = 62;
+
+/**
+ * Retention for processed_stripe_events, the replay guard on the Stripe
+ * webhook. Stripe stops retrying a delivery after three days and keeps an
+ * event retrievable for 30, so a marker older than that has nothing left to
+ * guard against.
+ */
+const PROCESSED_STRIPE_EVENTS_RETENTION_DAYS = 30;
+
 export interface CleanupStats {
   expiredSessions: number;
   oldApiUsage: number;
@@ -65,6 +103,9 @@ export interface CleanupStats {
   archivedAuditLogs: number;
   oldEmailLogs: number;
   oldWebhookDeliveries: number;
+  oldAiUsage: number;
+  oldBrowserbaseUsage: number;
+  oldStripeEvents: number;
 }
 
 /**
@@ -262,6 +303,9 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     archivedAuditLogs: 0,
     oldEmailLogs: 0,
     oldWebhookDeliveries: 0,
+    oldAiUsage: 0,
+    oldBrowserbaseUsage: 0,
+    oldStripeEvents: 0,
   };
 
   // Resolve the admin-configurable per-plan retention windows once up front.
@@ -288,6 +332,7 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     "CLEANUP_GITHUB_REVIEW_USAGE_RETENTION_DAYS",
     "CLEANUP_KEV_CACHE_RETENTION_DAYS",
     "SUBDOMAIN_CACHE_TTL_HOURS",
+    "AI_USAGE_WINDOW_HOURS",
   ] as const);
 
   const failures: { name: string; error: unknown }[] = [];
@@ -311,8 +356,8 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
   // blocked; and a failure on the last statement rolled back twenty-nine
   // prunes of unrelated tables that had nothing to do with it. None of this
   // work is transactionally coupled: these are independent retention prunes
-  // on unrelated tables. The one genuine exception is archive-then-purge on
-  // admin_audit_log, which keeps its own small transaction below.
+  // on unrelated tables. The one coupled pair, archive-then-purge on
+  // admin_audit_log, is a single statement.
   // ref: AUDIT-012#perf-22
 
   await runPrune("sessions", async () => {
@@ -390,10 +435,11 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
   // cached reputation row itself is never deleted or modified here. Do
   // not add a DELETE FROM host_reputation to this function.
   //
-  // Delete old rate limit records (> 1 day)
+  // Delete rate limit records no window can still be counting
   await runPrune("rate_limits", async () => {
     const res = await pool.query(
-      "DELETE FROM rate_limits WHERE window_start < NOW() - INTERVAL '1 day'",
+      "DELETE FROM rate_limits WHERE window_start < NOW() - ($1 * INTERVAL '1 second')",
+      [RATE_LIMIT_PRUNE_AFTER_SECONDS],
     );
     stats.oldRateLimits = res.rowCount || 0;
   });
@@ -503,42 +549,19 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     stats.expiredGiftedSubs = res.rowCount || 0;
   });
 
-  // AUDIT-010 admin-feature-gap: archive the rows this delete is about to
-  // remove permanently, before removing them. This is the ONE genuinely
-  // coupled pair in the whole pass, so it keeps a transaction of its own:
-  // within one transaction Postgres's NOW() is stable, so the archive
-  // SELECT and the DELETE below see the identical cutoff and therefore the
-  // identical row set, with no window in which a row is purged unarchived.
-  // Scoped to just these two statements rather than the whole cleanup, so
-  // it holds a connection and its locks for two statements, not thirty.
-  // ref: AUDIT-012#perf-22, lib/database/audit-log-archive.ts
+  // AUDIT-010 admin-feature-gap: admin_audit_log is the one table whose
+  // expired rows are copied somewhere before they go. One statement deletes
+  // them and writes the archive batch from what that delete returned, so a row
+  // cannot be purged unarchived, and two overlapping passes (the timer and the
+  // admin's on-demand run) cannot both archive it. See
+  // lib/database/audit-log-archive.ts.
   await runPrune("admin_audit_log", async () => {
-    const auditClient = await pool.connect();
-    try {
-      await auditClient.query("BEGIN");
-      const archived = await archiveAdminAuditLogBeforePurge(
-        auditClient,
-        cleanupRetention.CLEANUP_ADMIN_AUDIT_LOG_RETENTION_DAYS,
-      );
-      const auditLogsRes = await auditClient.query(
-        "DELETE FROM admin_audit_log WHERE created_at < NOW() - ($1 * INTERVAL '1 day')",
-        [cleanupRetention.CLEANUP_ADMIN_AUDIT_LOG_RETENTION_DAYS],
-      );
-      await auditClient.query("COMMIT");
-      // Only after the COMMIT. The stats of a failed pass are reported (see
-      // CleanupPassError), and a rolled-back pair archived and deleted nothing.
-      stats.archivedAuditLogs = archived;
-      stats.oldAuditLogs = auditLogsRes.rowCount || 0;
-    } catch (auditErr) {
-      try {
-        await auditClient.query("ROLLBACK");
-      } catch {
-        /* connection may be dead */
-      }
-      throw auditErr;
-    } finally {
-      auditClient.release();
-    }
+    const purged = await purgeExpiredAdminAuditLog(
+      pool,
+      cleanupRetention.CLEANUP_ADMIN_AUDIT_LOG_RETENTION_DAYS,
+    );
+    stats.archivedAuditLogs = purged;
+    stats.oldAuditLogs = purged;
   });
 
   // Delete old admin user notes (admin-configurable retention)
@@ -611,11 +634,23 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
 
   // scan_finding_feedback: admin-configurable retention, defaulting to
   // the same general account-data window used elsewhere in this function
-  // (api_usage, ai_conversations).
+  // (api_usage, ai_conversations). Two kinds of row never age out here. A
+  // user's false_positive verdict is a standing instruction rather than
+  // telemetry: every read of it (getFalsePositiveIds, the regression alert,
+  // the posture digest) is what hides that finding, so pruning it at 90 days
+  // brought findings back that the user had already dismissed. And rows the
+  // AI verifier set are kept outright (owner decision T2). Both go with the
+  // account when it is deleted.
   await runPrune("scan_finding_feedback", async () => {
     const res = await pool.query(
-      "DELETE FROM scan_finding_feedback WHERE created_at < NOW() - ($1 * INTERVAL '1 day')",
-      [cleanupRetention.CLEANUP_SCAN_FINDING_FEEDBACK_RETENTION_DAYS],
+      `DELETE FROM scan_finding_feedback
+       WHERE created_at < NOW() - ($1 * INTERVAL '1 day')
+         AND (user_id IS NULL OR verdict <> 'false_positive')
+         AND notes IS DISTINCT FROM $2`,
+      [
+        cleanupRetention.CLEANUP_SCAN_FINDING_FEEDBACK_RETENTION_DAYS,
+        AI_FEEDBACK_NOTE,
+      ],
     );
     stats.oldScanFindingFeedback = res.rowCount || 0;
   });
@@ -643,6 +678,37 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
       [cleanupRetention.CLEANUP_GITHUB_REVIEW_USAGE_RETENTION_DAYS],
     );
     stats.oldGithubReviewUsage = res.rowCount || 0;
+  });
+
+  // ai_usage and browserbase_usage are the same per-user counter as
+  // github_review_usage above and had no prune at all, so they share its
+  // setting. The setting can be as low as 1 day, so each prune also holds a
+  // floor that keeps the live window and the one before it: a row can only be
+  // this stale if its window ended at least a full window ago.
+  await runPrune("ai_usage", async () => {
+    const res = await pool.query(
+      "DELETE FROM ai_usage WHERE updated_at < NOW() - ($1 * INTERVAL '1 day')",
+      [
+        Math.max(
+          cleanupRetention.CLEANUP_GITHUB_REVIEW_USAGE_RETENTION_DAYS,
+          Math.ceil((cleanupRetention.AI_USAGE_WINDOW_HOURS * 2) / 24),
+        ),
+      ],
+    );
+    stats.oldAiUsage = res.rowCount || 0;
+  });
+
+  await runPrune("browserbase_usage", async () => {
+    const res = await pool.query(
+      "DELETE FROM browserbase_usage WHERE updated_at < NOW() - ($1 * INTERVAL '1 day')",
+      [
+        Math.max(
+          cleanupRetention.CLEANUP_GITHUB_REVIEW_USAGE_RETENTION_DAYS,
+          BROWSERBASE_USAGE_MIN_RETENTION_DAYS,
+        ),
+      ],
+    );
+    stats.oldBrowserbaseUsage = res.rowCount || 0;
   });
 
   // browser_sessions: ownership mapping for the live-browser scan
@@ -710,6 +776,14 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
       [cleanupRetention.CLEANUP_EMAIL_LOG_RETENTION_DAYS],
     );
     stats.oldEmailLogs = res.rowCount || 0;
+  });
+
+  await runPrune("processed_stripe_events", async () => {
+    const res = await pool.query(
+      "DELETE FROM processed_stripe_events WHERE processed_at < NOW() - ($1 * INTERVAL '1 day')",
+      [PROCESSED_STRIPE_EVENTS_RETENTION_DAYS],
+    );
+    stats.oldStripeEvents = res.rowCount || 0;
   });
 
   // webhook_deliveries: one row per outbound delivery attempt, written by
@@ -799,6 +873,11 @@ export function formatCleanupStats(stats: CleanupStats): string {
   if (stats.oldEmailLogs > 0) items.push(`${stats.oldEmailLogs} email logs`);
   if (stats.oldWebhookDeliveries > 0)
     items.push(`${stats.oldWebhookDeliveries} webhook deliveries`);
+  if (stats.oldAiUsage > 0) items.push(`${stats.oldAiUsage} AI usage rows`);
+  if (stats.oldBrowserbaseUsage > 0)
+    items.push(`${stats.oldBrowserbaseUsage} browser usage rows`);
+  if (stats.oldStripeEvents > 0)
+    items.push(`${stats.oldStripeEvents} Stripe event markers`);
   if (archivedAuditLogs > 0)
     items.push(`${archivedAuditLogs} audit logs archived`);
 

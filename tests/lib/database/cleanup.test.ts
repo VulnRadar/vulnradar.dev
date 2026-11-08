@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 /**
  * Tests for lib/database/cleanup.ts: the periodic cleanup job.
@@ -7,9 +9,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
  * `query`, inspecting the SQL text and returning a scripted rowCount -- the
  * same "mock at the database boundary" pattern the rest of this suite uses.
  * Both are routed through it because the pass now runs each retention prune
- * autocommitted on the pool and reserves a client transaction only for the
- * archive-then-purge pair on admin_audit_log (AUDIT-012#perf-22), so an
- * assertion about a prune must not care which of the two issued it.
+ * autocommitted on the pool (AUDIT-012#perf-22), and an assertion about a
+ * prune must not care which of the two issued it.
  *
  * The headline case here is a regression test for a real bug fixed this
  * session: schedulePeriodicCleanup(intervalMs) used to silently ignore its
@@ -23,12 +24,10 @@ let calls: Call[] = [];
 let releaseSpy = vi.fn();
 let badgeLookupRows: { id: number }[] = [];
 let queryFailureFor: string | null = null;
-let rollbackShouldFail = false;
-// Rows the archive-before-purge SELECT (lib/database/audit-log-archive.ts)
-// returns -- distinct from the DELETE FROM admin_audit_log rowCount mock
-// above, since the two are separately-scripted queries in this fake
-// client. Empty by default so existing tests below are unaffected.
-let auditArchiveSelectRows: Record<string, unknown>[] = [];
+// How many rows the archive-and-purge statement
+// (lib/database/audit-log-archive.ts) reports. Zero means the statement's
+// HAVING dropped the INSERT, so it returns no row at all.
+let auditPurgedRows = 1;
 // Rows the browser_sessions DELETE ... RETURNING returns -- distinct from
 // its rowCount above (kept at a fixed 4 for the existing stats-aggregation
 // test), used by the plan-usage true-up tests below.
@@ -79,11 +78,6 @@ async function scriptedQuery(sql: string, params?: unknown[]) {
   if (failWhen?.(s)) {
     throw new Error(`simulated failure for: ${s.slice(0, 60)}`);
   }
-  if (s === "ROLLBACK" && rollbackShouldFail) {
-    throw new Error("connection already closed");
-  }
-  if (s === "BEGIN" || s === "COMMIT" || s === "ROLLBACK") return { rows: [] };
-  if (s.startsWith("SET TRANSACTION ISOLATION LEVEL")) return { rows: [] };
 
   if (s.startsWith("DELETE FROM sessions WHERE expires_at"))
     return { rowCount: 3, rows: [] };
@@ -119,8 +113,10 @@ async function scriptedQuery(sql: string, params?: unknown[]) {
   if (s.startsWith("DELETE FROM user_badges")) return { rowCount: 2, rows: [] };
   if (s.startsWith("DELETE FROM gifted_subscriptions"))
     return { rowCount: 1, rows: [] };
-  if (s.startsWith("DELETE FROM admin_audit_log"))
-    return { rowCount: 1, rows: [] };
+  if (s.startsWith("WITH purged AS"))
+    return {
+      rows: auditPurgedRows > 0 ? [{ row_count: auditPurgedRows }] : [],
+    };
   if (s.startsWith("DELETE FROM admin_user_notes"))
     return { rowCount: 1, rows: [] };
   if (s.startsWith("DELETE FROM staff_activity"))
@@ -138,6 +134,11 @@ async function scriptedQuery(sql: string, params?: unknown[]) {
     return { rowCount: 9, rows: [] };
   if (s.startsWith("DELETE FROM github_review_usage"))
     return { rowCount: 2, rows: [] };
+  if (s.startsWith("DELETE FROM ai_usage")) return { rowCount: 12, rows: [] };
+  if (s.startsWith("DELETE FROM browserbase_usage"))
+    return { rowCount: 13, rows: [] };
+  if (s.startsWith("DELETE FROM processed_stripe_events"))
+    return { rowCount: 14, rows: [] };
   if (s.startsWith("DELETE FROM browser_sessions")) {
     events.push("delete browser_sessions");
     return { rowCount: 4, rows: expiredBrowserSessionRows };
@@ -150,18 +151,14 @@ async function scriptedQuery(sql: string, params?: unknown[]) {
     return { rowCount: 5, rows: [] };
   if (s.startsWith("DELETE FROM webhook_deliveries"))
     return { rowCount: 11, rows: [] };
-  if (s.startsWith("CREATE TABLE IF NOT EXISTS admin_audit_log_archive"))
-    return { rows: [] };
-  if (s.startsWith("SELECT id, admin_id, target_user_id"))
-    return { rows: auditArchiveSelectRows };
-  if (s.startsWith("INSERT INTO admin_audit_log_archive"))
-    return { rowCount: 1, rows: [] };
 
   return { rows: [] };
 }
 
 const clientQuery = vi.fn(scriptedQuery);
 
+// Nothing in the pass should take a client any more; every assertion that
+// says so reads this mock.
 const mockConnect = vi.fn(async () => ({
   query: clientQuery,
   release: releaseSpy,
@@ -169,7 +166,7 @@ const mockConnect = vi.fn(async () => ({
 
 // performDatabaseCleanup now also resolves the four BILLING_*_RETENTION
 // settings up front via lib/config/runtime-config's getSettings(), which
-// calls pool.query() directly (not through the transaction client above).
+// calls pool.query() directly.
 // Default is empty rows, i.e. every plan resolves to its shipped default --
 // -1 (keep forever) on all four plans, so no scan_history delete fires
 // unless a test explicitly overrides one via retentionSettingsRows.
@@ -212,15 +209,15 @@ const {
 } = await import("@/lib/database/cleanup");
 const { DB_CLEANUP_INTERVAL } = await import("@/lib/config/constants");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
+const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
 
 beforeEach(() => {
   calls = [];
   releaseSpy = vi.fn();
   badgeLookupRows = [];
   queryFailureFor = null;
-  rollbackShouldFail = false;
   retentionSettingsRows = [];
-  auditArchiveSelectRows = [];
+  auditPurgedRows = 1;
   expiredBrowserSessionRows = [];
   failWhen = null;
   scanDeleteCounts = {};
@@ -247,40 +244,25 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** How many passes have started: each one opens with the sessions prune. */
+function passesRun(): number {
+  return calls.filter((c) => c.sql.startsWith("DELETE FROM sessions")).length;
+}
+
 describe("performDatabaseCleanup", () => {
   // ref: AUDIT-012#perf-22. The pass used to wrap all thirty DELETEs in one
   // BEGIN/COMMIT on a single pooled client, holding one of the ten pool
   // connections and every deleted row's lock for the whole run, and undoing
   // twenty-nine unrelated prunes if the last one failed. It is now one
-  // autocommitted statement per table, with a transaction reserved for the
-  // single genuinely coupled pair.
+  // autocommitted statement per table.
   it("runs the retention prunes autocommitted, not inside one long transaction", async () => {
     await performDatabaseCleanup();
     expect(calls[0].sql).toBe("DELETE FROM sessions WHERE expires_at < NOW()");
     expect(calls[calls.length - 1].sql).toContain(
       "DELETE FROM webhook_deliveries",
     );
-    // Exactly one transaction, and it is the archive-then-purge pair.
-    const begins = calls.filter((c) => c.sql === "BEGIN");
-    expect(begins).toHaveLength(1);
-    expect(calls.filter((c) => c.sql === "COMMIT")).toHaveLength(1);
-    expect(mockConnect).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps archive-then-purge on admin_audit_log inside one transaction", async () => {
-    await performDatabaseCleanup();
-    const beginAt = calls.findIndex((c) => c.sql === "BEGIN");
-    const commitAt = calls.findIndex((c) => c.sql === "COMMIT");
-    const purgeAt = calls.findIndex((c) =>
-      c.sql.startsWith("DELETE FROM admin_audit_log WHERE"),
-    );
-    const archiveAt = calls.findIndex((c) =>
-      c.sql.startsWith("SELECT id, admin_id, target_user_id"),
-    );
-    expect(beginAt).toBeGreaterThanOrEqual(0);
-    expect(archiveAt).toBeGreaterThan(beginAt);
-    expect(purgeAt).toBeGreaterThan(archiveAt);
-    expect(commitAt).toBeGreaterThan(purgeAt);
+    expect(calls.some((c) => c.sql === "BEGIN")).toBe(false);
+    expect(mockConnect).not.toHaveBeenCalled();
   });
 
   it("aggregates rowCounts from every delete into the returned stats", async () => {
@@ -310,75 +292,128 @@ describe("performDatabaseCleanup", () => {
     expect(stats.oldBrowserSessions).toBe(4);
     expect(stats.oldKevCache).toBe(1);
     expect(stats.oldErrorLogs).toBe(5);
-    // auditArchiveSelectRows is empty by default (see mockPoolQuery-style
-    // helper above) -- the archive SELECT and the DELETE's mocked
-    // rowCount(1) are independently scripted queries in this fake client.
-    expect(stats.archivedAuditLogs).toBe(0);
+    expect(stats.archivedAuditLogs).toBe(1);
+    expect(stats.oldAiUsage).toBe(12);
+    expect(stats.oldBrowserbaseUsage).toBe(13);
+    expect(stats.oldStripeEvents).toBe(14);
   });
 
-  it("archives every about-to-be-purged admin_audit_log row into admin_audit_log_archive BEFORE deleting them, in the same transaction", async () => {
-    auditArchiveSelectRows = [
-      {
-        id: 1,
-        admin_id: 7,
-        target_user_id: null,
-        action: "reset_password",
-        details: null,
-        ip_address: "127.0.0.1",
-        created_at: "2025-01-01T00:00:00Z",
-      },
-      {
-        id: 2,
-        admin_id: 7,
-        target_user_id: 3,
-        action: "set_role",
-        details: "role changed",
-        ip_address: "127.0.0.1",
-        created_at: "2025-01-02T00:00:00Z",
-      },
-    ];
-
+  // bug-db-7: the archive was a SELECT followed by an INSERT and a DELETE, so
+  // two overlapping passes read the same expired rows and archived them twice.
+  // That the rows are really archived once is proved against Postgres in
+  // tests/integration/cleanup-retention.test.ts; this pins the shape.
+  it("purges and archives admin_audit_log in one statement, on the retention setting", async () => {
+    auditPurgedRows = 2;
     const stats = await performDatabaseCleanup();
 
+    const statements = calls.filter((c) => c.sql.includes("admin_audit_log"));
+    expect(statements).toHaveLength(1);
+    expect(statements[0].sql).toMatch(/^WITH purged AS/);
+    expect(statements[0].params).toEqual([365]);
+
     expect(stats.archivedAuditLogs).toBe(2);
-
-    const selectIdx = calls.findIndex((c) =>
-      c.sql.startsWith("SELECT id, admin_id, target_user_id"),
-    );
-    const insertIdx = calls.findIndex((c) =>
-      c.sql.startsWith("INSERT INTO admin_audit_log_archive"),
-    );
-    const deleteIdx = calls.findIndex((c) =>
-      c.sql.startsWith("DELETE FROM admin_audit_log"),
-    );
-
-    // Select-to-archive, then the archive insert, both strictly before the
-    // DELETE that actually purges the rows. No CREATE TABLE anywhere in the
-    // transaction: instrumentation.ts creates the archive table at boot, so
-    // the cleanup pass no longer runs DDL inside its own long transaction
-    // (AUDIT-013#schema-02).
-    expect(calls.some((c) => c.sql.includes("CREATE TABLE"))).toBe(false);
-    expect(selectIdx).toBeGreaterThanOrEqual(0);
-    expect(insertIdx).toBeGreaterThan(selectIdx);
-    expect(deleteIdx).toBeGreaterThan(insertIdx);
-
-    expect(calls[selectIdx].params).toEqual([365]);
-    const insertParams = calls[insertIdx].params as unknown[];
-    expect(insertParams[0]).toBe(365); // retention_days
-    expect(insertParams[1]).toBe(2); // row_count
-    expect(JSON.parse(insertParams[2] as string)).toEqual(
-      auditArchiveSelectRows,
-    );
+    expect(stats.oldAuditLogs).toBe(2);
   });
 
-  it("writes no archive batch when there is nothing to archive", async () => {
-    auditArchiveSelectRows = [];
+  it("reports nothing purged when there was nothing to archive", async () => {
+    auditPurgedRows = 0;
+    const stats = await performDatabaseCleanup();
+    expect(stats.archivedAuditLogs).toBe(0);
+    expect(stats.oldAuditLogs).toBe(0);
+  });
+
+  it("keeps a user's false_positive verdict and every AI-set row out of the feedback prune", async () => {
+    // bug-db-2: this DELETE had no verdict filter, so after 90 days a finding
+    // the user had dismissed came back. Which rows the predicate really keeps
+    // is tests/integration/cleanup-retention.test.ts's job.
+    await performDatabaseCleanup();
+    const prune = calls.find((c) =>
+      c.sql.startsWith("DELETE FROM scan_finding_feedback"),
+    );
+    expect(prune?.sql).toContain(
+      "AND (user_id IS NULL OR verdict <> 'false_positive')",
+    );
+    expect(prune?.sql).toContain("AND notes IS DISTINCT FROM $2");
+    expect(prune?.params?.[0]).toBe(90);
+  });
+
+  it("recognises AI-set feedback by the exact note the verifier writes", async () => {
+    await performDatabaseCleanup();
+    const prune = calls.find((c) =>
+      c.sql.startsWith("DELETE FROM scan_finding_feedback"),
+    );
+    const verifier = readFileSync(
+      path.resolve(process.cwd(), "lib/ai/verify-findings.ts"),
+      "utf8",
+    );
+    expect(prune?.params?.[1]).toEqual(expect.any(String));
+    expect(verifier).toContain(`'${String(prune?.params?.[1])}'`);
+  });
+
+  it("keeps a rate_limits row for the longest window any limiter can be set to", async () => {
+    // bug-db-4: a flat 1 day wiped the count of any window longer than that.
+    // Raising a window's maximum in the registry without raising this bound
+    // brings that bug back, so the two are held equal here.
+    const windowMaximaInSeconds = Object.entries(SETTINGS_REGISTRY).flatMap(
+      ([key, def]) => {
+        const max = "max" in def ? Number(def.max) : 0;
+        if (/^RATE_LIMIT_\w+_WINDOW_MINUTES$/.test(key)) return [max * 60];
+        if (key === "DEMO_WINDOW_HOURS") return [max * 3600];
+        return [];
+      },
+    );
+    expect(windowMaximaInSeconds.length).toBeGreaterThan(1);
+
+    await performDatabaseCleanup();
+    const prune = calls.find((c) =>
+      c.sql.startsWith("DELETE FROM rate_limits"),
+    );
+    expect(prune?.sql).toContain("window_start < NOW()");
+    expect(prune?.params).toEqual([Math.max(...windowMaximaInSeconds)]);
+  });
+
+  it("prunes ai_usage and browserbase_usage by updated_at on the usage retention setting", async () => {
+    retentionSettingsRows = [
+      { key: "CLEANUP_GITHUB_REVIEW_USAGE_RETENTION_DAYS", value: "100" },
+    ];
+    await performDatabaseCleanup();
+    for (const table of ["ai_usage", "browserbase_usage"]) {
+      const prune = calls.find((c) => c.sql.startsWith(`DELETE FROM ${table}`));
+      expect(prune?.sql).toContain("WHERE updated_at < NOW()");
+      expect(prune?.params).toEqual([100]);
+    }
+  });
+
+  it("never lets the usage retention setting reach the live window or the one before it", async () => {
+    retentionSettingsRows = [
+      { key: "CLEANUP_GITHUB_REVIEW_USAGE_RETENTION_DAYS", value: "1" },
+      { key: "AI_USAGE_WINDOW_HOURS", value: "168" },
+    ];
+    await performDatabaseCleanup();
+    const paramsFor = (table: string) =>
+      calls.find((c) => c.sql.startsWith(`DELETE FROM ${table}`))?.params;
+    expect(paramsFor("ai_usage")).toEqual([14]);
+    expect(paramsFor("browserbase_usage")).toEqual([62]);
+  });
+
+  it("rounds the ai_usage floor up, so a short window still keeps two whole windows", async () => {
+    retentionSettingsRows = [
+      { key: "CLEANUP_GITHUB_REVIEW_USAGE_RETENTION_DAYS", value: "1" },
+      { key: "AI_USAGE_WINDOW_HOURS", value: "13" },
+    ];
     await performDatabaseCleanup();
     expect(
-      calls.some((c) =>
-        c.sql.startsWith("INSERT INTO admin_audit_log_archive"),
-      ),
-    ).toBe(false);
+      calls.find((c) => c.sql.startsWith("DELETE FROM ai_usage"))?.params,
+    ).toEqual([2]);
+  });
+
+  it("prunes processed_stripe_events after 30 days, on the indexed column", async () => {
+    await performDatabaseCleanup();
+    const prune = calls.find((c) =>
+      c.sql.startsWith("DELETE FROM processed_stripe_events"),
+    );
+    expect(prune?.sql).toContain("WHERE processed_at < NOW()");
+    expect(prune?.params).toEqual([30]);
   });
 
   it("deletes a browser session by its own expires_at, with a created_at fallback for one that never got an expiry", async () => {
@@ -514,11 +549,6 @@ describe("performDatabaseCleanup", () => {
       c.sql.startsWith("DELETE FROM ai_conversations"),
     );
     expect(aiConversations?.params).toEqual([30]);
-  });
-
-  it("releases the audit-transaction client even on the happy path", async () => {
-    await performDatabaseCleanup();
-    expect(releaseSpy).toHaveBeenCalledTimes(1);
   });
 
   it("issues no scan_history delete at all on the shipped defaults -- every plan is -1 (forever)", async () => {
@@ -668,9 +698,9 @@ describe("performDatabaseCleanup", () => {
       true,
     );
     expect(calls.some((c) => c.sql === "ROLLBACK")).toBe(false);
-    // And the prunes after it were reached: the audit pair in the middle of the
-    // pass, and the last prune of all.
-    expect(calls.some((c) => c.sql === "COMMIT")).toBe(true);
+    // And the prunes after it were reached: the audit statement in the middle
+    // of the pass, and the last prune of all.
+    expect(calls.some((c) => c.sql.startsWith("WITH purged AS"))).toBe(true);
     expect(calls[calls.length - 1].sql).toContain(
       "DELETE FROM webhook_deliveries",
     );
@@ -777,43 +807,10 @@ describe("performDatabaseCleanup", () => {
     errSpy.mockRestore();
   });
 
-  it("rolls the audit archive+purge pair back together when the purge fails", async () => {
+  it("reports nothing archived or purged when the archive statement fails", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    queryFailureFor = "DELETE FROM admin_audit_log WHERE";
-    await expect(performDatabaseCleanup()).rejects.toThrow(/simulated failure/);
-    expect(calls.some((c) => c.sql === "BEGIN")).toBe(true);
-    expect(calls.some((c) => c.sql === "ROLLBACK")).toBe(true);
-    expect(calls.some((c) => c.sql === "COMMIT")).toBe(false);
-    expect(releaseSpy).toHaveBeenCalledTimes(1);
-    errSpy.mockRestore();
-  });
-
-  it("reports nothing archived or purged for an audit pair that rolled back", async () => {
-    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    // The archive step read and wrote two rows before the DELETE failed, and
-    // the rollback took both back. The stats of a failed pass are reported to
-    // the caller, so they must not claim rows that are still there.
-    auditArchiveSelectRows = [
-      {
-        id: 1,
-        admin_id: 7,
-        target_user_id: null,
-        action: "reset_password",
-        details: null,
-        ip_address: "127.0.0.1",
-        created_at: "2025-01-01T00:00:00Z",
-      },
-      {
-        id: 2,
-        admin_id: 7,
-        target_user_id: 3,
-        action: "set_role",
-        details: "role changed",
-        ip_address: "127.0.0.1",
-        created_at: "2025-01-02T00:00:00Z",
-      },
-    ];
-    queryFailureFor = "DELETE FROM admin_audit_log WHERE";
+    auditPurgedRows = 2;
+    queryFailureFor = "WITH purged AS";
     const outcome = await performDatabaseCleanup().then(
       () => null,
       (error: unknown) => error,
@@ -822,17 +819,8 @@ describe("performDatabaseCleanup", () => {
     const { stats } = outcome as InstanceType<typeof CleanupPassError>;
     expect(stats.archivedAuditLogs).toBe(0);
     expect(stats.oldAuditLogs).toBe(0);
-    errSpy.mockRestore();
-  });
-
-  it("still rethrows the original error even if the audit ROLLBACK itself fails on a dead connection", async () => {
-    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    queryFailureFor = "DELETE FROM admin_audit_log WHERE";
-    rollbackShouldFail = true;
-    await expect(performDatabaseCleanup()).rejects.toThrow(
-      /simulated failure for: DELETE FROM admin_audit_log WHERE/,
-    );
-    expect(releaseSpy).toHaveBeenCalledTimes(1);
+    // It is one prune among many: the rest of the pass still ran.
+    expect(stats.oldAdminNotes).toBe(1);
     errSpy.mockRestore();
   });
 });
@@ -862,7 +850,7 @@ describe("plan-scoped scan_history retention", () => {
     for (const call of scanDeleteCalls()) {
       expect(call.params).toEqual([30, BATCH]);
     }
-    expect(calls.filter((c) => c.sql === "BEGIN")).toHaveLength(1); // audit pair only
+    expect(calls.some((c) => c.sql === "BEGIN")).toBe(false);
   });
 
   it("asks once more after an exactly full batch, and stops when that comes back empty", async () => {
@@ -975,6 +963,9 @@ describe("formatCleanupStats", () => {
       archivedAuditLogs: 0,
       oldEmailLogs: 0,
       oldWebhookDeliveries: 0,
+      oldAiUsage: 0,
+      oldBrowserbaseUsage: 0,
+      oldStripeEvents: 0,
     };
     expect(formatCleanupStats(zeroStats)).toBe("no records to clean");
   });
@@ -1008,6 +999,9 @@ describe("formatCleanupStats", () => {
       archivedAuditLogs: 0,
       oldEmailLogs: 0,
       oldWebhookDeliveries: 0,
+      oldAiUsage: 0,
+      oldBrowserbaseUsage: 0,
+      oldStripeEvents: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("5 total");
@@ -1045,6 +1039,9 @@ describe("formatCleanupStats", () => {
       archivedAuditLogs: 0,
       oldEmailLogs: 0,
       oldWebhookDeliveries: 0,
+      oldAiUsage: 0,
+      oldBrowserbaseUsage: 0,
+      oldStripeEvents: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("4 total");
@@ -1080,6 +1077,9 @@ describe("formatCleanupStats", () => {
       archivedAuditLogs: 0,
       oldEmailLogs: 0,
       oldWebhookDeliveries: 0,
+      oldAiUsage: 0,
+      oldBrowserbaseUsage: 0,
+      oldStripeEvents: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("12 total");
@@ -1115,6 +1115,9 @@ describe("formatCleanupStats", () => {
       archivedAuditLogs: 6,
       oldEmailLogs: 0,
       oldWebhookDeliveries: 0,
+      oldAiUsage: 0,
+      oldBrowserbaseUsage: 0,
+      oldStripeEvents: 0,
     };
     const summary = formatCleanupStats(stats);
     // Same 6 rows counted once via oldAuditLogs -- archivedAuditLogs
@@ -1153,6 +1156,9 @@ describe("formatCleanupStats", () => {
       archivedAuditLogs: 0,
       oldEmailLogs: 0,
       oldWebhookDeliveries: 0,
+      oldAiUsage: 0,
+      oldBrowserbaseUsage: 0,
+      oldStripeEvents: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("23 total");
@@ -1161,6 +1167,45 @@ describe("formatCleanupStats", () => {
     expect(summary).toContain("2 GitHub review usage rows");
     expect(summary).toContain("4 browser sessions");
     expect(summary).toContain("1 KEV cache rows");
+  });
+
+  it("counts and names the usage and Stripe event prunes", () => {
+    const summary = formatCleanupStats({
+      expiredSessions: 0,
+      oldApiUsage: 0,
+      revokedApiKeys: 0,
+      oldDataRequests: 0,
+      oldScans: 0,
+      oldRateLimits: 0,
+      expiredTokens: 0,
+      expiredInvites: 0,
+      expired2FACodes: 0,
+      expiredBillingCodes: 0,
+      expiredDeviceTrust: 0,
+      expiredNotifications: 0,
+      expiredGiftedSubs: 0,
+      oldAuditLogs: 0,
+      oldAdminNotes: 0,
+      oldStaffActivity: 0,
+      oldSubdomainCache: 0,
+      oldAiConversations: 0,
+      oldScanFindingFeedback: 0,
+      oldUserNotifications: 0,
+      oldGithubReviewUsage: 0,
+      oldBrowserSessions: 0,
+      oldKevCache: 0,
+      oldErrorLogs: 0,
+      archivedAuditLogs: 0,
+      oldEmailLogs: 0,
+      oldWebhookDeliveries: 0,
+      oldAiUsage: 3,
+      oldBrowserbaseUsage: 2,
+      oldStripeEvents: 4,
+    });
+    expect(summary).toContain("9 total");
+    expect(summary).toContain("3 AI usage rows");
+    expect(summary).toContain("2 browser usage rows");
+    expect(summary).toContain("4 Stripe event markers");
   });
 });
 
@@ -1177,10 +1222,10 @@ describe("schedulePeriodicCleanup interval regression", () => {
     schedulePeriodicCleanup(1000);
 
     await vi.advanceTimersByTimeAsync(999);
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(passesRun()).toBe(0);
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(passesRun()).toBe(1);
   });
 
   it("fires repeatedly on exactly the interval passed in, not a fixed 24h", async () => {
@@ -1188,13 +1233,13 @@ describe("schedulePeriodicCleanup interval regression", () => {
     schedulePeriodicCleanup(2000);
 
     await vi.advanceTimersByTimeAsync(2000);
-    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(passesRun()).toBe(1);
 
     await vi.advanceTimersByTimeAsync(2000);
-    expect(mockConnect).toHaveBeenCalledTimes(2);
+    expect(passesRun()).toBe(2);
 
     await vi.advanceTimersByTimeAsync(2000);
-    expect(mockConnect).toHaveBeenCalledTimes(3);
+    expect(passesRun()).toBe(3);
   });
 
   it("falls back to the configured default interval when called with no argument", async () => {
@@ -1202,10 +1247,10 @@ describe("schedulePeriodicCleanup interval regression", () => {
     schedulePeriodicCleanup();
 
     await vi.advanceTimersByTimeAsync(DB_CLEANUP_INTERVAL - 1);
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(passesRun()).toBe(0);
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(passesRun()).toBe(1);
   });
 
   it("falls back to the default for an invalid interval (zero, negative, NaN)", async () => {
@@ -1213,9 +1258,9 @@ describe("schedulePeriodicCleanup interval regression", () => {
     schedulePeriodicCleanup(-500);
 
     await vi.advanceTimersByTimeAsync(DB_CLEANUP_INTERVAL - 1);
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(passesRun()).toBe(0);
     await vi.advanceTimersByTimeAsync(1);
-    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(passesRun()).toBe(1);
   });
 
   it("cancels the previous timer when called again, instead of double-scheduling", async () => {
@@ -1225,10 +1270,10 @@ describe("schedulePeriodicCleanup interval regression", () => {
     schedulePeriodicCleanup(1000); // reschedule before the first one fires
 
     await vi.advanceTimersByTimeAsync(999);
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(passesRun()).toBe(0);
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(passesRun()).toBe(1);
   });
 
   it("stops firing after stopPeriodicCleanup()", async () => {
@@ -1237,7 +1282,7 @@ describe("schedulePeriodicCleanup interval regression", () => {
     stopPeriodicCleanup();
 
     await vi.advanceTimersByTimeAsync(10000);
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(passesRun()).toBe(0);
   });
 
   it("returns a timer handle exposing unref, so a pending run never blocks process exit", () => {
@@ -1249,7 +1294,7 @@ describe("schedulePeriodicCleanup interval regression", () => {
   it("logs but does not throw when a scheduled run itself fails", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.useFakeTimers();
-    queryFailureFor = "BEGIN";
+    queryFailureFor = "DELETE FROM sessions";
     schedulePeriodicCleanup(1000);
 
     await vi.advanceTimersByTimeAsync(1000);

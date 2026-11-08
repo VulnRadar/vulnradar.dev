@@ -102,7 +102,7 @@ describeIntegration("retention cleanup", () => {
 
     await pool.query(
       `INSERT INTO rate_limits (key, "count", window_start) VALUES
-         ($1, 1, NOW()), ($2, 1, NOW() - INTERVAL '3 days')`,
+         ($1, 1, NOW()), ($2, 1, NOW() - INTERVAL '8 days')`,
       [unique("rl-keep"), unique("rl-prune")],
     );
 
@@ -222,7 +222,7 @@ describeIntegration("retention cleanup", () => {
 
     expect(
       await count(
-        "SELECT COUNT(*)::int AS n FROM rate_limits WHERE window_start < NOW() - INTERVAL '1 day'",
+        "SELECT COUNT(*)::int AS n FROM rate_limits WHERE window_start < NOW() - INTERVAL '7 days'",
       ),
     ).toBe(0);
 
@@ -306,9 +306,9 @@ describeIntegration("retention cleanup", () => {
     ).toBe(1);
   });
 
-  it("archives the audit log it is about to purge, in the same transaction", async () => {
-    // The one genuinely coupled pair in the pass. Both statements see the
-    // same NOW(), so there is no window in which a row is purged unarchived.
+  it("archives the audit log it purges, in the same statement", async () => {
+    // The one genuinely coupled pair in the pass: the archive batch is built
+    // from what the delete returned, so no row is purged unarchived.
     const purged = await pool.query<{ n: number }>(
       "SELECT COUNT(*)::int AS n FROM admin_audit_log WHERE action = 'prune_action'",
     );
