@@ -21,7 +21,6 @@ import {
   Check,
   CircleHelp,
   FileCode2,
-  Loader2,
 } from "lucide-react";
 import {
   SEVERITY_ORDER,
@@ -49,7 +48,6 @@ import {
   rememberOpenedFinding,
   takeFindingToRefocus,
 } from "./finding-focus";
-import { useTeammates } from "./use-teammates";
 import {
   getQueryParam,
   setQueryParam,
@@ -58,7 +56,11 @@ import {
   LOCATION_CHANGE_EVENT,
 } from "@/lib/ui/url-state";
 import { LeadingIcon } from "@/components/shared/leading-icon";
-import { useConfirm } from "@/components/shared/use-confirm";
+import { InlineAlert } from "@/components/shared/inline-alert";
+import { EditDialog } from "@/components/shared/edit-dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { useTeammates, type Teammate } from "./use-teammates";
 
 /** Query param that mirrors the selected finding, e.g. ?finding=missing-csp-header. */
 const FINDING_QUERY_PARAM = "finding";
@@ -118,6 +120,69 @@ const AI_VERDICT: Record<
 
 const FOCUS_RING =
   "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
+
+/** What the bulk dialog sets on every selected finding. */
+export interface BulkRemediationDraft {
+  status: RemediationStatus;
+  assignee: string;
+  dueAt: string;
+}
+
+export const BULK_DEFAULT_STATUS: RemediationStatus = "in_progress";
+
+export const BULK_APPLY_FAILED = "Couldn't apply that. Try again.";
+
+/** The bulk POST body for the given finding ids. */
+export function bulkRemediationBody(
+  ids: string[],
+  scanUrl: string,
+  draft: BulkRemediationDraft,
+) {
+  const body: {
+    items: { findingId: string; findingUrl: string }[];
+    status: RemediationStatus;
+    assignee?: string;
+    dueAt?: string;
+  } = {
+    items: ids.map((id) => ({ findingId: id, findingUrl: scanUrl })),
+    status: draft.status,
+  };
+  // Only send assignee/dueAt when actually set, so the bulk change leaves
+  // per-finding values it wasn't meant to touch alone (the server treats an
+  // absent field as "keep existing"). Open has neither field: it clears both.
+  if (draft.status !== "open") {
+    if (draft.assignee.trim()) body.assignee = draft.assignee.trim();
+    if (draft.dueAt) body.dueAt = draft.dueAt;
+  }
+  return body;
+}
+
+/** True when the server took the change. A dropped connection is a failure
+ *  like any other, so the dialog stays open with the choice still in it. */
+export async function postBulkRemediation(
+  ids: string[],
+  scanUrl: string,
+  draft: BulkRemediationDraft,
+): Promise<boolean> {
+  try {
+    const res = await fetch(API.SCAN_REMEDIATION_BULK, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(bulkRemediationBody(ids, scanUrl, draft)),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export function bulkDraftDirty(draft: BulkRemediationDraft): boolean {
+  return (
+    draft.status !== BULK_DEFAULT_STATUS ||
+    draft.assignee.trim() !== "" ||
+    draft.dueAt !== ""
+  );
+}
 
 interface ResultsListProps {
   findings: Vulnerability[];
@@ -244,15 +309,12 @@ export function ResultsList({
   const [overlay, setOverlay] = useState<
     Map<string, FindingRemediation | null>
   >(new Map());
-  const [bulkStatus, setBulkStatus] =
-    useState<RemediationStatus>("in_progress");
-  const { confirm, confirmDialog } = useConfirm();
-  const [bulkAssignee, setBulkAssignee] = useState("");
-  const [bulkDue, setBulkDue] = useState("");
-  const [bulkBusy, setBulkBusy] = useState(false);
-  const [bulkError, setBulkError] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const teammates = useTeammates();
-  const bulkAssigneeListId = useId();
+  // The bar unmounts when a bulk change clears the selection, taking the
+  // "Set status" button that opened the dialog with it, so focus goes back to
+  // the Select toggle instead of being dropped on <body>.
+  const selectToggleRef = useRef<HTMLButtonElement>(null);
   const showCheckboxes = selectable && selectMode;
 
   function exitSelectMode() {
@@ -283,60 +345,38 @@ export function ResultsList({
       : (issue.remediation ?? null);
   }
 
-  async function applyBulk() {
-    if (!scanUrl || visibleSelected.size === 0 || bulkBusy) return;
-    setBulkBusy(true);
-    setBulkError(false);
+  async function applyBulk(
+    draft: BulkRemediationDraft,
+  ): Promise<string | null> {
+    if (!scanUrl || visibleSelected.size === 0) return BULK_APPLY_FAILED;
     const ids = [...visibleSelected];
-    try {
-      const body: {
-        items: { findingId: string; findingUrl: string }[];
-        status: RemediationStatus;
-        assignee?: string;
-        dueAt?: string;
-      } = {
-        items: ids.map((id) => ({ findingId: id, findingUrl: scanUrl })),
-        status: bulkStatus,
-      };
-      // Only send assignee/dueAt when actually set, so the bulk change leaves
-      // per-finding values it wasn't meant to touch alone (the server treats an
-      // absent field as "keep existing").
-      if (bulkAssignee.trim()) body.assignee = bulkAssignee.trim();
-      if (bulkDue) body.dueAt = bulkDue;
-
-      const res = await fetch(API.SCAN_REMEDIATION_BULK, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error("bulk failed");
-
-      // Repaint the affected rows locally (no parent refetch needed).
-      setOverlay((prev) => {
-        const next = new Map(prev);
-        for (const id of ids) {
-          if (bulkStatus === "open") {
-            next.set(id, null);
-          } else {
-            const base = next.has(id)
-              ? next.get(id)
-              : findings.find((f) => f.id === id)?.remediation;
-            next.set(id, {
-              status: bulkStatus,
-              note: base?.note ?? null,
-              assignee: bulkAssignee.trim() || base?.assignee || null,
-              dueAt: bulkDue || base?.dueAt || null,
-            });
-          }
-        }
-        return next;
-      });
-      clearSelection();
-    } catch {
-      setBulkError(true);
-    } finally {
-      setBulkBusy(false);
+    if (!(await postBulkRemediation(ids, scanUrl, draft))) {
+      return BULK_APPLY_FAILED;
     }
+    const assignee = draft.assignee.trim();
+
+    // Repaint the affected rows locally (no parent refetch needed).
+    setOverlay((prev) => {
+      const next = new Map(prev);
+      for (const id of ids) {
+        if (draft.status === "open") {
+          next.set(id, null);
+        } else {
+          const base = next.has(id)
+            ? next.get(id)
+            : findings.find((f) => f.id === id)?.remediation;
+          next.set(id, {
+            status: draft.status,
+            note: base?.note ?? null,
+            assignee: assignee || base?.assignee || null,
+            dueAt: draft.dueAt || base?.dueAt || null,
+          });
+        }
+      }
+      return next;
+    });
+    clearSelection();
+    return null;
   }
 
   // Deep-linkable selection: the list itself is only ever mounted while no
@@ -633,6 +673,7 @@ export function ResultsList({
 
           {selectable && (
             <button
+              ref={selectToggleRef}
               type="button"
               onClick={() =>
                 selectMode ? exitSelectMode() : setSelectMode(true)
@@ -930,90 +971,18 @@ export function ResultsList({
               {visibleSelected.size} selected
             </span>
           </span>
-          <select
-            aria-label="Set status for selected findings"
-            value={bulkStatus}
-            onChange={(e) => setBulkStatus(e.target.value as RemediationStatus)}
-            className={cn(
-              "h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground",
-              FOCUS_RING,
-            )}
-          >
-            {REMEDIATION_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {REMEDIATION_LABELS[s]}
-              </option>
-            ))}
-          </select>
-          {bulkStatus !== "open" && (
-            <>
-              <input
-                type="text"
-                aria-label="Assignee for selected findings"
-                list={teammates.length > 0 ? bulkAssigneeListId : undefined}
-                value={bulkAssignee}
-                onChange={(e) => setBulkAssignee(e.target.value)}
-                maxLength={120}
-                placeholder="Assignee (optional)"
-                className={cn(
-                  "h-8 w-36 rounded-md border border-input bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground",
-                  FOCUS_RING,
-                )}
-              />
-              {teammates.length > 0 && (
-                <datalist id={bulkAssigneeListId}>
-                  {teammates.map((t) => (
-                    // A datalist option's value is the text it shows.
-                    // oxlint-disable-next-line jsx-a11y/control-has-associated-label
-                    <option key={t.id} value={t.name || t.email} />
-                  ))}
-                </datalist>
-              )}
-              <input
-                type="date"
-                aria-label="Due date for selected findings"
-                value={bulkDue}
-                onChange={(e) => setBulkDue(e.target.value)}
-                className={cn(
-                  "h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground",
-                  FOCUS_RING,
-                )}
-              />
-            </>
-          )}
           {/* The actions sit right, after an auto margin, so the bar reads
-              count on the left and commit/dismiss on the right whatever the
-              middle controls are. Real Buttons rather than hand-rolled ones:
-              the previous pair reimplemented the primary and ghost variants
-              at slightly the wrong height and weight. */}
+              count on the left and commit/dismiss on the right. The status,
+              assignee and due date are in BulkRemediationDialog: the bar used
+              to carry all three plus a confirm, a form strung along a sticky
+              strip with its Apply asking a second time. */}
           <span className="ms-auto flex items-center gap-2">
             <Button
               size="sm"
-              // One click here rewrites every selected finding, and choosing
-              // "Open" also clears the note, assignee and due date each of
-              // them had. Nothing puts that text back.
-              onClick={() =>
-                confirm({
-                  title: `Apply this to ${pluralize(visibleSelected.size, "finding")}?`,
-                  description:
-                    bulkStatus === "open"
-                      ? "Setting them back to Open also clears any note, assignee and due date saved on them. That text is not kept anywhere else."
-                      : "Every selected finding gets this status, replacing whatever it had.",
-                  confirmLabel: "Apply",
-                  danger: bulkStatus === "open",
-                  onConfirm: applyBulk,
-                })
-              }
-              disabled={bulkBusy}
+              onClick={() => setBulkOpen(true)}
               className="h-8 gap-1.5"
             >
-              {bulkBusy && (
-                <Loader2
-                  className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
-                  aria-hidden
-                />
-              )}
-              Apply
+              Set status
             </Button>
             <Button
               variant="ghost"
@@ -1026,14 +995,17 @@ export function ResultsList({
               <span className="hidden sm:inline">Cancel</span>
             </Button>
           </span>
-          {bulkError && (
-            <span className="text-xs text-[hsl(var(--severity-high))]">
-              Couldn&apos;t apply. Try again.
-            </span>
-          )}
         </div>
       )}
-      {confirmDialog}
+      {bulkOpen && showCheckboxes && visibleSelected.size > 0 && (
+        <BulkRemediationDialog
+          count={visibleSelected.size}
+          teammates={teammates}
+          onApply={applyBulk}
+          onClose={() => setBulkOpen(false)}
+          returnFocusRef={selectToggleRef}
+        />
+      )}
     </section>
   );
 }
@@ -1212,5 +1184,123 @@ function FindingRow({
         />
       )}
     </button>
+  );
+}
+
+/**
+ * The bulk status change for the findings selected and still visible. Its
+ * Save is the explicit step, so there is no confirm after it: the old bar's
+ * Apply opened a second dialog to ask what this one already shows.
+ */
+export function BulkRemediationDialog({
+  count,
+  teammates,
+  onApply,
+  onClose,
+  returnFocusRef,
+}: {
+  count: number;
+  teammates: Teammate[];
+  onApply: (draft: BulkRemediationDraft) => Promise<string | null>;
+  onClose: () => void;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
+}) {
+  const [status, setStatus] = useState<RemediationStatus>(BULK_DEFAULT_STATUS);
+  const [assignee, setAssignee] = useState("");
+  const [dueAt, setDueAt] = useState("");
+  const statusFieldId = useId();
+  const assigneeFieldId = useId();
+  const dueFieldId = useId();
+  const assigneeListId = useId();
+  const draft = { status, assignee, dueAt };
+  const clearing = status === "open";
+  const findings = pluralize(count, "finding");
+
+  return (
+    <EditDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title={`Set status for ${findings}`}
+      description="Every selected finding gets this status, replacing whatever it had."
+      saveLabel={`Apply to ${findings}`}
+      size="md"
+      destructive={clearing}
+      dirty={bulkDraftDirty(draft)}
+      onSave={() => onApply(draft)}
+      returnFocusRef={returnFocusRef}
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={statusFieldId}>Status</Label>
+          <select
+            id={statusFieldId}
+            value={status}
+            onChange={(e) => setStatus(e.target.value as RemediationStatus)}
+            autoFocus
+            className={cn(
+              "h-10 w-full rounded-md border border-input bg-background px-3 text-base text-foreground md:text-sm",
+              FOCUS_RING,
+            )}
+          >
+            {REMEDIATION_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {REMEDIATION_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        </div>
+        {clearing ? (
+          <InlineAlert tone="warning" live="polite">
+            Setting them back to Open also clears the note, assignee and due
+            date saved on each of them. That text is not kept anywhere else.
+          </InlineAlert>
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={assigneeFieldId}>Assignee (optional)</Label>
+                <Input
+                  id={assigneeFieldId}
+                  list={teammates.length > 0 ? assigneeListId : undefined}
+                  value={assignee}
+                  onChange={(e) => setAssignee(e.target.value)}
+                  maxLength={120}
+                  autoComplete="off"
+                  placeholder={
+                    teammates.length > 0
+                      ? "Pick a teammate or type"
+                      : "name or handle"
+                  }
+                />
+                {teammates.length > 0 && (
+                  <datalist id={assigneeListId}>
+                    {teammates.map((t) => (
+                      // A datalist option's value is the text it shows.
+                      // oxlint-disable-next-line jsx-a11y/control-has-associated-label
+                      <option key={t.id} value={t.name || t.email} />
+                    ))}
+                  </datalist>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={dueFieldId}>Due date (optional)</Label>
+                <Input
+                  id={dueFieldId}
+                  type="date"
+                  value={dueAt}
+                  onChange={(e) => setDueAt(e.target.value)}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Left empty, the assignee and due date stay as each finding already
+              has them.
+            </p>
+          </>
+        )}
+      </div>
+    </EditDialog>
   );
 }
