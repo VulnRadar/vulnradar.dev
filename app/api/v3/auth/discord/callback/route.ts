@@ -26,6 +26,7 @@ import { getClientIp } from "@/lib/api/request-utils";
 import { loginsPausedReasonFor } from "@/lib/admin/service-state";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
+import { linkWouldTakeCreatingSlot } from "@/lib/auth/creating-identity";
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
@@ -265,6 +266,20 @@ export async function GET(request: Request) {
       ) {
         return NextResponse.redirect(
           `${baseUrl}/profile?tab=account&error=discord_already_linked`,
+        );
+      }
+
+      if (
+        await linkWouldTakeCreatingSlot(session.userId, "discord", {
+          id: discordUser.id,
+          email: discordUser.email,
+          emailVerified: discordUser.verified === true,
+        })
+      ) {
+        const message =
+          "This account was created with Discord, so it can only connect the Discord account that uses its email address.";
+        return NextResponse.redirect(
+          `${baseUrl}/profile?tab=social&error=discord_creating_identity&message=${encodeURIComponent(message)}`,
         );
       }
 

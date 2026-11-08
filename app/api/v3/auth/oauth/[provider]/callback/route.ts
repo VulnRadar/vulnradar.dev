@@ -63,6 +63,7 @@ import {
 } from "@/lib/admin/service-state";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
+import { linkWouldTakeCreatingSlot } from "@/lib/auth/creating-identity";
 import { safeRedirect } from "@/lib/auth/safe-redirect";
 import { LOCALE_COOKIE, resolveLocale } from "@/lib/i18n/config";
 
@@ -637,6 +638,20 @@ async function handleOAuthLink(
       const message = `This ${label} account is already connected to a different VulnRadar account.`;
       return NextResponse.redirect(
         `${profileUrl}&error=oauth_already_linked&message=${encodeURIComponent(message)}`,
+      );
+    }
+
+    if (
+      await linkWouldTakeCreatingSlot(session.userId, provider, {
+        id: userInfo.id,
+        email: userInfo.email,
+        emailVerified: userInfo.emailVerified,
+      })
+    ) {
+      const label = OAUTH_PROVIDERS[provider].label;
+      const message = `This account was created with ${label}, so it can only connect the ${label} account that uses its email address.`;
+      return NextResponse.redirect(
+        `${profileUrl}&error=oauth_creating_identity&message=${encodeURIComponent(message)}`,
       );
     }
 

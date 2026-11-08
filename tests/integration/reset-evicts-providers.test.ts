@@ -49,6 +49,8 @@ const { saveGithubConnection } =
   await import("@/lib/github/github-connections");
 const { POST: resetPassword } =
   await import("@/app/api/v3/auth/reset-password/route");
+const { linkWouldTakeCreatingSlot } =
+  await import("@/lib/auth/creating-identity");
 
 const NEW_PASSWORD = "Kestrel-Vellum-Orbit-73%";
 
@@ -147,6 +149,42 @@ describeIntegration("a password reset evicts linked sign-in providers", () => {
     expect(after.discord_id).toBeNull();
     expect(await discordConnections(user.id)).toBe(0);
   });
+});
+
+describeIntegration("the columns a reset keeps", () => {
+  it.each(["google", "github", "discord"])(
+    "take a %s identity only from the account's owner",
+    async (provider) => {
+      const user = await createUser();
+      await linkEverything(user.id, provider);
+      const { rows } = await pool.query<{ linked_id: string }>(
+        `SELECT ${provider}_id AS linked_id FROM users WHERE id = $1`,
+        [user.id],
+      );
+
+      await expect(
+        linkWouldTakeCreatingSlot(user.id, provider, {
+          id: "somebody-else",
+          email: "attacker@example.test",
+          emailVerified: true,
+        }),
+      ).resolves.toBe(true);
+      await expect(
+        linkWouldTakeCreatingSlot(user.id, provider, {
+          id: rows[0]!.linked_id,
+          email: null,
+          emailVerified: false,
+        }),
+      ).resolves.toBe(false);
+      await expect(
+        linkWouldTakeCreatingSlot(user.id, provider, {
+          id: "somebody-else",
+          email: user.email.toUpperCase(),
+          emailVerified: true,
+        }),
+      ).resolves.toBe(false);
+    },
+  );
 });
 
 describeIntegration("granting repo access from a second account", () => {

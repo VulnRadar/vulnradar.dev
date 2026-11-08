@@ -190,6 +190,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // would survive everything above and walk straight back in. The identity
     // the account was created with stays: it is the owner's, and for an
     // account that never had a password it was the only way in until now.
+    // lib/auth/creating-identity.ts is what keeps those columns the owner's.
     // discord_connections goes regardless, since that row is what
     // /auth/discord?action=login signs in from and it can name a Discord
     // account other than the one that created this one.

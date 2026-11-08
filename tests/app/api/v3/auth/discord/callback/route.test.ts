@@ -34,6 +34,12 @@ let trustedDeviceRow: Record<string, unknown> | null = null;
 
 let connectionUpsertCalls: unknown[][] = [];
 let discordIdUpdateCalls: unknown[][] = [];
+// The account a connect is about to write to, read for the creating-provider rule.
+let linkTargetRow: {
+  auth_provider: string | null;
+  email: string;
+  linked_id: string | null;
+} | null = null;
 let tokenUpdateCalls: unknown[][] = [];
 let sessionInsertCalls: unknown[][] = [];
 let emailCodeInsertCalls: unknown[][] = [];
@@ -59,6 +65,9 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
           ? [{ user_id: existingConnectionUserId }]
           : [],
     };
+  }
+  if (s.startsWith("SELECT auth_provider, email,")) {
+    return { rows: linkTargetRow ? [linkTargetRow] : [] };
   }
   if (s.startsWith("INSERT INTO discord_connections")) {
     connectionUpsertCalls.push(params);
@@ -199,6 +208,7 @@ beforeEach(async () => {
   twoFAConfigRow = null;
   trustedDeviceRow = null;
   connectionUpsertCalls = [];
+  linkTargetRow = null;
   discordIdUpdateCalls = [];
   tokenUpdateCalls = [];
   sessionInsertCalls = [];
@@ -363,6 +373,74 @@ describe("GET /api/v3/auth/discord/callback", () => {
       expect(location.pathname).toBe("/profile");
       expect(location.searchParams.get("error")).toBe("discord_already_linked");
       expect(connectionUpsertCalls).toHaveLength(0);
+    });
+
+    // A password reset leaves the creating provider's columns alone, so a
+    // connect must not be able to put somebody else's identity into them.
+    describe("on an account Discord created", () => {
+      function connectAsOwner() {
+        cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+        sessionRow = defaultSessionRow({ user_id: 42 });
+        return GET(
+          callbackRequest({
+            code: "somecode",
+            state: signDiscordState({ action: "connect", userId: 42 }),
+          }),
+        );
+      }
+
+      it("refuses to replace the identity already there, and writes nothing", async () => {
+        linkTargetRow = {
+          auth_provider: "discord",
+          email: "victim@example.com",
+          linked_id: "the-owners-discord-id",
+        };
+
+        const res = await connectAsOwner();
+
+        const location = locationOf(res);
+        expect(location.pathname).toBe("/profile");
+        expect(location.searchParams.get("error")).toBe(
+          "discord_creating_identity",
+        );
+        expect(location.searchParams.get("message")).toContain(
+          "created with Discord",
+        );
+        expect(connectionUpsertCalls).toHaveLength(0);
+        expect(discordIdUpdateCalls).toHaveLength(0);
+      });
+
+      it("refuses a matching address Discord has not verified", async () => {
+        linkTargetRow = {
+          auth_provider: "discord",
+          email: discordUserFixture.email,
+          linked_id: null,
+        };
+        discordUserFixture.verified = false;
+
+        const res = await connectAsOwner();
+
+        discordUserFixture.verified = true;
+        expect(locationOf(res).searchParams.get("error")).toBe(
+          "discord_creating_identity",
+        );
+        expect(connectionUpsertCalls).toHaveLength(0);
+      });
+
+      it("lets the owner reconnect the same identity", async () => {
+        linkTargetRow = {
+          auth_provider: "discord",
+          email: "victim@example.com",
+          linked_id: discordUserFixture.id,
+        };
+
+        const res = await connectAsOwner();
+
+        expect(connectionUpsertCalls).toHaveLength(1);
+        expect(locationOf(res).searchParams.get("discord_connected")).toBe(
+          "true",
+        );
+      });
     });
 
     it("links the Discord account, encrypts the tokens at rest, and never leaks the Discord email into the redirect URL", async () => {

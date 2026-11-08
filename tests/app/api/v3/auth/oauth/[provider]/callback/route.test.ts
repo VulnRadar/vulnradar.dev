@@ -62,6 +62,12 @@ let emailCodeInsertCalls: unknown[][] = [];
 let linkSessionRow: Record<string, unknown> | null = null;
 let existingGoogleIdRow: { id: number } | null = null;
 let googleLinkUpdateCalls: unknown[][] = [];
+// The account a link is about to write to, read for the creating-provider rule.
+let linkTargetRow: {
+  auth_provider: string | null;
+  email: string;
+  linked_id: string | null;
+} | null = null;
 let googleLinkUpdateThrowsUniqueViolation = false;
 
 // Provider-id-first lookup + legacy backfill fixtures.
@@ -180,6 +186,9 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   }
   if (s.includes("SELECT s.user_id")) {
     return { rows: linkSessionRow ? [linkSessionRow] : [] };
+  }
+  if (s.startsWith("SELECT auth_provider, email,")) {
+    return { rows: linkTargetRow ? [linkTargetRow] : [] };
   }
   if (s.startsWith("SELECT id FROM users WHERE google_id")) {
     return { rows: existingGoogleIdRow ? [existingGoogleIdRow] : [] };
@@ -354,6 +363,7 @@ beforeEach(async () => {
   linkSessionRow = null;
   existingGoogleIdRow = null;
   googleLinkUpdateCalls = [];
+  linkTargetRow = null;
   googleLinkUpdateThrowsUniqueViolation = false;
   byProviderIdRow = null;
   backfillIdentityCalls = [];
@@ -1244,6 +1254,105 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
       expect(googleLinkUpdateCalls).toHaveLength(1);
       expect(locationOf(res).searchParams.get("google_connected")).toBe("true");
+    });
+
+    // A password reset leaves the creating provider's columns alone, so a link
+    // must not be able to put somebody else's identity into them.
+    describe("the provider that created the account", () => {
+      function linkAsOwner() {
+        cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+        linkSessionRow = defaultSessionRow({ user_id: 7 });
+        return GET(
+          callbackRequest("google", {
+            code: "somecode",
+            state: signOAuthState("google", { purpose: "link", userId: 7 }),
+          }),
+          ctx("google"),
+        );
+      }
+
+      it("refuses to replace the identity already there with a different one", async () => {
+        linkTargetRow = {
+          auth_provider: "google",
+          email: "victim@example.com",
+          linked_id: "google-sub-of-the-owner",
+        };
+        googleUserFixture.email = "attacker@example.com";
+
+        const res = await linkAsOwner();
+
+        const location = locationOf(res);
+        expect(location.pathname).toBe("/profile");
+        expect(location.searchParams.get("error")).toBe(
+          "oauth_creating_identity",
+        );
+        expect(location.searchParams.get("message")).toContain(
+          "created with Google",
+        );
+        expect(googleLinkUpdateCalls).toHaveLength(0);
+      });
+
+      it("refuses a stranger's identity in the slot a disconnect emptied", async () => {
+        linkTargetRow = {
+          auth_provider: "google",
+          email: "victim@example.com",
+          linked_id: null,
+        };
+        googleUserFixture.email = "attacker@example.com";
+
+        const res = await linkAsOwner();
+
+        expect(locationOf(res).searchParams.get("error")).toBe(
+          "oauth_creating_identity",
+        );
+        expect(googleLinkUpdateCalls).toHaveLength(0);
+      });
+
+      it("lets the owner reconnect the same identity, whatever its email says now", async () => {
+        linkTargetRow = {
+          auth_provider: "google",
+          email: "changed-on-the-account@example.com",
+          linked_id: "google-sub-1",
+        };
+
+        const res = await linkAsOwner();
+
+        expect(googleLinkUpdateCalls).toHaveLength(1);
+        expect(locationOf(res).searchParams.get("google_connected")).toBe(
+          "true",
+        );
+      });
+
+      it("lets in an identity whose verified email is the account's address", async () => {
+        linkTargetRow = {
+          auth_provider: "google",
+          email: "Owner@Example.com",
+          linked_id: null,
+        };
+
+        const res = await linkAsOwner();
+
+        expect(googleLinkUpdateCalls).toHaveLength(1);
+        expect(locationOf(res).searchParams.get("google_connected")).toBe(
+          "true",
+        );
+      });
+
+      it("does not constrain a provider that did not create the account", async () => {
+        linkTargetRow = {
+          auth_provider: "password",
+          email: "owner-of-a-password-account@example.com",
+          linked_id: "an-earlier-google-link",
+        };
+        googleUserFixture.email = "a-different-address@example.com";
+
+        const res = await linkAsOwner();
+
+        expect(googleLinkUpdateCalls).toHaveLength(1);
+        expect(locationOf(res).searchParams.get("google_connected")).toBe(
+          "true",
+        );
+      });
     });
 
     it("turns a unique-constraint race into oauth_already_linked instead of a raw failure", async () => {
