@@ -287,7 +287,7 @@ describe("POST /api/v3/auth/reset-password", () => {
 
         expect(res.status).toBe(200);
         const sent = fetchSpy.mock.calls.map(([, init]) =>
-          (init?.body as URLSearchParams).get("token"),
+          new URLSearchParams(init?.body as URLSearchParams).get("token"),
         );
         expect(sent.sort()).toEqual(["evicted-access", "evicted-refresh"]);
       } finally {
