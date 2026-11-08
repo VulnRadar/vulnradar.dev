@@ -264,7 +264,7 @@ describe("redactSecretSettingAuditRows", () => {
 
   it("rewrites both sentences that quoted a value, for every secret setting", async () => {
     const { pool, query } = auditPool();
-    await redactSecretSettingAuditRows(pool, "App");
+    await redactSecretSettingAuditRows(pool);
 
     expect(query.mock.calls.map(([, params]) => params)).toEqual(
       [
@@ -286,12 +286,11 @@ describe("redactSecretSettingAuditRows", () => {
     );
   });
 
-  it("reports how many rows it rewrote and stays quiet when there were none", async () => {
-    await redactSecretSettingAuditRows(auditPool(0).pool, "App");
-    expect(console.log).not.toHaveBeenCalled();
+  it("logs nothing however many rows it rewrote, since the rows are the record", async () => {
+    await redactSecretSettingAuditRows(auditPool(0).pool);
+    await redactSecretSettingAuditRows(auditPool(2).pool);
 
-    await redactSecretSettingAuditRows(auditPool(2).pool, "App");
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining("12"));
+    expect(console.log).not.toHaveBeenCalled();
   });
 
   it("does not throw when the query fails, so a boot is never stopped", async () => {
@@ -301,9 +300,7 @@ describe("redactSecretSettingAuditRows", () => {
       }),
     } as unknown as Pool;
 
-    await expect(
-      redactSecretSettingAuditRows(pool, "App"),
-    ).resolves.toBeUndefined();
+    await expect(redactSecretSettingAuditRows(pool)).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalled();
   });
 

@@ -55,7 +55,7 @@ describeIntegration("secret setting audit redaction backfill", () => {
       `Changed "${KEY}" from "(not set)" to "${URL_B}"`,
     );
 
-    await redactSecretSettingAuditRows(pool, "App");
+    await redactSecretSettingAuditRows(pool);
 
     const redacted = `Changed "${KEY}" (value redacted)`;
     expect(await details(changed)).toBe(redacted);
@@ -68,7 +68,7 @@ describeIntegration("secret setting audit redaction backfill", () => {
       `Reset "${KEY}" to its default (was "${URL_A}")`,
     );
 
-    await redactSecretSettingAuditRows(pool, "App");
+    await redactSecretSettingAuditRows(pool);
 
     expect(await details(reset)).toBe(
       `Reset "${KEY}" to its default (value redacted)`,
@@ -83,7 +83,7 @@ describeIntegration("secret setting audit redaction backfill", () => {
         `Changed "${key}" from "old-secret" to "new-secret"`,
       );
 
-      await redactSecretSettingAuditRows(pool, "App");
+      await redactSecretSettingAuditRows(pool);
 
       expect(await details(changed)).toBe(`Changed "${key}" (value redacted)`);
     },
@@ -95,7 +95,7 @@ describeIntegration("secret setting audit redaction backfill", () => {
       `Changed "${KEY}" from "${URL_A}" to "${URL_B}" [while impersonating user #42]`,
     );
 
-    await redactSecretSettingAuditRows(pool, "App");
+    await redactSecretSettingAuditRows(pool);
 
     expect(await details(id)).toBe(
       `Changed "${KEY}" (value redacted) [while impersonating user #42]`,
@@ -108,9 +108,9 @@ describeIntegration("secret setting audit redaction backfill", () => {
       `Changed "${KEY}" from "${URL_A}" to "${URL_B}"`,
     );
 
-    await redactSecretSettingAuditRows(pool, "App");
+    await redactSecretSettingAuditRows(pool);
     const once = await details(id);
-    await redactSecretSettingAuditRows(pool, "App");
+    await redactSecretSettingAuditRows(pool);
 
     expect(await details(id)).toBe(once);
   });
@@ -138,7 +138,7 @@ describeIntegration("secret setting audit redaction backfill", () => {
     ];
     const ids = await Promise.all(rows.map(([a, d]) => insert(a, d)));
 
-    await redactSecretSettingAuditRows(pool, "App");
+    await redactSecretSettingAuditRows(pool);
 
     for (const [i, id] of ids.entries()) {
       expect(await details(id)).toBe(rows[i][1]);

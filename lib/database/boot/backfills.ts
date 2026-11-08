@@ -44,7 +44,7 @@ export async function runBootBackfills(
   await backfillWebhookSecrets(appName);
   await backfillSubDailyScheduleSlots(pool, appName);
   await canonicalizeStoredScanUrls(pool);
-  await redactSecretSettingAuditRows(pool, appName);
+  await redactSecretSettingAuditRows(pool);
 }
 
 /** Read from the registry, so a setting marked secret later is covered too. */
@@ -85,14 +85,10 @@ const SECRET_SETTING_AUDIT_REWRITES: ReadonlyArray<{
  * its pattern are bracket expressions, so no backslash has to survive being
  * quoted twice. Idempotent: a rewritten row no longer starts with the prefix.
  */
-export async function redactSecretSettingAuditRows(
-  pool: Pool,
-  appName: string,
-): Promise<void> {
+export async function redactSecretSettingAuditRows(pool: Pool): Promise<void> {
   try {
-    let redacted = 0;
     for (const rewrite of SECRET_SETTING_AUDIT_REWRITES) {
-      const result = await pool.query(
+      await pool.query(
         `UPDATE admin_audit_log
             SET details = $3::text || COALESCE(
                   substring(details FROM ' [[]while impersonating user #[0-9]+[]]$'),
@@ -100,12 +96,6 @@ export async function redactSecretSettingAuditRows(
           WHERE action = $1
             AND left(details, length($2::text)) = $2::text`,
         [rewrite.action, rewrite.prefix, rewrite.replacement],
-      );
-      redacted += result.rowCount ?? 0;
-    }
-    if (redacted > 0) {
-      console.log(
-        `[${appName}] Redacted ${redacted} audit log row(s) that quoted a secret setting.`,
       );
     }
   } catch (err) {
