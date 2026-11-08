@@ -326,9 +326,12 @@ export type GithubReviewGate =
  * hold, provided that is at least the minimum, and the run reviews batch by
  * batch until the reservation is used. Requiring the whole estimate refused a
  * repo outright, pattern scan included, the moment its worst case passed what
- * was left, which on a 200k plan was any repo over about 137 KB. A refusal now
- * means not even one batch fits; the route still runs the pattern scan then
- * and shows this message as why the AI review did not run.
+ * was left, which on a 200k plan was any repo over about 137 KB. A refusal
+ * that is not `busy` now means not even one batch fits. On a plan with a
+ * review allowance of its own the route still runs the pattern scan then and
+ * shows this message as why the AI review did not run. On a plan without one
+ * the refusal is the plan gate below, and the route answers 403 with no scan
+ * at all (owner decision D19).
  *
  * A plan with no review allowance (githubReviewTokensPerWindow 0) first tries
  * the free trial, claimed atomically by claimFreeGithubReviewTrial; with the

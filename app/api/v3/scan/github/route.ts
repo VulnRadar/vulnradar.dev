@@ -171,7 +171,10 @@ export async function POST(request: Request) {
     // with a 403, pattern scan included both times. Neither limit is about the
     // pattern scan, which is cheap and deterministic, so it now covers every
     // selected file whatever the AI allowance, and the AI review covers what
-    // the two limits admit and says where it stopped.
+    // the two limits admit and says where it stopped. The exception is a plan
+    // with no GitHub review of its own: it pays with its trial or its credits,
+    // and is refused below and at the reservation when there is no batch they
+    // can pay for.
     const plan = await planGithubReview(selected.map((e) => e.size ?? 0));
 
     // The free plan pays for a repo review with its trial or its credits. A

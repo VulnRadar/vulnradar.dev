@@ -1243,7 +1243,9 @@ export const CONFIG_BILLING_ELITE_SUPPORTER_AI_TOKENS_PER_WINDOW = 8_000_000;
 // batch that would cross it and reports aiReviewStoppedAtRunCap with its
 // coverage, rather than refusing the scan, and skips and lists a file over it
 // on its own (aiReviewCoverage.filesSkippedOverRunCap); the pattern scan still
-// covers every file.
+// covers every file within the file caps. The one refusal is on a plan with
+// no GitHub review of its own: when no file fits under this at all, its trial
+// or credits have nothing to pay for, so the scan route answers 403.
 export const CONFIG_GITHUB_REVIEW_MAX_TOKENS_PER_RUN = 300_000;
 
 // Per-batch HTTP timeout for each AI code-review call in runGithubAiReview
