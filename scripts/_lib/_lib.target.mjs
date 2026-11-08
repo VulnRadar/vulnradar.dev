@@ -15,7 +15,7 @@ import {
   rawQuestion,
   NON_INTERACTIVE,
 } from "./_lib.prompts.mjs";
-import { buildConnectionString } from "./_lib.db.mjs";
+import { buildConnectionString, pgPoolOptions } from "./_lib.db.mjs";
 
 function formatBytes(n) {
   if (n < 1024) return `${n} B`;
@@ -53,7 +53,7 @@ export function formatDbHost(parsed) {
  */
 export async function listDatabases(parsed) {
   const pool = new pg.Pool({
-    connectionString: buildConnectionString(parsed),
+    ...pgPoolOptions(buildConnectionString(parsed)),
     connectionTimeoutMillis: 10000,
     statement_timeout: 10000,
   });

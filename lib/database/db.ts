@@ -8,27 +8,13 @@ import {
   CONFIG_DB_QUERY_TIMEOUT_MS,
 } from "@/lib/config/config-values";
 import { APP_NAME, APP_SLUG } from "@/lib/config/constants";
+import { pgConnectionString, pgSslConfig } from "@/lib/database/pg-ssl.mjs";
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
     "DATABASE_URL environment variable is not set. Add it to your .env.local file or Vercel project settings.",
   );
 }
-
-// rejectUnauthorized was `false` even when
-// DATABASE_SSL=true, which allowed any on-path attacker to MITM the DB
-// connection. CA bundle can be overridden via DATABASE_SSL_CA for
-// self-signed certs. The plain `false` (no SSL) path is unchanged for
-// local-dev convenience.
-const useSSL = process.env.DATABASE_SSL === "true";
-const ssl: false | { rejectUnauthorized: boolean; ca?: string } = useSSL
-  ? {
-      rejectUnauthorized: true,
-      ...(process.env.DATABASE_SSL_CA
-        ? { ca: process.env.DATABASE_SSL_CA }
-        : {}),
-    }
-  : false;
 
 /**
  * Read a pool tuning value from the environment, falling back to the
@@ -76,8 +62,10 @@ export const POOL_CONFIG = {
 };
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl,
+  // Paired on purpose: see lib/database/pg-ssl.mjs for why the URL has to
+  // change as well for `ssl` to mean anything.
+  connectionString: pgConnectionString(process.env.DATABASE_URL),
+  ssl: pgSslConfig(),
   // Cap each connection at POOL_CONFIG.max simultaneous clients.
   // statement_timeout prevents any single query from holding a slot
   // indefinitely: without it, the pool can be saturated by that many slow

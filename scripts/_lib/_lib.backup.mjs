@@ -48,7 +48,7 @@ import { mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { join, resolve } from "node:path";
 import { ROOT } from "./_lib.env.mjs";
-import { splitDbUrlForEnv } from "./_lib.db-url.mjs";
+import { pgPoolOptions, pgToolConnection } from "./_lib.db.mjs";
 import { info, warn, success, error } from "./_lib.output.mjs";
 import { generateSqlDump } from "./_lib.sql-backup.mjs";
 import {
@@ -263,11 +263,16 @@ export async function backupDatabase(connectionString, schemaVersion) {
   let stderr = "";
   let jsPool = null;
   let jsClient = null;
+  let releaseToolConnection = null;
 
   if (havePgDump) {
     // Keep the DB password out of pg_dump's argv (visible via `ps` on a
     // shared host); libpq reads it from PGPASSWORD in the child env instead.
-    const { connArg, env } = splitDbUrlForEnv(connectionString);
+    // The same call applies the app's TLS rule, which is the difference
+    // between this dump verifying the server and libpq's default of
+    // "prefer", where a downgraded connection carries the whole database.
+    const { connArg, env, cleanup } = await pgToolConnection(connectionString);
+    releaseToolConnection = cleanup;
     const child = spawn(
       "pg_dump",
       ["--no-owner", "--no-privileges", "--format=plain", connArg],
@@ -287,7 +292,7 @@ export async function backupDatabase(connectionString, schemaVersion) {
     // and being cut off mid-dump is the one outcome worse than not having
     // one.
     jsPool = new pg.Pool({
-      connectionString,
+      ...pgPoolOptions(connectionString),
       connectionTimeoutMillis: 10000,
     });
     jsClient = await jsPool.connect();
@@ -321,6 +326,7 @@ export async function backupDatabase(connectionString, schemaVersion) {
     // it is about to stop touching.
     jsClient?.release();
     await jsPool?.end();
+    await releaseToolConnection?.();
   }
 
   if (cipherInfo) {

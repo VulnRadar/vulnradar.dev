@@ -186,6 +186,23 @@ describe("SSL configuration (MITM-fix regression)", () => {
     expect(ssl.ca).toBe(process.env.DATABASE_SSL_CA);
   });
 
+  it("takes sslmode out of the URL so node-pg cannot replace the explicit config", async () => {
+    // node-pg assigns what it parses from connectionString over the `ssl`
+    // option, so this URL used to throw DATABASE_SSL_CA away.
+    process.env.DATABASE_SSL = "true";
+    process.env.DATABASE_SSL_CA = "ca-pem";
+    process.env.DATABASE_URL =
+      "postgresql://user:pass@localhost:5432/testdb?sslmode=require";
+    await loadDb();
+    expect(poolConstructorCalls[0].connectionString).toBe(
+      "postgresql://user:pass@localhost:5432/testdb",
+    );
+    expect(poolConstructorCalls[0].ssl).toEqual({
+      rejectUnauthorized: true,
+      ca: "ca-pem",
+    });
+  });
+
   it("omits the CA bundle key entirely when DATABASE_SSL_CA is not set", async () => {
     process.env.DATABASE_SSL = "true";
     await loadDb();
