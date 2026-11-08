@@ -11,6 +11,7 @@
  * does not block.
  */
 
+import { describe, it, expect } from "vitest";
 import { detectors } from "@/lib/scanner/checks/headers";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
@@ -2306,6 +2307,50 @@ const fixtures: DetectorFixtures = {
       expect: "fire",
     },
   ],
+  // Two separate Set-Cookie headers. Read through get(), they would arrive
+  // comma-joined and only the first cookie's name would be looked at.
+  "cookie-host-prefix-attribute-mismatch": [
+    {
+      description: "the second of two Set-Cookie headers breaks the prefix",
+      cookies: ["__Host-ok=1; Secure; Path=/", "__Host-bad=2; Path=/"],
+      expect: "fire",
+      evidenceIncludes: "__Host-bad",
+      evidenceExcludes: "__Host-ok",
+    },
+    {
+      description: "two Set-Cookie headers, both satisfy the prefix",
+      cookies: ["__Host-a=1; Secure; Path=/", "__Host-b=2; Secure; Path=/"],
+      expect: "skip",
+    },
+  ],
 };
 
 runDetectorTests(detectors, fixtures);
+
+describe("count wording", () => {
+  const url = "https://example.com/";
+  const blank = (n: number) =>
+    '<a href="https://example.org/" target="_blank">x</a>'.repeat(n);
+  const frame = (n: number) =>
+    '<iframe src="https://widget.chat-example.com/embed"></iframe>'.repeat(n);
+
+  it("agrees with one link and with several", () => {
+    const run = detectors["target-blank-no-noopener"];
+    expect(run(url, new Headers(), blank(1))).toContain(
+      '1 target="_blank" link lacks rel=',
+    );
+    expect(run(url, new Headers(), blank(2))).toContain(
+      '2 target="_blank" links lack rel=',
+    );
+  });
+
+  it("agrees with one iframe and with several", () => {
+    const run = detectors["iframe-third-party-without-sandbox"];
+    expect(run(url, new Headers(), frame(1))).toBe(
+      "1 third-party <iframe> lacks sandbox attribute.",
+    );
+    expect(run(url, new Headers(), frame(3))).toBe(
+      "3 third-party <iframe>s lack sandbox attribute.",
+    );
+  });
+});

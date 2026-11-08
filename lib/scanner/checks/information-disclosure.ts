@@ -9,6 +9,7 @@
  * rather than active credential leaks.
  */
 
+import { pluralize } from "@/lib/ui/plural";
 import {
   getHeader,
   getSetCookies,
@@ -77,7 +78,7 @@ export const detectors: Record<string, DetectFn> = {
       }
     }
     if (found.length > 0) {
-      return `Sensitive keywords found in HTML comments: ${found.length} occurrence(s).`;
+      return `Sensitive keywords found in HTML comments: ${pluralize(found.length, "occurrence")}.`;
     }
     return null;
   },
@@ -113,7 +114,7 @@ export const detectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(html)) {
-        return `SQL error message exposed in body — matches pattern ${p.source}.`;
+        return `SQL error message exposed in body: matches pattern ${p.source}.`;
       }
     }
     return null;
@@ -122,7 +123,7 @@ export const detectors: Record<string, DetectFn> = {
   "server-header-truncated": (_url, headers, _body) => {
     const server = getHeader(headers, "server");
     if (server && /\(truncated\)/i.test(server)) {
-      return `Server header ends with '(truncated)' (${server}) — verify the upstream is not echoing real versions.`;
+      return `Server header ends with '(truncated)' (${server}). Verify the upstream is not echoing real versions.`;
     }
     return null;
   },
@@ -134,7 +135,7 @@ export const detectors: Record<string, DetectFn> = {
     for (const c of cookies) {
       const name = parseCookieName(c);
       if (/^phpsessid$/i.test(name)) {
-        return "Cookie 'PHPSESSID' reveals the PHP runtime — rename to a generic opaque value.";
+        return "Cookie 'PHPSESSID' reveals the PHP runtime. Rename to a generic opaque value.";
       }
     }
     // Removed: fallback that fired for ANY cookie with "verify no
@@ -147,7 +148,7 @@ export const detectors: Record<string, DetectFn> = {
     for (const c of cookies) {
       const name = parseCookieName(c);
       if (/_session$/i.test(name)) {
-        return `Cookie '${name}' matches the Rails '_session' default — set a custom session_store :key.`;
+        return `Cookie '${name}' matches the Rails '_session' default. Set a custom session_store :key.`;
       }
     }
     // Removed: fallback that fired for ANY cookie.
@@ -177,7 +178,7 @@ export const detectors: Record<string, DetectFn> = {
       // whole response, so a hardened csrftoken hid a session cookie that was
       // genuinely missing attributes later in the same Set-Cookie list.
       if (missing.length === 0) continue;
-      return `Cookie '${name}' (Django default name) is missing ${missing.join(", ")} — set CSRF_COOKIE_SECURE / SESSION_COOKIE_SECURE = True and SESSION_COOKIE_HTTPONLY = True in settings.`;
+      return `Cookie '${name}' (Django default name) is missing ${missing.join(", ")}. Set CSRF_COOKIE_SECURE / SESSION_COOKIE_SECURE = True and SESSION_COOKIE_HTTPONLY = True in settings.`;
     }
     return null;
   },
@@ -203,7 +204,7 @@ export const detectors: Record<string, DetectFn> = {
       // clean one let a hardened XSRF-TOKEN mask a laravel_session that was
       // still missing HttpOnly.
       if (missing.length === 0) continue;
-      return `Cookie '${name}' (Laravel default name) is missing ${missing.join(", ")} — set the corresponding options in config/session.php.`;
+      return `Cookie '${name}' (Laravel default name) is missing ${missing.join(", ")}. Set the corresponding options in config/session.php.`;
     }
     return null;
   },
@@ -222,7 +223,7 @@ export const detectors: Record<string, DetectFn> = {
       // continue, not return null: same reason as the two detectors above, a
       // clean cookie clears only itself and must not end the scan early.
       if (missing.length === 0) continue;
-      return `Cookie 'connect.sid' (default express-session name) is missing ${missing.join(", ")} — pass { secure: true, httpOnly: true, sameSite: 'lax' } as the session cookie option.`;
+      return `Cookie 'connect.sid' (default express-session name) is missing ${missing.join(", ")}. Pass { secure: true, httpOnly: true, sameSite: 'lax' } as the session cookie option.`;
     }
     return null;
   },
@@ -232,7 +233,7 @@ export const detectors: Record<string, DetectFn> = {
     for (const c of cookies) {
       const name = parseCookieName(c);
       if (/_session(?:_id)?$/i.test(name) && !/httponly/i.test(c)) {
-        return `Rails-style session cookie '${name}' is missing the HttpOnly flag — set config.session_store :httponly => true.`;
+        return `Rails-style session cookie '${name}' is missing the HttpOnly flag. Set config.session_store :httponly => true.`;
       }
     }
     // Removed: fallback that fired for ANY cookie missing HttpOnly, which is
@@ -246,7 +247,7 @@ export const detectors: Record<string, DetectFn> = {
     if (
       hasTagWith(body, "script", /src=["'][^"']*(?:config|settings)\.js["']/i)
     ) {
-      return "Public config.js/settings.js loaded as a script — verify it contains no API keys or credentials.";
+      return "Public config.js/settings.js loaded as a script. Verify it contains no API keys or credentials.";
     }
     return null;
   },
@@ -255,7 +256,7 @@ export const detectors: Record<string, DetectFn> = {
     if (
       hasTagWith(body, "script", /src=["'][^"']*(?:env|environment)\.js["']/i)
     ) {
-      return "Public env.js/environment.js loaded as a script — never serve environment files from public paths.";
+      return "Public env.js/environment.js loaded as a script. Never serve environment files from public paths.";
     }
     return null;
   },
@@ -264,7 +265,7 @@ export const detectors: Record<string, DetectFn> = {
 
   "sitemap-public": (url, _headers, _body) => {
     if (/sitemap\.xml/i.test(url)) {
-      return "sitemap.xml is publicly accessible — audit it for admin or private paths.";
+      return "sitemap.xml is publicly accessible. Audit it for admin or private paths.";
     }
     return null;
   },
@@ -275,7 +276,7 @@ export const detectors: Record<string, DetectFn> = {
     // Only fire when the URL is an actual OpenAPI/Swagger schema endpoint
     // AND the version number appears in the path itself.
     if (/\/openapi[.\-_]?v?\d+/i.test(url)) {
-      return "OpenAPI schema version is embedded in the URL — serve it at a generic path like /api/schema.";
+      return "OpenAPI schema version is embedded in the URL. Serve it at a generic path like /api/schema.";
     }
     // Or when the response body looks like a literal OpenAPI document
     // (has "openapi": "3.x.x" or "swagger": "2.x" at root)
@@ -283,7 +284,7 @@ export const detectors: Record<string, DetectFn> = {
       /"openapi"\s*:\s*"\d+\.\d+/i.test(body) ||
       /"swagger"\s*:\s*"\d+\.\d+/i.test(body)
     ) {
-      return "OpenAPI/Swagger schema document is publicly accessible — restrict access to authenticated users.";
+      return "OpenAPI/Swagger schema document is publicly accessible. Restrict access to authenticated users.";
     }
     return null;
   },
@@ -298,7 +299,7 @@ export const detectors: Record<string, DetectFn> = {
       const internalHints = [/\.internal\b/i, /\.local\b/i, /\.corp\b/i];
       for (const p of internalHints) {
         if (p.test(acao)) {
-          return `Access-Control-Allow-Origin '${acao}' exposes an internal CDN/host — restrict to the customer-facing origin.`;
+          return `Access-Control-Allow-Origin '${acao}' exposes an internal CDN/host. Restrict to the customer-facing origin.`;
         }
       }
     }
@@ -312,7 +313,7 @@ export const detectors: Record<string, DetectFn> = {
   "nginx-version-404-disclosure": (_url, headers, body) => {
     const server = getHeader(headers, "server") || "";
     if (/nginx\/\d+\.\d+\.\d+/i.test(server)) {
-      return `Server header exposes nginx version: '${server}' — set 'server_tokens off;' in nginx.conf.`;
+      return `Server header exposes nginx version: '${server}'. Set 'server_tokens off;' in nginx.conf.`;
     }
     // stripExampleContent so a docs page's own sample API response (our
     // /docs/api documents a scan result's responseHeaders shape, which
@@ -326,7 +327,7 @@ export const detectors: Record<string, DetectFn> = {
         stripExampleContent(body),
       )
     ) {
-      return "Body references 'nginx/X.Y.Z' — a default nginx error page is leaking the version.";
+      return "Body references 'nginx/X.Y.Z'. A default nginx error page is leaking the version.";
     }
     return null;
   },
@@ -334,7 +335,7 @@ export const detectors: Record<string, DetectFn> = {
   "apache-version-404-disclosure": (_url, headers, body) => {
     const server = getHeader(headers, "server") || "";
     if (/Apache\/\d+\.\d+\.\d+/i.test(server)) {
-      return `Server header exposes Apache version: '${server}' — set 'ServerTokens Prod' and 'ServerSignature Off'.`;
+      return `Server header exposes Apache version: '${server}'. Set 'ServerTokens Prod' and 'ServerSignature Off'.`;
     }
     const html = stripExampleContent(body);
     // Apache's server signature is always rendered inside <address>, on error
@@ -343,13 +344,13 @@ export const detectors: Record<string, DetectFn> = {
     const signature =
       /<address>([^<]{0,300})<\/address>/i.exec(html)?.[1] ?? "";
     if (/Apache\/\d+\.\d+\.\d+/i.test(signature)) {
-      return "Body references 'Apache/X.Y.Z' — a default Apache error page is leaking the version and modules.";
+      return "Body references 'Apache/X.Y.Z'. A default Apache error page is leaking the version and modules.";
     }
     if (
       /\bApache\b/i.test(signature) &&
       /Server at .+ Port \d+/i.test(signature)
     ) {
-      return "HTML body contains the Apache 'Server at example.com Port N' footer — default error page disclosure.";
+      return "HTML body contains the Apache 'Server at example.com Port N' footer: default error page disclosure.";
     }
     return null;
   },
@@ -357,10 +358,10 @@ export const detectors: Record<string, DetectFn> = {
   "iis-version-404-disclosure": (_url, headers, body) => {
     const server = getHeader(headers, "server") || "";
     if (/Microsoft-IIS\/\d+\.\d+/i.test(server)) {
-      return `Server header exposes IIS version: '${server}' — use URL Rewrite or web.config to remove the Server header.`;
+      return `Server header exposes IIS version: '${server}'. Use URL Rewrite or web.config to remove the Server header.`;
     }
     if (/Microsoft-IIS\/\d+\.\d+/i.test(stripExampleContent(body))) {
-      return "Body references 'Microsoft-IIS/X.Y' — a default IIS error page is leaking the version.";
+      return "Body references 'Microsoft-IIS/X.Y'. A default IIS error page is leaking the version.";
     }
     return null;
   },
@@ -375,7 +376,7 @@ export const detectors: Record<string, DetectFn> = {
     // `\s*` let every "at x (" rescan the rest of its line, and blank lines
     // after it, which is quadratic on one long line of them.
     if (/at\s+\S{1,300}\s+\([^\n]{0,500}?:\d+:\d+\)[ \t\r]*$/m.test(body)) {
-      return "Express default error page / stack trace detected — set NODE_ENV=production and use a sanitized error handler.";
+      return "Express default error page / stack trace detected. Set NODE_ENV=production and use a sanitized error handler.";
     }
     return null;
   },
@@ -385,10 +386,10 @@ export const detectors: Record<string, DetectFn> = {
     // output produced by any framework, not proof of Flask's RCE-capable
     // Werkzeug debugger — require the Werkzeug-specific marker instead.
     if (/Werkzeug Debugger/i.test(body)) {
-      return "Flask Werkzeug interactive debugger page exposed — set debug=False / FLASK_ENV=production.";
+      return "Flask Werkzeug interactive debugger page exposed. Set debug=False / FLASK_ENV=production.";
     }
     if (/<title>\s*Werkzeug Debugger/i.test(body)) {
-      return "Werkzeug debugger console detected in HTML — disable debug mode in any internet-reachable environment.";
+      return "Werkzeug debugger console detected in HTML. Disable debug mode in any internet-reachable environment.";
     }
     return null;
   },
@@ -414,7 +415,7 @@ export const detectors: Record<string, DetectFn> = {
         body,
       )
     ) {
-      return "Django technical 500 / debug page exposed — set DEBUG=False in production.";
+      return "Django technical 500 / debug page exposed. Set DEBUG=False in production.";
     }
     return null;
   },
@@ -439,7 +440,7 @@ export const detectors: Record<string, DetectFn> = {
       ) ||
       /Rails\.root\s*:/i.test(body)
     ) {
-      return "Rails default / development error page detected — set RAILS_ENV=production and consider_all_requests_local=false.";
+      return "Rails default / development error page detected. Set RAILS_ENV=production and consider_all_requests_local=false.";
     }
     return null;
   },
@@ -456,7 +457,7 @@ export const detectors: Record<string, DetectFn> = {
         body,
       )
     ) {
-      return "Spring Boot Actuator endpoints referenced in page source — disable or strongly authenticate them.";
+      return "Spring Boot Actuator endpoints referenced in page source. Disable or strongly authenticate them.";
     }
     return null;
   },
@@ -479,7 +480,7 @@ export const detectors: Record<string, DetectFn> = {
       /class=["'][^"']*\bjenkins_ver\b/i.test(body) ||
       /<title>\s*(?:Jenkins|[^<]{0,200}\[Jenkins\])\s*<\/title>/i.test(body)
     ) {
-      return "Jenkins version disclosed in body — front with an authenticating reverse proxy that strips X-Jenkins.";
+      return "Jenkins version disclosed in body. Front with an authenticating reverse proxy that strips X-Jenkins.";
     }
     return null;
   },
@@ -564,7 +565,7 @@ export const detectors: Record<string, DetectFn> = {
       hasHeader(headers, "rsc") ||
       hasHeader(headers, "next-router-state-tree")
     ) {
-      return "Next.js 13+ App Router RSC headers detected (RSC, Next-Router-State-Tree) — informational fingerprint.";
+      return "Next.js 13+ App Router RSC headers detected (RSC, Next-Router-State-Tree): informational fingerprint.";
     }
     return null;
   },
@@ -576,7 +577,7 @@ export const detectors: Record<string, DetectFn> = {
       "x-sveltekit-stale",
     ]) {
       if (hasHeader(headers, name)) {
-        return `SvelteKit debug header '${name}' detected — informational fingerprint; consider stripping at the reverse proxy.`;
+        return `SvelteKit debug header '${name}' detected: informational fingerprint; consider stripping at the reverse proxy.`;
       }
     }
     if (
@@ -584,7 +585,7 @@ export const detectors: Record<string, DetectFn> = {
       /data-sveltekit/i.test(body) ||
       /sveltekit:\/\//i.test(body)
     ) {
-      return "SvelteKit runtime fingerprint found in body (e.g. __data.json, data-sveltekit) — informational only.";
+      return "SvelteKit runtime fingerprint found in body (e.g. __data.json, data-sveltekit): informational only.";
     }
     return null;
   },
@@ -605,7 +606,7 @@ export const detectors: Record<string, DetectFn> = {
       const idx = body.indexOf(m[0]);
       const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase();
       if (/<code|<pre|```|example|documentation/i.test(before)) continue;
-      return "Vite dev client / HMR script reference found — the dev server is exposed; build with 'vite build' and serve dist/ from a static host.";
+      return "Vite dev client / HMR script reference found. The dev server is exposed; build with 'vite build' and serve dist/ from a static host.";
     }
     return null;
   },
@@ -618,7 +619,7 @@ export const detectors: Record<string, DetectFn> = {
       /<Code>AccessDenied<\/Code>/i.test(body) ||
       /<Code>SlowDown<\/Code>/i.test(body)
     ) {
-      return "AWS S3 XML error response (NoSuchBucket / AccessDenied / SlowDown) detected — front S3 with CloudFront and genericize error pages.";
+      return "AWS S3 XML error response (NoSuchBucket / AccessDenied / SlowDown) detected. Front S3 with CloudFront and genericize error pages.";
     }
     // The S3 website endpoint's HTML error page lists its fields as
     // <li>Code: NoSuchBucket</li>. The code names written in prose are how
@@ -627,7 +628,7 @@ export const detectors: Record<string, DetectFn> = {
       /<li>\s*Code:\s*(?:NoSuchBucket|AccessDenied)\s*<\/li>/i.test(body) ||
       /<li>\s*Message:\s*The specified bucket does not exist/i.test(body)
     ) {
-      return "AWS S3 error message exposed in body (NoSuchBucket / bucket does not exist) — front S3 with CloudFront and genericize error pages.";
+      return "AWS S3 error message exposed in body (NoSuchBucket / bucket does not exist). Front S3 with CloudFront and genericize error pages.";
     }
     return null;
   },
@@ -640,7 +641,7 @@ export const detectors: Record<string, DetectFn> = {
       /Access denied for user\s+['"][^'"]+['"]@['"][^'"]+['"]/i.test(body) ||
       /SQLSTATE\[HY000\]\[1045\]/i.test(body)
     ) {
-      return "MySQL 'Access denied' error pattern exposed — catch the exception in the app layer and return a generic 500.";
+      return "MySQL 'Access denied' error pattern exposed. Catch the exception in the app layer and return a generic 500.";
     }
     return null;
   },
@@ -652,7 +653,7 @@ export const detectors: Record<string, DetectFn> = {
       /thread\s+'[\w:<>]+'\s+panicked\s+at\s+/i.test(body) &&
       /\.rs:\d+/i.test(body)
     ) {
-      return "Rust panic trace exposed in response (thread panicked at ... .rs:LINE) — leaks source file paths and internal state.";
+      return "Rust panic trace exposed in response (thread panicked at ... .rs:LINE): leaks source file paths and internal state.";
     }
     return null;
   },
@@ -671,7 +672,7 @@ export const detectors: Record<string, DetectFn> = {
       (/goroutine\s{1,20}\d{1,10}\s{1,20}\[running\]/i.test(body) &&
         /\.go:\d+/.test(body))
     ) {
-      return "Go panic / goroutine stack trace exposed in response — leaks source file paths and internal call stack.";
+      return "Go panic / goroutine stack trace exposed in response: leaks source file paths and internal call stack.";
     }
     return null;
   },
@@ -687,7 +688,7 @@ export const detectors: Record<string, DetectFn> = {
     // ref: AUDIT-012#inj-03
     const frames = body.match(/(?<![\w./-])[\w./-]+\.rb:\d+:in `[^']+'/g) || [];
     if (frames.length >= 2) {
-      return `Ruby exception backtrace exposed in response (${frames.length} frame(s), e.g. '${frames[0]}') — leaks source file paths.`;
+      return `Ruby exception backtrace exposed in response (${pluralize(frames.length, "frame")}, e.g. '${frames[0]}'): leaks source file paths.`;
     }
     return null;
   },
@@ -703,7 +704,7 @@ export const detectors: Record<string, DetectFn> = {
       /Microsoft\.AspNetCore/i.test(body) &&
       /\bid=["']stackpage["']|class=["']titleerror["']/i.test(body)
     ) {
-      return "ASP.NET Core Developer Exception Page is enabled in a publicly reachable environment — restrict UseDeveloperExceptionPage() to the Development environment only.";
+      return "ASP.NET Core Developer Exception Page is enabled in a publicly reachable environment. Restrict UseDeveloperExceptionPage() to the Development environment only.";
     }
     return null;
   },
@@ -713,7 +714,7 @@ export const detectors: Record<string, DetectFn> = {
       /\*\*\s*\(\w*Error\)/.test(body) &&
       /lib\/[\w_]+_web\/(?:controllers|router)\.ex:\d+/i.test(body)
     ) {
-      return "Phoenix (Elixir) debug error page exposed — leaks application module paths and stack context.";
+      return "Phoenix (Elixir) debug error page exposed: leaks application module paths and stack context.";
     }
     return null;
   },
@@ -727,7 +728,7 @@ export const detectors: Record<string, DetectFn> = {
         body,
       )
     ) {
-      return "Node.js 'UnhandledPromiseRejectionWarning' text found in response body — server console/error output is leaking into HTTP responses.";
+      return "Node.js 'UnhandledPromiseRejectionWarning' text found in response body. Server console/error output is leaking into HTTP responses.";
     }
     return null;
   },
@@ -737,7 +738,7 @@ export const detectors: Record<string, DetectFn> = {
       /Software error:/i.test(body) &&
       /at\s+\S+\.pl\s+line\s+\d+/i.test(body)
     ) {
-      return "Perl CGI 'Software error' page exposed — leaks script paths and line numbers.";
+      return "Perl CGI 'Software error' page exposed: leaks script paths and line numbers.";
     }
     return null;
   },

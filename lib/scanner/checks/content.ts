@@ -17,6 +17,7 @@ import {
   withProseStripped,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
+import { plural, pluralize } from "@/lib/ui/plural";
 import { safeFetch } from "../safe-fetch";
 import { safeReadBody } from "../read-bounded-body";
 import { versionBelow } from "../library-fingerprints";
@@ -185,7 +186,7 @@ const rawDetectors: Record<string, DetectFn> = {
       /src=["']http:\/\/[^"']+["']/i,
     );
     return httpIframes.length > 0
-      ? `Found ${httpIframes.length} iframe(s) loading HTTP content on HTTPS page.`
+      ? `Found ${pluralize(httpIframes.length, "iframe")} loading HTTP content on HTTPS page.`
       : null;
   },
 
@@ -218,7 +219,7 @@ const rawDetectors: Record<string, DetectFn> = {
       }
     });
     return noSandbox.length > 2
-      ? `Found ${noSandbox.length} iframe(s) without sandbox attribute.`
+      ? `Found ${pluralize(noSandbox.length, "iframe")} without sandbox attribute.`
       : null;
   },
 
@@ -227,7 +228,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "form-target-blank": (_url, _headers, body) => {
     const forms = tagsWith(body, "form", /target=["']_blank["']/i);
     return forms.length > 0
-      ? `Found ${forms.length} form(s) with target="_blank".`
+      ? `Found ${pluralize(forms.length, "form")} with target="_blank".`
       : null;
   },
 
@@ -285,9 +286,11 @@ const rawDetectors: Record<string, DetectFn> = {
     }
     const parts: string[] = [];
     if (insecure > 0)
-      parts.push(`${insecure} form(s) submitting over plain HTTP`);
+      parts.push(`${pluralize(insecure, "form")} submitting over plain HTTP`);
     if (thirdParty > 0)
-      parts.push(`${thirdParty} form(s) submitting to a third-party domain`);
+      parts.push(
+        `${pluralize(thirdParty, "form")} submitting to a third-party domain`,
+      );
     return parts.length > 0 ? `Found ${parts.join(" and ")}.` : null;
   },
 
@@ -319,7 +322,7 @@ const rawDetectors: Record<string, DetectFn> = {
       body.includes("__nuxt");
     if (isFramework) return null;
     return noCsrf.length > 0
-      ? `Found ${noCsrf.length} POST form(s) without CSRF token fields.`
+      ? `Found ${pluralize(noCsrf.length, "POST form")} without CSRF token fields.`
       : null;
   },
 
@@ -389,7 +392,7 @@ const rawDetectors: Record<string, DetectFn> = {
       (f) => !/autocomplete\s*=/i.test(f),
     );
     return noAC.length > 0
-      ? `Found ${noAC.length} sensitive field(s) without autocomplete attribute.`
+      ? `Found ${pluralize(noAC.length, "sensitive field")} without autocomplete attribute.`
       : null;
   },
 
@@ -401,7 +404,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const pwInputs = tagsWith(body, "input", /type=["']password["']/i);
     const noName = pwInputs.filter((t) => !/name\s*=\s*["']/i.test(t));
     return noName.length > 0
-      ? `Found ${noName.length} password field(s) missing name attribute.`
+      ? `Found ${pluralize(noName.length, "password field")} missing name attribute.`
       : null;
   },
 
@@ -487,7 +490,7 @@ const rawDetectors: Record<string, DetectFn> = {
       return /\son\w+\s*=/i.test(withoutContent);
     });
     return suspicious.length > 0
-      ? `Found ${suspicious.length} suspicious OpenGraph tag(s).`
+      ? `Found ${pluralize(suspicious.length, "suspicious OpenGraph tag")}.`
       : null;
   },
 
@@ -542,7 +545,7 @@ const rawDetectors: Record<string, DetectFn> = {
       return sensitiveNames.some((s) => lower.includes(s));
     });
     return found.length > 0
-      ? `Found ${found.length} meta tag(s) with sensitive data.`
+      ? `Found ${pluralize(found.length, "meta tag")} with sensitive data.`
       : null;
   },
 
@@ -614,7 +617,7 @@ const rawDetectors: Record<string, DetectFn> = {
         const major = parseInt(m[1]);
         const minor = parseInt(m[2]);
         if (major < 3 || (major === 3 && minor < 5)) {
-          return `Outdated jQuery loaded via script src (${major}.${minor}) — upgrade to 3.5+.`;
+          return `Outdated jQuery loaded via script src (${major}.${minor}). Upgrade to 3.5+.`;
         }
       }
     }
@@ -630,7 +633,7 @@ const rawDetectors: Record<string, DetectFn> = {
       ) &&
       !/angular\/\d{2}\./i.test(body)
     ) {
-      return "AngularJS (1.x) loaded via script src — end-of-life framework with known vulnerabilities.";
+      return "AngularJS (1.x) loaded via script src: end-of-life framework with known vulnerabilities.";
     }
     return null;
   },
@@ -639,14 +642,14 @@ const rawDetectors: Record<string, DetectFn> = {
     if (
       hasTagWith(body, "script", /src=["'][^"']*prototype(?:\.js)?[^"']*["']/i)
     ) {
-      return "Prototype.js loaded via script src — outdated library with known vulnerabilities.";
+      return "Prototype.js loaded via script src: outdated library with known vulnerabilities.";
     }
     return null;
   },
 
   "mootools-outdated": (_url, _headers, body) => {
     if (hasTagWith(body, "script", /src=["'][^"']*mootools[^"']*["']/i)) {
-      return "MooTools loaded via script src — outdated library with potential security issues.";
+      return "MooTools loaded via script src: outdated library with potential security issues.";
     }
     return null;
   },
@@ -658,7 +661,7 @@ const rawDetectors: Record<string, DetectFn> = {
       /src=["'][^"']*(?:cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com)[^"']*["']/i,
     );
     if (cdnScripts.length > 0 && !/onerror\s*=/i.test(body)) {
-      return `${cdnScripts.length} CDN script(s) without fallback mechanism.`;
+      return `${pluralize(cdnScripts.length, "CDN script")} without fallback mechanism.`;
     }
     return null;
   },
@@ -729,7 +732,7 @@ const rawDetectors: Record<string, DetectFn> = {
       /^(?:disallow|allow)\s*:/im.test(body) &&
       body.trim().split("\n").length < 50
     ) {
-      return "Response body appears to be robots.txt content — verify no sensitive paths are listed.";
+      return "Response body appears to be robots.txt content. Verify no sensitive paths are listed.";
     }
     return null;
   },
@@ -802,7 +805,7 @@ const rawDetectors: Record<string, DetectFn> = {
     if (
       /\/admin(?:\/|$)|\/administrator(?:\/|$)|\/management(?:\/|$)/i.test(url)
     ) {
-      return "Admin/management path segment found in the URL — verify this endpoint actually requires authentication.";
+      return "Admin/management path segment found in the URL. Verify this endpoint actually requires authentication.";
     }
     return null;
   },
@@ -902,7 +905,7 @@ const rawDetectors: Record<string, DetectFn> = {
       }
     }
     return found.length > 0
-      ? `Found ${found.length} inline script(s) with dangerous patterns: ${[...new Set(found)].join(", ")}`
+      ? `Found ${pluralize(found.length, "inline script")} with dangerous patterns: ${[...new Set(found)].join(", ")}`
       : null;
   },
 
@@ -923,7 +926,7 @@ const rawDetectors: Record<string, DetectFn> = {
         /\son\w+=["'][^"']*(?:location\s*=|document\.write\s*\(|window\.eval\s*\(|\.innerHTML\s*=|eval\s*\(|fetch\s*\(|XMLHttpRequest|alert\s*\()[^"']*["']/gi,
       ) || [];
     return handlers.length > 0
-      ? `Found ${handlers.length} inline event handler(s) with potentially dangerous patterns.`
+      ? `Found ${pluralize(handlers.length, "inline event handler")} with potentially dangerous patterns.`
       : null;
   },
 
@@ -937,7 +940,7 @@ const rawDetectors: Record<string, DetectFn> = {
       ) || [];
     const total = wsInsecure.length + fetchHttp.length + xhrHttp.length;
     return total > 0
-      ? `Found ${total} unencrypted connection(s) in JavaScript.`
+      ? `Found ${pluralize(total, "unencrypted connection")} in JavaScript.`
       : null;
   },
 
@@ -960,7 +963,7 @@ const rawDetectors: Record<string, DetectFn> = {
         body,
       );
     if (hasOriginCheck) return null;
-    return `Found ${wsConnections.length} WebSocket connection(s) without apparent origin validation.`;
+    return `Found ${pluralize(wsConnections.length, "WebSocket connection")} without apparent origin validation.`;
   },
 
   "postmessage-star-origin": (_url, _headers, body) => {
@@ -1020,7 +1023,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const openerUsage =
       body.match(/window\.opener\.(?!postMessage\b)\w+/g) || [];
     return openerUsage.length > 0
-      ? `Found ${openerUsage.length} window.opener reference(s).`
+      ? `Found ${pluralize(openerUsage.length, "window.opener reference")}.`
       : null;
   },
 
@@ -1071,7 +1074,7 @@ const rawDetectors: Record<string, DetectFn> = {
     }
     if (found.length === 0) return null;
     const samples = found.slice(0, 3);
-    return `Found ${found.length} comment(s) with sensitive keywords:\n${samples.join("\n")}${found.length > 3 ? `\n...and ${found.length - 3} more` : ""}`;
+    return `Found ${pluralize(found.length, "comment")} with sensitive keywords:\n${samples.join("\n")}${found.length > 3 ? `\n...and ${found.length - 3} more` : ""}`;
   },
 
   "debug-indicators": (_url, headers, body) => {
@@ -1285,7 +1288,7 @@ const rawDetectors: Record<string, DetectFn> = {
       /(?:localStorage|sessionStorage)\.(?:setItem|getItem)\s*\(\s*["'](?:token|jwt|auth|password|session|secret|api[_-]?key|credit[_-]?card)[^"']*["']/gi;
     const matches = body.match(sensitiveKeys) || [];
     return matches.length > 0
-      ? `Found ${matches.length} sensitive storage API usage(s).`
+      ? `Found ${pluralize(matches.length, "sensitive storage API usage")}.`
       : null;
   },
 
@@ -1306,7 +1309,7 @@ const rawDetectors: Record<string, DetectFn> = {
         sensitive++;
     }
     if (sensitive > 0) {
-      return `${sensitive} document.cookie access(es) near session/auth data - consider HttpOnly cookies.`;
+      return `${pluralize(sensitive, "document.cookie access", "document.cookie accesses")} near session/auth data - consider HttpOnly cookies.`;
     }
     return null;
   },
@@ -1578,7 +1581,7 @@ const rawDetectors: Record<string, DetectFn> = {
       found.push(...matches.slice(0, 3));
     }
     return found.length > 0
-      ? `Found ${found.length} open-redirect pattern(s): ${found.slice(0, 2).join(", ")}`
+      ? `Found ${pluralize(found.length, "open-redirect pattern")}: ${found.slice(0, 2).join(", ")}`
       : null;
   },
 
@@ -1697,7 +1700,7 @@ const rawDetectors: Record<string, DetectFn> = {
       (a) => sensitiveExt.test(a) && sameOrigin(a),
     );
     if (found.length > 0)
-      return `Sensitive file reference(s) in page links: ${found.slice(0, 3).join(", ")}`;
+      return `Sensitive file ${plural(found.length, "reference")} in page links: ${found.slice(0, 3).join(", ")}`;
     return null;
   },
 
@@ -1720,7 +1723,7 @@ const rawDetectors: Record<string, DetectFn> = {
       ) || [];
     const insecure = matches.filter((m) => /["']http:\/\//i.test(m));
     if (insecure.length > 0)
-      return `${insecure.length} service worker registration(s) using insecure URL.`;
+      return `${pluralize(insecure.length, "service worker registration")} using insecure URL.`;
     if (url.startsWith("http://") && matches.length > 0) {
       return "Service worker registered over an insecure HTTP page.";
     }
@@ -1766,7 +1769,7 @@ const rawDetectors: Record<string, DetectFn> = {
       /onpaste\s*=\s*["'][^"']*(?:return\s+false|preventDefault)/i.test(f),
     );
     if (blocksPaste.length > 0)
-      return `Found ${blocksPaste.length} password field(s) blocking paste.`;
+      return `Found ${pluralize(blocksPaste.length, "password field")} blocking paste.`;
     return null;
   },
 
@@ -2098,7 +2101,7 @@ const rawDetectors: Record<string, DetectFn> = {
       trimmed.endsWith("]") &&
       trimmed.length > 2
     ) {
-      return "Top-level JSON array response — vulnerable to JSON hijacking without CSRF/origin check.";
+      return "Top-level JSON array response: vulnerable to JSON hijacking without CSRF/origin check.";
     }
     return null;
   },
@@ -2130,7 +2133,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "srcdoc-iframe": (url, _headers, body) => {
     const iframes = tagsWith(body, "iframe", /srcdoc\s*=\s*["'][^"']+["']/i);
     if (iframes.length > 0)
-      return `Found ${iframes.length} iframe(s) using srcdoc attribute.`;
+      return `Found ${pluralize(iframes.length, "iframe")} using srcdoc attribute.`;
     return null;
   },
 
@@ -2138,7 +2141,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const iframes = tagsWith(body, "iframe", /sandbox\s*=\s*["'][^"']+["']/i);
     const bad = iframes.filter((f) => /\ballow-scripts\b/.test(f));
     if (bad.length > 0)
-      return `Found ${bad.length} sandboxed iframe(s) with allow-scripts.`;
+      return `Found ${pluralize(bad.length, "sandboxed iframe")} with allow-scripts.`;
     return null;
   },
 
@@ -2156,14 +2159,14 @@ const rawDetectors: Record<string, DetectFn> = {
   "data-uri-script": (url, _headers, body) => {
     const matches = tagsWith(body, "script", /src\s*=\s*["']data:[^"']+["']/i);
     if (matches.length > 0)
-      return `Found ${matches.length} <script> tag(s) with data: URI source.`;
+      return `Found ${pluralize(matches.length, "<script> tag")} with data: URI source.`;
     return null;
   },
 
   "blob-url-script": (url, _headers, body) => {
     const matches = tagsWith(body, "script", /src\s*=\s*["']blob:[^"']+["']/i);
     if (matches.length > 0)
-      return `Found ${matches.length} <script> tag(s) loaded from blob: URL.`;
+      return `Found ${pluralize(matches.length, "<script> tag")} loaded from blob: URL.`;
     return null;
   },
 
@@ -2171,7 +2174,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const forms = body.match(/<form[^>]{0,2000}>/gi) || [];
     const off = forms.filter((f) => /autocomplete\s*=\s*["']off["']/i.test(f));
     if (off.length > 0)
-      return `Found ${off.length} form(s) with autocomplete="off" — password managers disabled.`;
+      return `Found ${pluralize(off.length, "form")} with autocomplete="off": password managers disabled.`;
     return null;
   },
 
@@ -2182,7 +2185,7 @@ const rawDetectors: Record<string, DetectFn> = {
       return m && parseInt(m[1], 10) < 12;
     });
     if (short.length > 0)
-      return `Found ${short.length} password field(s) with maxlength < 12.`;
+      return `Found ${pluralize(short.length, "password field")} with maxlength < 12.`;
     return null;
   },
 
@@ -2204,7 +2207,7 @@ const rawDetectors: Record<string, DetectFn> = {
       );
     });
     if (hidden.length > 0)
-      return `Found ${hidden.length} hidden password field(s).`;
+      return `Found ${pluralize(hidden.length, "hidden password field")}.`;
     return null;
   },
 
@@ -2214,7 +2217,7 @@ const rawDetectors: Record<string, DetectFn> = {
       /(?:name|id)\s*=\s*["'][^"']*(?:password|passwd|pwd)[^"']*["']/i.test(f),
     );
     if (labeled.length > 0)
-      return `Found ${labeled.length} password-named field(s) using type="text".`;
+      return `Found ${pluralize(labeled.length, "password-named field")} using type="text".`;
     return null;
   },
 
@@ -2234,7 +2237,7 @@ const rawDetectors: Record<string, DetectFn> = {
         /\bvalue\s*=\s*["'][^"']*\w[^"']*["']/i.test(f),
     );
     if (bad.length > 0)
-      return `Found ${bad.length} sensitive field(s) rendered as readonly.`;
+      return `Found ${pluralize(bad.length, "sensitive field")} rendered as readonly.`;
     return null;
   },
 
@@ -2242,7 +2245,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const inputs = tagsWith(body, "input", /type\s*=\s*["']file["']/i);
     const unrestricted = inputs.filter((f) => !/\baccept\s*=/i.test(f));
     if (unrestricted.length > 0)
-      return `Found ${unrestricted.length} file upload(s) without accept attribute.`;
+      return `Found ${pluralize(unrestricted.length, "file upload")} without accept attribute.`;
     return null;
   },
 
@@ -2281,7 +2284,7 @@ const rawDetectors: Record<string, DetectFn> = {
       ...tagsWith(body, "input", /formnovalidate/i),
     ];
     if (buttons.length > 0)
-      return `Found ${buttons.length} submit control(s) with formnovalidate attribute.`;
+      return `Found ${pluralize(buttons.length, "submit control")} with formnovalidate attribute.`;
     return null;
   },
 
@@ -2292,21 +2295,21 @@ const rawDetectors: Record<string, DetectFn> = {
       /action\s*=\s*["']javascript:[^"']+["']/i,
     );
     if (forms.length > 0)
-      return `Found ${forms.length} form(s) using javascript: action scheme.`;
+      return `Found ${pluralize(forms.length, "form")} using javascript: action scheme.`;
     return null;
   },
 
   "form-action-mailto-scheme": (url, _headers, body) => {
     const forms = tagsWith(body, "form", /action\s*=\s*["']mailto:[^"']+["']/i);
     if (forms.length > 0)
-      return `Found ${forms.length} form(s) using mailto: action scheme.`;
+      return `Found ${pluralize(forms.length, "form")} using mailto: action scheme.`;
     return null;
   },
 
   "form-action-tel-scheme": (url, _headers, body) => {
     const forms = tagsWith(body, "form", /action\s*=\s*["']tel:[^"']+["']/i);
     if (forms.length > 0)
-      return `Found ${forms.length} form(s) using tel: action scheme.`;
+      return `Found ${pluralize(forms.length, "form")} using tel: action scheme.`;
     return null;
   },
 
@@ -2314,7 +2317,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const iframes = tagsWith(body, "iframe", /srcdoc\s*=\s*["'][^"']+["']/i);
     const noSandbox = iframes.filter((f) => !/\bsandbox\s*=/i.test(f));
     if (noSandbox.length > 0)
-      return `Found ${noSandbox.length} srcdoc iframe(s) without sandbox attribute.`;
+      return `Found ${pluralize(noSandbox.length, "srcdoc iframe")} without sandbox attribute.`;
     return null;
   },
 
@@ -2324,7 +2327,7 @@ const rawDetectors: Record<string, DetectFn> = {
       (f) => /allow-scripts/.test(f) && /allow-same-origin/.test(f),
     );
     if (bad.length > 0)
-      return `Found ${bad.length} sandboxed iframe(s) allowing both scripts and same-origin.`;
+      return `Found ${pluralize(bad.length, "sandboxed iframe")} allowing both scripts and same-origin.`;
     return null;
   },
 
@@ -2337,7 +2340,7 @@ const rawDetectors: Record<string, DetectFn> = {
       /\bonload\s*=\s*["'][^"']+["']/i.test(el),
     );
     if (matches.length > 0)
-      return `Found ${matches.length} SVG(s) with inline onload handler.`;
+      return `Found ${pluralize(matches.length, "SVG")} with inline onload handler.`;
     return null;
   },
 
@@ -2347,7 +2350,7 @@ const rawDetectors: Record<string, DetectFn> = {
       /SYSTEM\s+["'][^"']+["']|&xxe;/i.test(c),
     );
     if (matches.length > 0)
-      return `Found ${matches.length} SVG(s) referencing external entities (XXE).`;
+      return `Found ${pluralize(matches.length, "SVG")} referencing external entities (XXE).`;
     return null;
   },
 
@@ -2413,7 +2416,7 @@ const rawDetectors: Record<string, DetectFn> = {
       })
       .map((m) => m[0]);
     if (publicIps.length > 0)
-      return `Found ${publicIps.length} hardcoded public IP address(es).`;
+      return `Found ${pluralize(publicIps.length, "hardcoded public IP address", "hardcoded public IP addresses")}.`;
     return null;
   },
 
@@ -2554,7 +2557,7 @@ const rawDetectors: Record<string, DetectFn> = {
         ),
     );
     if (unmasked.length === 0) return null;
-    return `Session-replay/analytics script detected alongside ${unmasked.length} sensitive field(s) (SSN/credit card) without an exclusion attribute — recordings may capture this data.`;
+    return `Session-replay/analytics script detected alongside ${pluralize(unmasked.length, "sensitive field")} (SSN/credit card) without an exclusion attribute. Recordings may capture this data.`;
   },
 
   "third-party-tracker-on-login-page": (url, _headers, body) => {
@@ -2588,7 +2591,7 @@ const rawDetectors: Record<string, DetectFn> = {
       .filter((t) => loadsFrom(refs, t.hosts))
       .map((t) => t.name);
     if (found.length === 0) return null;
-    return `Ad-tech tracking pixel(s) loaded on a page with a login form: ${found.join(", ")} — increases third-party attack surface on a credential-entry page.`;
+    return `Ad-tech tracking ${plural(found.length, "pixel")} loaded on a page with a login form: ${found.join(", ")}. Increases third-party attack surface on a credential-entry page.`;
   },
 
   "wordpress-plugin-version-disclosed": (_url, _headers, body) => {
@@ -2599,7 +2602,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     if (matches.length === 0) return null;
     const unique = [...new Set(matches.map((m) => `${m[1]}@${m[2]}`))];
-    return `WordPress plugin version(s) disclosed via ?ver= query string: ${unique.slice(0, 3).join(", ")} — cross-reference against the WPScan vulnerability database.`;
+    return `WordPress plugin ${plural(unique.length, "version")} disclosed via ?ver= query string: ${unique.slice(0, 3).join(", ")}. Cross-reference against the WPScan vulnerability database.`;
   },
 
   "script-loaded-from-raw-ip": (_url, _headers, body) => {
@@ -2609,7 +2612,7 @@ const rawDetectors: Record<string, DetectFn> = {
       /src=["']https?:\/\/(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\/[^"']*["']/i,
     );
     if (matches.length === 0) return null;
-    return `${matches.length} <script> tag(s) load code from a raw IP address instead of a domain name — unusual and often indicates compromise or malvertising.`;
+    return `${pluralize(matches.length, "<script> tag")} ${plural(matches.length, "loads", "load")} code from a raw IP address instead of a domain name: unusual and often indicates compromise or malvertising.`;
   },
 
   "clipboard-hijack-pattern": (_url, _headers, body) => {
@@ -2768,7 +2771,7 @@ export async function checkSourceMapSourcesExposed(
     ).length;
     if (nonEmptyCount === 0) return null;
 
-    return `Source map fetched from ${mapUrl} contains a non-empty sourcesContent array (${nonEmptyCount} embedded original source file(s)) -- the un-minified original source is directly downloadable, not just inferred from a reference comment.`;
+    return `Source map fetched from ${mapUrl} contains a non-empty sourcesContent array (${pluralize(nonEmptyCount, "embedded original source file")}). The un-minified original source is directly downloadable, not just inferred from a reference comment.`;
   } catch {
     return null; // unreachable, blocked, or timed out -- fall back to sourcemap-reference
   }

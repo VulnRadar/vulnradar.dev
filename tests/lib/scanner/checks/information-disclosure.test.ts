@@ -11,6 +11,7 @@
  * they remain callable without throwing on empty inputs.
  */
 
+import { describe, it, expect } from "vitest";
 import { detectors } from "@/lib/scanner/checks/information-disclosure";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
@@ -646,3 +647,17 @@ const fixtures: DetectorFixtures = {
 };
 
 runDetectorTests(detectors, fixtures);
+
+describe("count wording", () => {
+  it("counts backtrace frames without a parenthesised plural", () => {
+    const body =
+      "app/models/user.rb:12:in `save'\napp/models/post.rb:40:in `create'";
+    const evidence = detectors["ruby-backtrace-exposed"](
+      "https://example.com/",
+      new Headers(),
+      body,
+    );
+    expect(evidence).toContain("(2 frames, e.g. ");
+    expect(evidence).toContain("): leaks source file paths.");
+  });
+});

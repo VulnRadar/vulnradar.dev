@@ -90,9 +90,20 @@ describe("ScanCookieJar", () => {
     expect(header).toBe("b=2; a=1");
   });
 
-  it("readSetCookies falls back to a single get() when getSetCookie is absent", () => {
+  it("readSetCookies keeps two Set-Cookie headers apart", () => {
+    const headers = new Headers();
+    headers.append("set-cookie", "a=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT");
+    headers.append("set-cookie", "b=2");
+    expect(readSetCookies(headers)).toEqual([
+      "a=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT",
+      "b=2",
+    ]);
+  });
+
+  it("readSetCookies still reads the header on a runtime without getSetCookie", () => {
     const headers = new Headers();
     headers.set("set-cookie", "a=1");
+    Object.defineProperty(headers, "getSetCookie", { value: undefined });
     expect(readSetCookies(headers)).toEqual(["a=1"]);
   });
 

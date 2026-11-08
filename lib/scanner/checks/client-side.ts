@@ -53,7 +53,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const scriptSrc =
       csp.match(/script-src[^;]*/i)?.[0] ?? csp.match(/default-src[^;]*/i)?.[0];
     if (scriptSrc && /'unsafe-inline'/.test(scriptSrc)) {
-      return "CSP script-src includes 'unsafe-inline' — inline script injection will execute despite the CSP.";
+      return "CSP script-src includes 'unsafe-inline'. Inline script injection will execute despite the CSP.";
     }
     return null;
   },
@@ -62,7 +62,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const csp = getHeader(headers, "content-security-policy");
     if (!csp) return null;
     if (/'unsafe-eval'/.test(csp)) {
-      return "CSP includes 'unsafe-eval' — eval(), Function(), and setTimeout(string) are permitted.";
+      return "CSP includes 'unsafe-eval': eval(), Function(), and setTimeout(string) are permitted.";
     }
     return null;
   },
@@ -80,7 +80,7 @@ const rawDetectors: Record<string, DetectFn> = {
       // Match any identifier's .origin access, not just the literal names
       // "event"/"message" — handlers commonly name the param e, evt, ev, msg, etc.
       if (!/\w+\.origin\b/.test(handlerRegion)) {
-        return "postMessage listener found without event.origin validation — any page can send messages.";
+        return "postMessage listener found without event.origin validation. Any page can send messages.";
       }
     }
     return null;
@@ -102,7 +102,7 @@ const rawDetectors: Record<string, DetectFn> = {
         .replace(/([a-z0-9])([A-Z])/g, "$1|$2")
         .replace(/api\|key/gi, "apikey");
       if (sensitiveKeyword.test(key)) {
-        return "Authentication token or secret stored in localStorage — readable by any JavaScript on the page.";
+        return "Authentication token or secret stored in localStorage: readable by any JavaScript on the page.";
       }
     }
     return null;
@@ -122,7 +122,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "cs-document-write-usage": (_url, _headers, body) => {
     const combined = extractScriptContents(body).join("\n");
     if (/document\.write\s*\(/.test(combined)) {
-      return "document.write() detected — deprecated API that is a DOM XSS sink and breaks modern frameworks.";
+      return "document.write() detected: deprecated API that is a DOM XSS sink and breaks modern frameworks.";
     }
     return null;
   },
@@ -153,7 +153,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const pattern = /\/\/[#@]\s*sourceMappingURL\s*=\s*(?!data:)([^\s]+\.map)/i;
     const m = pattern.exec(body);
     if (m) {
-      return `JavaScript source map reference detected: ${m[1]} — exposes original un-minified source code.`;
+      return `JavaScript source map reference detected: ${m[1]}. Exposes original un-minified source code.`;
     }
     return null;
   },
@@ -168,7 +168,7 @@ const rawDetectors: Record<string, DetectFn> = {
     // An AMD module (RequireJS define/require) opens with the same shape and
     // is a script, not a data response wrapped for another origin.
     if (call && !/^(?:define|require|requirejs)$/.test(call[1])) {
-      return "JSONP callback pattern detected — any website can load this endpoint and read the response data.";
+      return "JSONP callback pattern detected. Any website can load this endpoint and read the response data.";
     }
     return null;
   },
@@ -180,7 +180,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "Client-side location assignment from URL parameters without validation — open redirect risk.";
+        return "Client-side location assignment from URL parameters without validation: open redirect risk.";
       }
     }
     return null;
@@ -198,7 +198,7 @@ const rawDetectors: Record<string, DetectFn> = {
       pattern.test(scripts) &&
       !/DOMPurify|sanitize-html|xss\s*\(/i.test(scripts)
     ) {
-      return "Angular bypassSecurityTrust* usage detected — verify content is fully sanitized before this call.";
+      return "Angular bypassSecurityTrust* usage detected. Verify content is fully sanitized before this call.";
     }
     return null;
   },
@@ -208,7 +208,7 @@ const rawDetectors: Record<string, DetectFn> = {
     if (pattern.test(body)) {
       const hasSanitize = /DOMPurify|sanitize|xss/i.test(body);
       if (!hasSanitize) {
-        return "Vue v-html directive detected without visible DOMPurify sanitization — XSS risk with user content.";
+        return "Vue v-html directive detected without visible DOMPurify sanitization: XSS risk with user content.";
       }
     }
     return null;
@@ -246,7 +246,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "Sensitive configuration data serialized into page JavaScript — review server-side props for secret exposure.";
+        return "Sensitive configuration data serialized into page JavaScript. Review server-side props for secret exposure.";
       }
     }
     const hydration =
@@ -264,7 +264,7 @@ const rawDetectors: Record<string, DetectFn> = {
         .replace(/[_-]/g, "|")
         .replace(/([a-z0-9])([A-Z])/g, "$1|$2");
       if (/\b(?:password|secret|token|private\|?key)\b/i.test(normalized)) {
-        return "Sensitive configuration data serialized into page JavaScript — review server-side props for secret exposure.";
+        return "Sensitive configuration data serialized into page JavaScript. Review server-side props for secret exposure.";
       }
     }
     return null;
@@ -292,7 +292,7 @@ const rawDetectors: Record<string, DetectFn> = {
         )
       )
         continue;
-      return "Client-side prototype pollution pattern detected — audit Object merge operations for __proto__ filtering.";
+      return "Client-side prototype pollution pattern detected. Audit Object merge operations for __proto__ filtering.";
     }
     const patterns = [
       /Object\.prototype\.\w+\s*=/,
@@ -302,7 +302,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "Client-side prototype pollution pattern detected — audit Object merge operations for __proto__ filtering.";
+        return "Client-side prototype pollution pattern detected. Audit Object merge operations for __proto__ filtering.";
       }
     }
     return null;
@@ -321,7 +321,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const pattern =
       /(?:baseURL|apiUrl|API_URL|API_BASE_URL|endpoint)\s*[:=]\s*["']https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d{1,5})?[^"']{0,300}["']/i;
     if (pattern.test(scripts)) {
-      return "Client-side script hardcodes an API base URL pointing at localhost — looks like a dev config that was never swapped for production before shipping.";
+      return "Client-side script hardcodes an API base URL pointing at localhost: looks like a dev config that was never swapped for production before shipping.";
     }
     return null;
   },
@@ -332,7 +332,7 @@ const rawDetectors: Record<string, DetectFn> = {
       /(?:innerHTML\s*=|dangerouslySetInnerHTML\s*=\s*\{\s*\{\s*__html\s*:)\s*(?:marked|markdownit|md)\s*(?:\.\w+)?\s*\(/i;
     if (!pattern.test(scripts)) return null;
     if (/DOMPurify|sanitize-html|xss\s*\(/i.test(scripts)) return null;
-    return "Markdown renderer output (marked()/markdown-it) assigned directly to innerHTML/dangerouslySetInnerHTML without visible sanitization — stored/reflected XSS risk if the markdown source is user-controlled.";
+    return "Markdown renderer output (marked()/markdown-it) assigned directly to innerHTML/dangerouslySetInnerHTML without visible sanitization: stored/reflected XSS risk if the markdown source is user-controlled.";
   },
 
   "cs-websocket-token-in-query": (_url, _headers, body) => {
@@ -340,7 +340,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const pattern =
       /new\s+WebSocket\s*\(\s*[^)]*[?&](?:token|auth|api[_-]?key|jwt)=/i;
     if (pattern.test(scripts)) {
-      return "WebSocket connection URL includes an auth token/key as a query parameter — tokens in URLs are logged by proxies, load balancers, and browser history.";
+      return "WebSocket connection URL includes an auth token/key as a query parameter. Tokens in URLs are logged by proxies, load balancers, and browser history.";
     }
     return null;
   },
@@ -350,7 +350,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const pattern =
       /if\s*\(\s*(?:user|currentUser|session)\.(?:role|isAdmin|permissions?)\s*(?:===|==|\.includes)[^)]*\)\s*\{[^}]{0,120}\.style\.(?:display|visibility)/i;
     if (pattern.test(scripts)) {
-      return "UI element visibility gated by a client-side role/permission check (e.g. user.role === 'admin') — verify the underlying action is also enforced server-side, since this alone is trivially bypassed.";
+      return "UI element visibility gated by a client-side role/permission check (e.g. user.role === 'admin'). Verify the underlying action is also enforced server-side, since this alone is trivially bypassed.";
     }
     return null;
   },
@@ -361,7 +361,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const m = tagsWith(body, "script", pattern);
     if (m.length > 0) {
       const src = m[0].match(/src=["']([^"']+)["']/i)?.[1] ?? "tunnel URL";
-      return `Script loaded from a development tunneling domain (${src}) — looks like a temporary dev/debug endpoint left wired into production markup.`;
+      return `Script loaded from a development tunneling domain (${src}): looks like a temporary dev/debug endpoint left wired into production markup.`;
     }
     return null;
   },
@@ -371,7 +371,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const pattern =
       /clipboard\.writeText\s*\(\s*["'](?:sk-|AIza|ghp_|xox[bpras]-)[A-Za-z0-9_-]{16,}["']\s*\)/i;
     if (pattern.test(scripts)) {
-      return "navigator.clipboard.writeText() call contains a hardcoded credential-shaped string — likely a leftover debug 'copy my API key' button shipped with a real key.";
+      return "navigator.clipboard.writeText() call contains a hardcoded credential-shaped string: likely a leftover debug 'copy my API key' button shipped with a real key.";
     }
     return null;
   },

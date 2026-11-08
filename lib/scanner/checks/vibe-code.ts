@@ -130,7 +130,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const pattern = /\beval\s*\(/;
     for (const script of scripts) {
       if (pattern.test(script)) {
-        return "eval() call detected in page scripts — can enable code injection if user input reaches it.";
+        return "eval() call detected in page scripts: can enable code injection if user input reaches it.";
       }
     }
     return null;
@@ -146,7 +146,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "SSL certificate verification bypass pattern detected — disables TLS validation and enables MITM attacks.";
+        return "SSL certificate verification bypass pattern detected: disables TLS validation and enables MITM attacks.";
       }
     }
     return null;
@@ -164,7 +164,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const pattern =
       /Math\.random\(\)[\s\S]{0,150}\b(?:token|csrf|session|secret|key|nonce|id|code)\b/i;
     if (pattern.test(body)) {
-      return "Math.random() used near security-sensitive term — Math.random() is not cryptographically secure.";
+      return "Math.random() used near security-sensitive term. Math.random() is not cryptographically secure.";
     }
     return null;
   },
@@ -189,7 +189,7 @@ const rawDetectors: Record<string, DetectFn> = {
           nearby.match(/(?:===|==)\s*["'][^"']{1,20}["']/g) || []
         ).length;
         if (chainCount < 3) {
-          return "Hardcoded credential comparison detected — placeholder authentication logic shipped to production.";
+          return "Hardcoded credential comparison detected: placeholder authentication logic shipped to production.";
         }
       }
     }
@@ -211,7 +211,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "JWT 'none' algorithm risk pattern detected — library may accept unsigned tokens.";
+        return "JWT 'none' algorithm risk pattern detected. Library may accept unsigned tokens.";
       }
     }
     return null;
@@ -232,7 +232,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "SQL string concatenation with request data detected — direct SQL injection vector.";
+        return "SQL string concatenation with request data detected: direct SQL injection vector.";
       }
     }
     return null;
@@ -246,7 +246,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "JavaScript stack trace detected in response — leaks file paths and internal code structure.";
+        return "JavaScript stack trace detected in response: leaks file paths and internal code structure.";
       }
     }
     return null;
@@ -262,7 +262,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "MD5 or SHA-1 used in password/secret context — these algorithms are cryptographically broken.";
+        return "MD5 or SHA-1 used in password/secret context. These algorithms are cryptographically broken.";
       }
     }
     return null;
@@ -280,7 +280,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "Unsafe deserialization of user input detected — validate schema before using parsed data.";
+        return "Unsafe deserialization of user input detected. Validate schema before using parsed data.";
       }
     }
     return null;
@@ -299,7 +299,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const pattern =
       /["']http:\/\/(?!(?:localhost|127\.0\.0\.1|0\.0\.0\.0|example\.com|schemas\.|www\.w3\.org|schema\.org|ogp\.me|purl\.org|creativecommons\.org)[^"']*)/i;
     if (pattern.test(body)) {
-      return "Hardcoded http:// URL found in page scripts — use https:// or environment variables.";
+      return "Hardcoded http:// URL found in page scripts. Use https:// or environment variables.";
     }
     return null;
   },
@@ -309,7 +309,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const urlPattern = /\/(?:user|account|profile|order)s?\/([1-9]\d{0,3})\b/i;
     const m = urlPattern.exec(url);
     if (m) {
-      return `Sequential integer ID (${m[1]}) in URL path — predictable IDs enable IDOR enumeration.`;
+      return `Sequential integer ID (${m[1]}) in URL path. Predictable IDs enable IDOR enumeration.`;
     }
     // Check if response JSON contains "id": small-integer patterns near
     // user/account context, not just any public resource id (a blog post,
@@ -327,7 +327,7 @@ const rawDetectors: Record<string, DetectFn> = {
           nearby,
         )
       ) {
-        return `Sequential integer ID (${bm[1]}) in API response — consider UUIDs to prevent enumeration.`;
+        return `Sequential integer ID (${bm[1]}) in API response. Consider UUIDs to prevent enumeration.`;
       }
     }
     return null;
@@ -345,7 +345,7 @@ const rawDetectors: Record<string, DetectFn> = {
       // the document from every hidden field whose tag never closed.
       hasTagWith(body, "input", /type\s*=\s*["']hidden["']/i, /csrf|token/i);
     if (!hasCsrfToken) {
-      return "POST form detected without a visible CSRF token field — verify server-side CSRF protection is present.";
+      return "POST form detected without a visible CSRF token field. Verify server-side CSRF protection is present.";
     }
     return null;
   },
@@ -403,7 +403,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "Template engine called with potential user-controlled string — server-side template injection risk.";
+        return "Template engine called with potential user-controlled string: server-side template injection risk.";
       }
     }
     return null;
@@ -437,7 +437,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "Redirect using URL/query parameter without visible validation — potential open redirect.";
+        return "Redirect using URL/query parameter without visible validation: potential open redirect.";
       }
     }
     return null;
@@ -451,7 +451,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "Loose equality (==) in apparent authorization check — use === to avoid type coercion bypass.";
+        return "Loose equality (==) in apparent authorization check. Use === to avoid type coercion bypass.";
       }
     }
     return null;
@@ -496,7 +496,7 @@ const rawDetectors: Record<string, DetectFn> = {
         at + m[0].length + WINDOW,
       );
       if (VALIDATED.some((v) => v.test(near))) continue;
-      return "Request body spread into an object with no schema validation nearby — every field the client sends is written, including ones it should not be able to set.";
+      return "Request body spread into an object with no schema validation nearby. Every field the client sends is written, including ones it should not be able to set.";
     }
     return null;
   },
@@ -535,7 +535,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const pattern =
       /await\s+\w+\.\w+\s*\(\s*\w+\s*,\s*\{[^}]*\.\.\.\s*(?:req\.|request\.)body/i;
     if (pattern.test(body)) {
-      return "Database update spreading entire request body — mass assignment allows modification of protected fields.";
+      return "Database update spreading entire request body. Mass assignment allows modification of protected fields.";
     }
     return null;
   },
@@ -548,7 +548,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "Direct string equality on security token — use crypto.timingSafeEqual() to prevent timing attacks.";
+        return "Direct string equality on security token. Use crypto.timingSafeEqual() to prevent timing attacks.";
       }
     }
     return null;
@@ -562,7 +562,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "innerHTML or dangerouslySetInnerHTML assigned without DOMPurify sanitization — XSS risk.";
+        return "innerHTML or dangerouslySetInnerHTML assigned without DOMPurify sanitization: XSS risk.";
       }
     }
     return null;
@@ -577,7 +577,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const pattern =
       /document\.cookie\s*=\s*[`"'][^`"']*domain\s*=\s*\.[a-z0-9.-]+\.[a-z]{2,}[^`"']*[`"']/i;
     if (pattern.test(body)) {
-      return "Cookie set via document.cookie with a broad leading-dot domain attribute — shares the cookie across all subdomains.";
+      return "Cookie set via document.cookie with a broad leading-dot domain attribute: shares the cookie across all subdomains.";
     }
     return null;
   },
@@ -592,7 +592,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const hasRateLimit =
       /(?:ratelimit|rate.limit|limiter|throttle|slowDown)/i.test(body);
     if (!hasRateLimit) {
-      return "Login/auth endpoint without visible rate limiting — brute-force attacks are unrestricted.";
+      return "Login/auth endpoint without visible rate limiting. Brute-force attacks are unrestricted.";
     }
     return null;
   },
@@ -607,13 +607,13 @@ const rawDetectors: Record<string, DetectFn> = {
     const joins = body.match(joinPattern) || [];
     for (const call of joins) {
       if (!/\.startsWith\(|path\.resolve\(|path\.normalize\(/.test(call)) {
-        return "File system operation using request parameters — validate path stays within allowed directory.";
+        return "File system operation using request parameters. Validate path stays within allowed directory.";
       }
     }
     const fsPattern =
       /fs\.(?:readFile|writeFile|readdir)\s*\([^)]*(?:req\.|request\.)(?:params|query)/i;
     if (fsPattern.test(body)) {
-      return "File system operation using request parameters — validate path stays within allowed directory.";
+      return "File system operation using request parameters. Validate path stays within allowed directory.";
     }
     return null;
   },
@@ -654,7 +654,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "Prototype pollution risk pattern detected — filter __proto__, constructor, prototype keys from user input.";
+        return "Prototype pollution risk pattern detected. Filter __proto__, constructor, prototype keys from user input.";
       }
     }
     return null;
@@ -668,7 +668,7 @@ const rawDetectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) {
-        return "User input concatenated directly into an LLM prompt without visible isolation/sanitization — prompt injection risk.";
+        return "User input concatenated directly into an LLM prompt without visible isolation/sanitization: prompt injection risk.";
       }
     }
     return null;
@@ -679,7 +679,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const pattern =
       /fetch\s*\(\s*["']https:\/\/api\.(?:openai|anthropic)\.com/i;
     if (pattern.test(body)) {
-      return "Direct fetch() call to the OpenAI/Anthropic API found in page scripts — LLM API keys should never be called from client-side code; proxy through a backend endpoint.";
+      return "Direct fetch() call to the OpenAI/Anthropic API found in page scripts. LLM API keys should never be called from client-side code; proxy through a backend endpoint.";
     }
     return null;
   },
@@ -689,7 +689,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const pattern =
       /filename\.(?:includes|indexOf)\s*\(\s*["']\.[a-z0-9]{2,4}["']/i;
     if (pattern.test(body)) {
-      return "File upload validated with filename.includes('.ext') instead of checking the actual extension/MIME type — 'evil.jpg.exe' passes this check.";
+      return "File upload validated with filename.includes('.ext') instead of checking the actual extension/MIME type: 'evil.jpg.exe' passes this check.";
     }
     return null;
   },
@@ -705,7 +705,7 @@ const rawDetectors: Record<string, DetectFn> = {
           call,
         )
       ) {
-        return "Client-computed total/amount/price sent directly to a checkout/payment endpoint — recompute and validate pricing server-side; a trusted client value can be tampered with.";
+        return "Client-computed total/amount/price sent directly to a checkout/payment endpoint. Recompute and validate pricing server-side; a trusted client value can be tampered with.";
       }
     }
     return null;
@@ -716,7 +716,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const pattern =
       /try\s*\{[^}]{0,200}(?:verify|authenticate|checkAuth|isLoggedIn)\([^}]{0,200}\}\s*catch\s*\([^)]*\)\s*\{\s*console\.(?:log|error|warn)\([^)]*\)\s*;?\s*\}/i;
     if (pattern.test(body)) {
-      return "Authentication check wrapped in try/catch whose catch block only logs the error — a thrown/rejected auth check silently 'succeeds' instead of denying access (fail-open).";
+      return "Authentication check wrapped in try/catch whose catch block only logs the error. A thrown/rejected auth check silently 'succeeds' instead of denying access (fail-open).";
     }
     return null;
   },
@@ -726,7 +726,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const pattern =
       /import\s*\(\s*(?:req\.|request\.)(?:params|query|body)\.\w+/i;
     if (pattern.test(body)) {
-      return "Dynamic import() called with a request-derived path — can allow arbitrary module loading if not restricted to an allowlist.";
+      return "Dynamic import() called with a request-derived path: can allow arbitrary module loading if not restricted to an allowlist.";
     }
     return null;
   },

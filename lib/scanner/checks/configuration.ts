@@ -92,7 +92,7 @@ export const detectors: Record<string, DetectFn> = {
       ["gzip", "br", "deflate", "zstd", "compress", "x-gzip"].includes(t),
     );
     if (compressed && !/accept-encoding/i.test(vary)) {
-      return `Compressed response (Content-Encoding: ${enc}) is missing Vary: Accept-Encoding — a shared cache may serve compressed content to a client that can't decompress it.`;
+      return `Compressed response (Content-Encoding: ${enc}) is missing Vary: Accept-Encoding. A shared cache may serve compressed content to a client that can't decompress it.`;
     }
     return null;
   },
@@ -124,7 +124,7 @@ export const detectors: Record<string, DetectFn> = {
     const vary = h(headers, "vary");
     const isStatic = STATIC_ASSET_URL_RE.test(url);
     if (vary && /cookie/i.test(vary) && isStatic) {
-      return "Vary: Cookie is set on a static asset — every cache stores one copy per Cookie value, defeating caching.";
+      return "Vary: Cookie is set on a static asset. Every cache stores one copy per Cookie value, defeating caching.";
     }
     return null;
   },
@@ -140,7 +140,7 @@ export const detectors: Record<string, DetectFn> = {
     // cannot be a reflection. It is a constant, and a constant needs no Vary.
     if (acao.trim().toLowerCase() === originOf(url)) return null;
     if (!vary || !/origin/i.test(vary)) {
-      return `Access-Control-Allow-Origin: ${acao} is dynamic but Vary: Origin is missing — cache poisoning risk across origins.`;
+      return `Access-Control-Allow-Origin: ${acao} is dynamic but Vary: Origin is missing. Cache poisoning risk across origins.`;
     }
     return null;
   },
@@ -162,7 +162,7 @@ export const detectors: Record<string, DetectFn> = {
   "server-timing-cache-timings": (_url, headers) => {
     const st = h(headers, "server-timing");
     if (st && /cache|edge|origin/i.test(st) && /dur=/i.test(st)) {
-      return "Server-Timing exposes cache hit/miss timings (e.g. cache;dur=12) — strip cache-specific entries in production.";
+      return "Server-Timing exposes cache hit/miss timings (e.g. cache;dur=12). Strip cache-specific entries in production.";
     }
     return null;
   },
@@ -184,10 +184,10 @@ export const detectors: Record<string, DetectFn> = {
         ct,
       );
     if (cd && /^\s*inline/i.test(cd) && isDownloadableDoc) {
-      return `Content-Disposition: inline on binary response (${ct.split(";")[0].trim()}) — browsers will render it in-page, enabling exfiltration via iframes.`;
+      return `Content-Disposition: inline on binary response (${ct.split(";")[0].trim()}). Browsers will render it in-page, enabling exfiltration via iframes.`;
     }
     if (!cd && isDownloadableDoc) {
-      return `No Content-Disposition header on binary response (${ct.split(";")[0].trim()}) — add 'attachment; filename=...' to force a download.`;
+      return `No Content-Disposition header on binary response (${ct.split(";")[0].trim()}). Add 'attachment; filename=...' to force a download.`;
     }
     return null;
   },
@@ -198,7 +198,7 @@ export const detectors: Record<string, DetectFn> = {
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
       if (c.length > 4096) {
-        return `Set-Cookie header is ${c.length} bytes (limit ~4096) — browsers will silently drop the cookie.`;
+        return `Set-Cookie header is ${c.length} bytes (limit ~4096). Browsers will silently drop the cookie.`;
       }
     }
     return null;
@@ -212,12 +212,12 @@ export const detectors: Record<string, DetectFn> = {
     for (const c of cookies) {
       const name = parseCookieName(c);
       if (/x-debug/i.test(name)) {
-        return "Debug flag set via cookie — easy to forget when promoting from staging to production.";
+        return "Debug flag set via cookie: easy to forget when promoting from staging to production.";
       }
       if (/^debug$/i.test(name)) {
         const value = c.split(";")[0].slice(name.length + 1);
         if (/^\s*(?:1|true|yes)\s*$/i.test(value)) {
-          return "Debug flag set via cookie — easy to forget when promoting from staging to production.";
+          return "Debug flag set via cookie: easy to forget when promoting from staging to production.";
         }
       }
     }
@@ -229,7 +229,7 @@ export const detectors: Record<string, DetectFn> = {
   "x-xss-protection-block": (_url, headers) => {
     const xss = h(headers, "x-xss-protection");
     if (xss && /1\s*;\s*mode\s*=\s*block/i.test(xss)) {
-      return "X-XSS-Protection: 1; mode=block is deprecated — remove and rely on a strict Content-Security-Policy.";
+      return "X-XSS-Protection: 1; mode=block is deprecated. Remove and rely on a strict Content-Security-Policy.";
     }
     // Previously also "fired" (returned a non-null finding) whenever an HTML
     // page correctly omitted the deprecated header — the evidence text even
@@ -243,37 +243,37 @@ export const detectors: Record<string, DetectFn> = {
 
   "x-amz-cf-id": (_url, headers) => {
     if (hasHeader(headers, "x-amz-cf-id"))
-      return "X-Amz-Cf-Id exposes CloudFront request ID — strip at the edge via Lambda@Edge if not needed.";
+      return "X-Amz-Cf-Id exposes CloudFront request ID. Strip at the edge via Lambda@Edge if not needed.";
     return null;
   },
 
   "x-cache-status-cloudflare": (_url, headers) => {
     if (hasHeader(headers, "x-cache-status"))
-      return "X-Cache-Status reveals Cloudflare cache state — strip at the origin if cache status is not for clients.";
+      return "X-Cache-Status reveals Cloudflare cache state. Strip at the origin if cache status is not for clients.";
     return null;
   },
 
   "x-vercel-cache": (_url, headers) => {
     if (hasHeader(headers, "x-vercel-cache"))
-      return "X-Vercel-Cache reveals Vercel edge cache state (HIT/MISS/BYPASS) — drop at the edge or set Cache-Control: private.";
+      return "X-Vercel-Cache reveals Vercel edge cache state (HIT/MISS/BYPASS). Drop at the edge or set Cache-Control: private.";
     return null;
   },
 
   "x-nextjs-cache": (_url, headers) => {
     if (hasHeader(headers, "x-nextjs-cache"))
-      return "X-Nextjs-Cache reveals Next.js ISR cache state (HIT/MISS/STALE/BYPASS) — remove in next.config.js for production.";
+      return "X-Nextjs-Cache reveals Next.js ISR cache state (HIT/MISS/STALE/BYPASS). Remove in next.config.js for production.";
     return null;
   },
 
   "x-netlify-cache": (_url, headers) => {
     if (hasHeader(headers, "x-netlify-cache"))
-      return "X-Netlify-Cache exposes Netlify CDN cache state (HIT/MISS/PASS/REVALIDATE) — strip via _headers if not needed.";
+      return "X-Netlify-Cache exposes Netlify CDN cache state (HIT/MISS/PASS/REVALIDATE). Strip via _headers if not needed.";
     return null;
   },
 
   "x-cache-hits": (_url, headers) => {
     if (hasHeader(headers, "x-cache-hits"))
-      return "X-Cache-Hits exposes how often an asset was served from cache — strip if cache-usage patterns are sensitive.";
+      return "X-Cache-Hits exposes how often an asset was served from cache. Strip if cache-usage patterns are sensitive.";
     return null;
   },
 
@@ -284,7 +284,7 @@ export const detectors: Record<string, DetectFn> = {
       hasHeader(headers, "ratelimit-limit") &&
       !hasHeader(headers, "ratelimit-policy")
     ) {
-      return "RateLimit-Limit is set without RateLimit-Policy — clients cannot interpret the window or quota unit.";
+      return "RateLimit-Limit is set without RateLimit-Policy. Clients cannot interpret the window or quota unit.";
     }
     // The description promises checking X-RateLimit-Limit and Retry-After
     // too, but the code only ever checked the newer IETF draft's unprefixed
@@ -299,7 +299,7 @@ export const detectors: Record<string, DetectFn> = {
       !hasHeader(headers, "x-ratelimit-limit") &&
       !hasHeader(headers, "retry-after")
     ) {
-      return "API endpoint has no RateLimit-* family headers — consider emitting RateLimit-Limit and RateLimit-Policy.";
+      return "API endpoint has no RateLimit-* family headers. Consider emitting RateLimit-Limit and RateLimit-Policy.";
     }
     return null;
   },
@@ -311,7 +311,7 @@ export const detectors: Record<string, DetectFn> = {
       /\/_next\/static\/development\//i.test(body) ||
       /"buildId"\s*:\s*"development"/i.test(body)
     ) {
-      return "Next.js development build artifacts detected in response — the app appears to be running 'next dev' (or an unoptimized dev build) in a publicly reachable environment.";
+      return "Next.js development build artifacts detected in response. The app appears to be running 'next dev' (or an unoptimized dev build) in a publicly reachable environment.";
     }
     return null;
   },
@@ -323,7 +323,7 @@ export const detectors: Record<string, DetectFn> = {
     // blank .env.example template can echo them harmlessly). Require an
     // actual non-empty secret value on the APP_KEY/DB_PASSWORD line.
     if (/^APP_KEY\s*=\S/m.test(body) || /^DB_PASSWORD\s*=\S/m.test(body)) {
-      return "Response body looks like raw .env file content (APP_DEBUG/APP_KEY/DB_PASSWORD-style lines) — a real .env file is being served instead of application output.";
+      return "Response body looks like raw .env file content (APP_DEBUG/APP_KEY/DB_PASSWORD-style lines). A real .env file is being served instead of application output.";
     }
     return null;
   },
@@ -350,10 +350,10 @@ export const detectors: Record<string, DetectFn> = {
       return false;
     };
     if (hasRealReference(/\/static\/debug_toolbar\/|djDebug/gi)) {
-      return "Django Debug Toolbar assets referenced in page output — the toolbar is active on a publicly reachable page.";
+      return "Django Debug Toolbar assets referenced in page output. The toolbar is active on a publicly reachable page.";
     }
     if (hasRealReference(/_debugbar\/assets|phpdebugbar/gi)) {
-      return "Laravel Debugbar / PHP Debug Bar assets referenced in page output — the debugger is active on a publicly reachable page.";
+      return "Laravel Debugbar / PHP Debug Bar assets referenced in page output. The debugger is active on a publicly reachable page.";
     }
     return null;
   },
@@ -380,7 +380,7 @@ export const detectors: Record<string, DetectFn> = {
       /<title>\s*H2 Console\s*<\/title>/i.test(body) ||
       /\/h2-console\/login\.jsp/i.test(body)
     ) {
-      return "Spring Boot H2 database web console is reachable — this provides direct SQL access to the application's database.";
+      return "Spring Boot H2 database web console is reachable. This provides direct SQL access to the application's database.";
     }
     return null;
   },
@@ -390,7 +390,7 @@ export const detectors: Record<string, DetectFn> = {
       /<title>\s*phpMyAdmin/i.test(body) &&
       /name=["']pma_username["']/i.test(body)
     ) {
-      return "phpMyAdmin login page is directly reachable — restrict access via IP allowlist or VPN.";
+      return "phpMyAdmin login page is directly reachable. Restrict access via IP allowlist or VPN.";
     }
     return null;
   },

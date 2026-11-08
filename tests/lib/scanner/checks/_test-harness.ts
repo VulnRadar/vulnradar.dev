@@ -51,6 +51,17 @@ export interface DetectorFixture {
 
 export type DetectorFixtures = Record<string, DetectorFixture[]>;
 
+/**
+ * Detectors in checks/code.ts and checks/cookies.ts whose evidence still has
+ * an em dash, skipped by the "evidence copy" test until those files are
+ * rewritten. tests/repo/scanner-no-em-dash.test.ts holds the count of what is
+ * left, so this can only shrink.
+ */
+export const EM_DASH_PENDING_DETECTORS = new Set<string>([
+  "cookie-maxage-expires-conflict",
+  "cookie-no-csrf-token",
+]);
+
 const DEFAULT_URL = "https://example.com";
 
 function buildHeaders(fx: DetectorFixture): Headers {
@@ -208,6 +219,21 @@ export function runDetectorTests(
         ).toBeNull();
       },
     );
+  });
+
+  describe("evidence copy", () => {
+    it("no fixture produces evidence with an em dash", () => {
+      const bad: string[] = [];
+      for (const [id, cases] of Object.entries(fixtures)) {
+        if (!detectors[id] || EM_DASH_PENDING_DETECTORS.has(id)) continue;
+        cases.forEach((fx, index) => {
+          if (invoke(detectors[id], fx)?.includes("—")) {
+            bad.push(`${id}[${index}] (${fx.description})`);
+          }
+        });
+      }
+      expect(bad, "evidence contains U+2014").toEqual([]);
+    });
   });
 
   describe("fixture hygiene", () => {

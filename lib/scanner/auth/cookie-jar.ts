@@ -337,18 +337,5 @@ function parseCookieName(header: string): string {
   return eq <= 0 ? "" : first.slice(0, eq).trim();
 }
 
-/**
- * Read Set-Cookie headers off a Response.
- *
- * `Headers.getSetCookie()` is the only correct way to read multiple
- * Set-Cookie headers; `get()` joins them with a comma, which corrupts any
- * cookie carrying an Expires date. Fall back only when the runtime lacks it.
- */
-export function readSetCookies(headers: Headers): string[] {
-  const withGetter = headers as Headers & { getSetCookie?: () => string[] };
-  if (typeof withGetter.getSetCookie === "function") {
-    return withGetter.getSetCookie();
-  }
-  const single = headers.get("set-cookie");
-  return single ? [single] : [];
-}
+// The login flow reads Set-Cookie under this name; the parsing is _helpers'.
+export { getSetCookies as readSetCookies } from "../_helpers";

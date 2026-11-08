@@ -1267,6 +1267,42 @@ const fixtures: DetectorFixtures = {
 
 runDetectorTests(detectors, fixtures);
 
+describe("count wording", () => {
+  const url = "https://example.com/";
+  const run = (id: string, body: string) =>
+    detectors[id](url, new Headers(), body);
+
+  it("agrees with one iframe and with several", () => {
+    const frame = '<iframe src="http://evil.example.org/x"></iframe>';
+    expect(run("insecure-iframes", frame)).toBe(
+      "Found 1 iframe loading HTTP content on HTTPS page.",
+    );
+    expect(run("insecure-iframes", frame.repeat(2))).toBe(
+      "Found 2 iframes loading HTTP content on HTTPS page.",
+    );
+  });
+
+  it("takes the -es plural where a trailing s would be wrong", () => {
+    const line = "document.cookie = 'session=' + value;";
+    expect(run("document-cookie-access", line)).toContain(
+      "1 document.cookie access near",
+    );
+    expect(run("document-cookie-access", `${line}\n${line}`)).toContain(
+      "2 document.cookie accesses near",
+    );
+  });
+
+  it("agrees its verb with the count", () => {
+    const tag = '<script src="http://52.14.7.9/a.js"></script>';
+    expect(run("script-loaded-from-raw-ip", tag)).toContain(
+      "1 <script> tag loads code",
+    );
+    expect(run("script-loaded-from-raw-ip", tag.repeat(2))).toContain(
+      "2 <script> tags load code",
+    );
+  });
+});
+
 // checkSourceMapSourcesExposed is exported separately from `detectors`
 // (see the comment above its definition in content.ts): it needs a real
 // follow-up HTTP fetch, which the synchronous detector map's contract

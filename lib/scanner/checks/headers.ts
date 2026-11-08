@@ -8,11 +8,13 @@
 
 import {
   getHeader,
+  getSetCookies,
   hasHeader,
   extractScriptContents,
   getEffectiveCsp,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
+import { plural, pluralize } from "@/lib/ui/plural";
 import { SRI_EXEMPT_HOSTS } from "./client-side";
 import { STATIC_ASSET_URL_RE } from "./configuration";
 import { cspHasDirective, cspRestrictsContent } from "./_csp-shape";
@@ -409,7 +411,7 @@ export const detectors: Record<string, DetectFn> = {
       .map((d) => d.trim())
       .filter((d) => d.includes("'unsafe-eval'"))
       .map((d) => d.split(/\s+/)[0]);
-    return `CSP allows 'unsafe-eval' in: ${directives.join(", ")} — permits eval(), Function(), and setTimeout with strings.`;
+    return `CSP allows 'unsafe-eval' in: ${directives.join(", ")}. Permits eval(), Function(), and setTimeout with strings.`;
   },
 
   "csp-allows-http-sources": (_url, headers, body) => {
@@ -421,7 +423,7 @@ export const detectors: Record<string, DetectFn> = {
     if (!effective) return null;
     if (!/(?:^|\s)http:\/\//i.test(effective)) return null;
     const directive = scriptSrc ? "script-src" : "default-src";
-    return `CSP ${directive} allows http:// sources — scripts can be loaded over unencrypted HTTP, enabling MITM injection.`;
+    return `CSP ${directive} allows http:// sources. Scripts can be loaded over unencrypted HTTP, enabling MITM injection.`;
   },
 
   "csp-wildcard-source": (_url, headers, body) => {
@@ -741,14 +743,14 @@ export const detectors: Record<string, DetectFn> = {
       const m = r.match(/\s(?:src|href)=["'](http:\/\/[^"']+)["']/i);
       return m ? m[1] : r.slice(0, 80);
     });
-    return `Found ${httpRefs.length} HTTP resource(s) on HTTPS page:\n${samples.join("\n")}${httpRefs.length > 3 ? `\n...and ${httpRefs.length - 3} more` : ""}`;
+    return `Found ${pluralize(httpRefs.length, "HTTP resource")} on HTTPS page:\n${samples.join("\n")}${httpRefs.length > 3 ? `\n...and ${httpRefs.length - 3} more` : ""}`;
   },
 
   "form-action-http": (url, _headers, body) => {
     if (!url.startsWith("https://")) return null;
     const httpForms = tagsWith(body, "form", /action=["']http:\/\/[^"']+["']/i);
     return httpForms.length > 0
-      ? `Found ${httpForms.length} form(s) submitting over HTTP.`
+      ? `Found ${pluralize(httpForms.length, "form")} submitting over HTTP.`
       : null;
   },
 
@@ -774,7 +776,7 @@ export const detectors: Record<string, DetectFn> = {
       const srcMatch = t.match(/src=["'](https?:\/\/[^"']+)["']/i);
       return srcMatch ? srcMatch[1] : t.slice(0, 80);
     });
-    return `Found ${noSRI.length} external script(s) without integrity:\n${samples.join("\n")}${noSRI.length > 3 ? `\n...and ${noSRI.length - 3} more` : ""}`;
+    return `Found ${pluralize(noSRI.length, "external script")} without integrity:\n${samples.join("\n")}${noSRI.length > 3 ? `\n...and ${noSRI.length - 3} more` : ""}`;
   },
 
   "sri-stylesheet-missing": (_url, _headers, body) => {
@@ -794,7 +796,7 @@ export const detectors: Record<string, DetectFn> = {
       return !host || !SRI_EXEMPT_HOSTS.has(host);
     });
     return noSRI.length > 0
-      ? `Found ${noSRI.length} external stylesheet(s) without integrity attribute.`
+      ? `Found ${pluralize(noSRI.length, "external stylesheet")} without integrity attribute.`
       : null;
   },
 
@@ -1143,22 +1145,7 @@ export const detectors: Record<string, DetectFn> = {
   // ── Cookie __Host- prefix attribute check ───────────────────────────────
 
   "cookie-host-prefix-attribute-mismatch": (_url, headers) => {
-    const setCookies = (() => {
-      if (
-        typeof (headers as unknown as { getSetCookie?: () => string[] })
-          .getSetCookie === "function"
-      ) {
-        return (
-          headers as unknown as { getSetCookie: () => string[] }
-        ).getSetCookie();
-      }
-      const all: string[] = [];
-      headers.forEach((value, key) => {
-        if (key.toLowerCase() === "set-cookie") all.push(value);
-      });
-      return all;
-    })();
-    for (const cookie of setCookies) {
+    for (const cookie of getSetCookies(headers)) {
       const name = cookie.split("=")[0]?.trim() ?? "";
       if (!name.startsWith("__Host-")) continue;
       const lower = cookie.toLowerCase();
@@ -1392,7 +1379,7 @@ export const detectors: Record<string, DetectFn> = {
       (t) => !/\brel\s*=\s*["']?[^"']*\b(noopener|noreferrer)\b/i.test(t),
     );
     if (noNoopener.length > 0) {
-      return `${noNoopener.length} target="_blank" link(s) lack rel="noopener"/"noreferrer" (reverse tabnabbing).`;
+      return `${pluralize(noNoopener.length, 'target="_blank" link')} ${plural(noNoopener.length, "lacks", "lack")} rel="noopener"/"noreferrer" (reverse tabnabbing).`;
     }
     return null;
   },
@@ -1481,7 +1468,7 @@ export const detectors: Record<string, DetectFn> = {
       return !isSandboxExemptEmbed(src);
     });
     if (noSandbox.length > 0) {
-      return `${noSandbox.length} third-party <iframe>(s) lack sandbox attribute.`;
+      return `${pluralize(noSandbox.length, "third-party <iframe>")} ${plural(noSandbox.length, "lacks", "lack")} sandbox attribute.`;
     }
     return null;
   },
