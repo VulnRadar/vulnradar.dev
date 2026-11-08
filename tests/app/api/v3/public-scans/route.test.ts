@@ -107,7 +107,7 @@ describe("GET /api/v3/public-scans", () => {
 
     const [rowsSql] = mockQuery.mock.calls[1];
     expect(rowsSql).toContain("JOIN users u ON sh.user_id = u.id");
-    expect(rowsSql).toContain("ORDER BY sh.scanned_at DESC");
+    expect(rowsSql).toContain("ORDER BY sh.scanned_at DESC, sh.id DESC");
     expect(rowsSql).toContain("FROM scan_tags st WHERE st.scan_id = sh.id");
   });
 

@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
+import {
+  RATING_FINDINGS_SQL,
+  type RatingFinding,
+} from "@/lib/scanner/rating-findings-sql";
 import { publicRole } from "@/lib/auth/permissions-client";
-import type { Vulnerability } from "@/lib/scanner/types";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import { parsePagination } from "@/lib/api/pagination";
@@ -15,9 +18,7 @@ interface PublicScanRow {
   summary: Record<string, number> | null;
   // Not the stored findings array: only the four fields getSafetyRating reads,
   // projected in SQL. See the SELECT below for why.
-  findings:
-    | Pick<Vulnerability, "title" | "severity" | "aiVerdict" | "aiConfidence">[]
-    | null;
+  findings: RatingFinding[] | null;
   findings_count: number;
   scanned_by: string | null;
   scanned_by_avatar: string | null;
@@ -74,6 +75,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // produce one three-value verdict string per row. getSafetyRating reads only
   // title, severity, aiVerdict and aiConfidence, so project exactly those four
   // in SQL and leave the rest on disk. COALESCE guards a NULL findings column.
+  // Scans can share a timestamp (a bulk run writes several in one go), and
+  // without the id a row could repeat or vanish between two pages.
   //
   // The count and the page are also issued together rather than back to back:
   // they are independent, and this route holds pool connections that every
@@ -84,12 +87,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     ),
     pool.query<PublicScanRow>(
       `SELECT sh.url, sh.scanned_at, sh.share_token, sh.summary, sh.findings_count,
-            (SELECT COALESCE(jsonb_agg(jsonb_build_object(
-                      'title', e->>'title',
-                      'severity', e->>'severity',
-                      'aiVerdict', e->'aiVerdict',
-                      'aiConfidence', e->'aiConfidence')), '[]'::jsonb)
-               FROM jsonb_array_elements(COALESCE(sh.findings, '[]'::jsonb)) e) as findings,
+            ${RATING_FINDINGS_SQL} as findings,
             u.name as scanned_by, u.avatar_url as scanned_by_avatar, u.role as scanned_by_role,
             COALESCE(
               (SELECT json_agg(json_build_object('tag', st.tag, 'source', st.source) ORDER BY st.source, st.tag)
@@ -99,7 +97,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
      FROM scan_history sh
      JOIN users u ON sh.user_id = u.id
      ${WHERE}
-     ORDER BY sh.scanned_at DESC
+     ORDER BY sh.scanned_at DESC, sh.id DESC
      LIMIT $1 OFFSET $2`,
       [limit, offset],
     ),
