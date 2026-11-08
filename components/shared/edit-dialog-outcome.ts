@@ -1,4 +1,5 @@
 import {
+  SAVE_FAILED_MESSAGE,
   saveFailureMessage,
   saveThrownMessage,
 } from "@/components/shared/save-confirmation-outcome";
@@ -32,9 +33,13 @@ export type EditSaveResult =
 export function interpretEditSave(outcome: EditSaveOutcome): EditSaveResult {
   if (outcome === KEEP_OPEN) return { kind: "kept-open" };
   if (typeof outcome === "string") {
-    return outcome === ""
-      ? { kind: "saved" }
-      : { kind: "failed", message: outcome };
+    if (outcome === "") return { kind: "saved" };
+    // Only "" means it worked. Blank text is a failure whose reason got lost,
+    // and passing it through drew an alert box with nothing in it.
+    return {
+      kind: "failed",
+      message: outcome.trim() === "" ? SAVE_FAILED_MESSAGE : outcome,
+    };
   }
   if (outcome && typeof outcome === "object") {
     const message = saveFailureMessage(outcome);

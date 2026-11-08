@@ -70,6 +70,13 @@ describe("interpretEditSave", () => {
     });
   });
 
+  it("fails with the generic line for a string that is only whitespace", () => {
+    expect(interpretEditSave(" \n\t")).toEqual({
+      kind: "failed",
+      message: SAVE_FAILED_MESSAGE,
+    });
+  });
+
   it("fails with the generic line for { ok: false } with no error", () => {
     expect(interpretEditSave({ ok: false })).toEqual({
       kind: "failed",

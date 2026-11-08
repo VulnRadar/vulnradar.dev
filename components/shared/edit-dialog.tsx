@@ -1,6 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +30,20 @@ import {
 import { cn } from "@/lib/ui/utils";
 
 export { KEEP_OPEN, type EditSaveOutcome } from "./edit-dialog-outcome";
+
+const EditDialogErrorContext = createContext<{
+  error: string | null;
+  errorId: string | undefined;
+}>({ error: null, errorId: undefined });
+
+/**
+ * The dialog's current failure, for a field inside it to point at:
+ * `aria-invalid={!!error}` and `aria-describedby={error ? errorId : undefined}`.
+ * `errorId` stays the same for the life of the dialog.
+ */
+export function useEditDialogError() {
+  return useContext(EditDialogErrorContext);
+}
 
 export interface EditDialogProps {
   open: boolean;
@@ -82,7 +103,8 @@ export interface EditDialogProps {
  *
  * What `onSave` may return, and what the dialog does with it:
  *   - nothing, null, "" or { ok: true }: saved, the dialog closes.
- *   - a non-empty string: failed, the dialog stays open showing that string.
+ *   - a non-empty string: failed, the dialog stays open showing that string,
+ *     or the generic "not saved" line when it is only whitespace.
  *   - { ok: false, error? }: failed, stays open showing the error, or the
  *     generic "not saved" line when there is none.
  *   - a thrown error: failed, stays open showing its message.
@@ -134,6 +156,8 @@ export function EditDialog({
   // the button, so the guard that actually stops a double save is this ref.
   const busyRef = useRef(false);
   const { confirm, confirmDialog } = useConfirm();
+  const errorId = useId();
+  const errorContext = useMemo(() => ({ error, errorId }), [error, errorId]);
 
   // A dialog that stays mounted across openings must not show last time's
   // error. Adjusted during render, as React advises, rather than in an effect.
@@ -198,10 +222,15 @@ export function EditDialog({
           <form
             noValidate
             onSubmit={(event) => {
+              // React bubbles along the component tree, not the DOM, so a form
+              // or a popover a field renders into a portal still lands here.
+              // Its submit and its keys are not a save of this dialog.
+              if (!event.currentTarget.contains(event.target as Node)) return;
               event.preventDefault();
               void submit();
             }}
             onKeyDown={(event) => {
+              if (!event.currentTarget.contains(event.target as Node)) return;
               if (
                 event.key === "Enter" &&
                 (event.ctrlKey || event.metaKey) &&
@@ -223,12 +252,14 @@ export function EditDialog({
             </DialogHeader>
             <DialogBody>
               <fieldset disabled={busy} className="m-0 min-w-0 border-0 p-0">
-                {children}
+                <EditDialogErrorContext.Provider value={errorContext}>
+                  {children}
+                </EditDialogErrorContext.Provider>
               </fieldset>
               {error && (
-                <InlineAlert tone="error" className="mt-4">
-                  {error}
-                </InlineAlert>
+                <div id={errorId} className="mt-4">
+                  <InlineAlert tone="error">{error}</InlineAlert>
+                </div>
               )}
             </DialogBody>
             <DialogFooter>
