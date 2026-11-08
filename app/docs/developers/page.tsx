@@ -23,6 +23,7 @@ import { DocsTocSpy } from "../docs-toc-spy";
 import {
   DocsHero,
   DocsSection,
+  DocsSubSection,
   CodeBlock,
   EndpointTable,
   FieldTable,
@@ -504,14 +505,35 @@ cd vulnradar.dev
 # 2. Install dependencies
 npm ci
 
-# 3. Set up environment
-cp .env.example .env
-# Edit .env: DATABASE_URL, API_KEY_ENCRYPTION_KEY, NEXT_PUBLIC_APP_URL
+# 3. Start a throwaway Postgres (stopping it deletes its data)
+docker run --rm -d --name vulnradar-dev-db -p 127.0.0.1:5432:5432 -e POSTGRES_USER=vulnradar -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=vulnradar postgres:16-alpine
 
-# 4. Start the dev server (schema auto-creates on first boot)
+# 4. Set up environment, generating the key once
+cp .env.example .env
+cat >> .env <<EOF
+DATABASE_URL=postgresql://vulnradar:dev@localhost:5432/vulnradar
+DATABASE_SSL=false
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+API_KEY_ENCRYPTION_KEY=$(openssl rand -hex 32)
+EOF
+
+# 5. Start the dev server (schema auto-creates on first boot)
 npm run dev
 # → http://localhost:3000`}
         />
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          The appended lines override the placeholders from{" "}
+          <InlineCode>.env.example</InlineCode>, since the last value of a key
+          is the one that counts. If you already run PostgreSQL 14 or newer,
+          skip step 3 and point <InlineCode>DATABASE_URL</InlineCode> at it. To
+          run the whole stack in containers instead,{" "}
+          <InlineCode>
+            docker compose -f docker-compose.dev.yml up -d --build
+          </InlineCode>{" "}
+          builds the image from your checkout. That is a production build with
+          no hot reload, and it needs <InlineCode>POSTGRES_PASSWORD</InlineCode>{" "}
+          in <InlineCode>.env</InlineCode> as well.
+        </p>
         <p className="max-w-[68ch] text-sm text-muted-foreground">
           The first run auto-initializes the schema via{" "}
           <InlineCode>instrumentation.ts</InlineCode>. Watch for{" "}
@@ -523,11 +545,12 @@ npm run dev
           <InlineCode>admin</InlineCode>, which is one level below the first
           account. Running it against the first account would demote it, and no
           screen in the product can grant <InlineCode>super_admin</InlineCode>{" "}
-          back.
+          back. Put that later account&apos;s address in place of the
+          placeholder.
         </p>
         <CodeBlock
           language="sql"
-          code={`UPDATE users SET role = 'admin' WHERE email = 'someone-else@example.com';`}
+          code={`UPDATE users SET role = 'admin' WHERE email = '<your-email>';`}
         />
       </DocsSection>
 
@@ -631,10 +654,6 @@ npm run dev
               what: "Reset the Postgres identity sequences, which is what causes duplicate-key errors on insert after a restore",
             },
             {
-              cmd: "npm run db:migrate-avatars",
-              what: "One-off: move avatars stored as database blobs onto the filesystem",
-            },
-            {
               cmd: "npm run db:backup",
               what: "Write a full dump. Run this before any upgrade or repair",
             },
@@ -668,6 +687,37 @@ npm run dev
             },
           ]}
         />
+        <DocsSubSection id="tests" title="Tests">
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            There are two tiers. The unit tier is{" "}
+            <InlineCode>npm test</InlineCode>: it fakes{" "}
+            <InlineCode>pg</InlineCode>, needs no database, and is where almost
+            everything you write goes. Anything that depends on what Postgres
+            actually does goes in the integration tier,{" "}
+            <InlineCode>tests/integration</InlineCode>, which{" "}
+            <InlineCode>npm test</InlineCode> never touches and which needs a
+            real database of its own:
+          </p>
+          <CodeBlock
+            language="bash"
+            code={`docker run --rm -d -p 5433:5432 -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=vulnradar_test --name vr-test-db postgres:16.4-alpine
+
+INTEGRATION_DATABASE_URL=postgresql://postgres:pw@127.0.0.1:5433/vulnradar_test npx vitest run --config tests/integration/vitest.config.ts`}
+          />
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            Point it at a throwaway database: the bootstrap drops and rebuilds
+            the public schema. The rest of the rules are in{" "}
+            <a
+              href={`https://github.com/${APP_REPO}/blob/main/tests/README.md`}
+              className="text-primary underline-offset-2 hover:underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              tests/README.md
+            </a>
+            .
+          </p>
+        </DocsSubSection>
       </DocsSection>
 
       <DocsSection id="linting" title="Linting" className="ml-0">
@@ -798,18 +848,24 @@ npm run lint:fix    # oxlint --fix, then eslint --fix`}
           </li>
           <li>Make focused commits (one logical change per commit)</li>
           <li>
-            Run <InlineCode>npm run lint</InlineCode>,{" "}
-            <InlineCode>npm run typecheck</InlineCode>,{" "}
-            <InlineCode>npm test</InlineCode>, and{" "}
-            <InlineCode>npm run build</InlineCode> locally
+            Run what CI runs on every push, in this order, before you push:
+            <CodeBlock
+              language="bash"
+              code={`npm run format:check &&
+  npm run lint &&
+  npm run typecheck &&
+  npm run test:coverage &&
+  npm run build:knowledge &&
+  git diff --exit-code --ignore-matching-lines='compiled from' -- lib/ai lib/config/check-stats.generated.ts`}
+            />
+            CI additionally runs: Integration (needs Postgres), Extension,
+            Build, Self-host smoke test.
           </li>
           <li>
             Use the PR template (
             <InlineCode>.github/pull_request_template.md</InlineCode>)
           </li>
-          <li>
-            Wait for CI (lint + typecheck + test + build + auto-applied labels)
-          </li>
+          <li>Wait for every CI job and the auto-applied labels</li>
           <li>Request review from CODEOWNERS on security-critical paths</li>
           <li>After 1+ approval, squash-merge</li>
         </ol>
