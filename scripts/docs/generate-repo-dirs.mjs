@@ -35,6 +35,7 @@ function trackedDirs(root) {
     cwd: root,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "ignore"],
   });
   for (const file of files.split("\0").filter(Boolean)) {
     const [first, second, third] = file.split("/");
@@ -79,5 +80,17 @@ const isMain =
 // Without .git there is nothing to ask what is tracked, and a Docker build
 // context is missing directories on purpose, so the committed list stands.
 if (isMain && existsSync(join(ROOT, ".git"))) {
-  writeFileSync(OUTPUT, render(listRepoDirs()));
+  let dirs;
+  try {
+    dirs = listRepoDirs();
+  } catch (err) {
+    // A .git that git cannot use: no binary in the build environment, or
+    // "dubious ownership" when the build runs as a different user from the
+    // clone's owner. This runs in prebuild, and failing a build over a docs
+    // table is the wrong trade.
+    console.warn(
+      `[generate-repo-dirs] Keeping the committed list: ${err instanceof Error ? err.message : err}`,
+    );
+  }
+  if (dirs) writeFileSync(OUTPUT, render(dirs));
 }
