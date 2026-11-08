@@ -15,11 +15,10 @@
  * pool.query returns its connection immediately and would drop the lock) makes
  * the second booter wait and then find every object already present.
  *
- * What the lock has to cover is everything that writes: the schema itself and
- * every boot backfill after it (the super_admin bootstrap and the staff-plan
- * reconciliation are both read-then-write races between two booting
- * processes). It does NOT cover the version check, which runs before it and is
- * a read plus one ON CONFLICT DO NOTHING insert.
+ * What the lock has to cover is everything that writes: the version gate's
+ * meta table, the schema itself and every boot backfill after it (the
+ * super_admin bootstrap and the staff-plan reconciliation are both
+ * read-then-write races between two booting processes).
  *
  * Failing to take the lock is not fatal: a single-process deployment behaves
  * exactly as it did before.

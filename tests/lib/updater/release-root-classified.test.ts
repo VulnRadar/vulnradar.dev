@@ -33,6 +33,7 @@ const KEPT_AT_ROOT: Record<string, string> = {
   middleware: "middleware.ts, loaded by next start",
   "middleware.ts": "loaded by next start",
   "instrumentation.ts": "the boot path: schema creation runs from here",
+  "server.mjs": "what npm start runs, in front of Next's request handler",
   scripts: "operator tooling, and npm run build compiles knowledge with it",
 
   // Needed to build. The update runs npm ci and npm run build in place.

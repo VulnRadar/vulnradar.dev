@@ -1,6 +1,7 @@
 /**
- * The schema-version gate: the first thing register() does against the
- * database, and the one thing that can stop the process before any DDL runs.
+ * The schema-version gate: the first thing register() does under the boot
+ * advisory lock, and the one thing that can stop the process before the schema
+ * runs.
  *
  * The app requires MIN_SCHEMA_VERSION. If the connected database is older (or
  * has no meta row at all), startup is blocked so the app does not crash trying
@@ -8,10 +9,9 @@
  * on a v1 database where users.plan does not exist). The friendly boxes below
  * name the exact command to run.
  *
- * Split out of instrumentation.ts unchanged. It runs BEFORE the boot advisory
- * lock on purpose: it is a read plus at most one INSERT of the meta row, and a
- * second booting process reaching the same conclusion concurrently is
- * harmless (the INSERT is ON CONFLICT DO NOTHING).
+ * Split out of instrumentation.ts. It runs under the lock because its first
+ * statement is a CREATE TABLE IF NOT EXISTS, which is not atomic: two first
+ * boots on an empty database raced it into a crash on pg_type's unique index.
  */
 
 import { KNOWN_SCHEMA_VERSIONS } from "@/lib/config/constants";

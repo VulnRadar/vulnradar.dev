@@ -121,6 +121,19 @@ describe("createGracefulShutdown", () => {
     await done;
   });
 
+  it("keeps reaping for the whole drain, not once at the start", async () => {
+    // close() only reaps the sockets idle at that moment. A keep-alive
+    // connection whose response finishes during the drain goes idle later, and
+    // without another pass it holds the server open until the deadline.
+    const { server, shutdown } = setup();
+    const done = shutdown();
+    await vi.waitFor(() =>
+      expect(server.closeIdleConnections.mock.calls.length).toBeGreaterThan(2),
+    );
+    server.closed.resolve();
+    await done;
+  });
+
   it("runs once however many signals arrive", async () => {
     const { server, pool, exit, shutdown } = setup();
     server.closed.resolve();
