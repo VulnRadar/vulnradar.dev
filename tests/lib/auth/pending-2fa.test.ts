@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { createHmac, randomBytes } from "node:crypto";
+import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { signPendingToken, verifyPendingToken } from "@/lib/auth/pending-2fa";
 
 // The helper signs with API_KEY_ENCRYPTION_KEY (64 hex chars = 32 bytes).
@@ -111,5 +112,51 @@ describe("pending-2fa signed token", () => {
       email: "a@b.com",
       ts: 500,
     });
+  });
+});
+
+describe("a 64-character key that is not hex", () => {
+  afterEach(() => {
+    process.env.API_KEY_ENCRYPTION_KEY = "a".repeat(64);
+  });
+
+  // Buffer.from(value, "hex") stops at the first character it cannot read and
+  // returns what it had, with no error. A length check passed all of these, so
+  // the HMAC ran under a truncated key; for the all-"z" key that is zero bytes,
+  // which anyone can compute.
+  const malformed = [
+    ["base64 of 48 random bytes", randomBytes(48).toString("base64")],
+    ["63 hex characters and a g", `${"a".repeat(63)}g`],
+    ["no hex at all", "z".repeat(64)],
+  ];
+
+  function forgeUnderEmptyKey(payload: Record<string, unknown>): string {
+    const body = Buffer.from(JSON.stringify(payload), "utf8").toString(
+      "base64url",
+    );
+    const signature = createHmac("sha256", Buffer.alloc(0))
+      .update(`vulnradar.2fa-pending.v1.${body}`)
+      .digest("base64url");
+    return `${body}.${signature}`;
+  }
+
+  it.each(malformed)("signPendingToken refuses %s", (_label, key) => {
+    process.env.API_KEY_ENCRYPTION_KEY = key;
+    expect(() => signPendingToken({ userId: 1 })).toThrow(
+      "API_KEY_ENCRYPTION_KEY must be set to a 64-character hex string (32 bytes) to sign 2FA pending tokens.",
+    );
+  });
+
+  it("does not honour a token forged under the empty key", () => {
+    process.env.API_KEY_ENCRYPTION_KEY = "z".repeat(64);
+    const forged = forgeUnderEmptyKey({ userId: 1, ts: Date.now() });
+    expect(verifyPendingToken(forged)).toBeNull();
+  });
+
+  it.each(malformed)("verifies nothing under %s", (_label, key) => {
+    process.env.API_KEY_ENCRYPTION_KEY = key;
+    expect(
+      verifyPendingToken(forgeUnderEmptyKey({ userId: 1, ts: 1 })),
+    ).toBeNull();
   });
 });

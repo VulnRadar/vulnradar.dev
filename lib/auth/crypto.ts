@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { isKeyHex, parseKeyHex } from "@/lib/auth/key-hex";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // 96-bit IV for GCM
@@ -10,14 +11,11 @@ const TAG_LENGTH = 16; // 128-bit auth tag
  * Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
  */
 function getEncryptionKey(): Buffer {
-  const hex = process.env.API_KEY_ENCRYPTION_KEY;
-  if (!hex || hex.length !== 64) {
-    throw new Error(
-      "API_KEY_ENCRYPTION_KEY must be set to a 64-character hex string (32 bytes). " +
-        "Generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
-    );
-  }
-  return Buffer.from(hex, "hex");
+  return parseKeyHex(
+    process.env.API_KEY_ENCRYPTION_KEY,
+    "API_KEY_ENCRYPTION_KEY must be set to a 64-character hex string (32 bytes). " +
+      "Generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+  );
 }
 
 /**
@@ -47,7 +45,7 @@ function getEncryptionKey(): Buffer {
 function getPreviousEncryptionKey(): Buffer | null {
   const hex = process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY;
   if (!hex) return null;
-  if (hex.length !== 64 || !/^[0-9a-fA-F]+$/.test(hex)) {
+  if (!isKeyHex(hex)) {
     // Loud but non-fatal: an operator mid-rotation has explicitly set this,
     // so staying silent would present as "some accounts mysteriously cannot
     // log in". Throwing instead would be swallowed by the callers that treat
@@ -149,6 +147,5 @@ export function decryptApiKeyWithKeyAge(encryptedBase64: string): {
  * Returns false if not set, allowing graceful fallback.
  */
 export function isEncryptionConfigured(): boolean {
-  const hex = process.env.API_KEY_ENCRYPTION_KEY;
-  return !!hex && hex.length === 64;
+  return isKeyHex(process.env.API_KEY_ENCRYPTION_KEY);
 }

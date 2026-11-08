@@ -7,6 +7,7 @@ import {
   decryptApiKey,
   isEncryptionConfigured,
 } from "@/lib/auth/crypto";
+import { parseKeyHex } from "@/lib/auth/key-hex";
 import {
   getClientIp,
   getUserAgent,
@@ -57,11 +58,8 @@ function generateDeprecatedPlaceholder(): string {
 // fallback. A global default in the source would let anyone who read the
 // source compute the locator for any stolen key. Require the real secret.
 function getLocatorSecret(): Buffer {
-  const enc = process.env.API_KEY_ENCRYPTION_KEY;
-  if (enc && enc.length === 64) {
-    return Buffer.from(enc, "hex");
-  }
-  throw new Error(
+  return parseKeyHex(
+    process.env.API_KEY_ENCRYPTION_KEY,
     "[api-keys] API_KEY_ENCRYPTION_KEY must be set to a 64-character hex " +
       "string (32 bytes) to compute API key locators. " +
       "Generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",

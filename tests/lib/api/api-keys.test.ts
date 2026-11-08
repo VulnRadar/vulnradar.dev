@@ -122,6 +122,20 @@ beforeEach(() => {
   invalidateSettingsCache();
 });
 
+describe("the locator secret", () => {
+  it.each([
+    ["no hex at all", "z".repeat(64)],
+    ["63 hex characters and a g", `${"a".repeat(63)}g`],
+  ])("refuses a 64-character key with %s", async (_label, key) => {
+    // Decoded by hand, this key became a locator HMAC under zero or 31 bytes
+    // instead of failing.
+    process.env.API_KEY_ENCRYPTION_KEY = key;
+    await expect(validateApiKey("vr_live_anything")).rejects.toThrow(
+      /API_KEY_ENCRYPTION_KEY must be set to a 64-character hex/,
+    );
+  });
+});
+
 describe("passesApiKeyIpBinding", () => {
   it("does nothing when the feature is disabled (shipped default)", async () => {
     currentIp = "8.8.8.8";

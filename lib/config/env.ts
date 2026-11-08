@@ -1,12 +1,17 @@
 import { z } from "zod";
+import { KEY_HEX_PATTERN } from "@/lib/auth/key-hex";
 
 /**
  * Centralized runtime environment validation.
  *
- * Replaces the previous pattern of "silently fall back to
- * hardcoded secrets" in `lib/auth/discord-state.ts` and `lib/api/api-keys.ts`.
- * Callers fail fast at startup with a clear error message instead of running
- * with a forgeable global default.
+ * A required secret that is missing or malformed stops the process at startup
+ * with a clear error, rather than surfacing on some later request or leaving
+ * the app running with a forgeable key. API_KEY_ENCRYPTION_KEY is the one with
+ * the most depending on it: it encrypts stored secrets (`lib/auth/crypto.ts`),
+ * keys the API key locators (`lib/api/api-keys.ts`), signs the 2FA pending and
+ * IPv4 echo tokens (`lib/auth/domain-token.ts`), and stands in for AUTH_SECRET
+ * in the OAuth state (`lib/auth/signed-envelope.ts`) and the reset-token
+ * digests (`lib/auth/token-hash.ts`).
  *
  * Validation is lazy: the first call parses `process.env` and caches the
  * result. The cache is invalidated across hot reloads automatically because
@@ -19,8 +24,8 @@ const RequiredSchema = z.object({
     .min(1, "DATABASE_URL is required (PostgreSQL connection string)"),
   API_KEY_ENCRYPTION_KEY: z
     .string()
-    .length(
-      64,
+    .regex(
+      KEY_HEX_PATTERN,
       "API_KEY_ENCRYPTION_KEY must be a 64-character hex string (32 bytes). " +
         "Generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
     ),

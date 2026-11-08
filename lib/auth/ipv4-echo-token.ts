@@ -1,4 +1,5 @@
 import { domainToken } from "@/lib/auth/domain-token";
+import { isKeyHex, requireSigningKey } from "@/lib/auth/key-hex";
 
 /**
  * Short-lived, signed proof that the server OBSERVED a given IPv4 on the
@@ -17,7 +18,8 @@ import { domainToken } from "@/lib/auth/domain-token";
  * built by lib/auth/domain-token.ts.
  */
 
-const echoToken = domainToken("vulnradar.ipv4-echo.v1", "IPv4 echo tokens");
+const PURPOSE = "IPv4 echo tokens";
+const echoToken = domainToken("vulnradar.ipv4-echo.v1", PURPOSE);
 
 /** How long a freshly minted echo token stays valid (seconds). */
 export const IPV4_ECHO_TOKEN_MAX_AGE_SECONDS = 120;
@@ -29,6 +31,8 @@ interface EchoPayload {
 
 /** Sign an observed IPv4 into an opaque token. `ts` is epoch milliseconds. */
 export function signIpv4Token(ip: string, ts: number): string {
+  // See signPendingToken: domainToken's own key check only counts characters.
+  requireSigningKey(PURPOSE);
   return echoToken.sign({ ip, ts } satisfies EchoPayload);
 }
 
@@ -43,6 +47,7 @@ export function verifyIpv4Token(
   token: string | undefined | null,
   now: number,
 ): string | null {
+  if (!isKeyHex(process.env.API_KEY_ENCRYPTION_KEY)) return null;
   const payload = echoToken.verify<EchoPayload | null>(token);
   if (
     typeof payload !== "object" ||

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { describe, it, expect, vi } from "vitest";
 import {
   encryptApiKey,
@@ -127,6 +128,49 @@ describe("missing key is fatal at call time", () => {
         process.env.API_KEY_ENCRYPTION_KEY = previous;
       }
     }
+  });
+});
+
+describe("a 64-character key that is not hex", () => {
+  function withKey<T>(key: string, fn: () => T): T {
+    const previous = process.env.API_KEY_ENCRYPTION_KEY;
+    process.env.API_KEY_ENCRYPTION_KEY = key;
+    try {
+      return fn();
+    } finally {
+      if (previous === undefined) delete process.env.API_KEY_ENCRYPTION_KEY;
+      else process.env.API_KEY_ENCRYPTION_KEY = previous;
+    }
+  }
+
+  const malformed = [
+    ["base64 of 48 random bytes", randomBytes(48).toString("base64")],
+    ["63 hex characters and a g", `${"a".repeat(63)}g`],
+    ["no hex at all", "z".repeat(64)],
+  ];
+
+  it.each(malformed)("is not reported as configured: %s", (_label, key) => {
+    withKey(key, () => {
+      expect(isEncryptionConfigured()).toBe(false);
+    });
+  });
+
+  // Node's own "Invalid key length" is what used to surface here, from an
+  // arbitrary request long after boot, and it does not say which setting.
+  it.each(malformed)("encrypt names the setting: %s", (_label, key) => {
+    withKey(key, () => {
+      expect(() => encryptApiKey("anything")).toThrow(
+        /API_KEY_ENCRYPTION_KEY must be set to a 64-character hex string/,
+      );
+    });
+  });
+
+  it("accepts an uppercase key and reads the same bytes as lowercase", () => {
+    const cipher = withKey("ab".repeat(32), () => encryptApiKey("same-key"));
+    withKey("AB".repeat(32), () => {
+      expect(isEncryptionConfigured()).toBe(true);
+      expect(decryptApiKey(cipher)).toBe("same-key");
+    });
   });
 });
 

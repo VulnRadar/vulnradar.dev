@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -172,5 +173,127 @@ describe("empty optional values count as unset", () => {
     await expect(
       validate({ ...REQUIRED, API_KEY_ENCRYPTION_KEY: "" }),
     ).rejects.toThrow("API_KEY_ENCRYPTION_KEY");
+  });
+});
+
+describe("API_KEY_ENCRYPTION_KEY is 64 hex characters, not just 64 characters", () => {
+  // A length check let every one of these boot. Each is exactly 64 characters
+  // and none of them decodes to 32 bytes, so AES threw on the first encrypt
+  // and the 2FA pending signature ran under whatever few bytes were left.
+  it.each([
+    ["base64 of 48 random bytes", randomBytes(48).toString("base64")],
+    ["63 hex characters and a g", `${"a".repeat(63)}g`],
+    ["no hex at all", "z".repeat(64)],
+  ])("refuses %s", async (_label, value) => {
+    expect(value).toHaveLength(64);
+    await expect(
+      validate({ ...REQUIRED, API_KEY_ENCRYPTION_KEY: value }),
+    ).rejects.toThrow(/API_KEY_ENCRYPTION_KEY: .*64-character hex string/);
+  });
+
+  it.each([
+    ["lowercase", "ab".repeat(32)],
+    ["uppercase", "AB".repeat(32)],
+    ["mixed case", "aB".repeat(32)],
+  ])("accepts a %s key", async (_label, value) => {
+    await expect(
+      validate({ ...REQUIRED, API_KEY_ENCRYPTION_KEY: value }),
+    ).resolves.toMatchObject({ API_KEY_ENCRYPTION_KEY: value });
+  });
+
+  it.each([
+    ["too few characters", "a".repeat(63)],
+    ["too many characters", "a".repeat(65)],
+    ["a trailing newline", `${"a".repeat(64)}\n`],
+  ])("refuses a key with %s", async (_label, value) => {
+    await expect(
+      validate({ ...REQUIRED, API_KEY_ENCRYPTION_KEY: value }),
+    ).rejects.toThrow("API_KEY_ENCRYPTION_KEY");
+  });
+});
+
+describe("DISABLE_CSP in production", () => {
+  it("refuses to boot with DISABLE_CSP=1 under NODE_ENV=production", async () => {
+    await expect(
+      validate({ ...REQUIRED, NODE_ENV: "production", DISABLE_CSP: "1" }),
+    ).rejects.toThrow("DISABLE_CSP=1 is not allowed in NODE_ENV=production");
+  });
+
+  it("reports DISABLE_CSP before anything the schema would complain about", async () => {
+    await expect(
+      validate({ NODE_ENV: "production", DISABLE_CSP: "1" }),
+    ).rejects.toThrow("DISABLE_CSP=1");
+  });
+
+  it("allows DISABLE_CSP=1 in development, which is what it is for", async () => {
+    await expect(
+      validate({ ...REQUIRED, NODE_ENV: "development", DISABLE_CSP: "1" }),
+    ).resolves.toMatchObject({ DISABLE_CSP: "1" });
+  });
+
+  it("boots in production when DISABLE_CSP is not set", async () => {
+    await expect(
+      validate({ ...REQUIRED, NODE_ENV: "production" }),
+    ).resolves.toBeDefined();
+  });
+});
+
+describe("AUTH_SECRET length", () => {
+  it("refuses 31 characters", async () => {
+    await expect(
+      validate({ ...REQUIRED, AUTH_SECRET: "s".repeat(31) }),
+    ).rejects.toThrow("AUTH_SECRET must be at least 32 chars");
+  });
+
+  it("accepts 32 characters", async () => {
+    const secret = "s".repeat(32);
+    await expect(
+      validate({ ...REQUIRED, AUTH_SECRET: secret }),
+    ).resolves.toMatchObject({ AUTH_SECRET: secret });
+  });
+});
+
+describe("DATABASE_SSL is strictly true or false", () => {
+  it.each([
+    ["true", true],
+    ["false", false],
+  ])("turns %s into a boolean", async (value, parsed) => {
+    const env = await validate({ ...REQUIRED, DATABASE_SSL: value });
+    expect(env.DATABASE_SSL).toBe(parsed);
+  });
+
+  it.each(["1", "yes", "TRUE"])("refuses %s", async (value) => {
+    await expect(
+      validate({ ...REQUIRED, DATABASE_SSL: value }),
+    ).rejects.toThrow("DATABASE_SSL");
+  });
+});
+
+describe("the validation cache", () => {
+  async function freshValidator(env: Record<string, string>) {
+    process.env = { ...env } as NodeJS.ProcessEnv;
+    vi.resetModules();
+    const { validateEnv } = await import("@/lib/config/env");
+    return validateEnv;
+  }
+
+  it("returns the first result on a second call, without reading env again", async () => {
+    const validateEnv = await freshValidator(REQUIRED);
+    const first = validateEnv();
+    process.env = {} as NodeJS.ProcessEnv;
+    expect(validateEnv()).toBe(first);
+  });
+
+  it("does not cache a failure", async () => {
+    const validateEnv = await freshValidator({
+      ...REQUIRED,
+      DATABASE_URL: "",
+    });
+    expect(() => validateEnv()).toThrow("DATABASE_URL");
+    process.env = { ...REQUIRED } as Record<
+      string,
+      string
+    > as NodeJS.ProcessEnv;
+    expect(validateEnv()).toMatchObject({ API_KEY_ENCRYPTION_KEY: KEY });
   });
 });

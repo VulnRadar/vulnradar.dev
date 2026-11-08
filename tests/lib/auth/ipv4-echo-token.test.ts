@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { describe, it, expect } from "vitest";
 
 // The signing key must exist before the module computes any HMAC.
@@ -80,6 +81,28 @@ describe("ipv4 echo token", () => {
         "API_KEY_ENCRYPTION_KEY must be set to a 64-character hex string (32 bytes) to sign IPv4 echo tokens.",
       );
       expect(verifyIpv4Token("garbage", NOW)).toBeNull();
+    } finally {
+      process.env.API_KEY_ENCRYPTION_KEY = previous;
+    }
+  });
+
+  it("does not sign or honour anything under a 64-character key that is not hex", () => {
+    const previous = process.env.API_KEY_ENCRYPTION_KEY;
+    // Decodes to zero bytes, so before the hex check this key signed with an
+    // HMAC key anyone can reproduce.
+    process.env.API_KEY_ENCRYPTION_KEY = "z".repeat(64);
+    try {
+      expect(() => signIpv4Token("203.0.113.9", NOW)).toThrow(
+        "API_KEY_ENCRYPTION_KEY must be set to a 64-character hex string (32 bytes) to sign IPv4 echo tokens.",
+      );
+      const body = Buffer.from(
+        JSON.stringify({ ip: "203.0.113.9", ts: NOW }),
+        "utf8",
+      ).toString("base64url");
+      const signature = createHmac("sha256", Buffer.alloc(0))
+        .update(`vulnradar.ipv4-echo.v1.${body}`)
+        .digest("base64url");
+      expect(verifyIpv4Token(`${body}.${signature}`, NOW)).toBeNull();
     } finally {
       process.env.API_KEY_ENCRYPTION_KEY = previous;
     }
