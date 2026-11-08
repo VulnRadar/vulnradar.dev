@@ -21,7 +21,9 @@ import { safeFetch } from "../safe-fetch";
 import { safeReadBody } from "../read-bounded-body";
 import { versionBelow } from "../library-fingerprints";
 import { SCANNER_UA } from "../user-agent";
-import { loadsFrom, urlRefs, type HostRule } from "./_url-hosts";
+import { DISCORD_HOST_RUN } from "./code";
+import { plainSlashView } from "./_plain-slashes";
+import { leadingHost, loadsFrom, urlRefs, type HostRule } from "./_url-hosts";
 import {
   hasTagWith,
   htmlComments,
@@ -31,6 +33,16 @@ import {
   tagElements,
   tagsWith,
 } from "./_tag-scan";
+import {
+  discordWebhookPattern,
+  isDiscordHost,
+} from "@/lib/net/discord-webhook";
+
+const DISCORD_WEBHOOK = discordWebhookPattern(
+  DISCORD_HOST_RUN,
+  String.raw`[0-9]+\/[\w-]+`,
+  { global: true },
+);
 
 /**
  * True when a "data" JSON key and an "errors" JSON key both appear within a
@@ -1940,12 +1952,14 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "discord-webhook-exposed": (url, _headers, body) => {
-    if (
-      /https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/[0-9]+\/[A-Za-z0-9_-]+/i.test(
-        body,
-      )
-    ) {
-      return "Discord webhook URL detected in source.";
+    // Hosts, path and case rule are the shared ones, so this and the secret
+    // tier cannot disagree about what a Discord webhook is. It stays a check of
+    // its own because the tier ignores a webhook shown only in a code block or
+    // with a token that is not the live shape, and this one reports those.
+    for (const m of plainSlashView(body).text.matchAll(DISCORD_WEBHOOK)) {
+      if (isDiscordHost(leadingHost(m[0]))) {
+        return "Discord webhook URL detected in source.";
+      }
     }
     return null;
   },
