@@ -35,9 +35,12 @@ const GUARD = "refuseWhileImpersonating";
  * nearly every OAuth path (`WHERE google_id = $1`), so assignment is not enough
  * of a test for them and the match needs a SET with no WHERE before the column.
  * discord_connections is a table, so it is the statements that write it.
+ *
+ * saveGithubConnection stores a repo grant and revokes the token it replaces at
+ * GitHub, which is what DELETE /account/github refuses.
  */
 const CREDENTIAL_WRITE =
-  /(?:password_hash|totp_secret|backup_codes|totp_enabled|two_factor_method)\s*(?<![=!<>])=(?!=)|SET email|deleteUserAccountData|\bSET\b(?:(?!\bWHERE\b)[^`"])*?\b(?:google_id|github_id|discord_id)\s*=(?!=)|(?:INSERT INTO|UPDATE|DELETE FROM)\s+discord_connections\b/;
+  /(?:password_hash|totp_secret|backup_codes|totp_enabled|two_factor_method)\s*(?<![=!<>])=(?!=)|SET email|deleteUserAccountData|\bSET\b(?:(?!\bWHERE\b)[^`"])*?\b(?:google_id|github_id|discord_id)\s*=(?!=)|(?:INSERT INTO|UPDATE|DELETE FROM)\s+discord_connections\b|\bsaveGithubConnection\b/;
 
 /**
  * Comments are stripped before testing. A guard that reads raw source finds
@@ -130,6 +133,7 @@ describe("impersonation cannot rewrite the account it is impersonating", () => {
       "INSERT INTO discord_connections (user_id) VALUES ($1)",
       "UPDATE discord_connections SET access_token = $1",
       "DELETE FROM discord_connections WHERE user_id = $1",
+      "await saveGithubConnection({ userId: session.userId })",
     ]) {
       expect(CREDENTIAL_WRITE.test(write), write).toBe(true);
     }
@@ -143,7 +147,7 @@ describe("impersonation cannot rewrite the account it is impersonating", () => {
     }
   });
 
-  it("guards all four places a sign-in provider gets attached", () => {
+  it("guards every place a sign-in provider or a repo grant gets attached", () => {
     // The start routes write nothing, so the enumeration above cannot see
     // them. Refusing only at the callback would still mint a usable state.
     for (const rel of [
@@ -151,9 +155,23 @@ describe("impersonation cannot rewrite the account it is impersonating", () => {
       "auth/oauth/[provider]/callback/route.ts",
       "auth/discord/route.ts",
       "auth/discord/callback/route.ts",
+      "account/github/connect/route.ts",
     ]) {
       expect(readFileSync(join(API_ROOT, rel), "utf8"), rel).toContain(GUARD);
     }
+  });
+
+  it("gives the repo grant's refusal a sentence on the profile page", () => {
+    // The callback can only report this as a code in the URL, and a code with
+    // no entry falls through to "Could not grant repo access."
+    const page = readFileSync(
+      join(process.cwd(), "app/profile/page.tsx"),
+      "utf8",
+    );
+    const errors = page.slice(page.indexOf("GITHUB_CONNECT_ERRORS"));
+    expect(errors.slice(0, errors.indexOf("};"))).toMatch(
+      /impersonation_blocked:[\s\S]*?admin/,
+    );
   });
 
   it("does not carry exceptions for routes that no longer exist", () => {

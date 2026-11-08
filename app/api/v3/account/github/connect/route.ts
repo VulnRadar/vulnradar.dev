@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 import { signOAuthState } from "@/lib/auth/oauth-state";
 import { buildGithubAuthorizeUrl } from "@/lib/github/github-oauth";
 import { resolveAppUrl } from "@/lib/config/runtime-config";
@@ -36,6 +37,8 @@ export async function GET(request: Request) {
   if (!session) {
     return ApiResponse.unauthorized();
   }
+  const refused = refuseWhileImpersonating(session, "Granting repo access");
+  if (refused) return refused;
 
   if (!GITHUB_CLIENT_ID) {
     return NextResponse.json(

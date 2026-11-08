@@ -963,7 +963,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Eye] **[ACCESSIBILITY]** **Password Show and Hide Buttons Announce Correctly**
   Show password buttons keep one name and report their state, so screen readers no longer hear a contradiction, and the two-factor code field now announces the step it belongs to.
 - [KeyRound] **[SECURITY]** **Linking a Sign-In Provider Asks for Your Password**
-  Connecting Google, GitHub or Discord to an existing account that has a password now requires entering it first, and an admin signed in as you can no longer link or disconnect one at all. An account created with a provider can connect only the identity already on it or one whose verified email is the account's address.
+  Connecting Google, GitHub or Discord to an existing account that has a password now requires entering it first, and an admin signed in as you can no longer link or disconnect one, or grant GitHub repo access, at all. An account created with a provider can connect only the identity already on it or one whose verified email is the account's address.
 - [Lock] **[SECURITY]** **A Password Reset Removes Linked Sign-Ins**
   Resetting your password now disconnects every linked Google, GitHub and Discord sign-in except the one that created the account, so a sign-in someone else attached cannot be used to get back in. Discord is told to revoke the tokens that were held for it.
 - [Link2] **[FIXED]** **Signing In With a Provider Keeps Your Destination**

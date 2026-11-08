@@ -1548,6 +1548,28 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       expect(githubConnectionInsertCalls).toHaveLength(0);
     });
 
+    it("refuses during impersonation before it reaches GitHub or replaces the token", async () => {
+      // Saving replaces the customer's token and revokes the old one at
+      // GitHub, which is what DELETE /account/github refuses for this session.
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 7, impersonated_by: 1 });
+      const state = signOAuthState("github", {
+        purpose: "github-connect",
+        userId: 7,
+      });
+
+      const res = await GET(
+        callbackRequest("github", { code: "somecode", state }),
+        ctx("github"),
+      );
+
+      expect(locationOf(res).searchParams.get("github_error")).toBe(
+        "impersonation_blocked",
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(githubConnectionInsertCalls).toHaveLength(0);
+    });
+
     it("names the real problem when that GitHub account is already granted to another account", async () => {
       // github_connections.github_user_id is unique, and the upsert only
       // covers user_id, so this one can never succeed by trying again.

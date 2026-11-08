@@ -712,7 +712,7 @@ async function handleOAuthLink(
 // google_id/github_id link columns), and a different success param shape
 // the Developer tab's UI already expects. Error vocabulary
 // (denied/invalid/not_configured/session_expired/invalid_state/expired/failed,
-// plus already_linked)
+// plus already_linked and impersonation_blocked)
 // matches what used to be the dedicated
 // app/api/v3/account/github/connect/callback/route.ts (now removed) so
 // components/profile/tabs/developer/github-section.tsx needs no changes.
@@ -741,6 +741,13 @@ async function handleGithubConnect(
   const session = await getSession();
   if (!session || session.userId !== payload.userId) {
     return fail("session_expired");
+  }
+
+  // The start route refuses this too, but a state issued to the real owner is
+  // still good for its whole lifetime. Saving replaces the owner's token and
+  // revokes the old one at GitHub, which DELETE /account/github refuses here.
+  if (refuseWhileImpersonating(session, "Granting repo access")) {
+    return fail("impersonation_blocked");
   }
 
   const redirectUri = `${baseUrl}/api/v3/auth/oauth/github/callback`;

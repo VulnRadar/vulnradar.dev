@@ -3056,7 +3056,7 @@ const CHANGELOG: Release[] = [
       {
         icon: KeyRound,
         label: "Linking a Sign-In Provider Asks for Your Password",
-        desc: "Connecting Google, GitHub or Discord to an existing account that has a password now requires entering it first, and an admin signed in as you can no longer link or disconnect one at all. An account created with a provider can connect only the identity already on it or one whose verified email is the account's address.",
+        desc: "Connecting Google, GitHub or Discord to an existing account that has a password now requires entering it first, and an admin signed in as you can no longer link or disconnect one, or grant GitHub repo access, at all. An account created with a provider can connect only the identity already on it or one whose verified email is the account's address.",
         category: "security",
       },
       {

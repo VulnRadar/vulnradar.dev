@@ -357,6 +357,8 @@ function ProfileContent() {
       not_configured: "GitHub integration is not configured on this server.",
       already_linked:
         "That GitHub account is already connected to another VulnRadar account.",
+      impersonation_blocked:
+        "You are signed in as this user from the admin panel, so repo access cannot be granted from here. Only the account owner can grant it.",
       failed: "Could not grant repo access. Try again.",
     };
 

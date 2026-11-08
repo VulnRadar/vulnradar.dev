@@ -46,6 +46,20 @@ beforeEach(() => {
   invalidateSettingsCache();
 });
 
+describe("GET /api/v3/account/github/connect during impersonation", () => {
+  it("refuses before a state is signed", async () => {
+    mockGetSession.mockResolvedValue({ userId: 7, impersonatedBy: 1 });
+
+    const res = await GET(req());
+
+    expect(res.status).toBe(403);
+    expect(res.headers.get("location")).toBeNull();
+    const body = await res.json();
+    expect(body.impersonationBlocked).toBe(true);
+    expect(body.error).toContain("Granting repo access");
+  });
+});
+
 function req() {
   return new Request("http://localhost/api/v3/account/github/connect");
 }
