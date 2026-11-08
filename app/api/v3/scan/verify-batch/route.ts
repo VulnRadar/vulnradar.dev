@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
     /* no row = AI enabled by default */
   }
 
-  let body: { url: string; findings: Vulnerability[] };
+  let body: unknown;
   try {
     body = await req.json();
   } catch {
@@ -111,7 +111,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { url, findings } = body;
+  // Valid JSON is not necessarily an object. The literal null parses, gets
+  // past the catch above, and threw on the destructuring below as a 500.
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json(
+      { error: "Invalid request body." },
+      { status: 400 },
+    );
+  }
+
+  const { url, findings } = body as { url: string; findings: Vulnerability[] };
   if (!url || !Array.isArray(findings)) {
     return NextResponse.json(
       { error: "url and findings[] are required." },

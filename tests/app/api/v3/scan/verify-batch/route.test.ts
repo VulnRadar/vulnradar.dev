@@ -287,6 +287,24 @@ describe("POST /api/v3/scan/verify-batch: request validation", () => {
     expect(res.status).toBe(400);
   });
 
+  // JSON.parse accepts every one of these, so the parse's own catch never
+  // sees them. Destructuring the literal null threw, and the route had no
+  // other catch to land in: an authenticated caller got a 500.
+  it.each<[string, unknown]>([
+    ["the literal null", null],
+    ["a number", 7],
+    ["a string", "https://example.com"],
+    ["a boolean", true],
+    ["an array", [{ url: "https://example.com", findings }]],
+  ])("answers %s as a malformed body", async (_label, body) => {
+    const res = await POST(postRequest(body));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Invalid request body.");
+    expect(mockReserveAiTokens).not.toHaveBeenCalled();
+    expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
+  });
+
   it("rejects a missing url", async () => {
     const res = await POST(postRequest({ findings }));
     expect(res.status).toBe(400);
