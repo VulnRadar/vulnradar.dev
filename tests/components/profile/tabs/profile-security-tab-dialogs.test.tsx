@@ -216,6 +216,20 @@ function typeValue(el: El, value: string) {
   (el.props.onChange as (v: string) => void)(value);
 }
 
+/**
+ * Type the way the browser does, through the <input>'s own change handler. A
+ * wrapper such as PasswordField (a plain function, no hooks) is expanded
+ * first, so a trim written inside it runs here instead of being stepped round
+ * by calling the wrapper's string handler directly.
+ */
+function typeAsBrowser(tree: unknown, id: string, value: string) {
+  let el = byId(tree, id);
+  while (typeof el.type === "function") {
+    el = byId((el.type as (props: unknown) => unknown)(el.props), id);
+  }
+  typeInto(el, value);
+}
+
 interface FetchCall {
   url: string;
   method: string;
@@ -295,7 +309,92 @@ afterEach(() => {
 
 describe("every password on the Security tab is sent exactly as typed", () => {
   it("never trims a password before it is checked or sent", () => {
-    expect(SOURCE).not.toMatch(/[Pp]assword\w*\.trim\(\)/);
+    // trimStart and trimEnd too: either one alone still changes what the
+    // server hashes.
+    expect(SOURCE).not.toMatch(/[Pp]assword\w*\.trim\w*\(/);
+  });
+
+  // The request helpers (tested below) are only half of it: each dialog's
+  // field and its Save sit between the keyboard and the helper, and a trim in
+  // either would pass every helper test. So each flow is driven from its own
+  // <input> to the request it sends.
+  describe("from each dialog's own field to its request", () => {
+    const PW = " pw ";
+    const long = ` ${"x".repeat(PASSWORD_MIN_LENGTH)} `;
+
+    it("PasswordDialog", async () => {
+      const calls = stubFetch();
+      const props = { hasPassword: true, onClose: vi.fn(), onSaved: vi.fn() };
+      const tree = direct(PasswordDialog, props);
+      typeAsBrowser(tree, "sec-current-pw", PW);
+      typeAsBrowser(tree, "sec-new-pw", long);
+      typeAsBrowser(tree, "sec-confirm-new-pw", long);
+      expect(
+        await dialogProps(direct(PasswordDialog, props)).onSave(),
+      ).toBeUndefined();
+      expect(calls.map((c) => c.body)).toEqual([
+        { currentPassword: PW, newPassword: long },
+      ]);
+    });
+
+    it("RegenerateBackupCodesDialog", async () => {
+      const calls = stubFetch(() => ({
+        ok: true,
+        data: { backupCodes: ["c1"] },
+      }));
+      const props = { onClose: vi.fn(), onIssued: vi.fn() };
+      typeAsBrowser(
+        direct(RegenerateBackupCodesDialog, props),
+        "regen-backup-password",
+        PW,
+      );
+      await dialogProps(direct(RegenerateBackupCodesDialog, props)).onSave();
+      expect(calls.map((c) => c.body)).toEqual([{ password: PW }]);
+    });
+
+    it("AuthenticatorSetupDialog", async () => {
+      const calls = stubFetch(() => ({ ok: true, data: { backupCodes: [] } }));
+      const props = {
+        setup: { uri: "otpauth://totp/x?secret=A", secret: "A" },
+        onClose: vi.fn(),
+        onEnabled: vi.fn(),
+      };
+      await dialogProps(direct(AuthenticatorSetupDialog, props)).onSave();
+      const verify = direct(AuthenticatorSetupDialog, props);
+      typeAsBrowser(verify, "setup-2fa-code", "123456");
+      typeAsBrowser(verify, "setup-2fa-password", PW);
+      await dialogProps(direct(AuthenticatorSetupDialog, props)).onSave();
+      expect(calls.map((c) => c.body)).toEqual([
+        { code: "123456", currentPassword: PW },
+      ]);
+    });
+
+    it("EnableEmailCodesDialog", async () => {
+      const calls = stubFetch();
+      const props = { onClose: vi.fn(), onEnabled: vi.fn() };
+      typeAsBrowser(
+        direct(EnableEmailCodesDialog, props),
+        "enable-email-2fa-password",
+        PW,
+      );
+      await dialogProps(direct(EnableEmailCodesDialog, props)).onSave();
+      expect(calls.map((c) => c.body)).toEqual([{ password: PW }]);
+    });
+
+    it.each(["app", "email"] as const)(
+      "TurnOffTwoFactorDialog (%s)",
+      async (method) => {
+        const calls = stubFetch();
+        const props = { method, onClose: vi.fn(), onTurnedOff: vi.fn() };
+        typeAsBrowser(
+          direct(TurnOffTwoFactorDialog, props),
+          `disable-${method}-2fa-password`,
+          PW,
+        );
+        await dialogProps(direct(TurnOffTwoFactorDialog, props)).onSave();
+        expect(calls.map((c) => c.body)).toEqual([{ password: PW }]);
+      },
+    );
   });
 
   it("keeps ' pw ' unchanged in every request body", async () => {
@@ -317,20 +416,49 @@ describe("every password on the Security tab is sent exactly as typed", () => {
     ]);
   });
 
-  it("lets a password that is only spaces be sent to the server to judge", () => {
-    // The old Save stayed disabled for it (`!password.trim()`), so the
-    // account whose password it is could never confirm with it.
+  it("lets a password that is only spaces be sent to the server to judge", async () => {
+    // The old email-codes Save stayed disabled for it (`!password.trim()`),
+    // so the account whose password it is could never confirm with it.
+    const cases: [(props: never) => unknown, object, string][] = [
+      [
+        EnableEmailCodesDialog,
+        { onClose: vi.fn(), onEnabled: vi.fn() },
+        "enable-email-2fa-password",
+      ],
+      [
+        RegenerateBackupCodesDialog,
+        { onClose: vi.fn(), onIssued: vi.fn() },
+        "regen-backup-password",
+      ],
+      [
+        TurnOffTwoFactorDialog,
+        { method: "app", onClose: vi.fn(), onTurnedOff: vi.fn() },
+        "disable-app-2fa-password",
+      ],
+      [
+        TurnOffTwoFactorDialog,
+        { method: "email", onClose: vi.fn(), onTurnedOff: vi.fn() },
+        "disable-email-2fa-password",
+      ],
+    ];
+    for (const [component, props, id] of cases) {
+      hooks.states = [];
+      typeAsBrowser(direct(component, props as never), id, "   ");
+      expect(dialogProps(direct(component, props as never)).canSave).toBe(true);
+    }
+    const setupProps = {
+      setup: { uri: "otpauth://totp/x?secret=A", secret: "A" },
+      onClose: vi.fn(),
+      onEnabled: vi.fn(),
+    };
     hooks.states = [];
-    const el = direct(EnableEmailCodesDialog, {
-      onClose: vi.fn(),
-      onEnabled: vi.fn(),
-    });
-    typeValue(byId(el, "enable-email-2fa-password"), "   ");
-    const again = direct(EnableEmailCodesDialog, {
-      onClose: vi.fn(),
-      onEnabled: vi.fn(),
-    });
-    expect(dialogProps(again).canSave).toBe(true);
+    await dialogProps(direct(AuthenticatorSetupDialog, setupProps)).onSave();
+    const verify = direct(AuthenticatorSetupDialog, setupProps);
+    typeAsBrowser(verify, "setup-2fa-code", "123456");
+    typeAsBrowser(verify, "setup-2fa-password", "   ");
+    expect(
+      dialogProps(direct(AuthenticatorSetupDialog, setupProps)).canSave,
+    ).toBe(true);
   });
 });
 
