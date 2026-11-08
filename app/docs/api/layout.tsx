@@ -6,6 +6,8 @@ export const metadata: Metadata = pageMetadata({
   description:
     "REST API reference for the scanner: authentication, scan and bulk-scan endpoints, response schema, finding IDs, severity levels, and error codes.",
   path: "/docs/api",
+  // Wraps /docs/api/playground, which would otherwise lose the site name.
+  isSectionRoot: true,
   keywords: [
     "security scanner API",
     "vulnerability scanning API",
