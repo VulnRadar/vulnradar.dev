@@ -258,9 +258,10 @@ export default function ArchitecturePage() {
               <InlineCode>AUTH_SECRET || API_KEY_ENCRYPTION_KEY</InlineCode>,
               1-minute TTL, tighter than the 5 minutes the general OAuth flow
               allows because it assumes an already-signed-in user re-approving a
-              link. Two actions: <InlineCode>?action=connect</InlineCode> (link
-              existing) and <InlineCode>?action=login</InlineCode> (sign in via
-              Discord).
+              link. Two actions: <InlineCode>?action=connect</InlineCode> (a
+              POST with the current password, which links an existing account)
+              and <InlineCode>?action=login</InlineCode> (a navigation that
+              signs in via Discord).
             </li>
             <li>
               <strong className="text-foreground">API auth:</strong> Bearer API

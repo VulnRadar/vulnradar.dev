@@ -252,11 +252,11 @@ export const INTERNAL_ANONYMOUS: readonly { template: string; why: string }[] =
     },
     {
       template: "/auth/oauth/:provider",
-      why: "Starts a sign-in with Google, GitHub or Discord.",
+      why: "Starts a sign-in with Google, GitHub or Discord. Linking one to a signed-in account is a POST carrying the current password.",
     },
     {
       template: "/auth/discord",
-      why: "Starts the Discord flow, a top-level navigation.",
+      why: "Starts the Discord flow: a top-level navigation to sign in, a POST carrying the current password to connect.",
     },
     {
       template: "/auth/staff-oidc",
