@@ -473,7 +473,8 @@ export default function TeamsPage() {
     const team = selectedTeam;
     await runOnce(invitingRef, async () => {
       setActionError(null);
-      setInviteToken(null);
+      // The last invite's link stays until a new one replaces it: it is
+      // copy-once, so a refused invite must not take it off the screen.
       let res: Response;
       try {
         res = await fetch(API.TEAMS_MEMBERS, {
