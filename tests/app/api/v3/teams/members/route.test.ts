@@ -175,7 +175,6 @@ describe("POST /api/v3/teams/members", () => {
     queueUpToInsert({ existingUserId: 99, inviteId: 7 });
     mockQuery.mockResolvedValueOnce({ rows: [{ name: "Acme" }] }); // teamInfo
     mockQuery.mockResolvedValueOnce({ rows: [{ name: "Alice" }] }); // inviterInfo
-    mockQuery.mockResolvedValueOnce({ rows: [{ unsubscribe_token: null }] }); // inviteeRes
 
     const res = await POST(
       postRequest({ teamId: 1, email: "bob@example.com", role: "viewer" }),
@@ -200,7 +199,6 @@ describe("POST /api/v3/teams/members", () => {
     queueUpToInsert({ existingUserId: 99, inviteId: 7, emailVerifiedAt: null });
     mockQuery.mockResolvedValueOnce({ rows: [{ name: "Acme" }] }); // teamInfo
     mockQuery.mockResolvedValueOnce({ rows: [{ name: "Alice" }] }); // inviterInfo
-    mockQuery.mockResolvedValueOnce({ rows: [{ unsubscribe_token: null }] }); // inviteeRes
 
     const res = await POST(
       postRequest({ teamId: 1, email: "bob@example.com", role: "viewer" }),
@@ -215,7 +213,6 @@ describe("POST /api/v3/teams/members", () => {
     queueUpToInsert({ existingUserId: null, inviteId: 8 });
     mockQuery.mockResolvedValueOnce({ rows: [{ name: "Acme" }] }); // teamInfo
     mockQuery.mockResolvedValueOnce({ rows: [{ name: "Alice" }] }); // inviterInfo
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // inviteeRes (no account)
 
     const res = await POST(
       postRequest({
@@ -243,7 +240,6 @@ describe("POST /api/v3/teams/members", () => {
       queueUpToInsert({ existingUserId: null, inviteId: 8 });
       mockQuery.mockResolvedValueOnce({ rows: [{ name: "Acme" }] }); // teamInfo
       mockQuery.mockResolvedValueOnce({ rows: [{ name: "Alice" }] }); // inviterInfo
-      mockQuery.mockResolvedValueOnce({ rows: [] }); // inviteeRes
 
       const res = await POST(
         postRequest({ teamId: 1, email: "new@example.com", role: "viewer" }),
@@ -263,7 +259,6 @@ describe("POST /api/v3/teams/members", () => {
     queueUpToInsert({ existingUserId: 99, inviteId: 7 });
     mockQuery.mockResolvedValueOnce({ rows: [{ name: "Acme" }] });
     mockQuery.mockResolvedValueOnce({ rows: [{ name: "Alice" }] });
-    mockQuery.mockResolvedValueOnce({ rows: [{ unsubscribe_token: null }] });
 
     await POST(
       postRequest({ teamId: 1, email: "bob@example.com", role: "viewer" }),
@@ -280,7 +275,6 @@ describe("POST /api/v3/teams/members", () => {
     queueUpToInsert({ existingUserId: 99, inviteId: 7 });
     mockQuery.mockResolvedValueOnce({ rows: [{ name: "Acme" }] });
     mockQuery.mockResolvedValueOnce({ rows: [{ name: "Alice" }] });
-    mockQuery.mockResolvedValueOnce({ rows: [{ unsubscribe_token: null }] });
     mockCreateUserNotification.mockRejectedValueOnce(new Error("db down"));
 
     const res = await POST(
@@ -507,11 +501,9 @@ describe("POST /api/v3/teams/members, invitee stored in mixed case", () => {
           (s.includes("WHERE LOWER(email) = LOWER($1)") &&
             stored.toLowerCase() === wanted.toLowerCase());
         if (!visible) return { rows: [] };
-        return s.includes("unsubscribe_token")
-          ? { rows: [{ unsubscribe_token: "unsub-99" }] }
-          : {
-              rows: [{ id: 99, email_verified_at: "2026-01-01T00:00:00.000Z" }],
-            };
+        return {
+          rows: [{ id: 99, email_verified_at: "2026-01-01T00:00:00.000Z" }],
+        };
       }
       if (s.startsWith("SELECT id FROM team_members")) {
         return { rows: opts.alreadyMember ? [{ id: 1 }] : [] };
@@ -535,7 +527,7 @@ describe("POST /api/v3/teams/members, invitee stored in mixed case", () => {
   const invite = () =>
     POST(postRequest({ teamId: 1, email: "bob@example.com", role: "viewer" }));
 
-  it("finds the account: the bell rings and the mail carries its unsubscribe token", async () => {
+  it("finds the account: the bell rings and the mail goes through its preferences", async () => {
     databaseWith({ alreadyMember: false });
 
     const res = await invite();
@@ -544,9 +536,11 @@ describe("POST /api/v3/teams/members, invitee stored in mixed case", () => {
     expect(res.status).toBe(200);
     expect(mockCreateUserNotification).toHaveBeenCalledTimes(1);
     expect(mockCreateUserNotification.mock.calls[0][0].userId).toBe(99);
-    expect(mockSendEmail.mock.calls[0][0]).toMatchObject({
-      unsubscribeToken: "unsub-99",
+    expect(mockSendNotificationEmail.mock.calls[0][0]).toMatchObject({
+      userId: 99,
+      type: "team_invites",
     });
+    expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
   it("refuses to invite someone already on the team", async () => {
@@ -558,7 +552,7 @@ describe("POST /api/v3/teams/members, invitee stored in mixed case", () => {
     expect((await res.json()).error).toMatch(/already a team member/i);
   });
 
-  it("reads one row with getUserByEmail's comparison, both times", async () => {
+  it("reads one row with getUserByEmail's comparison", async () => {
     databaseWith({ alreadyMember: false });
 
     await invite();
@@ -566,7 +560,7 @@ describe("POST /api/v3/teams/members, invitee stored in mixed case", () => {
     const reads = mockQuery.mock.calls
       .map(([sql, params]) => ({ sql: sql as string, params }))
       .filter((c) => c.sql.includes("FROM users") && c.sql.includes("email"));
-    expect(reads).toHaveLength(2);
+    expect(reads).toHaveLength(1);
     for (const read of reads) {
       expect(read.sql).toContain("WHERE LOWER(email) = LOWER($1)");
       expect(read.sql).toContain("ORDER BY (email = $1) DESC, id");
@@ -816,21 +810,43 @@ describe("DELETE /api/v3/teams/members", () => {
 });
 
 describe("the invite mail", () => {
-  it("names its notification column, so the one-click unsubscribe headers are sent", async () => {
-    queueUpToInsert({ existingUserId: 2 });
+  async function invite(opts: Parameters<typeof queueUpToInsert>[0]) {
+    queueUpToInsert(opts);
     mockQuery.mockResolvedValueOnce({ rows: [{ name: "Acme" }] }); // team
     mockQuery.mockResolvedValueOnce({ rows: [{ name: "Ada" }] }); // inviter
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ unsubscribe_token: "tok" }],
-    });
 
     await POST(postRequest({ teamId: 1, email: "bob@example.com" }));
     await new Promise((resolve) => queueMicrotask(() => resolve(null)));
+  }
 
-    expect(mockSendEmail.mock.calls[0][0]).toMatchObject({
-      unsubscribeToken: "tok",
-      unsubscribeColumn: "email_team_invite",
+  it("goes through the Team invitations switch for a confirmed account", async () => {
+    await invite({ existingUserId: 2 });
+
+    expect(mockSendNotificationEmail).toHaveBeenCalledTimes(1);
+    expect(mockSendNotificationEmail.mock.calls[0][0]).toMatchObject({
+      userId: 2,
+      userEmail: "bob@example.com",
+      type: "team_invites",
     });
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("is mailed directly to an address with no account, which has no switch", async () => {
+    await invite({ existingUserId: null });
+
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(mockSendEmail.mock.calls[0][0].to).toBe("bob@example.com");
+    expect(mockSendNotificationEmail).not.toHaveBeenCalled();
+  });
+
+  // The route says this account has not shown it owns the address, so its
+  // preferences cannot speak for whoever does.
+  it("is mailed directly when the matching account never confirmed the address", async () => {
+    await invite({ existingUserId: 2, emailVerifiedAt: null });
+
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(mockSendEmail.mock.calls[0][0].unsubscribeToken).toBeUndefined();
+    expect(mockSendNotificationEmail).not.toHaveBeenCalled();
   });
 });
 

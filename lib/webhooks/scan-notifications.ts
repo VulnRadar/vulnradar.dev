@@ -1,7 +1,7 @@
 /**
  * The finalisation tail every scan path runs once its result is persisted:
- * the scan-complete email, the critical/high regression alert, and every
- * webhook the scan's owner (or the team the scan belongs to) has registered.
+ * the scan-complete email, the critical/high regression alert, the critical
+ * findings email, and every webhook the scan's owner (or the team the scan belongs to) has registered.
  *
  * This used to live inline at the bottom of lib/scanner/execute-scan.ts and
  * nowhere else, which meant exactly one of the five ways a scan can be
@@ -441,6 +441,32 @@ async function runRegressionCheck(
   }
 }
 
+function isCritical(f: Vulnerability): boolean {
+  return f.severity === "critical";
+}
+
+/**
+ * What the email_critical_findings mail reports for this scan, split into new
+ * and already-known the way criticalFindingsEmail prints them.
+ *
+ * The diff is the source when it ran, because it has already dropped what the
+ * user marked a false positive or accepted, and a finding someone has dismissed
+ * should not be mailed to them after every scan. When it could not run there
+ * is no baseline, so everything counts as new, as it does on a first scan.
+ */
+function criticalFindingsToReport(
+  params: ScanNotificationParams,
+  regression: RegressionCheckResult | null,
+): { fresh: Vulnerability[]; outstanding: Vulnerability[] } {
+  if (regression === null) {
+    return { fresh: params.findings.filter(isCritical), outstanding: [] };
+  }
+  return {
+    fresh: regression.newFindings.filter(isCritical),
+    outstanding: regression.outstandingFindings.filter(isCritical),
+  };
+}
+
 async function sendScanEmails(
   params: ScanNotificationParams,
   regression: RegressionCheckResult | null,
@@ -476,9 +502,10 @@ async function sendScanEmails(
   // The crawl path used to send its own copy of this email inline. That copy
   // was deleted rather than left in place beside this one, so the alert has
   // exactly one producer and a crawl cannot double-send it.
+  let alertSent = false;
   if (regression?.hasNewCriticalOrHigh === true) {
     try {
-      await sendNotificationEmail({
+      alertSent = await sendNotificationEmail({
         userId: params.userId,
         userEmail,
         type: "severity_alerts",
@@ -495,6 +522,39 @@ async function sendScanEmails(
         error instanceof Error ? error.message : error,
       );
     }
+  }
+
+  // The alert already lists every critical this mail would, so one scan never
+  // sends both. Whether it was actually sent is what counts, not whether it
+  // was due: someone with that alert off and this switch on still asked to
+  // hear about critical findings.
+  if (alertSent) return;
+
+  const { fresh, outstanding } = criticalFindingsToReport(params, regression);
+  // A schedule that keeps finding the same critical would mail it on every run
+  // (lib/scanner/regression-alert.ts records what that was like at hourly), so
+  // on those runs only a new one is worth a message.
+  const worthSending =
+    fresh.length > 0 || (outstanding.length > 0 && !params.silenceRoutineEmail);
+  if (!worthSending) return;
+
+  try {
+    await sendNotificationEmail({
+      userId: params.userId,
+      userEmail,
+      type: "critical_findings",
+      emailContent: criticalFindingsEmail(
+        params.target.value,
+        fresh,
+        outstanding,
+        params.scanId ?? undefined,
+      ),
+    });
+  } catch (error) {
+    console.error(
+      `[${APP_NAME}] Failed to send critical findings email:`,
+      error instanceof Error ? error.message : error,
+    );
   }
 }
 

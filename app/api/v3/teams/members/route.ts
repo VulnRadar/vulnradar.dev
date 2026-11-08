@@ -376,26 +376,26 @@ export const POST = withErrorHandling(async (request: Request) => {
     const inviteLink = `${secretLinkAppUrl()}/teams/join?token=${token}`;
     const emailPayload = teamInviteEmail(teamName, inviteLink, invitedBy);
 
-    // Look up unsubscribe token for the invitee if they're an existing user
-    const inviteeRes = await pool.query<{ unsubscribe_token: string | null }>(
-      `SELECT unsubscribe_token FROM users
-       WHERE LOWER(email) = LOWER($1)
-       ORDER BY (email = $1) DESC, id
-       LIMIT 1`,
-      [email.trim().toLowerCase()],
-    );
-    const unsubscribeToken = inviteeRes.rows[0]?.unsubscribe_token ?? undefined;
+    const inviteeEmail = email.trim().toLowerCase();
 
-    // Send email in background
+    // Send email in background.
+    //
+    // A confirmed account goes through its own Team invitations switch, which
+    // used to report "Saved" and change nothing because this called sendEmail
+    // directly. Nobody else has made that choice: an address with no account
+    // has no preferences, and an unconfirmed row may be someone else squatting
+    // on the address, whose switch must not decide whether its real owner
+    // hears about the invite.
     queueMicrotask(() => {
-      sendEmail({
-        to: email.trim().toLowerCase(),
-        ...emailPayload,
-        unsubscribeToken,
-        // Without the column sendEmail leaves the List-Unsubscribe headers
-        // off, so the mail client never offers the one-click link.
-        unsubscribeColumn: "email_team_invite",
-      }).catch((err) => {
+      const delivery = bellUserId
+        ? sendNotificationEmail({
+            userId: bellUserId,
+            userEmail: inviteeEmail,
+            type: "team_invites",
+            emailContent: emailPayload,
+          })
+        : sendEmail({ to: inviteeEmail, ...emailPayload });
+      delivery.catch((err: unknown) => {
         console.error("Team invite email failed:", err);
       });
     });

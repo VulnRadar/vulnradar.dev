@@ -24,9 +24,13 @@ vi.mock("@/lib/notifications/notifications", () => ({
     mockSendNotificationEmail(...args),
 }));
 
+const mockCriticalFindingsEmail = vi.fn();
 vi.mock("@/lib/email/email", () => ({
   scanCompleteEmail: (url: string) => ({ subject: `complete ${url}` }),
-  criticalFindingsEmail: (url: string) => ({ subject: `critical ${url}` }),
+  criticalFindingsEmail: (url: string, ...rest: unknown[]) => {
+    mockCriticalFindingsEmail(url, ...rest);
+    return { subject: `critical ${url}` };
+  },
 }));
 
 const mockDeliverWebhook = vi.fn();
@@ -145,8 +149,10 @@ function baseParams(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  mockCriticalFindingsEmail.mockReset();
   mockQuery.mockReset();
   mockSendNotificationEmail.mockReset();
+  mockSendNotificationEmail.mockResolvedValue(true);
   mockDeliverWebhook.mockReset();
   mockDeliverWebhook.mockResolvedValue(undefined);
   installQueryMock();
@@ -555,6 +561,142 @@ describe("notifyScanComplete: scan.regressed", () => {
       severity: "critical",
       category: "configuration",
     });
+  });
+});
+
+describe("notifyScanComplete: the Critical findings switch", () => {
+  const sentTypes = () =>
+    mockSendNotificationEmail.mock.calls.map((c) => c[0].type);
+
+  /** The sender's real answer: false for a column the user has switched off. */
+  function switchedOff(...types: string[]) {
+    mockSendNotificationEmail.mockImplementation(
+      async ({ type }: { type: string }) => !types.includes(type),
+    );
+  }
+
+  const criticalScan = (overrides: Record<string, unknown> = {}) =>
+    baseParams({ summary: SUMMARY, findings: [finding()], ...overrides });
+
+  it("sends one critical findings mail for a critical that is not new", async () => {
+    installQueryMock({ previousFindings: [finding()] });
+
+    await notifyScanComplete(criticalScan());
+
+    expect(sentTypes()).toEqual(["scan_complete", "critical_findings"]);
+    expect(mockCriticalFindingsEmail).toHaveBeenCalledTimes(1);
+    const [url, fresh, outstanding, scanId] =
+      mockCriticalFindingsEmail.mock.calls[0];
+    expect(url).toBe("https://example.com/");
+    expect(fresh).toEqual([]);
+    expect(outstanding).toHaveLength(1);
+    expect(scanId).toBe(7);
+  });
+
+  it("lets sendNotificationEmail apply the column, so the switch off means no mail", async () => {
+    installQueryMock({ previousFindings: [finding()] });
+    switchedOff("critical_findings");
+
+    await notifyScanComplete(criticalScan());
+
+    // The call is what carries the switch: the sender reads
+    // email_critical_findings for this type and declines.
+    expect(sentTypes()).toEqual(["scan_complete", "critical_findings"]);
+    await expect(mockSendNotificationEmail.mock.results[1].value).resolves.toBe(
+      false,
+    );
+  });
+
+  it("sends only the alert when the scan triggers the regression alert", async () => {
+    installQueryMock({ previousFindings: [] });
+
+    await notifyScanComplete(criticalScan());
+
+    expect(sentTypes()).toEqual(["scan_complete", "severity_alerts"]);
+  });
+
+  it("sends only the alert when a new high arrives beside an old critical", async () => {
+    installQueryMock({ previousFindings: [finding()] });
+    const newHigh = finding({ id: "check-2--hash", severity: "high" });
+
+    await notifyScanComplete(criticalScan({ findings: [finding(), newHigh] }));
+
+    expect(sentTypes()).toEqual(["scan_complete", "severity_alerts"]);
+  });
+
+  it("still reports a new critical to someone with the alert switched off", async () => {
+    installQueryMock({ previousFindings: [] });
+    switchedOff("severity_alerts");
+
+    await notifyScanComplete(criticalScan());
+
+    expect(sentTypes()).toEqual([
+      "scan_complete",
+      "severity_alerts",
+      "critical_findings",
+    ]);
+    const [, fresh, outstanding] = mockCriticalFindingsEmail.mock.calls.at(-1)!;
+    expect(fresh).toHaveLength(1);
+    expect(outstanding).toEqual([]);
+  });
+
+  it("sends nothing for a scan with no critical finding", async () => {
+    installQueryMock({ previousFindings: [] });
+    switchedOff("severity_alerts");
+    const high = finding({ severity: "high" });
+
+    await notifyScanComplete(
+      baseParams({
+        summary: { ...EMPTY_SUMMARY, high: 1, total: 1 },
+        findings: [high],
+      }),
+    );
+
+    expect(sentTypes()).not.toContain("critical_findings");
+  });
+
+  it("does not mail a critical the user marked a false positive", async () => {
+    installQueryMock({ previousFindings: [finding()] });
+    const base = mockQuery.getMockImplementation()!;
+    mockQuery.mockImplementation(async (sql: string, ...rest: unknown[]) =>
+      sql.includes("scan_finding_feedback")
+        ? { rows: [{ finding_id: "check-1--hash" }] }
+        : base(sql, ...rest),
+    );
+
+    await notifyScanComplete(criticalScan());
+
+    expect(sentTypes()).toEqual(["scan_complete"]);
+  });
+
+  it("does not repeat a known critical on every scheduled run", async () => {
+    installQueryMock({ previousFindings: [finding()] });
+
+    await notifyScanComplete(criticalScan({ silenceRoutineEmail: true }));
+
+    expect(sentTypes()).toEqual([]);
+  });
+
+  it("does mail a new critical on a scheduled run when the alert is off", async () => {
+    installQueryMock({ previousFindings: [] });
+    switchedOff("severity_alerts");
+
+    await notifyScanComplete(criticalScan({ silenceRoutineEmail: true }));
+
+    expect(sentTypes()).toEqual(["severity_alerts", "critical_findings"]);
+  });
+
+  it("treats every critical as new when the diff could not run", async () => {
+    installQueryMock();
+
+    await notifyScanComplete(criticalScan({ scanId: null }));
+
+    expect(sentTypes()).toEqual(["scan_complete", "critical_findings"]);
+    const [, fresh, outstanding, scanId] =
+      mockCriticalFindingsEmail.mock.calls[0];
+    expect(fresh).toHaveLength(1);
+    expect(outstanding).toEqual([]);
+    expect(scanId).toBeUndefined();
   });
 });
 
