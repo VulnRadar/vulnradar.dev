@@ -2,6 +2,8 @@ import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createHash, randomBytes } from "node:crypto";
 import { NextRequest } from "next/server";
 import pool from "@/lib/database/db";
+import { deleteUserAccountData } from "@/lib/auth/account-deletion";
+import { recordContactSubmission } from "@/lib/support/contact-submissions";
 import {
   clearSettings,
   createTeam,
@@ -140,6 +142,8 @@ const { GET: listInvitations, DELETE: declineInvitation } =
   await import("@/app/api/v3/teams/invitations/route");
 const { POST: acceptTeamInvite } =
   await import("@/app/api/v3/teams/accept-invite/route");
+const { POST: exportAccountData } =
+  await import("@/app/api/v3/data-request/route");
 
 /** A row as it was stored before every writer lowercased the address. */
 async function createLegacyUser(
@@ -517,6 +521,71 @@ describeIntegration("every account lookup by address folds case", () => {
         [legacy.id],
       ),
     ).toBe(1);
+  });
+
+  /** Mail and a contact message filed under the lowercased spelling. */
+  async function addressKeyedRows(email: string) {
+    await pool.query(
+      "INSERT INTO email_logs (recipient, subject, status) VALUES ($1, 'Welcome', 'sent')",
+      [email.toLowerCase()],
+    );
+    await recordContactSubmission({
+      source: "contact",
+      name: "Legacy Owner",
+      email: email.toLowerCase(),
+      subject: "A question",
+      category: "other",
+      message: "Filed under the lowercased address.",
+      ipAddress: null,
+    });
+  }
+
+  it("the data export carries the mail and contact messages filed under the lowercased address", async () => {
+    const legacy = await createLegacyUser();
+    await addressKeyedRows(legacy.email);
+    sessionUserId = legacy.id;
+
+    const res = await exportAccountData(
+      new NextRequest("http://localhost/api/v3/data-request", {
+        method: "POST",
+      }),
+    );
+    await flushMail();
+
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.emailLog).toHaveLength(1);
+    expect(data.contactSubmissions).toHaveLength(1);
+  });
+
+  it("erasing the account purges the mail and contact messages filed under the lowercased address", async () => {
+    const legacy = await createLegacyUser();
+    await addressKeyedRows(legacy.email);
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await deleteUserAccountData(client, legacy.id);
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    expect(
+      await count(
+        "SELECT COUNT(*)::int AS n FROM email_logs WHERE LOWER(recipient) = LOWER($1)",
+        [legacy.email],
+      ),
+    ).toBe(0);
+    expect(
+      await count(
+        "SELECT COUNT(*)::int AS n FROM contact_submissions WHERE LOWER(email) = LOWER($1)",
+        [legacy.email],
+      ),
+    ).toBe(0);
   });
 
   it("the invitations route still ignores another address and an unverified account", async () => {

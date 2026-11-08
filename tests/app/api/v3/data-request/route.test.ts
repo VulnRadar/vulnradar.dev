@@ -253,6 +253,22 @@ describe("POST /api/v3/data-request", () => {
     }
   });
 
+  it("folds case on the two address-keyed reads, so capitals on the account do not hide rows", async () => {
+    routeQueries({});
+    await POST(postRequest());
+    const sqls = mockQuery.mock.calls.map(([sql]) =>
+      String(sql).replace(/[ \n]+/g, " "),
+    );
+    const fromTable = (table: string) =>
+      sqls.find((sql) => sql.includes(`FROM ${table} `));
+    expect(fromTable("email_logs")).toContain(
+      "LOWER(recipient) = LOWER((SELECT email FROM users WHERE id = $1))",
+    );
+    expect(fromTable("contact_submissions")).toContain(
+      "LOWER(email) = LOWER((SELECT email FROM users WHERE id = $1))",
+    );
+  });
+
   it("never includes the encrypted AI API key in the export", async () => {
     routeQueries({
       priorDownloadAt: null,

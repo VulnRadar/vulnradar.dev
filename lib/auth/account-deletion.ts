@@ -228,22 +228,29 @@ export async function deleteUserAccountData(
   // account's address survived for CLEANUP_EMAIL_LOG_RETENTION_DAYS after the
   // erasure. Read the address off the users row (still present at this point,
   // deleted immediately below) so both delete paths get this without a
-  // signature change, and purge by recipient.
+  // signature change, and purge by recipient. Case folds on every address
+  // match here: an account saved with capitals still has mail logged and
+  // contact forms stored under the lowercased spelling, and those rows are
+  // its data whichever way the address was typed.
   const emailRow = await client.query<{ email: string | null }>(
     "SELECT email FROM users WHERE id = $1",
     [userId],
   );
   const email = emailRow.rows[0]?.email;
   if (email) {
-    await client.query("DELETE FROM email_logs WHERE recipient = $1", [email]);
+    await client.query(
+      "DELETE FROM email_logs WHERE LOWER(recipient) = LOWER($1)",
+      [email],
+    );
     // Contact-form submissions key on the address typed into the form, not on
     // a session, because the landing form takes messages from people with no
     // account at all. Same purge-by-recipient shape as email_logs directly
     // above, and for the same reason: nothing links these rows to the account
     // by a foreign key, so nothing would remove them.
-    await client.query("DELETE FROM contact_submissions WHERE email = $1", [
-      email,
-    ]);
+    await client.query(
+      "DELETE FROM contact_submissions WHERE LOWER(email) = LOWER($1)",
+      [email],
+    );
     // Staff invites addressed to this account. invited_by cascades, so an
     // invite this person SENT goes with them; one sent TO them did not,
     // because the recipient is an email address and not a foreign key. Two

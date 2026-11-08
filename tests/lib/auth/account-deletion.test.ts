@@ -198,6 +198,17 @@ describe("deleteUserAccountData: tables with no cascading link to the account", 
     expect(call![1]).toEqual(["gone@example.com"]);
   });
 
+  it("folds case on every address-keyed purge, so capitals on the account do not leave rows behind", async () => {
+    await deleteUserAccountData(fakeClient, 11);
+    const sqls = mockQuery.mock.calls.map(([sql]) => String(sql));
+    expect(sqls).toContain(
+      "DELETE FROM email_logs WHERE LOWER(recipient) = LOWER($1)",
+    );
+    expect(sqls).toContain(
+      "DELETE FROM contact_submissions WHERE LOWER(email) = LOWER($1)",
+    );
+  });
+
   it("reads the address before the users row is deleted", async () => {
     await deleteUserAccountData(fakeClient, 11);
     const sqls = mockQuery.mock.calls.map(([sql]) => String(sql));

@@ -663,12 +663,14 @@ export async function POST(_request: NextRequest) {
       // body with links, codes and tokens already stripped, which is why it
       // is safe to hand back; redacted_html is the same content again and is
       // left out so the file does not double in size for no new information.
+      // Case folds because an account saved with capitals has rows under the
+      // lowercased spelling too, and they are still its own.
       () =>
         pool.query(
           `
         SELECT id, subject, status, error_message, redacted_preview, created_at
         FROM email_logs
-        WHERE recipient = (SELECT email FROM users WHERE id = $1)
+        WHERE LOWER(recipient) = LOWER((SELECT email FROM users WHERE id = $1))
         ORDER BY created_at DESC
         LIMIT $2
       `,
@@ -779,7 +781,7 @@ export async function POST(_request: NextRequest) {
         SELECT id, source, name, subject, category, message,
                email_status, created_at
         FROM contact_submissions
-        WHERE email = (SELECT email FROM users WHERE id = $1)
+        WHERE LOWER(email) = LOWER((SELECT email FROM users WHERE id = $1))
         ORDER BY created_at DESC
         LIMIT $2
       `,
