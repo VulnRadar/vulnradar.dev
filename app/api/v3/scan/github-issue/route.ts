@@ -50,7 +50,7 @@ function buildIssueBody(
   reportUrl: string | null,
 ): string {
   const counts = SEVERITY_ORDER.map((s) => `${summary[s] ?? 0} ${s}`).join(
-    " · ",
+    ", ",
   );
   const lines: string[] = [
     `Security scan of \`${url}\` by ${APP_NAME}.`,

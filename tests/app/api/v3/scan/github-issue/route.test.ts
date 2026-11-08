@@ -132,6 +132,11 @@ describe("POST /api/v3/scan/github-issue: the report link in the issue", () => {
     title: `Finding ${i}`,
   }));
 
+  it("separates the severity counts with commas, not a middle dot", async () => {
+    const body = await filedBody({});
+    expect(body).toContain("1 critical, 0 high, 2 medium, 0 low, 1 info");
+  });
+
   it("links the host report for a public URL scan", async () => {
     const body = await filedBody({ url: "https://www.example.com/app" });
     expect(body).toMatch(/Full report: \S+\/host\/example\.com$/);
