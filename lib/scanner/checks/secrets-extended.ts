@@ -736,8 +736,11 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "secret-private-key-pem": (_url, _headers, body) => {
     if (!body) return null;
+    // See private-key-exposed: PGP armor ends its header in BLOCK.
     if (
-      /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/.test(body)
+      /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY(?: BLOCK)?-----/.test(
+        body,
+      )
     ) {
       return "Response contains a PEM private key block.";
     }

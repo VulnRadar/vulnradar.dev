@@ -509,6 +509,24 @@ const fixtures: DetectorFixtures = {
       evidenceIncludes: "github pat",
     },
   ],
+  "private-key-exposed": [
+    {
+      description:
+        "regression (false negative): an armored PGP key, whose header ends in BLOCK, fires",
+      body: "<pre>-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQOYBGJ0\n-----END PGP PRIVATE KEY BLOCK-----</pre>",
+      expect: "fire",
+    },
+    {
+      description: "a PEM key without BLOCK still fires",
+      body: "<pre>-----BEGIN OPENSSH PRIVATE KEY-----</pre>",
+      expect: "fire",
+    },
+    {
+      description: "a PGP public key block does not fire",
+      body: "<pre>-----BEGIN PGP PUBLIC KEY BLOCK-----</pre>",
+      expect: "skip",
+    },
+  ],
   "database-connection-string": [
     {
       description:

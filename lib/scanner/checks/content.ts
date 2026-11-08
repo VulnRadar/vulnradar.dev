@@ -1047,7 +1047,7 @@ const rawDetectors: Record<string, DetectFn> = {
     const sensitivePatterns = [
       /(?:password|passwd|pwd)\s*[:=]\s*["']?[^\s"'<>]{4,}/i,
       /(?:secret|api[_-]?key|private[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret)\s*[:=]\s*["']?[^\s"'<>]{8,}/i,
-      /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+      /-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----/,
     ];
     // A value that is visibly a stand-in is documentation, not a leak: the
     // masked form an example uses, a templating placeholder, or the words
@@ -1879,8 +1879,12 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "private-key-exposed": (url, _headers, body) => {
+    // PGP armor spells its header PRIVATE KEY BLOCK, which the other formats
+    // do not, so a pattern ending at KEY never matched a real exported key.
     if (
-      /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/.test(body)
+      /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY(?: BLOCK)?-----/.test(
+        body,
+      )
     ) {
       return "Private key material detected in source.";
     }

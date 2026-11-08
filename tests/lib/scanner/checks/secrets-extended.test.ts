@@ -25,6 +25,19 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
   ],
+  "secret-private-key-pem": [
+    {
+      description:
+        "regression (false negative): an armored PGP key, whose header ends in BLOCK, fires",
+      body: "-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQOYBGJ0\n-----END PGP PRIVATE KEY BLOCK-----",
+      expect: "fire",
+    },
+    {
+      description: "a PGP public key block does not fire",
+      body: "-----BEGIN PGP PUBLIC KEY BLOCK-----",
+      expect: "skip",
+    },
+  ],
   "secret-vonage-nexmo-key": [
     {
       description: "a Vonage API key assignment fires",
