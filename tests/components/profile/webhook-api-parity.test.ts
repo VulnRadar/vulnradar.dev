@@ -122,3 +122,20 @@ describe("a shared webhook only offers what the server will accept", () => {
     );
   });
 });
+
+describe("editing a webhook opens a dialog", () => {
+  it("gates the pencil on write access, as the inline editor was", () => {
+    const pencil = SECTION.slice(
+      SECTION.indexOf("setEditingWebhook(wh)") - 400,
+      SECTION.indexOf("setEditingWebhook(wh)"),
+    );
+    expect(pencil).toContain("{isWritable && (");
+    expect(SECTION).toMatch(/aria-label=\{`Edit webhook \$\{wh\.name\}`\}/);
+  });
+
+  it("hands the dialog's draft to the shell as one call", () => {
+    expect(SECTION).toContain("<WebhookEditDialog");
+    expect(SHELL).toContain("onSaveWebhookEdit={handleSaveWebhookEdit}");
+    expect(SECTION).toContain("onSave(webhook.id, {");
+  });
+});

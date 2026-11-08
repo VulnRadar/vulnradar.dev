@@ -15,7 +15,6 @@ import {
   Loader2,
   Pencil,
   Check,
-  X,
   KeyRound,
   Copy,
   History,
@@ -33,6 +32,7 @@ import {
   CopiedAnnouncement,
 } from "@/components/shared/copy-feedback";
 import { InlineAlert } from "@/components/shared/inline-alert";
+import { EditDialog } from "@/components/shared/edit-dialog";
 
 interface WebhooksSectionProps {
   webhooks: WebhookItem[];
@@ -51,15 +51,12 @@ interface WebhooksSectionProps {
   onDismissNewWebhookSecret: () => void;
   togglingWebhookId: number | null;
   onToggleWebhookActive: (id: number, nextActive: boolean) => void;
-  editingWebhookId: number | null;
-  editWebhookName: string;
-  onEditWebhookNameChange: (value: string) => void;
-  editWebhookUrl: string;
-  onEditWebhookUrlChange: (value: string) => void;
-  savingWebhookEdit: boolean;
-  onStartEditWebhook: (webhook: WebhookItem) => void;
-  onCancelEditWebhook: () => void;
-  onSaveWebhookEdit: () => void;
+  /** Resolves to null when the webhook was updated, otherwise the reason it
+   *  was not, which the edit dialog shows without closing. */
+  onSaveWebhookEdit: (
+    id: number,
+    draft: { name: string; url: string },
+  ) => Promise<string | null>;
   rotatingWebhookId: number | null;
   /** The secret is shown once, in the panel above, exactly as on create. */
   onRotateWebhookSecret: (webhook: WebhookItem) => void;
@@ -77,7 +74,10 @@ interface WebhooksSectionProps {
    *  so the picker does not appear a beat after the row it belongs to. */
   teams: AssignableTeamsResult;
   assigningTeamWebhookId: number | null;
-  onAssignWebhookTeam: (id: number, teamId: number | null) => void;
+  onAssignWebhookTeam: (
+    id: number,
+    teamId: number | null,
+  ) => Promise<string | null>;
 }
 
 /**
@@ -131,14 +131,6 @@ export function WebhooksSection({
   onDismissNewWebhookSecret,
   togglingWebhookId,
   onToggleWebhookActive,
-  editingWebhookId,
-  editWebhookName,
-  onEditWebhookNameChange,
-  editWebhookUrl,
-  onEditWebhookUrlChange,
-  savingWebhookEdit,
-  onStartEditWebhook,
-  onCancelEditWebhook,
   onSaveWebhookEdit,
   rotatingWebhookId,
   onRotateWebhookSecret,
@@ -154,6 +146,14 @@ export function WebhooksSection({
 }: WebhooksSectionProps) {
   const { copied: copiedSecret, copy: copySecretText } = useCopyFeedback();
   const [copySecretError, setCopySecretError] = useState<string | null>(null);
+  const [editingWebhook, setEditingWebhook] = useState<WebhookItem | null>(
+    null,
+  );
+  // Looked up again on every render, so the dialog shows the saved row and
+  // closes by itself if the webhook is deleted or refetched out of the list.
+  const editTarget = editingWebhook
+    ? (webhooks.find((w) => w.id === editingWebhook.id) ?? null)
+    : null;
 
   function teamLabel(teamId: number) {
     return teams.all.find((team) => team.id === teamId)?.name ?? "A team";
@@ -290,7 +290,6 @@ export function WebhooksSection({
           ) : (
             <div className="rounded-lg border border-border divide-y divide-border/60 overflow-hidden">
               {webhooks.map((wh) => {
-                const isEditing = editingWebhookId === wh.id;
                 const isToggling = togglingWebhookId === wh.id;
 
                 // Who may do what, mirroring what the server will actually
@@ -315,64 +314,6 @@ export function WebhooksSection({
                   isOwner ||
                   (wh.team_id != null &&
                     teams.assignable.some((t) => t.id === wh.team_id));
-
-                if (isEditing) {
-                  return (
-                    <div
-                      key={wh.id}
-                      className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 px-4 py-3 bg-muted/20"
-                    >
-                      <Input
-                        value={editWebhookName}
-                        onChange={(e) =>
-                          onEditWebhookNameChange(e.target.value)
-                        }
-                        placeholder="Name"
-                        className="bg-card h-9 sm:w-44"
-                        aria-label="Webhook name"
-                      />
-                      <Input
-                        value={editWebhookUrl}
-                        onChange={(e) => onEditWebhookUrlChange(e.target.value)}
-                        placeholder="https://..."
-                        className="bg-card h-9 flex-1 min-w-0"
-                        aria-label="Webhook URL"
-                      />
-                      {/* h-11 (44px) on touch, back to h-8 from sm up: a
-                          32px icon button is under the minimum tap target,
-                          and save/cancel sitting a few pixels apart made
-                          cancelling an edit by accident easy on a phone. */}
-                      <div className="flex items-center gap-1 shrink-0 justify-end">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-11 w-11 sm:h-8 sm:w-8 text-primary hover:text-primary hover:bg-primary/10"
-                          disabled={savingWebhookEdit || !editWebhookUrl}
-                          onClick={onSaveWebhookEdit}
-                          title="Save changes"
-                          aria-label={`Save changes to ${wh.name}`}
-                        >
-                          {savingWebhookEdit ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Check className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-11 w-11 sm:h-8 sm:w-8 text-muted-foreground hover:text-foreground"
-                          disabled={savingWebhookEdit}
-                          onClick={onCancelEditWebhook}
-                          title="Cancel"
-                          aria-label="Cancel editing"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                }
 
                 const showingDeliveries = openDeliveriesId === wh.id;
 
@@ -476,6 +417,7 @@ export function WebhooksSection({
                               }
                               busy={assigningTeamWebhookId === wh.id}
                               label={`Team for ${wh.name}`}
+                              description="Teammates' scans post to it too, and teammates whose role manages scans can pause, edit and test it."
                               onChange={(teamId) =>
                                 onAssignWebhookTeam(wh.id, teamId)
                               }
@@ -504,7 +446,7 @@ export function WebhooksSection({
                             variant="ghost"
                             size="icon"
                             className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground"
-                            onClick={() => onStartEditWebhook(wh)}
+                            onClick={() => setEditingWebhook(wh)}
                             title="Edit webhook"
                             aria-label={`Edit webhook ${wh.name}`}
                           >
@@ -657,6 +599,88 @@ export function WebhooksSection({
           )}
         </CardContent>
       </Card>
+
+      {editTarget && (
+        <WebhookEditDialog
+          webhook={editTarget}
+          onSave={onSaveWebhookEdit}
+          onClose={() => setEditingWebhook(null)}
+        />
+      )}
     </section>
+  );
+}
+
+/**
+ * What the edit dialog's Save can do for a draft. Compared after trimming, so
+ * a stray space is neither a change nor a reason to ask before discarding.
+ */
+export function webhookEditState(
+  webhook: Pick<WebhookItem, "name" | "url">,
+  draft: { name: string; url: string },
+): { dirty: boolean; canSave: boolean } {
+  const changed =
+    draft.name.trim() !== webhook.name || draft.url.trim() !== webhook.url;
+  return { dirty: changed, canSave: changed && draft.url.trim() !== "" };
+}
+
+/**
+ * Rename a webhook or point it at another address. Mounted only while it is
+ * open, so every opening starts from the saved values and a refetch of the
+ * list cannot overwrite what is half typed.
+ */
+export function WebhookEditDialog({
+  webhook,
+  onSave,
+  onClose,
+}: {
+  webhook: WebhookItem;
+  onSave: (
+    id: number,
+    draft: { name: string; url: string },
+  ) => Promise<string | null>;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(webhook.name);
+  const [url, setUrl] = useState(webhook.url);
+  const { dirty, canSave } = webhookEditState(webhook, { name, url });
+
+  return (
+    <EditDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title="Edit webhook"
+      size="md"
+      dirty={dirty}
+      canSave={canSave}
+      onSave={() => onSave(webhook.id, { name: name.trim(), url: url.trim() })}
+    >
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="edit-webhook-name">Name</Label>
+        <Input
+          id="edit-webhook-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Default"
+          autoFocus
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="edit-webhook-url">URL</Label>
+        <Input
+          id="edit-webhook-url"
+          type="url"
+          required
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://..."
+        />
+        <p className="text-xs text-muted-foreground">
+          Discord and Slack URLs are detected from the address.
+        </p>
+      </div>
+    </EditDialog>
   );
 }

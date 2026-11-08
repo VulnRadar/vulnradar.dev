@@ -242,9 +242,11 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
   /** Share a verified domain with a team, or take it back. `null` unassigns,
    *  which is the one value the route accepts without checking the caller's
    *  teams. */
-  async function handleAssignTeam(domain: DomainItem, teamId: number | null) {
+  async function handleAssignTeam(
+    domain: DomainItem,
+    teamId: number | null,
+  ): Promise<string | null> {
     setAssigningTeamId(domain.id);
-    setError(null);
     try {
       const res = await fetch(`${API.DOMAINS}/${domain.id}`, {
         method: "PATCH",
@@ -253,8 +255,7 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Failed to change the domain's team.");
-        return;
+        return data.error || "Failed to change the domain's team.";
       }
       setDomains((prev) =>
         prev.map((d) =>
@@ -266,8 +267,9 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
           ? `${domain.domain} is yours alone again.`
           : `${domain.domain} is shared with ${teamLabel(teamId)}, who can now run Active Probing against it.`,
       );
+      return null;
     } catch {
-      setError("Failed to change the domain's team.");
+      return "Failed to change the domain's team.";
     } finally {
       setAssigningTeamId(null);
     }
@@ -467,6 +469,7 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                               }
                               busy={assigningTeamId === d.id}
                               label={`Team for ${d.domain}`}
+                              description="Teammates can run Active Probing against it."
                               onChange={(teamId) => handleAssignTeam(d, teamId)}
                             />
                           )}

@@ -84,7 +84,10 @@ interface SchedulesSectionProps {
    *  so the picker does not appear a beat after the row it belongs to. */
   teams: AssignableTeamsResult;
   assigningTeamScheduleId: number | null;
-  onAssignScheduleTeam: (id: number, teamId: number | null) => void;
+  onAssignScheduleTeam: (
+    id: number,
+    teamId: number | null,
+  ) => Promise<string | null>;
 }
 
 // "Never" for a schedule that hasn't run yet isn't a date at all, so it
@@ -386,6 +389,7 @@ export function SchedulesSection({
                             }
                             busy={assigningTeamScheduleId === sch.id}
                             label={`Team for the scheduled scan of ${sch.url}`}
+                            description="Your teammates can see and pause it."
                             onChange={(teamId) =>
                               onAssignScheduleTeam(sch.id, teamId)
                             }

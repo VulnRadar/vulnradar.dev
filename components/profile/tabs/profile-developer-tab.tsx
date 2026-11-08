@@ -284,10 +284,6 @@ export function ProfileDeveloperTab({
   const [togglingWebhookId, setTogglingWebhookId] = useState<number | null>(
     null,
   );
-  const [editingWebhookId, setEditingWebhookId] = useState<number | null>(null);
-  const [editWebhookName, setEditWebhookName] = useState("");
-  const [editWebhookUrl, setEditWebhookUrl] = useState("");
-  const [savingWebhookEdit, setSavingWebhookEdit] = useState(false);
   const [rotatingWebhookId, setRotatingWebhookId] = useState<number | null>(
     null,
   );
@@ -546,10 +542,12 @@ export function ProfileDeveloperTab({
   /** Share a recurring scan with a team, or take it back. Owner-only on the
    *  route, same as webhooks, so the row only offers this on the caller's own
    *  schedules. */
-  async function handleAssignScheduleTeam(id: number, teamId: number | null) {
+  async function handleAssignScheduleTeam(
+    id: number,
+    teamId: number | null,
+  ): Promise<string | null> {
     const label = schedules.find((s) => s.id === id)?.url ?? "That scan";
     setAssigningScheduleTeamId(id);
-    setError(null);
     try {
       const res = await fetch(API.SCHEDULES, {
         method: "PATCH",
@@ -558,8 +556,7 @@ export function ProfileDeveloperTab({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Failed to change the schedule's team.");
-        return;
+        return data.error || "Failed to change the schedule's team.";
       }
       setSchedules((prev) => prev.map((s) => (s.id === id ? data : s)));
       setSuccess(
@@ -567,8 +564,9 @@ export function ProfileDeveloperTab({
           ? `${label} is a personal schedule again.`
           : `${label} is now shared with ${teamName(teamId)}, who can see and pause it.`,
       );
+      return null;
     } catch {
-      setError("Failed to change the schedule's team.");
+      return "Failed to change the schedule's team.";
     } finally {
       setAssigningScheduleTeamId(null);
     }
@@ -695,10 +693,12 @@ export function ProfileDeveloperTab({
 
   /** Hand a webhook to a team, or take it back. `null` unassigns, which is
    *  the one value PATCH accepts without checking the caller's teams. */
-  async function handleAssignWebhookTeam(id: number, teamId: number | null) {
+  async function handleAssignWebhookTeam(
+    id: number,
+    teamId: number | null,
+  ): Promise<string | null> {
     const label = webhooks.find((w) => w.id === id)?.name ?? "That webhook";
     setAssigningWebhookTeamId(id);
-    setError(null);
     try {
       const res = await fetch(`${API.WEBHOOKS}/${id}`, {
         method: "PATCH",
@@ -707,8 +707,7 @@ export function ProfileDeveloperTab({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Failed to change the webhook's team.");
-        return;
+        return data.error || "Failed to change the webhook's team.";
       }
       setWebhooks((prev) =>
         prev.map((w) =>
@@ -720,8 +719,9 @@ export function ProfileDeveloperTab({
           ? `"${label}" is personal again. Only scans you run post to it.`
           : `"${label}" now posts for ${teamName(teamId)}, including scans your teammates run.`,
       );
+      return null;
     } catch {
-      setError("Failed to change the webhook's team.");
+      return "Failed to change the webhook's team.";
     } finally {
       setAssigningWebhookTeamId(null);
     }
@@ -779,46 +779,34 @@ export function ProfileDeveloperTab({
     }
   }
 
-  function handleStartEditWebhook(webhook: WebhookItem) {
-    setEditingWebhookId(webhook.id);
-    setEditWebhookName(webhook.name);
-    setEditWebhookUrl(webhook.url);
-  }
-
-  function handleCancelEditWebhook() {
-    setEditingWebhookId(null);
-    setEditWebhookName("");
-    setEditWebhookUrl("");
-  }
-
-  async function handleSaveWebhookEdit() {
-    if (editingWebhookId === null) return;
-    setSavingWebhookEdit(true);
-    setError(null);
+  /** The webhook edit dialog's save. Returns the reason on failure so the
+   *  dialog can show it where the person is looking; the page banner sits
+   *  under the scrim. */
+  async function handleSaveWebhookEdit(
+    id: number,
+    draft: { name: string; url: string },
+  ): Promise<string | null> {
     try {
-      const res = await fetch(`${API.WEBHOOKS}/${editingWebhookId}`, {
+      const res = await fetch(`${API.WEBHOOKS}/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: editWebhookName || "Default",
-          url: editWebhookUrl,
+          name: draft.name || "Default",
+          url: draft.url,
           type: "auto",
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Failed to update webhook.");
-        return;
+        return data.error || "Failed to update webhook.";
       }
       setWebhooks((prev) =>
-        prev.map((w) => (w.id === editingWebhookId ? { ...w, ...data } : w)),
+        prev.map((w) => (w.id === id ? { ...w, ...data } : w)),
       );
       setSuccess("Webhook updated.");
-      handleCancelEditWebhook();
+      return null;
     } catch {
-      setError("Failed to update webhook.");
-    } finally {
-      setSavingWebhookEdit(false);
+      return "Failed to update webhook.";
     }
   }
 
@@ -995,14 +983,6 @@ export function ProfileDeveloperTab({
           onDismissNewWebhookSecret={() => setNewlyCreatedWebhookSecret(null)}
           togglingWebhookId={togglingWebhookId}
           onToggleWebhookActive={handleToggleWebhookActive}
-          editingWebhookId={editingWebhookId}
-          editWebhookName={editWebhookName}
-          onEditWebhookNameChange={setEditWebhookName}
-          editWebhookUrl={editWebhookUrl}
-          onEditWebhookUrlChange={setEditWebhookUrl}
-          savingWebhookEdit={savingWebhookEdit}
-          onStartEditWebhook={handleStartEditWebhook}
-          onCancelEditWebhook={handleCancelEditWebhook}
           onSaveWebhookEdit={handleSaveWebhookEdit}
           rotatingWebhookId={rotatingWebhookId}
           onRotateWebhookSecret={(webhook) =>

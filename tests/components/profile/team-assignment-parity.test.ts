@@ -227,3 +227,45 @@ describe("shared rows offer only what the server accepts", () => {
     }
   });
 });
+
+describe("sharing with a team is chosen in a dialog and applied on Save", () => {
+  it("opens an EditDialog from a trigger instead of firing on change", () => {
+    // The old select sent the PATCH the moment an option moved. Sharing
+    // changes what other people can do, so it waits for Save.
+    expect(PICKER).toContain("<EditDialog");
+    expect(PICKER).toContain('title="Share with a team"');
+    expect(PICKER).toContain("onSave={() => onChange(draft)}");
+    expect(PICKER).toContain("Not shared");
+  });
+
+  it("declares the dialog's open state above the no-teams early return", () => {
+    // Teams arrive after the first render, so a hook below the return would
+    // change the hook order when they do.
+    const hook = PICKER.indexOf("useState(false)");
+    expect(hook).toBeGreaterThan(-1);
+    expect(hook).toBeLessThan(
+      PICKER.indexOf("if (teams.length === 0 && value === null) return null;"),
+    );
+  });
+
+  it("returns the outcome from all three handlers instead of the page banner", () => {
+    for (const [source, declaration] of [
+      [SHELL, "async function handleAssignWebhookTeam"],
+      [SHELL, "async function handleAssignScheduleTeam"],
+      [DOMAINS, "async function handleAssignTeam"],
+    ] as const) {
+      const handler = body(source, declaration, 1500);
+      expect(handler, declaration).not.toContain("setError");
+      expect(handler, declaration).toContain("return null;");
+      expect(handler, declaration).toContain("Promise<string | null>");
+    }
+  });
+
+  it("tells each kind of resource what its teammates get", () => {
+    expect(WEBHOOKS).toContain(
+      "Teammates' scans post to it too, and teammates whose role manages scans can pause, edit and test it.",
+    );
+    expect(SCHEDULES).toContain("Your teammates can see and pause it.");
+    expect(DOMAINS).toContain("Teammates can run Active Probing against it.");
+  });
+});
