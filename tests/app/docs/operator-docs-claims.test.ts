@@ -689,3 +689,23 @@ describe("docs say what the repo review and staff SSO do now", () => {
     expect(selfHosting).toContain("/docs/administration#staff-sso");
   });
 });
+
+/**
+ * The rollback on /docs/self-hosting restores over a database that still has
+ * its tables, which only --replace can do. --force lets the attempt start and
+ * nothing more, so the flag the page names has to be one the script takes, and
+ * has to be the right one.
+ */
+describe("the restore command the self-hosting rollback runs", () => {
+  const script = read("scripts/restore-db.mjs");
+  const selfHosting = read("app/docs/self-hosting/page.tsx");
+
+  it("uses a flag scripts/restore-db.mjs accepts", () => {
+    expect(script.includes('args.includes("--replace")')).toBe(true);
+    expect(selfHosting.includes("--replace --yes")).toBe(true);
+  });
+
+  it("does not offer --force as a way to overwrite a database", () => {
+    expect(/--yes --force/.test(selfHosting)).toBe(false);
+  });
+});

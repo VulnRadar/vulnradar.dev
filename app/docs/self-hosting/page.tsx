@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import {
   APP_NAME,
@@ -18,6 +19,7 @@ import {
   DocsSubSection,
   DocsCallout,
   CodeBlock,
+  DocsCodeTabs,
   DocsTable,
   InlineCode,
 } from "@/components/docs";
@@ -183,6 +185,217 @@ const EGRESS_KEY_GATED: KeyedEgressRow[] = [
   },
 ];
 
+/** One troubleshooting row. The fix can hold a link to the section that fixes it. */
+type TroubleshootingRow = {
+  symptom: string;
+  cause: string;
+  fix: ReactNode;
+};
+
+function SectionLink({
+  anchor,
+  children,
+}: {
+  anchor: string;
+  children: ReactNode;
+}) {
+  return (
+    <a
+      href={`#${anchor}`}
+      className="text-primary underline-offset-2 hover:underline"
+    >
+      {children}
+    </a>
+  );
+}
+
+const TROUBLESHOOTING_ROWS: TroubleshootingRow[] = [
+  {
+    symptom: "Container restarts after Schema version lines",
+    cause: "DATABASE_URL or DATABASE_SSL wrong, or Postgres not healthy",
+    fix: (
+      <>
+        <InlineCode>docker compose logs postgres</InlineCode>. On a
+        provider&rsquo;s database, see{" "}
+        <SectionLink anchor="managed-postgres">
+          Using a managed PostgreSQL
+        </SectionLink>
+        .
+      </>
+    ),
+  },
+  {
+    symptom: "Schema version mismatch on startup",
+    cause: "The database is older than this build requires",
+    fix: (
+      <>
+        <InlineCode>docker compose run --rm app npm run db:migrate</InlineCode>.
+        Step 4 of <SectionLink anchor="updates">Upgrading</SectionLink>.
+      </>
+    ),
+  },
+  {
+    symptom: "API_KEY_ENCRYPTION_KEY invalid",
+    cause: "Not 64 hex chars, or unset",
+    fix: (
+      <>
+        Generate one with <InlineCode>openssl rand -hex 32</InlineCode>, then{" "}
+        <SectionLink anchor="env">Create .env</SectionLink>.
+      </>
+    ),
+  },
+  {
+    symptom: "Build fails: TypeScript errors in lib/config",
+    cause:
+      "Renamed or removed a CONFIG_* constant that registry.ts or constants.ts still imports by name",
+    fix: (
+      <>
+        Run <InlineCode>npm run typecheck</InlineCode>; the error points at the
+        exact import site.{" "}
+        <SectionLink anchor="clone">Clone and Configure</SectionLink> lists the
+        constants to edit.
+      </>
+    ),
+  },
+  {
+    symptom: "502 from reverse proxy",
+    cause: "App not listening on the expected port",
+    fix: (
+      <>
+        Check APP_PORT (default 3000) and{" "}
+        <InlineCode>docker compose ps</InlineCode>, then the proxy target in{" "}
+        <SectionLink anchor="tls">TLS</SectionLink>.
+      </>
+    ),
+  },
+  {
+    symptom: "Too many redirects",
+    cause:
+      "The proxy does not send X-Forwarded-Proto: https, so the app keeps redirecting to https",
+    fix: (
+      <>
+        Add the header, see <SectionLink anchor="tls">TLS</SectionLink>. With no
+        TLS at all, set ALLOW_INSECURE_HTTP=1, see{" "}
+        <SectionLink anchor="env">Create .env</SectionLink>.
+      </>
+    ),
+  },
+  {
+    symptom: "Everyone is rate limited together",
+    cause:
+      "The app sees one address for every visitor: X-Forwarded-For is missing, or a second proxy sits in front and TRUSTED_PROXY_CIDR is unset",
+    fix: (
+      <>
+        Send the header, and set TRUSTED_PROXY_CIDR behind a CDN. Both are in{" "}
+        <SectionLink anchor="tls">TLS</SectionLink>.
+      </>
+    ),
+  },
+  {
+    symptom: "Stripe webhook 400s",
+    cause: "Wrong signing secret or missing STRIPE_WEBHOOK_SECRET",
+    fix: (
+      <>
+        Re-copy it from the Stripe dashboard into .env, then{" "}
+        <InlineCode>docker compose up -d app</InlineCode>. See{" "}
+        <SectionLink anchor="stripe">Configure Stripe Webhook</SectionLink>.
+      </>
+    ),
+  },
+  {
+    symptom: "Cannot log in: Please verify your email",
+    cause:
+      "SMTP was set when the account was created, and the verification mail never arrived",
+    fix: (
+      <>
+        In psql (
+        <InlineCode>
+          docker compose exec postgres psql -U vulnradar -d vulnradar
+        </InlineCode>
+        ), run{" "}
+        <InlineCode>
+          {
+            "UPDATE users SET email_verified_at = NOW() WHERE email = '<your-email>'"
+          }
+        </InlineCode>
+        . Then fix or comment out the SMTP lines, see{" "}
+        <SectionLink anchor="env">Create .env</SectionLink>.
+      </>
+    ),
+  },
+  {
+    symptom: "Login succeeds but 2FA code never arrives",
+    cause: "SMTP not configured",
+    fix: (
+      <>
+        Set SMTP_HOST/PORT/USER/PASS/FROM in .env, then{" "}
+        <InlineCode>docker compose up -d app</InlineCode>. If you are already
+        locked out, clear 2FA from the database, see{" "}
+        <SectionLink anchor="locked-out">
+          Locked out of your own instance
+        </SectionLink>
+        . <InlineCode>/api/v3/auth/2fa/disable</InlineCode> needs a completed
+        login and cannot help here.
+      </>
+    ),
+  },
+];
+
+/**
+ * DocsTable renders every cell through String(), so a cell cannot hold a link.
+ * These rows have to point at the section that fixes them, so this is the same
+ * table drawn by hand: same scroll box, same type sizes, same row headers.
+ */
+function TroubleshootingTable() {
+  return (
+    <div
+      // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a scroll container has to take focus to be scrolled from the keyboard
+      tabIndex={0}
+      className="relative overflow-x-auto rounded-lg border border-border/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+    >
+      <table className="w-full border-collapse text-sm">
+        <caption className="sr-only">
+          Symptoms, their likely cause, and the fix
+        </caption>
+        <thead className="bg-muted/40">
+          <tr>
+            {["Symptom", "Likely cause", "Fix"].map((header) => (
+              <th
+                key={header}
+                scope="col"
+                className="whitespace-nowrap px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+              >
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {TROUBLESHOOTING_ROWS.map((row) => (
+            <tr
+              key={row.symptom}
+              className="border-t border-border/50 transition-colors hover:bg-muted/40"
+            >
+              <th
+                scope="row"
+                className="px-3 py-2.5 text-left align-top text-[13px] font-medium leading-relaxed text-foreground"
+              >
+                {row.symptom}
+              </th>
+              <td className="px-3 py-2.5 align-top text-[13px] leading-relaxed text-muted-foreground">
+                {row.cause}
+              </td>
+              <td className="px-3 py-2.5 align-top text-[13px] leading-relaxed text-muted-foreground">
+                {row.fix}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function SelfHostingPage() {
   return (
     <div className="space-y-12 sm:space-y-16">
@@ -204,6 +417,62 @@ export default function SelfHostingPage() {
           About 30 minutes if you already have Docker + a domain pointed at your
           server.
         </DocsCallout>
+      </DocsSection>
+
+      <DocsSection id="image-or-build" title="Prebuilt image or your own build">
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          The same compose file runs either one, so decide before you start.
+          Next.js writes every <InlineCode>NEXT_PUBLIC_*</InlineCode> value into
+          the browser bundle when the image is built, and setting one in{" "}
+          <InlineCode>.env</InlineCode> afterwards cannot change a bundle that
+          already exists.
+        </p>
+        <DocsSubSection title="Prebuilt image">
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            Use the GHCR image only if you accept the upstream URL baked into
+            it. It was built with <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode>{" "}
+            set to upstream&rsquo;s own domain and with no Turnstile or Stripe
+            publishable key, so Turnstile and Stripe Checkout cannot work on it.
+            In return there is no build on your server, and an upgrade is: edit
+            the tag, pull, migrate, up. Take both files from the release you
+            want to run, then skip to{" "}
+            <a
+              href="#env"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Create .env
+            </a>
+            :
+          </p>
+          <CodeBlock
+            language="bash"
+            code={`curl -O https://raw.githubusercontent.com/${APP_REPO}/v${APP_VERSION}/docker-compose.yml
+curl -O https://raw.githubusercontent.com/${APP_REPO}/v${APP_VERSION}/.env.example`}
+          />
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            From a release tag, never from <InlineCode>main</InlineCode>. The
+            compose file pins the image to its own version, and on{" "}
+            <InlineCode>main</InlineCode> that version can be one whose image
+            has not been published yet, which fails on{" "}
+            <InlineCode>manifest unknown</InlineCode> before anything starts.
+          </p>
+        </DocsSubSection>
+        <DocsSubSection title="Your own build">
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            Your domain in the browser bundle, Turnstile, Stripe Checkout: any{" "}
+            <InlineCode>NEXT_PUBLIC_*</InlineCode> value needs{" "}
+            <InlineCode>docker compose up -d --build</InlineCode> from a
+            checkout. So do edits to{" "}
+            <InlineCode>lib/config/config-values.ts</InlineCode>. Start at{" "}
+            <a
+              href="#clone"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Clone and Configure
+            </a>
+            .
+          </p>
+        </DocsSubSection>
       </DocsSection>
 
       <DocsSection id="hardware" title="Hardware Requirements">
@@ -235,6 +504,12 @@ export default function SelfHostingPage() {
             },
           ]}
         />
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          <InlineCode>docker-compose.yml</InlineCode> caps the containers: the
+          app at 1G of memory and 2 CPUs, Postgres at 512M and 1 CPU. On a
+          bigger machine, raise <InlineCode>deploy.resources.limits</InlineCode>{" "}
+          in that file or the extra capacity goes unused.
+        </p>
         <DocsCallout variant="info">
           A managed PostgreSQL (Neon, Supabase, RDS) is recommended over running
           your own DB. See{" "}
@@ -254,6 +529,11 @@ export default function SelfHostingPage() {
             Linux server (Ubuntu 22.04+ recommended) or any host with Docker
           </li>
           <li>Docker 24+ and Docker Compose v2</li>
+          <li>
+            git for your own build, or curl for the prebuilt image, plus{" "}
+            <InlineCode>openssl</InlineCode> to generate secrets. Nothing else
+            goes on the host: Node and Postgres run in the containers.
+          </li>
           <li>A domain name with DNS pointing to the server</li>
           <li>
             (Production) A reverse proxy (Caddy, Traefik, or nginx) for TLS
@@ -268,9 +548,12 @@ export default function SelfHostingPage() {
           code={`git clone https://github.com/${APP_REPO}.git
 cd vulnradar.dev
 
-# Generate a 32-byte API encryption key (64 hex chars)
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-# → paste into API_KEY_ENCRYPTION_KEY`}
+# Work from the release tag, never main, on a branch of your own.
+git switch -c local-config v${APP_VERSION}
+
+# Generate a 32-byte API encryption key (64 hex chars).
+# Paste it into API_KEY_ENCRYPTION_KEY in the next step.
+openssl rand -hex 32`}
         />
         <p className="text-sm text-muted-foreground">
           Edit <InlineCode>lib/config/config-values.ts</InlineCode> to set:
@@ -295,6 +578,15 @@ export const CONFIG_NOREPLY_EMAIL = "noreply@yourdomain.com";`}
           language="typescript"
           code={`export const CONFIG_BILLING_ENABLED = false;`}
         />
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Commit the edit. An upgrade rebases this branch onto the next release
+          tag, so your settings ride along instead of blocking the update.
+        </p>
+        <CodeBlock
+          language="bash"
+          code={`git add lib/config/config-values.ts
+git commit -m "Local configuration"`}
+        />
         <p className="text-sm text-muted-foreground">
           Full reference on the{" "}
           <Link
@@ -308,21 +600,37 @@ export const CONFIG_NOREPLY_EMAIL = "noreply@yourdomain.com";`}
       </DocsSection>
 
       <DocsSection id="env" title="Create .env">
+        <DocsCallout variant="error" title="HTTPS required">
+          <p>
+            Put the app behind a reverse proxy (see{" "}
+            <a
+              href="#tls"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              TLS
+            </a>
+            ). Cookie flags (<InlineCode>secure</InlineCode>), CSP headers and
+            the redirect of plain HTTP all assume HTTPS.
+          </p>
+        </DocsCallout>
         <CodeBlock language="bash" code={`cp .env.example .env`} />
         <p className="text-sm text-muted-foreground">Fill in real values:</p>
         <CodeBlock
           language="bash"
-          code={`# Required
+          code={`# Required. Generate each secret with: openssl rand -hex 32
 POSTGRES_PASSWORD=<output of: openssl rand -hex 32>
-API_KEY_ENCRYPTION_KEY=<paste your 64-char hex>
+API_KEY_ENCRYPTION_KEY=<output of: openssl rand -hex 32>
 NEXT_PUBLIC_APP_URL=https://scanner.yourdomain.com
 
-# Optional: SMTP for transactional email
-SMTP_HOST=smtp.yourdomain.com
-SMTP_PORT=587
-SMTP_USER=...
-SMTP_PASS=...
-SMTP_FROM=noreply@yourdomain.com
+# ALLOW_INSECURE_HTTP=1  # only for a trusted LAN
+
+# Optional: SMTP for transactional email. Leave these commented until you
+# have working credentials (see the callout below).
+# SMTP_HOST=smtp.yourdomain.com
+# SMTP_PORT=587
+# SMTP_USER=...
+# SMTP_PASS=...
+# SMTP_FROM=noreply@yourdomain.com
 
 # Optional: Discord OAuth
 DISCORD_CLIENT_ID=...
@@ -340,6 +648,41 @@ STRIPE_PUBLISHABLE_KEY=pk_live_...
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...`}
         />
+        <DocsCallout variant="warning" title="SMTP on/off changes sign-up">
+          <p>
+            With <InlineCode>SMTP_HOST</InlineCode>,{" "}
+            <InlineCode>SMTP_USER</InlineCode> and{" "}
+            <InlineCode>SMTP_PASS</InlineCode> set, the app believes it can send
+            mail and every new account has to confirm its address before it can
+            sign in. Nothing tests those values, so placeholders count: the mail
+            never arrives and login refuses the account with &ldquo;Please
+            verify your email before logging in.&rdquo; That includes the first
+            account, which is your admin. With them unset, new accounts are
+            verified as they are created. Already locked out? See{" "}
+            <a
+              href="#troubleshooting"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Troubleshooting
+            </a>
+            .
+          </p>
+        </DocsCallout>
+        <DocsCallout variant="warning" title="No TLS yet?">
+          <p>
+            Uncomment <InlineCode>ALLOW_INSECURE_HTTP=1</InlineCode> to reach
+            the app over plain HTTP. Without it every request redirects to an
+            https port nothing is listening on. Traffic and the session cookie
+            are then unencrypted, so use it only on a trusted network, and take
+            it out once a proxy terminates TLS.
+          </p>
+        </DocsCallout>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          After any later edit to <InlineCode>.env</InlineCode>, apply it with{" "}
+          <InlineCode>docker compose up -d app</InlineCode>: restart reuses the
+          container&rsquo;s old environment; up -d recreates it with the new
+          .env.
+        </p>
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           There is no <InlineCode>DATABASE_URL</InlineCode> to fill in here.
           docker-compose builds it for the bundled Postgres from{" "}
@@ -410,8 +753,8 @@ STRIPE_WEBHOOK_SECRET=whsec_...`}
           on the service and take precedence.
         </p>
         <DocsCallout variant="info">
-          For production, prefer Docker secrets or a secret manager over a plain{" "}
-          <InlineCode>.env</InlineCode> file on disk.
+          Lock the file down (<InlineCode>chmod 600 .env</InlineCode>, outside
+          any web root); the app reads plain environment variables only.
         </DocsCallout>
 
         <DocsSubSection
@@ -459,7 +802,12 @@ COMPOSE_FILE=docker-compose.yml:docker-compose.managed-db.yml`}
       <DocsSection id="start" title="Start the Stack">
         <CodeBlock
           language="bash"
-          code={`docker compose up -d --build
+          code={`# Your own build, from a checkout
+docker compose up -d --build
+
+# Prebuilt image
+docker compose up -d
+
 docker compose logs -f app   # watch startup`}
         />
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
@@ -567,6 +915,47 @@ docker compose logs -f app   # watch startup`}
             </p>
           </DocsCallout>
         </DocsSubSection>
+
+        <DocsSubSection id="operations" title="Common operations">
+          <DocsTable
+            caption="Everyday docker compose commands"
+            columns={[
+              { key: "task", header: "Task" },
+              { key: "command", header: "Command" },
+            ]}
+            data={[
+              { task: "Tail logs", command: "docker compose logs -f app" },
+              { task: "Stop (keep data)", command: "docker compose down" },
+              {
+                task: "Full reset (drop volumes)",
+                command: "docker compose down -v",
+              },
+              {
+                task: "Apply a .env change",
+                command: "docker compose up -d app",
+              },
+              {
+                task: "Restart only the app (does not reload .env)",
+                command: "docker compose restart app",
+              },
+              {
+                task: "Open a psql shell",
+                command:
+                  "docker compose exec postgres psql -U vulnradar -d vulnradar",
+              },
+            ]}
+          />
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            Moving to a new version is more than a pull: follow{" "}
+            <a
+              href="#updates"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Upgrading
+            </a>
+            .
+          </p>
+        </DocsSubSection>
       </DocsSection>
 
       <DocsSection id="admin" title="First Admin User">
@@ -658,17 +1047,55 @@ WHERE email = 'a-colleague@yourdomain.com';`}
           Caddy auto-provisions a Let&apos;s Encrypt certificate.
         </p>
         <p className="text-sm text-muted-foreground">
-          For nginx, see the{" "}
-          <a
-            href="https://nextjs.org/docs/app/building-your-application/deploying#nginx"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary underline-offset-2 hover:underline"
-          >
-            official nginx + Next.js guide
-          </a>
-          .
+          The same thing in nginx, which leaves certificates to you:
         </p>
+        <CodeBlock
+          language="nginx"
+          code={`server {
+    listen 443 ssl;
+    server_name scanner.yourdomain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/scanner.yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/scanner.yourdomain.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}`}
+        />
+        <p className="text-sm text-muted-foreground">
+          Caddy sets the forwarded headers for you. In nginx, each one does a
+          job:
+        </p>
+        <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
+          <li>
+            <InlineCode>Host</InlineCode>: without it the app takes{" "}
+            <InlineCode>127.0.0.1:3000</InlineCode> for its own address, so a
+            redirect built from the request sends the browser there, and a form
+            post fails the CSRF check unless{" "}
+            <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> is exact.
+          </li>
+          <li>
+            <InlineCode>X-Real-IP</InlineCode>: the fallback when{" "}
+            <InlineCode>X-Forwarded-For</InlineCode> holds no usable address.
+            Without it, that one bad header leaves the visitor with no address
+            at all.
+          </li>
+          <li>
+            <InlineCode>X-Forwarded-For</InlineCode>: without it Next.js fills
+            in the proxy&rsquo;s own address, so every visitor shares one
+            rate-limit bucket and the audit log records nginx.
+          </li>
+          <li>
+            <InlineCode>X-Forwarded-Proto</InlineCode>: without it Next.js
+            assumes <InlineCode>http</InlineCode>, the app redirects to https,
+            nginx proxies that back, and the browser reports too many redirects.
+          </li>
+        </ul>
         <DocsSubSection title="Client IPs behind more than one proxy">
           <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
             Rate limits, session and API key IP binding, and the audit log all
@@ -737,7 +1164,10 @@ TRUSTED_PROXY_CIDR=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`}
             <InlineCode>.env</InlineCode>.
           </li>
           <li>
-            <InlineCode>docker compose restart app</InlineCode>
+            <InlineCode>docker compose up -d app</InlineCode>. Not{" "}
+            <InlineCode>docker compose restart app</InlineCode>, which does not
+            reload .env: restart reuses the container&rsquo;s old environment;
+            up -d recreates it with the new .env.
           </li>
         </ol>
 
@@ -764,7 +1194,8 @@ TRUSTED_PROXY_CIDR=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`}
           code={`# Log in via the web UI as an admin user, then export the cookie:
 curl -b cookies.txt https://scanner.yourdomain.com/api/v3/stripe/setup-webhook
 # First call: returns { success: true, webhookSecret: "whsec_..." }
-# Paste the secret into STRIPE_WEBHOOK_SECRET in .env and restart.`}
+# Paste the secret into STRIPE_WEBHOOK_SECRET in .env, then:
+docker compose up -d app`}
         />
         <DocsCallout
           variant="info"
@@ -796,8 +1227,13 @@ curl -b cookies.txt https://scanner.yourdomain.com/api/v3/stripe/setup-webhook
           code={`# Create a backup (writes to BACKUP_DIR, default ./backups)
 npm run db:backup
 
-# Restore. Prints what it would do without --yes; --yes actually applies it.
-npm run db:restore -- --file=./backups/vulnradar-backup-<timestamp>.sql.gz.enc --yes`}
+# Restore into an empty database. Prints what it would do without --yes;
+# --yes actually applies it.
+npm run db:restore -- --file=./backups/vulnradar-backup-<timestamp>.sql.gz.enc --yes
+
+# Restore over a database that already has tables: --replace drops what is
+# in the public schema and loads the backup in the same transaction.
+npm run db:restore -- --file=./backups/vulnradar-backup-<timestamp>.sql.gz.enc --replace --yes`}
         />
 
         <DocsCallout
@@ -879,7 +1315,7 @@ npm run db:restore -- --file=./backups/vulnradar-backup-<timestamp>.sql.gz.enc -
               name: "BACKUP_OFFSITE_UPLOAD_URL",
               default: "(none)",
               purpose:
-                "Presigned PUT URL (S3/R2/B2 or any receiver). Backup is uploaded there after the local write.",
+                "Presigned PUT URL (S3/R2/B2 or any receiver). It receives exactly one object after the local write: the encrypted file, with the IV and auth tag inside it.",
             },
           ]}
         />
@@ -904,10 +1340,11 @@ npm run db:restore -- --file=./backups/vulnradar-backup-<timestamp>.sql.gz.enc -
             plaintext backup is never written by accident. A separate{" "}
             <InlineCode>BACKUP_ENCRYPTION_KEY</InlineCode> is still recommended
             for defense in depth. An encrypted <InlineCode>.enc</InlineCode>{" "}
-            file is restored using the same key resolution, and needs its{" "}
-            <InlineCode>.json</InlineCode> sidecar (the IV and auth tag) present
-            next to it. Rehearse a restore against a throwaway database before
-            you rely on it.
+            file carries its IV and auth tag inside it and is restored using the
+            same key resolution. A backup from before that format keeps them in
+            a <InlineCode>.json</InlineCode> sidecar, which has to stay next to
+            the file. Rehearse a restore against a throwaway database before you
+            rely on it.
           </p>
         </DocsCallout>
 
@@ -976,8 +1413,10 @@ cat backup-2026-06-18.sql | docker compose exec -T postgres psql -U vulnradar vu
               In <InlineCode>.env</InlineCode>, set{" "}
               <InlineCode>PREVIOUS_API_KEY_ENCRYPTION_KEY</InlineCode> to the
               old value and <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode> to
-              the new one. Restart. Reads try the new key and fall back to the
-              old one; every write uses the new one.
+              the new one. Apply it with{" "}
+              <InlineCode>docker compose up -d app</InlineCode>, or restart the
+              process on a source install. Reads try the new key and fall back
+              to the old one; every write uses the new one.
             </li>
             <li>
               Check the logs and Admin, Error Logs for a line saying{" "}
@@ -1039,22 +1478,53 @@ cat backup-2026-06-18.sql | docker compose exec -T postgres psql -U vulnradar vu
         </DocsSubSection>
       </DocsSection>
 
-      <DocsSection id="updates" title="Updates">
+      <DocsSection id="updates" title="Upgrading">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           There is no deploy pipeline that does this for you, and no automatic
           rollback. Upgrading is five steps, in this order, and the first one is
-          not optional.
+          not optional. Always go to a release tag, never to{" "}
+          <InlineCode>main</InlineCode>. The in-app Updater is disabled in the
+          published image (<InlineCode>VULNRADAR_UPDATER_DISABLED</InlineCode>),
+          so an image upgrades with the steps below.
         </p>
-        <CodeBlock
-          language="bash"
-          code={`cd vulnradar.dev
+        <DocsCodeTabs
+          tabs={[
+            {
+              id: "image",
+              label: "Image",
+              language: "bash",
+              code: `# 1. Back up, and note the tag you are on. This is your way back.
+docker compose exec app npm run db:backup
+grep 'image: ghcr' docker-compose.yml
+
+# 2. Edit the app service's tag in docker-compose.yml to the new release:
+#      image: ghcr.io/vulnradar/vulnradar:v<new>
+
+# 3. Pull the new image. This does NOT swap the running container yet.
+docker compose pull app
+
+# 4. Run the NEW image's migrator against the database, with the old
+#    container still serving traffic. 'run --rm' starts a throwaway
+#    container and never touches the 'app' service.
+docker compose run --rm app npm run db:migrate:dry-run   # read the plan
+docker compose run --rm app npm run db:migrate
+
+# 5. Now swap in the new version
+docker compose up -d
+docker compose logs -f app`,
+            },
+            {
+              id: "source",
+              label: "Source",
+              language: "bash",
+              code: `cd vulnradar.dev
 
 # 1. Back up, and write down where you are. This is your way back.
 docker compose exec app npm run db:backup
-git rev-parse --short HEAD          # or: git describe --tags
+git describe --tags
 
-# 2. Fetch the new code
-git pull
+# 2. Move your local-config branch onto the new release tag.
+git fetch --tags && git rebase v<new>
 
 # 3. Build the new image. This does NOT swap the running container yet.
 docker compose build app
@@ -1068,7 +1538,9 @@ docker compose run --rm app npm run db:migrate
 
 # 5. Now swap in the new version
 docker compose up -d
-docker compose logs -f app`}
+docker compose logs -f app`,
+            },
+          ]}
         />
         <DocsCallout variant="warning" title="Why step 4 uses the new image">
           <p>
@@ -1157,17 +1629,43 @@ docker compose logs -f app`}
           </p>
           <CodeBlock
             language="bash"
-            code={`# Schema unchanged: pin the previous tag and restart
+            code={`# Schema unchanged: go back to the previous version.
+# <previous-tag> is what git describe printed in step 1. On a local-config
+# branch it names your commit, so your config edits come back with it.
 git checkout <previous-tag>
 docker compose build app && docker compose up -d
 
+# Prebuilt image: put the previous tag back in docker-compose.yml instead.
+docker compose pull app && docker compose up -d
+
 # Schema changed: put the database back first, then the code.
 # Stop only the app so Postgres stays up for the restore.
-# db:restore does nothing without --file and --yes, and refuses a
-# database that still has tables unless you add --force.
 docker compose stop app
+
+# --replace drops what is in the public schema and loads the backup in one
+# transaction, after --yes confirms it. A backup that does not apply leaves
+# the database as it was.
 docker compose run --rm app npm run db:restore -- \\
-  --file=./backups/<the dump from step 1> --yes --force
+  --file=./backups/<the dump from step 1> --replace --yes
+
+# Then the code, the same way as above.
+git checkout <previous-tag>
+docker compose build app && docker compose up -d`}
+          />
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            On a managed database, restore into a new empty one instead and keep
+            the old database until the app is back. If your provider gives you
+            only the one, run <InlineCode>DROP DATABASE vulnradar</InlineCode>{" "}
+            and{" "}
+            <InlineCode>CREATE DATABASE vulnradar OWNER vulnradar</InlineCode>{" "}
+            from psql. Then point <InlineCode>DATABASE_URL</InlineCode> at it
+            and restore:
+          </p>
+          <CodeBlock
+            language="bash"
+            code={`docker compose stop app
+docker compose run --rm app npm run db:restore -- \\
+  --file=./backups/<the dump from step 1> --yes
 git checkout <previous-tag>
 docker compose build app && docker compose up -d`}
           />
@@ -1386,54 +1884,9 @@ docker compose build app && docker compose up -d`}
       </DocsSection>
 
       <DocsSection id="troubleshooting" title="Troubleshooting">
-        <DocsTable
-          columns={[
-            { key: "symptom", header: "Symptom" },
-            { key: "cause", header: "Likely cause" },
-            { key: "fix", header: "Fix" },
-          ]}
-          data={[
-            {
-              symptom: "App crashes after schema verify",
-              cause: "DATABASE_URL unreachable",
-              fix: "Check DATABASE_URL and DATABASE_SSL; confirm Postgres accepts the connection.",
-            },
-            {
-              symptom: "Schema version mismatch on startup",
-              cause:
-                "vulnradar_schema_meta.schema_version < CONFIG_MIN_SCHEMA_VERSION",
-              fix: "Run npm run db:migrate (or upgrade CONFIG_MIN_SCHEMA_VERSION to match if you just want to skip).",
-            },
-            {
-              symptom: "API_KEY_ENCRYPTION_KEY invalid",
-              cause: "Not 64 hex chars, or unset",
-              fix: "Generate one: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
-            },
-            {
-              symptom: "Build fails: TypeScript errors in lib/config",
-              cause:
-                "Renamed or removed a CONFIG_* constant that registry.ts or constants.ts still imports by name",
-              fix: "Run npm run typecheck; the error points at the exact import site.",
-            },
-            {
-              symptom: "502 from reverse proxy",
-              cause: "App not listening on the expected port",
-              fix: "Check APP_PORT (default 3000); confirm the app container is up via docker compose ps.",
-            },
-            {
-              symptom: "Stripe webhook 400s",
-              cause: "Wrong signing secret or missing STRIPE_WEBHOOK_SECRET",
-              fix: "Re-copy from Stripe dashboard, restart app.",
-            },
-            {
-              symptom: "Login succeeds but 2FA code never arrives",
-              cause: "SMTP not configured",
-              fix: "Set SMTP_HOST/PORT/USER/PASS/FROM in .env and restart. If you are already locked out, clear 2FA from the database (see Locked out of your own instance below): /api/v3/auth/2fa/disable needs a completed login and cannot help here.",
-            },
-          ]}
-        />
+        <TroubleshootingTable />
 
-        <DocsSubSection title="Locked out of your own instance">
+        <DocsSubSection id="locked-out" title="Locked out of your own instance">
           <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
             The app has no self-service escape from a second factor you cannot
             receive. <InlineCode>POST /api/v3/auth/2fa/disable</InlineCode>{" "}
