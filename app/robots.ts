@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { API, APP_NAME, APP_URL } from "@/lib/config/constants";
 import { DISALLOWED_PATHS, SCANNER_DISALLOWED_PATHS } from "@/lib/seo/routes";
 
 // Served at /robots.txt.
@@ -42,12 +42,18 @@ const AI_CRAWLERS = [
   "Meta-ExternalAgent",
 ];
 
+// /api/ is disallowed for every group, and the OpenAPI document is the one
+// thing under it written to be read by machines that are not API clients.
+// Crawlers take the longest matching rule, so this Allow wins for that path
+// and nothing else.
+const PUBLIC_ALLOW = ["/", API.OPENAPI];
+
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       {
         userAgent: "*",
-        allow: "/",
+        allow: PUBLIC_ALLOW,
         disallow: [...DISALLOWED_PATHS],
       },
       {
@@ -56,7 +62,7 @@ export default function robots(): MetadataRoute.Robots {
         // which left the 754 per-check fix guides and llms.txt out of reach
         // for them). Same private/tokenised paths stay disallowed.
         userAgent: AI_CRAWLERS,
-        allow: "/",
+        allow: PUBLIC_ALLOW,
         disallow: [...DISALLOWED_PATHS],
       },
       {

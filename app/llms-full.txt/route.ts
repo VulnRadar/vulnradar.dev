@@ -4,7 +4,9 @@ import {
   SEO_TAGLINE,
   SEO_LICENSE,
   SEO_GITHUB_URL,
+  TOTAL_CHECKS_LABEL,
 } from "@/lib/config/constants";
+import { EXACT_CHECK_CATEGORY_COUNT } from "@/lib/config/check-stats.generated";
 import {
   SEO_CATEGORIES,
   getAllChecks,
@@ -14,8 +16,8 @@ import {
 } from "@/lib/seo/checks-content";
 
 // Served at /llms-full.txt. The detailed companion to /llms.txt: the same
-// site map, but with every single check enumerated under its category and
-// linked to its own remediation guide, so an AI answer engine grounding a
+// site map, but with every check that has a remediation guide enumerated under
+// its category and linked to that guide, so an AI answer engine grounding a
 // "how do I fix X" answer can reach the exact page. Built from the same
 // loaders (checks-content.ts) as the sitemap and the pages, so it stays in
 // sync with what ships.
@@ -37,15 +39,14 @@ function clamp(text: string, max = 160): string {
 }
 
 function buildLlmsFullTxt(): string {
-  const total = getAllChecks().length;
-  const categoryCount = SEO_CATEGORIES.length;
+  const fixGuides = getAllChecks().length;
 
   const lines: string[] = [];
 
   lines.push(`# ${APP_NAME}: full check catalog`);
   lines.push("");
   lines.push(
-    `> Every one of the ${total} security checks ${APP_NAME}, an open-source (${SEO_LICENSE}) ${SEO_TAGLINE.toLowerCase()}, runs against a URL, grouped into ${categoryCount} categories. Each entry links to a page explaining the risk and the exact fix.`,
+    `> ${APP_NAME}, an open-source (${SEO_LICENSE}) ${SEO_TAGLINE.toLowerCase()}, runs ${TOTAL_CHECKS_LABEL} security checks against a URL across ${EXACT_CHECK_CATEGORY_COUNT} categories. This file lists the ${fixGuides} with a fix guide, each entry linking to a page explaining the risk and the exact fix.`,
   );
   lines.push("");
   lines.push(
@@ -57,7 +58,9 @@ function buildLlmsFullTxt(): string {
     const checks = getChecksInCategory(cat);
     if (checks.length === 0) continue;
     const seo = getCategorySeo(cat);
-    lines.push(`## ${getCategoryLabel(cat)} (${checks.length} checks)`);
+    lines.push(
+      `## ${getCategoryLabel(cat)} (${checks.length} with a fix guide)`,
+    );
     lines.push("");
     lines.push(oneLine(seo.intro));
     lines.push("");
