@@ -113,9 +113,14 @@ function describeFetchError(err) {
   return err?.message || String(err);
 }
 
-/** A couple of lines of a body, flattened, for an error message. */
+/**
+ * A couple of lines of a body, flattened, for an error message. The whitespace
+ * collapses first so the words stay apart, then logSafe takes the rest of the
+ * control characters and the percent signs, as log_safe does for this same
+ * line in the Action and the GitLab template.
+ */
 function snippetOf(text) {
-  const flat = text.replace(/\s+/g, " ").trim();
+  const flat = logSafe(text.replace(/\s+/g, " ").trim());
   return flat.length > 200 ? `${flat.slice(0, 200)}...` : flat;
 }
 
@@ -407,9 +412,7 @@ async function main() {
   const scanId = created?.scanId;
   if (!scanId) fail("No scanId in the response.");
   if (!isScanIdSegment(scanId)) {
-    fail(
-      `The API returned a scan id that cannot be used in a URL: ${snippetOf(JSON.stringify(scanId))}`,
-    );
+    fail("The API returned a scan id that cannot be used in a URL.");
   }
   activeScanId = scanId;
   // The handlers go in before the line is printed, because the line is the

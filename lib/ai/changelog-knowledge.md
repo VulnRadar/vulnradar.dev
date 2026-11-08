@@ -643,7 +643,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Code] **[CLI]** **Ctrl-C Right After a Scan Starts Now Cancels It**
   The CLI now sets up its interrupt handling before it prints the Started scan line. A signal right after that line used to end the run without cancelling the scan, which kept your only scan slot busy until the scan finished. Once the line is printed, a SIGINT or SIGTERM always cancels the scan.
 - [ShieldCheck] **[SECURITY]** **CLI Requests Stay on the Scan Endpoints**
-  The CLI now encodes the scan id from the API's reply before using it in the status, report and cancel addresses, and refuses an id that is only a dot or two. An id like that can no longer send a request carrying your API key to another path on the API server.
+  The CLI now uses the scan id from the API's reply only when it is letters, digits, hyphens and underscores, the rule the GitHub Action and the GitLab template follow, and otherwise exits 2 without printing the id. An id with a slash, a dot segment or a line break could send a request carrying your API key to another path on the API server, or add a line to the job log.
 - [Code] **[CLI]** **The CLI Needs Node 22.12 or Newer**
   The CLI now reads its own version with a JSON import, which Node marks stable from 22.12. On earlier Node 22 releases that import printed an experimental warning on every run, so the package now asks for Node 22.12 or newer. Output and exit codes are unchanged.
 - [ShieldCheck] **[SECURITY]** **GitHub Action No Longer Evaluates a Secrets Expression**

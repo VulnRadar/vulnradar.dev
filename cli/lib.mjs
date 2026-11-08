@@ -170,20 +170,21 @@ export function reportRequestUrl(apiBase, scanId, opts) {
 }
 
 /**
- * Whether a scan id from the API's reply can go into a request URL as one
- * path segment once it is encoded.
+ * Whether a scan id from the API's reply can be used: as one path segment of
+ * a request URL, and in the log lines that name the scan.
  *
  * encodeURIComponent leaves "." alone, and a URL resolves a "." or ".."
  * segment against the path around it, so an id of ".." still sent the status
  * polls and the cancel DELETE to the scan collection and the report download
- * one level above /history. Those two are refused rather than encoded, and so
- * is anything that is not a string or a number, which no scan id has ever
- * been.
+ * one level above /history. The id is also printed raw in about ten messages,
+ * and a newline in it wrote a line of the reply's choosing into the job log.
+ * Scan ids are hex or decimal, so anything outside A-Za-z0-9_- is refused, the
+ * same case the Action and the GitLab template apply, and the caller does not
+ * echo it.
  */
 export function isScanIdSegment(scanId) {
   if (typeof scanId !== "string" && typeof scanId !== "number") return false;
-  const segment = String(scanId);
-  return segment !== "" && segment !== "." && segment !== "..";
+  return /^[A-Za-z0-9_-]+$/.test(String(scanId));
 }
 
 /** Whether a URL hostname is this machine, where plain http is not a leak. */

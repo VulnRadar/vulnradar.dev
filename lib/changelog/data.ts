@@ -2094,7 +2094,7 @@ const CHANGELOG: Release[] = [
       {
         icon: ShieldCheck,
         label: "CLI Requests Stay on the Scan Endpoints",
-        desc: "The CLI now encodes the scan id from the API's reply before using it in the status, report and cancel addresses, and refuses an id that is only a dot or two. An id like that can no longer send a request carrying your API key to another path on the API server.",
+        desc: "The CLI now uses the scan id from the API's reply only when it is letters, digits, hyphens and underscores, the rule the GitHub Action and the GitLab template follow, and otherwise exits 2 without printing the id. An id with a slash, a dot segment or a line break could send a request carrying your API key to another path on the API server, or add a line to the job log.",
         category: "security",
       },
       {

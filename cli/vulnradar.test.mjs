@@ -2615,8 +2615,9 @@ test("--version and the User-Agent carry the version in cli/package.json", async
 // The scan id comes from the API's reply and is put into the next URL. Read
 // raw, an id with a "/" or ".." in it was resolved as a path, so a reply of
 // "../../keys/5" sent the status polls, the report download and the cancel
-// DELETE, all with the Bearer key, to a path outside the scan endpoints. The
-// id is one path segment, and it is encoded as one.
+// DELETE, all with the Bearer key, to a path outside the scan endpoints. An id
+// like that is refused further down; one that fits the rule is one path segment
+// in every request.
 test("cli: a scan id from the API stays one path segment in every request it makes", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "vulnradar-cli-"));
   const out = path.join(dir, "report.md");
@@ -2626,22 +2627,18 @@ test("cli: a scan id from the API stays one path segment in every request it mak
       {
         routes: {
           "/scan/status/": { body: completedWith({}) },
-          "/scan": { body: { scanId: "../../keys/5" } },
+          "/scan": { body: { scanId: "a1B2_c3-d4" } },
           "/history/": { body: "# Scan report" },
         },
       },
     );
     const urls = requests.map((r) => r.url);
     assert.equal(code, EXIT.OK, urls.join(", "));
+    assert.ok(urls.includes("/scan/status/a1B2_c3-d4"), urls.join(", "));
     assert.ok(
-      urls.includes("/scan/status/..%2F..%2Fkeys%2F5"),
+      urls.includes("/history/a1B2_c3-d4/report?format=md"),
       urls.join(", "),
     );
-    assert.ok(
-      urls.includes("/history/..%2F..%2Fkeys%2F5/report?format=md"),
-      urls.join(", "),
-    );
-    assert.ok(!urls.some((u) => u.startsWith("/keys")), urls.join(", "));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -2674,22 +2671,81 @@ test("reportRequestUrl and cancelScan encode the scan id as one path segment", a
 });
 
 // Encoding leaves "." alone, and the URL parser resolves a "." or ".." segment
-// before the request is sent, so those two ids are refused outright.
-test("isScanIdSegment refuses the ids encoding cannot keep in their segment", () => {
-  for (const id of [
-    "s1",
-    "0123456789abcdef0123456789abcdef",
-    42,
-    "../../keys/5",
-  ]) {
+// before the request is sent, and the id is printed raw in the job log, so
+// anything outside the alphabet the Action and the GitLab template accept is
+// refused outright.
+test("isScanIdSegment accepts only the alphabet the shell gates accept", () => {
+  for (const id of ["s1", "0123456789abcdef0123456789abcdef", 42, "a_B-3"]) {
     assert.equal(isScanIdSegment(id), true, JSON.stringify(id));
   }
-  for (const id of [".", "..", "", null, undefined, true, {}, ["s1"]]) {
+  for (const id of [
+    ".",
+    "..",
+    "",
+    "../../keys/5",
+    "a/b",
+    "a.b",
+    "abc\n::add-mask::forged",
+    "abc\n",
+    "a%0Ab",
+    "a b",
+    "\u0431",
+    null,
+    undefined,
+    true,
+    {},
+    ["s1"],
+  ]) {
     assert.equal(isScanIdSegment(id), false, JSON.stringify(id));
   }
 });
 
-for (const scanId of ["..", "."]) {
+// A reply could otherwise write a line of its own into the job log through any
+// of the messages that name the scan, starting with "Started scan <id>".
+test("cli: a scan id holding a newline is refused and never printed", async () => {
+  const { code, stdout, stderr, requests } = await runCli(
+    [...SCAN_ARGS, "--timeout", "3"],
+    {
+      routes: {
+        "/scan/status/": { body: completedWith({}) },
+        "/scan": { body: { scanId: "abc\n::add-mask::forged" } },
+      },
+    },
+  );
+  assert.equal(code, EXIT.ERROR, stderr);
+  assert.match(stderr, /scan id that cannot be used in a URL/);
+  assert.ok(!`${stdout}${stderr}`.includes("forged"), `${stdout}${stderr}`);
+  assert.deepEqual(
+    requests.map((r) => `${r.method} ${r.url}`),
+    ["POST /scan"],
+  );
+});
+
+// The same "Failed to start scan" line goes through log_safe in the Action and
+// the GitLab template: %0A is what a step wrapping this output in ::error::
+// decodes back into a line break, and an escape sequence rewrites the terminal.
+test("cli: a start failure's body keeps its words and loses %0A and the escape", async () => {
+  const { code, stdout, stderr } = await runCli(SCAN_ARGS, {
+    routes: {
+      "/scan": {
+        status: 500,
+        body: "upstream  said\nno%0A::add-mask::forged \u001b[2Jdone",
+      },
+    },
+  });
+  assert.equal(code, EXIT.ERROR, stderr);
+  assert.ok(
+    stderr.includes(
+      "Failed to start scan (HTTP 500): upstream said no0A::add-mask::forged [2Jdone",
+    ),
+    stderr,
+  );
+  const output = `${stdout}${stderr}`;
+  assert.ok(!output.includes("%"), output);
+  assert.ok(!output.includes("\u001b"), output);
+});
+
+for (const scanId of ["..", ".", "../../keys/5"]) {
   test(`cli: a scan id of "${scanId}" is refused before any request uses it`, async () => {
     const { code, stderr, requests } = await runCli(
       [...SCAN_ARGS, "--timeout", "3"],
