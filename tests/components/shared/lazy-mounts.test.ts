@@ -244,7 +244,9 @@ describe("the OAuth profile prompts load only on the redirect back", () => {
     expect(src).toContain(
       `searchParams.get("${provider}_connected") === "true"`,
     );
-    expect(src).toContain(`searchParams.get("${provider}_username")`);
+    // The flag alone: a name in the URL is something a crafted link could
+    // supply, and the callbacks no longer send one.
+    expect(src).not.toContain(`${provider}_username`);
     expect(src).toContain(`import("./${file}")`);
     expect(src).not.toMatch(new RegExp(`from\\s+["']\\./${file}["']`));
     // useSearchParams needs a Suspense boundary above it.
