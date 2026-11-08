@@ -37,28 +37,28 @@
   {
     "id": "vary-header-cookie",
     "type": "header",
-    "title": "Vary: Cookie Missing on Cookie-Bearing Response",
+    "title": "Set-Cookie on a Response a Shared Cache May Store",
     "category": "configuration",
     "severity": "medium",
-    "description": "The response sets cookies but does not include a Vary: Cookie header, and the response is not marked Cache-Control: no-store/no-cache/private. A shared cache (CDN, reverse proxy) that stores this response may serve one user's cookie-gated content to a different user requesting the same URL. Static assets are not reported: their bytes are identical for every visitor, and Vary: Cookie on one is itself a defect (see vary-cookie-on-static-resource).",
+    "description": "The response sets an application cookie, carries an explicit sign that a shared cache may store it, and has no Cache-Control: no-store, no-cache or private. A CDN or reverse proxy that stores it can replay the Set-Cookie to other visitors. Cookies a CDN or load balancer adds for itself are not reported, and neither are static assets, whose bytes are the same for every visitor.",
     "evidence": "Configuration-level finding for `vary-header-cookie` against {{url}}.",
-    "riskImpact": "If a shared cache stores this response without varying by Cookie, a different user requesting the same URL can receive another user's session-specific or personalized content, including authentication state or PII.",
-    "explanation": "Vary: Cookie tells caches that the response content differs based on the Cookie header value. When cookies are present (indicating per-user state) but Vary: Cookie is absent, a CDN or reverse proxy configured to cache this response may store and replay one user's response to another. This risk only applies when the response can actually be stored by a shared cache; Cache-Control: no-store, no-cache, or private already rule that out.",
+    "riskImpact": "A shared cache that stores this response can hand the same Set-Cookie to later visitors, which puts one user's session or per-user state in another user's browser.",
+    "explanation": "Set-Cookie is meant for one browser, but a cache stores the whole response. Vary: Cookie does not prevent the replay: it keys the cache on the Cookie header the request sent, and a new visitor who sends none matches the stored copy. Cache-Control: no-store, no-cache or private rule a shared cache out, which is why the check stays quiet on those.",
     "fixSteps": [
-      "Add Vary: Cookie to any response that sets cookies and can be stored by a shared cache.",
-      "For responses that must never be shared between users, prefer Cache-Control: private or no-store instead of (or in addition to) Vary: Cookie.",
-      "Audit CDN and reverse proxy configuration to confirm Vary: Cookie is honored per distinct value, not treated as a simple cache on/off toggle."
+      "Send Cache-Control: private or no-store on any response that sets an application cookie.",
+      "If the page has to be cached at the edge, have the CDN strip Set-Cookie before storing it, or set the cookie from a separate request that is never cached.",
+      "Vary: Cookie is for a body that changes with the request's Cookie header. Add it for that reason only: it does not stop a stored Set-Cookie from being replayed, so it does not clear this finding."
     ],
     "codeExamples": [
       {
-        "label": "Nginx: vary auth-gated responses by cookie",
+        "label": "Nginx: keep cookie-setting responses out of shared caches",
         "language": "nginx",
-        "code": "location /account/ {\n  add_header Vary \"Cookie\" always;\n  # Or avoid shared caching entirely for this path:\n  # add_header Cache-Control \"private, no-store\" always;\n}"
+        "code": "location /account/ {\n  add_header Cache-Control \"private, no-store\" always;\n}"
       },
       {
         "label": "Next.js headers config",
         "language": "javascript",
-        "code": "// In next.config.mjs: mark cookie-gated API responses so shared caches don't mix users\nexport default {\n  async headers() {\n    return [{\n      source: '/api/account/:path*',\n      headers: [\n        { key: 'Vary', value: 'Cookie' },\n      ],\n    }];\n  },\n};"
+        "code": "// In next.config.mjs: keep cookie-setting routes out of shared caches\nexport default {\n  async headers() {\n    return [{\n      source: '/api/account/:path*',\n      headers: [\n        { key: 'Cache-Control', value: 'private, no-store' },\n      ],\n    }];\n  },\n};"
       }
     ],
     "references": [
