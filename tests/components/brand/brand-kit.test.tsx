@@ -34,15 +34,26 @@ const ROOT = process.cwd();
 const html = renderToStaticMarkup(<BrandKit />);
 const text = html.replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/g, " ");
 
+/**
+ * Markup with its tags removed, repeated until nothing changes so that what
+ * one pass leaves behind can never be a tag. A single pass is what CodeQL's
+ * js/incomplete-multi-character-sanitization reports, test file or not.
+ */
+function stripTags(markup: string): string {
+  let out = markup;
+  let before: string;
+  do {
+    before = out;
+    out = out.replace(/<[^>]+>/g, "");
+  } while (out !== before);
+  return out;
+}
+
 /** Every <a> on the page, with its href, download attribute and text. */
 const links = [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map((m) => ({
   href: m[1].match(/href="([^"]+)"/)?.[1] ?? "",
   download: m[1].match(/download="([^"]*)"/)?.[1],
-  name: m[2]
-    .replace(/<[^>]+>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
-    .trim(),
+  name: stripTags(m[2]).replace(/&amp;/g, "&").replace(/\s+/g, " ").trim(),
 }));
 const kitLinks = links.filter((l) => l.href.startsWith("/brand/"));
 const kitPath = (url: string) =>
