@@ -486,7 +486,18 @@ test("cli: an unknown flag with no command reports the flag, not bare usage", as
  * cannot express: every transient-failure case needs the second poll to
  * answer differently from the first.
  */
-function runCliWithHandler(args, handler, { env = {} } = {}) {
+function runCliWithHandler(args, handler, { env = {}, preload = null } = {}) {
+  // A preload is module source run before the CLI, for a test that has to
+  // control something the CLI reads from the runtime (a timer, the clock).
+  const dir = preload
+    ? mkdtempSync(path.join(tmpdir(), "vulnradar-cli-preload-"))
+    : null;
+  const nodeArgs = [];
+  if (dir) {
+    const file = path.join(dir, "preload.mjs");
+    writeFileSync(file, preload);
+    nodeArgs.push("--import", pathToFileURL(file).href);
+  }
   return new Promise((resolve, reject) => {
     const server = createServer(handler);
     server.listen(0, "127.0.0.1", () => {
@@ -496,10 +507,11 @@ function runCliWithHandler(args, handler, { env = {} } = {}) {
       delete childEnv.VULNRADAR_API_BASE;
       execFile(
         process.execPath,
-        [CLI, ...args, "--api-base", `http://127.0.0.1:${port}`],
+        [...nodeArgs, CLI, ...args, "--api-base", `http://127.0.0.1:${port}`],
         { env: { ...childEnv, ...env } },
         (err, stdout, stderr) => {
           server.close();
+          if (dir) rmSync(dir, { recursive: true, force: true });
           if (err && typeof err.code !== "number") return reject(err);
           resolve({ code: err ? err.code : 0, stdout, stderr });
         },
@@ -1934,6 +1946,50 @@ test("cli: one last poll after the deadline finds a scan that finished meanwhile
   assert.equal(hits.polls, 2);
   // The 5s interval was clamped to the 1s that was left.
   assert.ok(Date.now() - started < 4500, "slept past the deadline");
+});
+
+test("cli: a sleep that ends just short of the deadline is followed by the final poll, not a poll with no time left", async () => {
+  // The last sleep is clamped to the deadline, but a timer and Date.now() do
+  // not agree to the millisecond, more so on a loaded CI runner, so the sleep
+  // can end a hair before the deadline. The loop was then not yet past it and
+  // sent a status poll bounded by the sliver that was left: the server saw
+  // the request, the client aborted it, the run printed "Status poll failed",
+  // and the final poll went out as a third request. The preload makes every
+  // long timer fire 150ms early, which is that case made exact, and the
+  // server takes longer than the sliver to answer.
+  const hits = { polls: 0 };
+  const poll = pollingHandler(
+    [{ body: { status: "running" } }, { body: completedWith({}) }],
+    hits,
+  );
+  const { code, stdout, stderr } = await runCliWithHandler(
+    [
+      "scan",
+      "https://target.example",
+      "--api-key",
+      "k",
+      "--timeout",
+      "1",
+      "--poll-interval",
+      "5",
+    ],
+    (req, res) => {
+      if (req.url.startsWith("/scan/status/") && hits.polls > 0) {
+        setTimeout(() => poll(req, res), 1000);
+        return;
+      }
+      poll(req, res);
+    },
+    {
+      preload: `const setTimeoutReal = globalThis.setTimeout;
+globalThis.setTimeout = (fn, ms, ...rest) =>
+  setTimeoutReal(fn, ms >= 200 ? ms - 150 : ms, ...rest);
+`,
+    },
+  );
+  assert.equal(code, EXIT.OK, stderr);
+  assert.doesNotMatch(stdout + stderr, /Status poll failed/);
+  assert.equal(hits.polls, 2);
 });
 
 test("cli: a timeout says the scan is still running, unless --cancel-on-timeout stopped it", async () => {

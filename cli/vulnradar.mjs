@@ -81,6 +81,19 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const FINAL_POLL_TIMEOUT_MS = 10_000;
 
 /**
+ * The least time left before the deadline that a status poll is sent with.
+ *
+ * The sleep before the deadline is clamped to end on it, but a timer and
+ * Date.now() disagree by a millisecond or two (more on a loaded CI runner), so
+ * the sleep could end just short of it. The loop then sent a poll bounded by
+ * that sliver, which the server counted and the client aborted at once, and
+ * the run printed "Status poll failed" before making the final poll as a
+ * third request. Less than this left counts as the deadline: the remainder is
+ * waited out and the next request is the final poll.
+ */
+const MIN_POLL_BUDGET_MS = 250;
+
+/**
  * How many polls in a row may fail before the run gives up.
  *
  * Not one. A default scan polls roughly sixty times and a crawl closer to two
@@ -423,10 +436,14 @@ async function main() {
   // finished while the last sleep was running is not reported as a timeout.
   let polledPastDeadline = false;
   for (;;) {
-    const pastDeadline = Date.now() >= deadline;
+    const remaining = deadline - Date.now();
+    const pastDeadline = remaining < MIN_POLL_BUDGET_MS;
     if (pastDeadline) {
       if (polledPastDeadline) break;
       polledPastDeadline = true;
+      // The final poll goes out on the deadline, not early, so a scan that
+      // finishes in the last sliver is still seen as finished.
+      if (remaining > 0) await sleep(remaining);
     }
     let body;
     try {
