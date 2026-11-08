@@ -232,6 +232,7 @@ describe("runUpdateJob: the destructive prune is driven with the intended lists"
     "Dockerfile",
     ".dockerignore",
     "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
     "CONTRIBUTING.md",
     "CODE_OF_CONDUCT.md",
     "SECURITY-POSTURE.md",

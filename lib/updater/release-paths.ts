@@ -72,8 +72,11 @@ export const STRIP_PREFIXES = [
   ".dockerignore",
   // Repository documents the app never reads. SECURITY-POSTURE.md describes
   // how vulnradar.dev itself is deployed, which is not a fact about anyone
-  // else's install.
+  // else's install. THIRD_PARTY_NOTICES.md goes with LICENSE: it credits the
+  // typeface the wordmark's outlines were drawn from, ships no font, and
+  // nothing at runtime reads it.
   "LICENSE",
+  "THIRD_PARTY_NOTICES.md",
   "CONTRIBUTING.md",
   "CODE_OF_CONDUCT.md",
   "SECURITY-POSTURE.md",
