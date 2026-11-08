@@ -460,6 +460,12 @@ describe("account changes always tell the user", () => {
     expect(findAll(render(), ofType(dialogs.EditAccountDialog))).toHaveLength(
       0,
     );
+    // Coming back to the first user (browser back) must not reopen it.
+    (props as unknown as { detail: ReturnType<typeof detail> }).detail =
+      detail();
+    expect(findAll(render(), ofType(dialogs.EditAccountDialog))).toHaveLength(
+      0,
+    );
   });
 });
 

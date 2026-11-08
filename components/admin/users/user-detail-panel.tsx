@@ -274,6 +274,9 @@ export function UserDetailPanel({
     kind: "account" | "role" | "badges";
     userId: number;
   } | null>(null);
+  // Moving to another user drops the open dialog for good. Hidden but kept, it
+  // reopened when the admin came back to the first user (browser back).
+  if (editing && editing.userId !== u.id) setEditing(null);
   const isEditing = (kind: "account" | "role" | "badges") =>
     editing?.kind === kind && editing.userId === u.id;
   const closeEditing = () => setEditing(null);
