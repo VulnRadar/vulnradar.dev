@@ -66,13 +66,19 @@ export async function GET(request: Request) {
     const claims = await verifyStaffOidcIdToken(idToken, config, doc, nonce);
     const issuerHost = new URL(config.issuerUrl).hostname;
 
+    // Compared as getUserByEmail does (see the reason there), on the address
+    // verifyStaffOidcIdToken already lowercased. `email = $1` missed a staff
+    // row saved with capitals, which then read as "no account".
     const result = await pool.query<{
       id: number;
       role: string | null;
       disabled_at: string | null;
       email_verified_at: string | null;
     }>(
-      `SELECT id, role, disabled_at, email_verified_at FROM users WHERE email = $1`,
+      `SELECT id, role, disabled_at, email_verified_at FROM users
+       WHERE LOWER(email) = LOWER($1)
+       ORDER BY (email = $1) DESC, id
+       LIMIT 1`,
       [claims.email],
     );
     const user = result.rows[0];

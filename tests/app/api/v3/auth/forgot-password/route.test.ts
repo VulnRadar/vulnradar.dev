@@ -38,9 +38,21 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   }
   if (s.startsWith("SELECT key, value FROM system_settings"))
     return { rows: systemSettingsRows };
-  if (s.startsWith("SELECT id, totp_enabled FROM users WHERE email = $1")) {
-    const row = knownUsers.get(params[0] as string);
-    return { rows: row ? [row] : [] };
+  // Keyed by the address as stored and compared as Postgres would: `email =
+  // $1` is exact, so a stored capital stays invisible to it, and only the
+  // LOWER form folds case.
+  if (s.includes("totp_enabled FROM users")) {
+    const wanted = params[0] as string;
+    const foldsCase = s.includes("WHERE LOWER(email) = LOWER($1)");
+    for (const [stored, row] of knownUsers) {
+      if (
+        stored === wanted ||
+        (foldsCase && stored.toLowerCase() === wanted.toLowerCase())
+      ) {
+        return { rows: [{ email: stored, ...row }] };
+      }
+    }
+    return { rows: [] };
   }
   if (s.startsWith("DELETE FROM password_reset_tokens WHERE user_id = $1")) {
     tokenDeleteCalls.push(params);
@@ -235,6 +247,56 @@ describe("POST /api/v3/auth/forgot-password", () => {
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
     expect(mockSendEmail.mock.calls[0][0]).toMatchObject({
       to: "account-owner@example.com",
+    });
+  });
+
+  // Against Postgres: tests/integration/email-lower-lookups.test.ts.
+  describe("an account stored in mixed case", () => {
+    const flushMail = async () => {
+      await Promise.resolve();
+      await new Promise((resolve) => setImmediate(resolve));
+    };
+
+    it("issues a reset", async () => {
+      knownUsers.set("Legacy.Owner@Example.com", {
+        id: 57,
+        totp_enabled: false,
+      });
+
+      await POST(forgotRequest({ email: "legacy.owner@example.com" }));
+
+      expect(tokenInsertCalls).toHaveLength(1);
+      expect(tokenInsertCalls[0]).toContain(57);
+    });
+
+    // The lookup no longer guarantees that what was typed is what is stored,
+    // so the mail has to name the row. A link sent to the typed spelling
+    // would go to an address the account never proved it owns.
+    it("mails the address on file, not the spelling that was typed", async () => {
+      knownUsers.set("Legacy.Owner@Example.com", {
+        id: 57,
+        totp_enabled: false,
+      });
+
+      await POST(forgotRequest({ email: "LEGACY.owner@example.COM" }));
+      await flushMail();
+
+      expect(mockSendEmail).toHaveBeenCalledTimes(1);
+      expect(mockSendEmail.mock.calls[0][0]).toMatchObject({
+        to: "Legacy.Owner@Example.com",
+      });
+    });
+
+    it("reads one row with getUserByEmail's comparison", async () => {
+      await POST(forgotRequest({ email: "Someone@Example.com" }));
+
+      const read = queries.find((q) =>
+        q.sql.includes("totp_enabled FROM users"),
+      );
+      expect(read?.sql).toContain("WHERE LOWER(email) = LOWER($1)");
+      expect(read?.sql).toContain("ORDER BY (email = $1) DESC, id");
+      expect(read?.sql).toContain("LIMIT 1");
+      expect(read?.params).toEqual(["someone@example.com"]);
     });
   });
 

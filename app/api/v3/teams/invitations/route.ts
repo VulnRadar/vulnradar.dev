@@ -39,6 +39,9 @@ export async function GET() {
   if (!email || !userRes.rows[0]?.email_verified_at)
     return NextResponse.json({ invitations: [] });
 
+  // LOWER on both sides, as the unique index on users compares: an invite is
+  // written lowercased, while the account's address can still hold the
+  // capitals it was saved with, and `=` hid every invite from such an account.
   const invites = await pool.query(
     `SELECT ti.id, ti.role, ti.created_at, ti.expires_at,
             t.name AS team_name,
@@ -46,7 +49,7 @@ export async function GET() {
      FROM team_invites ti
      JOIN teams t ON t.id = ti.team_id
      LEFT JOIN users inviter ON inviter.id = ti.invited_by
-     WHERE ti.email = $1 AND ti.accepted_at IS NULL AND ti.expires_at > NOW()
+     WHERE LOWER(ti.email) = LOWER($1) AND ti.accepted_at IS NULL AND ti.expires_at > NOW()
      ORDER BY ti.created_at DESC`,
     [email],
   );
@@ -94,13 +97,14 @@ export async function DELETE(request: Request) {
     );
 
   // Scope the delete to the caller's own email so an inviteId (a small,
-  // guessable integer) can't be used to decline someone else's invite.
+  // guessable integer) can't be used to decline someone else's invite,
+  // compared the same way the listing above finds it.
   // RETURNING, because the row carrying "who sent this" is gone by the time
   // anyone could look it up, and the inviter is the one person who needs to
   // know the answer.
   const del = await pool.query<{ invited_by: number | null; team_id: number }>(
     `DELETE FROM team_invites
-       WHERE id = $1 AND email = $2 AND accepted_at IS NULL
+       WHERE id = $1 AND LOWER(email) = LOWER($2) AND accepted_at IS NULL
        RETURNING invited_by, team_id`,
     [inviteId, email],
   );

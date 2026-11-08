@@ -28,6 +28,9 @@ let userByEmailRow:
       email_verified_at?: string | null;
     }
   | undefined;
+// The address userByEmailRow is stored under, for a fixture about how the
+// lookup compares. Null means the row matches whatever was asked for.
+let userByEmailStoredAs: string | null = null;
 const VERIFIED_AT = "2026-01-01T00:00:00.000Z";
 let securityAlertInsertFails = false;
 const queries: { sql: string; params: unknown[] }[] = [];
@@ -35,10 +38,17 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   queries.push({ sql, params });
   const s = sql.trim();
   if (s.startsWith("SELECT id, role, disabled_at")) {
+    const wanted = params[0] as string;
+    const visible =
+      userByEmailStoredAs === null ||
+      userByEmailStoredAs === wanted ||
+      (s.includes("WHERE LOWER(email) = LOWER($1)") &&
+        userByEmailStoredAs.toLowerCase() === wanted.toLowerCase());
     return {
-      rows: userByEmailRow
-        ? [{ email_verified_at: VERIFIED_AT, ...userByEmailRow }]
-        : [],
+      rows:
+        userByEmailRow && visible
+          ? [{ email_verified_at: VERIFIED_AT, ...userByEmailRow }]
+          : [],
     };
   }
   if (s.startsWith("SELECT key, value FROM system_settings")) {
@@ -116,6 +126,7 @@ beforeEach(() => {
   mockQuery.mockClear();
   cookieState.clear();
   userByEmailRow = undefined;
+  userByEmailStoredAs = null;
   securityAlertInsertFails = false;
   mockGetStaffOidcConfig.mockReset();
   mockGetDiscoveryDocument.mockReset();
@@ -460,5 +471,64 @@ describe("GET /api/v3/auth/staff-oidc/callback", () => {
     expect(
       queries.some((q) => q.sql.trim().startsWith("INSERT INTO sessions")),
     ).toBe(false);
+  });
+});
+
+// Against Postgres: tests/integration/email-lower-lookups.test.ts.
+describe("a staff account whose address is stored in mixed case", () => {
+  const signedIn = () =>
+    queries.some((q) => q.sql.trim().startsWith("INSERT INTO sessions"));
+  const alerted = () =>
+    queries.some((q) => q.sql.trim().startsWith("INSERT INTO security_alerts"));
+
+  beforeEach(() => {
+    userByEmailStoredAs = "Admin@Example.com";
+  });
+
+  it("signs into it", async () => {
+    userByEmailRow = { id: 5, role: "admin", disabled_at: null };
+
+    const res = await GET(makeRequest(`?code=abc&state=${validState()}`));
+
+    expect(res.headers.get("location")).toBe("https://vulnradar.dev/admin");
+    expect(signedIn()).toBe(true);
+  });
+
+  // The wider match must not reach past the checks the exact one passed
+  // through: an unverified row is still refused, and still raises the alert.
+  it("keeps refusing a row that never verified the address", async () => {
+    userByEmailRow = {
+      id: 5,
+      role: "admin",
+      disabled_at: null,
+      email_verified_at: null,
+    };
+
+    const res = await GET(makeRequest(`?code=abc&state=${validState()}`));
+
+    expect(res.headers.get("location")).toContain("oauth_no_account");
+    expect(signedIn()).toBe(false);
+    expect(alerted()).toBe(true);
+  });
+
+  it("keeps refusing a row that is not staff", async () => {
+    userByEmailRow = { id: 5, role: "user", disabled_at: null };
+
+    const res = await GET(makeRequest(`?code=abc&state=${validState()}`));
+
+    expect(res.headers.get("location")).toContain("oauth_no_account");
+    expect(signedIn()).toBe(false);
+  });
+
+  it("reads one row with getUserByEmail's comparison", async () => {
+    await GET(makeRequest(`?code=abc&state=${validState()}`));
+
+    const read = queries.find((q) =>
+      q.sql.trim().startsWith("SELECT id, role, disabled_at"),
+    );
+    expect(read?.sql).toContain("WHERE LOWER(email) = LOWER($1)");
+    expect(read?.sql).toContain("ORDER BY (email = $1) DESC, id");
+    expect(read?.sql).toContain("LIMIT 1");
+    expect(read?.params).toEqual(["admin@example.com"]);
   });
 });

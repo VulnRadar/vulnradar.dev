@@ -68,8 +68,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       "If an account with that email exists, a reset link has been generated.",
   };
 
+  // Compared as getUserByEmail does (see the reason there). `email = $1` hid
+  // an address saved with capitals before writers lowercased, so its owner
+  // could sign in but never get a reset link.
   const userRes = await pool.query(
-    "SELECT id, totp_enabled FROM users WHERE email = $1",
+    `SELECT id, email, totp_enabled FROM users
+     WHERE LOWER(email) = LOWER($1)
+     ORDER BY (email = $1) DESC, id
+     LIMIT 1`,
     [normalizedEmail],
   );
   if (userRes.rows.length === 0) {
@@ -86,8 +92,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const resetLink = `${secretLinkAppUrl()}/reset-password?token=${token}`;
   const emailPayload = passwordResetEmail(resetLink);
 
+  // To the row's address, not the typed one: the lookup no longer guarantees
+  // they are the same string, and a reset link only ever goes to the address
+  // the account holds.
   queueMicrotask(() => {
-    sendEmail({ to: normalizedEmail, ...emailPayload }).catch((err) => {
+    sendEmail({ to: user.email, ...emailPayload }).catch((err) => {
       console.error("[Email Error] Password reset email failed:", err);
     });
   });

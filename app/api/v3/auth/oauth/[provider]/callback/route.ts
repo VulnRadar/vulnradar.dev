@@ -224,8 +224,17 @@ export async function GET(
 
     // idColumn comes from the fixed OAUTH_IDENTITY_COLUMNS map, never from
     // the request, so interpolating it is safe.
+    //
+    // Compared as getUserByEmail does (see the reason there). `email = $1`
+    // missed an address saved with capitals, so the login intent answered
+    // "no account" to its owner and the signup intent went on to an INSERT
+    // that the unique index on lower(email) refused, or that made a second
+    // account on a database without that index.
     const existing = await pool.query(
-      `SELECT id, auth_provider, disabled_at, email_verified_at${idColumn ? `, ${idColumn}` : ""} FROM users WHERE email = $1`,
+      `SELECT id, auth_provider, disabled_at, email_verified_at${idColumn ? `, ${idColumn}` : ""} FROM users
+       WHERE LOWER(email) = LOWER($1)
+       ORDER BY (email = $1) DESC, id
+       LIMIT 1`,
       [normalizedEmail],
     );
 

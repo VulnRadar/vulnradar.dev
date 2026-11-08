@@ -14,6 +14,23 @@ let userEmail: string | null = "bob@example.com";
 let userEmailVerified: string | null = "2026-01-01T00:00:00.000Z";
 let invitesRows: Record<string, unknown>[] = [];
 let deleteRowCount = 1;
+/** The address the invite row is stored under, for a fixture about how the
+ *  query compares. Null means the row matches whatever was asked for. */
+let inviteStoredAs: string | null = null;
+
+/** Compared as Postgres would: `=` is exact, only the LOWER form folds case. */
+function inviteVisible(
+  sql: string,
+  column: string,
+  placeholder: string,
+  wanted: unknown,
+) {
+  if (inviteStoredAs === null || inviteStoredAs === wanted) return true;
+  return (
+    sql.includes(`LOWER(${column}) = LOWER(${placeholder})`) &&
+    inviteStoredAs.toLowerCase() === String(wanted).toLowerCase()
+  );
+}
 const calls: { sql: string; params: unknown[] }[] = [];
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
@@ -27,10 +44,14 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     };
   }
   if (s.includes("FROM team_invites ti")) {
-    return { rows: invitesRows };
+    return {
+      rows: inviteVisible(s, "ti.email", "$1", params[0]) ? invitesRows : [],
+    };
   }
   if (s.startsWith("DELETE FROM team_invites")) {
-    return { rowCount: deleteRowCount };
+    return {
+      rowCount: inviteVisible(s, "email", "$2", params[1]) ? deleteRowCount : 0,
+    };
   }
   return { rows: [] };
 });
@@ -70,6 +91,7 @@ beforeEach(() => {
   userEmailVerified = "2026-01-01T00:00:00.000Z";
   invitesRows = [];
   deleteRowCount = 1;
+  inviteStoredAs = null;
   calls.length = 0;
 });
 
@@ -193,5 +215,48 @@ describe("DELETE /api/v3/teams/invitations", () => {
       calls.some((c) => c.sql.trim().startsWith("DELETE FROM team_invites")),
     ).toBe(false);
     expect(mockMarkHandled).not.toHaveBeenCalled();
+  });
+});
+
+// users.email can still hold the capitals it was saved with, while the invite
+// was written lowercased. Against Postgres:
+// tests/integration/email-lower-lookups.test.ts.
+describe("an account whose address is stored in mixed case", () => {
+  beforeEach(() => {
+    userEmail = "Bob@Example.com";
+    inviteStoredAs = "bob@example.com";
+  });
+
+  it("sees the invites sent to its address", async () => {
+    invitesRows = [{ id: 7, team_name: "Acme" }];
+
+    const res = await GET();
+
+    expect((await res.json()).invitations).toHaveLength(1);
+  });
+
+  it("can decline one", async () => {
+    const res = await DELETE(deleteRequest({ inviteId: 7 }));
+
+    expect(res.status).toBe(200);
+    expect(mockMarkHandled).toHaveBeenCalledWith(7);
+  });
+
+  it("still cannot decline an invite sent to another address", async () => {
+    inviteStoredAs = "someone-else@example.com";
+
+    const res = await DELETE(deleteRequest({ inviteId: 7 }));
+
+    expect(res.status).toBe(404);
+    expect(mockMarkHandled).not.toHaveBeenCalled();
+  });
+
+  it("still lists nothing until the account has verified the address", async () => {
+    userEmailVerified = null;
+    invitesRows = [{ id: 7, team_name: "Acme" }];
+
+    const res = await GET();
+
+    expect((await res.json()).invitations).toEqual([]);
   });
 });

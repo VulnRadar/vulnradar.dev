@@ -41,6 +41,9 @@ let userByEmailRow: {
   github_id?: string | null;
   discord_id?: string | null;
 } | null = null;
+// The address userByEmailRow is stored under, for a fixture about how the
+// lookup compares. Null means the row matches whatever was asked for.
+let userByEmailStoredAs: string | null = null;
 const VERIFIED_AT = "2026-01-01T00:00:00.000Z";
 let twoFARow: {
   totp_enabled: boolean;
@@ -85,22 +88,26 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     return { rows: [] };
   if (s.startsWith("SELECT key, value FROM system_settings"))
     return { rows: [] };
-  if (
-    s.startsWith("SELECT id, auth_provider, disabled_at") &&
-    s.endsWith("FROM users WHERE email = $1")
-  ) {
+  if (s.startsWith("SELECT id, auth_provider, disabled_at")) {
+    const wanted = params[0] as string;
+    const visible =
+      userByEmailStoredAs === null ||
+      userByEmailStoredAs === wanted ||
+      (s.includes("WHERE LOWER(email) = LOWER($1)") &&
+        userByEmailStoredAs.toLowerCase() === wanted.toLowerCase());
     return {
-      rows: userByEmailRow
-        ? [
-            {
-              email_verified_at: VERIFIED_AT,
-              google_id: null,
-              github_id: null,
-              discord_id: null,
-              ...userByEmailRow,
-            },
-          ]
-        : [],
+      rows:
+        userByEmailRow && visible
+          ? [
+              {
+                email_verified_at: VERIFIED_AT,
+                google_id: null,
+                github_id: null,
+                discord_id: null,
+                ...userByEmailRow,
+              },
+            ]
+          : [],
     };
   }
   // More specific than -- and checked before -- the link flow's own
@@ -327,6 +334,7 @@ beforeEach(async () => {
   headerState.clear();
   headerState.set("user-agent", "vitest-agent");
   userByEmailRow = null;
+  userByEmailStoredAs = null;
   twoFARow = null;
   trustedDeviceRow = null;
   insertUserCalls = [];
@@ -1439,5 +1447,97 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
         expect(sessionInsertCalls).toHaveLength(0);
       },
     );
+  });
+});
+
+// Against Postgres: tests/integration/email-lower-lookups.test.ts.
+describe("an account whose address is stored in mixed case", () => {
+  beforeEach(() => {
+    userByEmailStoredAs = "Owner@Example.com";
+  });
+
+  it("signs into it instead of answering that no account exists", async () => {
+    userByEmailRow = { id: 55, auth_provider: "google", disabled_at: null };
+    const state = signLoginState("google", { intent: "login" });
+
+    const res = await GET(
+      callbackRequest("google", { code: "somecode", state }),
+      ctx("google"),
+    );
+
+    expect(locationOf(res).pathname).toBe("/dashboard");
+    expect(sessionInsertCalls).toHaveLength(1);
+    expect(sessionInsertCalls[0][1]).toBe(55);
+    expect(insertUserCalls).toHaveLength(0);
+  });
+
+  it("intent=signup never tries to create a second account for the address", async () => {
+    userByEmailRow = { id: 55, auth_provider: "google", disabled_at: null };
+    const state = signLoginState("google", { intent: "signup" });
+
+    const res = await GET(
+      callbackRequest("google", { code: "somecode", state }),
+      ctx("google"),
+    );
+
+    expect(insertUserCalls).toHaveLength(0);
+    expect(sessionInsertCalls).toHaveLength(0);
+    expect(locationOf(res).searchParams.get("error")).toBe(
+      "oauth_already_exists",
+    );
+  });
+
+  it("keeps the rule that a password account is not opened by a provider", async () => {
+    userByEmailRow = { id: 55, auth_provider: null, disabled_at: null };
+    const state = signLoginState("google", { intent: "signup" });
+
+    const res = await GET(
+      callbackRequest("google", { code: "somecode", state }),
+      ctx("google"),
+    );
+
+    expect(insertUserCalls).toHaveLength(0);
+    expect(sessionInsertCalls).toHaveLength(0);
+    expect(locationOf(res).searchParams.get("error")).toBe(
+      "oauth_email_in_use",
+    );
+  });
+
+  // The wider match must not reach past the proof the exact one needed.
+  it("keeps refusing a row that never verified the address", async () => {
+    userByEmailRow = {
+      id: 55,
+      auth_provider: "google",
+      disabled_at: null,
+      email_verified_at: null,
+    };
+    const state = signLoginState("google", { intent: "login" });
+
+    const res = await GET(
+      callbackRequest("google", { code: "somecode", state }),
+      ctx("google"),
+    );
+
+    expect(sessionInsertCalls).toHaveLength(0);
+    expect(locationOf(res).searchParams.get("error")).toBe(
+      "oauth_email_in_use",
+    );
+  });
+
+  it("reads one row with getUserByEmail's comparison", async () => {
+    const state = signLoginState("google", { intent: "login" });
+
+    await GET(
+      callbackRequest("google", { code: "somecode", state }),
+      ctx("google"),
+    );
+
+    const read = queries.find((q) =>
+      q.sql.startsWith("SELECT id, auth_provider, disabled_at"),
+    );
+    expect(read?.sql).toContain("WHERE LOWER(email) = LOWER($1)");
+    expect(read?.sql).toContain("ORDER BY (email = $1) DESC, id");
+    expect(read?.sql).toContain("LIMIT 1");
+    expect(read?.params).toEqual(["owner@example.com"]);
   });
 });

@@ -214,9 +214,14 @@ export const POST = withErrorHandling(async (request: Request) => {
     );
   }
 
-  // Check if already a member
+  // Check if already a member. Compared as getUserByEmail does (see the
+  // reason there), so an account saved with capitals is still recognised: as
+  // a member already on the team, and below for its bell notification.
   const existingUser = await pool.query(
-    "SELECT id FROM users WHERE email = $1",
+    `SELECT id FROM users
+     WHERE LOWER(email) = LOWER($1)
+     ORDER BY (email = $1) DESC, id
+     LIMIT 1`,
     [email.trim().toLowerCase()],
   );
   if (existingUser.rows.length > 0) {
@@ -358,7 +363,10 @@ export const POST = withErrorHandling(async (request: Request) => {
 
     // Look up unsubscribe token for the invitee if they're an existing user
     const inviteeRes = await pool.query<{ unsubscribe_token: string | null }>(
-      "SELECT unsubscribe_token FROM users WHERE email = $1",
+      `SELECT unsubscribe_token FROM users
+       WHERE LOWER(email) = LOWER($1)
+       ORDER BY (email = $1) DESC, id
+       LIMIT 1`,
       [email.trim().toLowerCase()],
     );
     const unsubscribeToken = inviteeRes.rows[0]?.unsubscribe_token ?? undefined;

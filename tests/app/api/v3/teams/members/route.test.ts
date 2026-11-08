@@ -440,6 +440,90 @@ function membershipDelete() {
   );
 }
 
+// Against Postgres: tests/integration/email-lower-lookups.test.ts.
+describe("POST /api/v3/teams/members, invitee stored in mixed case", () => {
+  /** Answers by statement, comparing users.email as Postgres would. */
+  function databaseWith(opts: { alreadyMember: boolean }) {
+    const stored = "Bob@Example.com";
+    mockQuery.mockImplementation(async (sql: string, params: unknown[]) => {
+      const s = sql.trim();
+      if (s.startsWith("SELECT role FROM team_members")) {
+        return { rows: [{ role: "owner" }] };
+      }
+      if (s.includes("FROM users") && s.includes("email")) {
+        const wanted = params[0] as string;
+        const visible =
+          stored === wanted ||
+          (s.includes("WHERE LOWER(email) = LOWER($1)") &&
+            stored.toLowerCase() === wanted.toLowerCase());
+        if (!visible) return { rows: [] };
+        return s.includes("unsubscribe_token")
+          ? { rows: [{ unsubscribe_token: "unsub-99" }] }
+          : { rows: [{ id: 99 }] };
+      }
+      if (s.startsWith("SELECT id FROM team_members")) {
+        return { rows: opts.alreadyMember ? [{ id: 1 }] : [] };
+      }
+      if (s.startsWith("SELECT owner_id FROM teams")) {
+        return { rows: [{ owner_id: 1 }] };
+      }
+      if (s.startsWith("INSERT INTO team_invites")) {
+        return { rows: [{ id: 7 }] };
+      }
+      if (s.startsWith("SELECT name FROM teams")) {
+        return { rows: [{ name: "Acme" }] };
+      }
+      if (s.startsWith("SELECT name FROM users")) {
+        return { rows: [{ name: "Alice" }] };
+      }
+      return { rows: [] };
+    });
+  }
+
+  const invite = () =>
+    POST(postRequest({ teamId: 1, email: "bob@example.com", role: "viewer" }));
+
+  it("finds the account: the bell rings and the mail carries its unsubscribe token", async () => {
+    databaseWith({ alreadyMember: false });
+
+    const res = await invite();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(res.status).toBe(200);
+    expect(mockCreateUserNotification).toHaveBeenCalledTimes(1);
+    expect(mockCreateUserNotification.mock.calls[0][0].userId).toBe(99);
+    expect(mockSendEmail.mock.calls[0][0]).toMatchObject({
+      unsubscribeToken: "unsub-99",
+    });
+  });
+
+  it("refuses to invite someone already on the team", async () => {
+    databaseWith({ alreadyMember: true });
+
+    const res = await invite();
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/already a team member/i);
+  });
+
+  it("reads one row with getUserByEmail's comparison, both times", async () => {
+    databaseWith({ alreadyMember: false });
+
+    await invite();
+
+    const reads = mockQuery.mock.calls
+      .map(([sql, params]) => ({ sql: sql as string, params }))
+      .filter((c) => c.sql.includes("FROM users") && c.sql.includes("email"));
+    expect(reads).toHaveLength(2);
+    for (const read of reads) {
+      expect(read.sql).toContain("WHERE LOWER(email) = LOWER($1)");
+      expect(read.sql).toContain("ORDER BY (email = $1) DESC, id");
+      expect(read.sql).toContain("LIMIT 1");
+      expect(read.params).toEqual(["bob@example.com"]);
+    }
+  });
+});
+
 describe("DELETE /api/v3/teams/members", () => {
   it("requires authentication", async () => {
     mockGetSession.mockResolvedValue(null);
