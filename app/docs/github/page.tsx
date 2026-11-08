@@ -77,7 +77,9 @@ export default function GithubScanningPage() {
           with no scannable files, is rejected before any AI token is spent. An
           oversized repo is not rejected: every file that fits the file caps
           below is pattern-scanned, the AI review covers as much as the per-run
-          ceiling and your allowance admit, and the result says how much.
+          ceiling and your allowance admit, and the result says how much. The
+          free plan is the one exception, when no file fits a single AI batch
+          (see the planning step below).
         </p>
         <ol className="list-decimal space-y-2 pl-6 text-sm text-muted-foreground">
           <li>
@@ -94,8 +96,10 @@ export default function GithubScanningPage() {
             A quota pre-check runs <em>before</em> any GitHub API call. A plan
             with no GitHub review of its own, once its free trial is used and no
             credits are left, gets <InlineCode>403</InlineCode> there and spends
-            no GitHub API calls. A plan whose window is used up goes on: the
-            pattern scan still runs, and the AI review does not.
+            no GitHub API calls. Credits below what one AI batch needs get the
+            same 403 at the reservation, before any file is fetched. A plan
+            whose window is used up goes on: the pattern scan still runs, and
+            the AI review does not.
           </li>
           <li>
             The repo&apos;s default branch and visibility are resolved, then its
@@ -110,8 +114,13 @@ export default function GithubScanningPage() {
             The tree&apos;s byte sizes plan the AI review&apos;s batches up to
             the per-run ceiling, and their worst case is reserved from your
             allowance, needing at least the first batch. Nothing is refused for
-            size: the AI review stops at the batch that would cross the ceiling
-            or the allowance, and the response says how far it got.
+            size: a file over the ceiling on its own is skipped and listed, and
+            the AI review stops at the batch that would cross the ceiling or the
+            allowance, and the response says how far it got. The one exception
+            is the free plan: when no file in the repo fits one batch under the
+            ceiling there is nothing for its trial or its credits to pay for, so
+            it gets the same 403, trial used or not, with nothing claimed or
+            spent.
           </li>
           <li>
             File contents are fetched, the secret scan and AI review run, CVSS
@@ -521,7 +530,8 @@ export default function GithubScanningPage() {
   "aiReviewStoppedAtBudget": false,
   "aiReviewStoppedAtRunCap": false,
   "aiReviewCoverage": {
-    "filesReviewed": 128, "filesTotal": 128, "batchesReviewed": 4, "batchesTotal": 4
+    "filesReviewed": 128, "filesTotal": 128, "batchesReviewed": 4, "batchesFailed": 0, "batchesTotal": 4,
+    "filesSkippedOverRunCap": []
   },
   "aiReviewAllowanceMessage": null
 }`}
@@ -531,6 +541,7 @@ export default function GithubScanningPage() {
               "The scan is saved to history as private (is_public = false)",
               "aiReviewSkipped is true when no AI endpoint could be resolved",
               "aiReviewStoppedAtBudget or aiReviewStoppedAtRunCap is true when the AI review stopped before every file; aiReviewCoverage says how many it covered, and the pattern scan always covers all of them",
+              "aiReviewCoverage.filesSkippedOverRunCap lists files over the per-run ceiling on their own, skipped while the review carried on; batchesFailed counts batches whose call failed",
               "aiReviewAllowanceMessage explains why the AI review did not run when your allowance could not cover even the first batch",
             ]}
             errors={[
@@ -543,7 +554,7 @@ export default function GithubScanningPage() {
               {
                 code: 403,
                 description:
-                  "The free plan's trial is used and no GitHub review credits are left",
+                  "The free plan's trial is used and the GitHub review credits left do not cover one AI batch, or, on the free plan, no file in the repo fits one AI batch under the per-run ceiling",
               },
               { code: 429, description: "Too many requests" },
             ]}
