@@ -35,3 +35,19 @@ describe("4.0.0 error code claims", () => {
     );
   });
 });
+
+describe("4.0.0 team entries", () => {
+  // Owner decision D7 builds team ownership transfer in this same release, so
+  // an entry saying it cannot be done would ship contradicting another one.
+  it("does not say ownership cannot be transferred", () => {
+    for (const change of release?.changes ?? []) {
+      expect(change.desc).not.toMatch(/ownership cannot be transferred/i);
+    }
+  });
+
+  it("keeps the member_count change", () => {
+    expect(desc("Team List Member Count")).toContain(
+      "member_count as a number instead of a numeric string",
+    );
+  });
+});

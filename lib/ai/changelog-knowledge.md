@@ -864,8 +864,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   A team, member or invite id that is not a whole number now gets a clear 400 from the team endpoints instead of a server error.
 - [MailOpen] **[FIXED]** **One-Click Unsubscribe on Team Invites**
   Team invite emails sent to existing accounts now carry the one-click unsubscribe headers, which turn off team invite emails only.
-- [Users] **[CHANGED]** **Team List and Owner-Leave Error**
-  The team list now returns member_count as a number instead of a numeric string. An owner who tries to leave is told to delete the team or ask support, since ownership cannot be transferred.
+- [Users] **[CHANGED]** **Team List Member Count**
+  The team list now returns member_count as a number instead of a numeric string.
 - [Bot] **[FIXED]** **AI Verdicts No Longer Silence Findings**
   A finding only the AI verifier doubted now still triggers the critical and high alert email, stays in the posture digest, stays visible on your scan and still counts in its score. Only a verdict you gave yourself hides a finding from these, so the verdict buttons now show what the AI suggested with none of them pressed.
 - [Code] **[CLI]** **CI Gate Counts AI-Doubted Findings Again**

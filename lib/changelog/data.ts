@@ -2761,8 +2761,8 @@ const CHANGELOG: Release[] = [
       },
       {
         icon: Users,
-        label: "Team List and Owner-Leave Error",
-        desc: "The team list now returns member_count as a number instead of a numeric string. An owner who tries to leave is told to delete the team or ask support, since ownership cannot be transferred.",
+        label: "Team List Member Count",
+        desc: "The team list now returns member_count as a number instead of a numeric string.",
         category: "changed",
       },
       {
