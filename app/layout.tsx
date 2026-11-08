@@ -69,16 +69,19 @@ export const metadata: Metadata = {
   // pageMetadata(), and the only pages that inherited this one were the 404
   // and error pages, which told Google a missing URL was a copy of the home
   // page.
-  // All generated from public/favicon.svg by scripts/assets/build-icons.mjs,
-  // as an opaque tile: the transparent-cornered disc went black on iOS and
-  // lost its edge on a dark tab strip. The ICO declares 32x32 rather than
+  // The rasters are drawn from public/favicon.svg by
+  // scripts/assets/build-brand-kit.mjs, and every one of them is the round
+  // mark on a transparent square, exactly as the SVG draws it. No tile behind
+  // the disc, on purpose: iOS paints a home-screen icon's transparent corners
+  // black and Android sets an icon on a plate of its own, and that frame is
+  // the platform's, not part of the logo. The ICO declares 32x32 rather than
   // "any" because Chrome picks an icon marked "any" over the SVG; it holds
   // 16, 32 and 48. Google Search reads the ICO or the PNG (it does not use an
   // SVG favicon) and wants one at least 48px.
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "32x32" },
-      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
       { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
     ],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],

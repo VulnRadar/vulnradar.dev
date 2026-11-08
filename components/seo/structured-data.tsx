@@ -69,7 +69,7 @@ const WEBSITE_ID = `${APP_URL}/#website`;
 const SOFTWARE_ID = `${APP_URL}/#software`;
 const SOURCE_ID = `${APP_URL}/#source`;
 const HOME_URL = `${APP_URL}/`;
-/** Written by scripts/assets/build-icons.mjs from public/favicon.svg. */
+/** Drawn by scripts/assets/build-brand-kit.mjs from public/favicon.svg. */
 const ORGANIZATION_LOGO = { url: `${APP_URL}/icon-512.png`, size: 512 };
 
 /**
@@ -112,8 +112,9 @@ export function OrganizationStructuredData({ nonce }: { nonce?: string }) {
         "@id": ORGANIZATION_ID,
         name: APP_NAME,
         url: HOME_URL,
-        // A raster logo at least 112px square is what Google accepts here.
-        // This was /favicon.svg, a dark disc on a transparent square.
+        // A raster logo at least 112px square is what Google accepts here,
+        // so not /favicon.svg. The PNG is the same round mark on the same
+        // transparent square, drawn at 512px.
         logo: {
           "@type": "ImageObject",
           url: ORGANIZATION_LOGO.url,

@@ -99,6 +99,9 @@ marketing/
 # Local source archives, never committed (a 25MB .rar was staged once).
 *.rar
 *.zip
+# The one archive that is a product file: the brand kit download, written
+# deterministically by scripts/assets/build-brand-kit.mjs and served at /brand.
+!public/brand/vulnradar-brand-kit.zip
 
 certificates
 

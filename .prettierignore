@@ -9,6 +9,11 @@ extension/dist-firefox/
 extension/dist-build/
 node_modules/
 
+# Written by scripts/assets/build-brand-kit.mjs. The README's bytes are also
+# inside the kit's ZIP, so reformatting the file on disk would make it differ
+# from the copy people download (tests/lib/brand/kit.test.ts compares them).
+public/brand/
+
 # Lock files
 package-lock.json
 extension/package-lock.json

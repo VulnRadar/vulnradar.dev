@@ -2,16 +2,22 @@
  * What a search engine reads to decide what this site is called and what its
  * icon looks like: the favicon files, the manifest, and the Organization and
  * WebSite structured data. Each of these was wrong in a way nothing caught:
- * the only raster favicon was 32px, the apple-touch-icon was a 1024px PNG
- * with transparent corners, the manifest had no 192 or 512 icon, the
- * Organization logo was an SVG, and WebSite markup sat on every page instead
- * of the home page.
+ * the only raster favicon was 32px, the apple-touch-icon was a 1024px PNG,
+ * the manifest had no 192 or 512 icon, the Organization logo was an SVG, and
+ * WebSite markup sat on every page instead of the home page.
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { inflateSync } from "node:zlib";
 import { join } from "node:path";
 import manifest from "@/app/manifest";
+import { SITE_ICONS } from "@/lib/brand/kit";
+import {
+  alphaAt,
+  cornerAlphas,
+  coverage,
+  decodePng,
+  pngSize as pngBytesSize,
+} from "../../_helpers/png";
 
 const ROOT = process.cwd();
 const publicFile = (url: string) =>
@@ -19,9 +25,7 @@ const publicFile = (url: string) =>
 
 /** Width and height from a PNG's IHDR chunk. */
 function pngSize(file: string): [number, number] {
-  const bytes = readFileSync(file);
-  expect(bytes.subarray(1, 4).toString("ascii"), file).toBe("PNG");
-  return [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
+  return pngBytesSize(readFileSync(file));
 }
 
 function sourceFiles(dir: string): string[] {
@@ -34,51 +38,73 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
+/** Each image inside favicon.ico, with the size its directory entry claims. */
+function icoImages(): { size: number; bytes: Buffer }[] {
+  const ico = readFileSync(publicFile("/favicon.ico"));
+  expect(ico.readUInt16LE(2)).toBe(1);
+  return Array.from({ length: ico.readUInt16LE(4) }, (_, i) => {
+    const entry = 6 + 16 * i;
+    const length = ico.readUInt32LE(entry + 8);
+    const offset = ico.readUInt32LE(entry + 12);
+    return { size: ico[entry], bytes: ico.subarray(offset, offset + length) };
+  });
+}
+
 /**
- * Alpha of a PNG's top-left pixel, 255 when the image has no alpha channel.
- * The first pixel of the first row reads the same under every PNG filter
- * (each predicts from neighbours that do not exist yet), so no unfiltering is
- * needed for this one pixel.
+ * The rule the owner set: every icon is the round mark on a transparent
+ * square, exactly as public/favicon.svg draws it, never a tile behind it.
+ * The site shipped an opaque navy tile for a while (and this file required
+ * it); the corners are the part that tells the two apart.
  */
-function cornerAlpha(file: string): number {
-  const bytes = readFileSync(file);
-  const bitDepth = bytes[24];
-  const colourType = bytes[25];
-  if (colourType === 2 || colourType === 0) return 255;
-  expect([bitDepth, colourType], file).toEqual([8, 6]);
-  const idat: Buffer[] = [];
-  for (let at = 8; at < bytes.length;) {
-    const length = bytes.readUInt32BE(at);
-    const type = bytes.subarray(at + 4, at + 8).toString("ascii");
-    if (type === "IDAT") idat.push(bytes.subarray(at + 8, at + 8 + length));
-    at += 12 + length;
-  }
-  const raw = inflateSync(Buffer.concat(idat));
-  return raw[4];
+function expectRoundMark(label: string, bytes: Buffer) {
+  const png = decodePng(bytes);
+  expect(cornerAlphas(png), `${label} corners`).toEqual([0, 0, 0, 0]);
+  // The mark itself is there: the centre is solid, and the disc covers
+  // pi/4 * (22/24)^2, about 66%, of the square.
+  const mid = Math.floor(png.width / 2);
+  expect(alphaAt(png, mid, mid), `${label} centre`).toBe(255);
+  expect(coverage(png), `${label} coverage`).toBeGreaterThan(0.6);
 }
 
 describe("icons", () => {
-  // The old apple-touch-icon had transparent corners, which iOS fills with
-  // black, and a maskable icon is cropped by the launcher: both must be opaque.
-  it.each([
-    "/apple-touch-icon.png",
-    "/icon-192.png",
-    "/icon-512.png",
-    "/icon-maskable-512.png",
-  ])("%s is an opaque tile", (icon) => {
-    expect(cornerAlpha(publicFile(icon))).toBe(255);
+  it.each(SITE_ICONS.png.map((icon) => [icon.path, icon.size] as const))(
+    "%s is the round mark on a transparent square, %i px",
+    (path, size) => {
+      const bytes = readFileSync(publicFile(path));
+      expect(pngBytesSize(bytes)).toEqual([size, size]);
+      expectRoundMark(path, bytes);
+    },
+  );
+
+  it("ships a favicon.ico holding 16, 32 and 48 px images of the same mark", () => {
+    const images = icoImages();
+    expect(images.map((i) => i.size)).toEqual([16, 32, 48]);
+    expect(images.map((i) => i.size)).toEqual([...SITE_ICONS.ico.sizes]);
+    for (const { size, bytes } of images) {
+      expect(pngBytesSize(bytes)).toEqual([size, size]);
+      expectRoundMark(`favicon.ico ${size}`, bytes);
+    }
   });
 
-  it("would have caught the old transparent-cornered icon", () => {
-    expect(cornerAlpha(publicFile("/favicon.png"))).toBe(0);
+  it("keeps favicon.png, the README's logo, as the same transparent mark", () => {
+    expectRoundMark("favicon.png", readFileSync(publicFile("/favicon.png")));
   });
 
-  it("ships a favicon.ico holding 16, 32 and 48 px images", () => {
-    const ico = readFileSync(publicFile("/favicon.ico"));
-    expect(ico.readUInt16LE(2)).toBe(1);
-    const count = ico.readUInt16LE(4);
-    const sizes = Array.from({ length: count }, (_, i) => ico[6 + 16 * i]);
-    expect(sizes).toEqual([16, 32, 48]);
+  it("ships no maskable icon and no tile, since both are a background", () => {
+    const icons = manifest().icons ?? [];
+    expect(icons.some((i) => i.purpose?.includes("maskable"))).toBe(false);
+    expect(existsSync(publicFile("/icon-maskable-512.png"))).toBe(false);
+    expect(existsSync(publicFile("/icon.svg"))).toBe(false);
+  });
+
+  it("names favicon.svg, the one master, as the SVG icon everywhere", () => {
+    const icons = manifest().icons ?? [];
+    expect(
+      icons.filter((i) => i.type === "image/svg+xml").map((i) => i.src),
+    ).toEqual(["/favicon.svg"]);
+    const layout = readFileSync(join(ROOT, "app/layout.tsx"), "utf8");
+    expect(layout).toContain('{ url: "/favicon.svg", type: "image/svg+xml" }');
+    expect(layout).toContain('{ url: "/favicon.ico", sizes: "32x32" }');
   });
 
   it("ships a 180px apple-touch-icon and links it from the head", () => {
@@ -102,7 +128,6 @@ describe("icons", () => {
       .map((i) => i.sizes);
     expect(pngSizes).toContain("192x192");
     expect(pngSizes).toContain("512x512");
-    expect(icons.some((i) => i.purpose === "maskable")).toBe(true);
     expect(manifest().start_url).toBe("/");
   });
 });

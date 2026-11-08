@@ -67,7 +67,7 @@ scripts/
 │   build timestamps): CI regenerates all of it and fails on any diff.
 │
 ├── assets/
-│   ├── build-icons.mjs            # Render every favicon and app icon from public/favicon.svg (run by hand)
+│   ├── build-brand-kit.mjs        # Draw the favicons, app icons and public/brand/ from public/favicon.svg (run by hand)
 │   └── build-og-image.mjs         # Render the Open Graph image (run by hand)
 │
 ├── ai/
@@ -153,7 +153,7 @@ the helper modules a schema step names via `moduleSource`.
 | `npm run audit:add-finding`   | Append a finding to an audit.                                                                                                                                                                                                  |
 | `npm run audit:close`         | Transition an audit's status (in-progress / closed / shipped).                                                                                                                                                                 |
 
-`node scripts/maintenance/find-duplicate-ids.mjs`, `node scripts/assets/build-icons.mjs`
+`node scripts/maintenance/find-duplicate-ids.mjs`, `node scripts/assets/build-brand-kit.mjs`
 and `node scripts/assets/build-og-image.mjs` have no npm alias and are run by
 hand. `find-duplicate-ids.mjs` is on the
 pre-commit checklist in AGENTS.md, but no CI workflow runs it, so a duplicate
@@ -161,9 +161,14 @@ check ID will not fail a PR on its own. `build-og-image.mjs` rasterizes
 `public/og-image.svg` into `public/og-image.png`, substituting `CONFIG_APP_NAME`
 and the `CONFIG_APP_URL` hostname into the two `data-og` text nodes, so a
 renamed instance regenerates its own social card rather than shipping ours.
-`build-icons.mjs` rasterizes `public/favicon.svg` into the favicon, manifest and
-touch icons. Both need `sharp`, which this repo does not declare: install it for
-the run with `npm i --no-save sharp`.
+`build-brand-kit.mjs` draws `public/favicon.svg` and the outlined wordmark in
+`public/brand/source/` into the favicon, manifest and touch icons and the whole
+of `public/brand/` (the PNGs, the lockup SVGs, the kit README and its ZIP), then
+writes their sizes to `lib/brand/kit.generated.ts` for the /brand page. Every
+icon is the round mark on a transparent square; the sizes, the clear space and
+the colours come from `lib/brand/kit.ts`. It needs Node 22.18 or later, because
+it imports that module directly. Both scripts need `sharp`, which this repo does
+not declare: install it for the run with `npm i --no-save sharp`.
 
 ### Restoring a backup
 
