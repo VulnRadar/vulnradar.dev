@@ -355,6 +355,8 @@ function ProfileContent() {
       session_expired:
         "Your session expired before GitHub redirected back. Log in and try again.",
       not_configured: "GitHub integration is not configured on this server.",
+      already_linked:
+        "That GitHub account is already connected to another VulnRadar account.",
       failed: "Could not grant repo access. Try again.",
     };
 
