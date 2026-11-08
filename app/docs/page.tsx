@@ -164,9 +164,17 @@ export default function DocsPage() {
           {/* Sibling blocks, because a DocsSteps description is a plain string
               and cannot hold code. */}
           <div className="min-w-0 space-y-3">
-            <CodeBlock code={curlExample} filename="Start the scan" />
+            <CodeBlock
+              code={curlExample}
+              language="bash"
+              filename="Start the scan"
+            />
             <CodeBlock code={startResponse} filename="Response" />
-            <CodeBlock code={pollExample} filename="Poll until it finishes" />
+            <CodeBlock
+              code={pollExample}
+              language="bash"
+              filename="Poll until it finishes"
+            />
             <CodeBlock
               code={completedResponse}
               filename="Read the findings (trimmed)"

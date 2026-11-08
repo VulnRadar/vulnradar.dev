@@ -58,7 +58,7 @@ export default function SharingDocsPage() {
           data={[
             {
               surface: "Share link",
-              who: "Only people you give the URL to. No account needed.",
+              who: "Anyone who has the URL, no account needed. It is also listed in the directory below unless you turn that off.",
               control:
                 "Created from the scan's menu and revoked there or on the Shared reports page.",
             },

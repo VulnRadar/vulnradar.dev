@@ -30,7 +30,7 @@ describe("every table of contents entry has a target", () => {
   ])("%s", (file) => {
     const source = read(file);
     const toc = source.slice(0, source.indexOf("export default function"));
-    const ids = [...toc.matchAll(/id: "([a-z-]+)", label/g)].map((m) => m[1]);
+    const ids = [...toc.matchAll(/id: "([a-z-]+)",\s+label/g)].map((m) => m[1]);
     expect(ids.length).toBeGreaterThan(0);
     for (const id of ids) {
       expect(source, `${file} has no section with id ${id}`).toMatch(
@@ -46,6 +46,11 @@ describe("/docs/sharing site-owner controls", () => {
   it("has the anchor the public report pages link to", () => {
     expect(page).toContain('id="domain-owner-controls"');
     expect(page).toContain('title="Verified domains and site-owner controls"');
+  });
+
+  it("does not call a share link private when it is listed by default", () => {
+    expect(page).not.toContain("Only people you give the URL to");
+    expect(page).toContain("listed in the directory below unless you turn");
   });
 
   it("says what a staff block answers", () => {
@@ -105,6 +110,7 @@ describe("/docs/troubleshooting", () => {
     expect(page).toContain("{SCANNER_UA_PRODUCT}");
     expect(page).toContain("agent: SCANNER_UA,");
     expect(page).toContain("does not publish its scan IP addresses");
+    expect(page).toContain("browser&rsquo;s own User-Agent");
     expect(SCANNER_UA_PRODUCT).toMatch(/\/1\.0$/);
   });
 
@@ -229,9 +235,18 @@ describe("/docs/triage", () => {
 describe("/docs/teams", () => {
   const page = flat("app/docs/teams/page.tsx");
 
-  it("does not promise an ownership transfer", () => {
-    expect(page).not.toContain("must transfer or delete");
-    expect(page).toContain("There is no ownership transfer");
+  // Keyed on the route rather than on the sentence alone, because the transfer
+  // is built after this page was corrected and the two have to change together.
+  it("says what the teams route really does about ownership transfer", () => {
+    const hasTransfer = read("app/api/v3/teams/route.ts").includes(
+      "newOwnerId",
+    );
+    if (hasTransfer) {
+      expect(page).not.toContain("There is no ownership transfer");
+    } else {
+      expect(page).not.toContain("must transfer or delete");
+      expect(page).toContain("There is no ownership transfer");
+    }
   });
 
   it("calls the assignee a private label", () => {

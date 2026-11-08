@@ -184,7 +184,7 @@ export default function TroubleshootingPage() {
             {
               message: DAILY_LIMIT_MESSAGE,
               cause:
-                "Your daily scan allowance ran out part-way through a batch, and the URLs after that point were turned away. It resets at 00:00 UTC: run the rest then, or upgrade.",
+                "Your daily scan allowance ran out before a crawl started or part-way through a batch, and the URLs after that point were turned away. It resets at 00:00 UTC: run the rest then, or upgrade.",
             },
             {
               message: API_KEY_LIMIT_MESSAGE,
@@ -418,10 +418,14 @@ export default function TroubleshootingPage() {
         title={`Recognising ${APP_NAME} traffic`}
       >
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-          Every HTTP request {APP_NAME} sends to a scan target carries a
-          User-Agent containing <InlineCode>{SCANNER_UA_PRODUCT}</InlineCode>,
-          so one contains-match rule covers the page fetch and every check that
-          follows it. The rest of the string says what the request is doing.
+          Every HTTP request the {APP_NAME} scanner sends to a scan target
+          carries a User-Agent containing{" "}
+          <InlineCode>{SCANNER_UA_PRODUCT}</InlineCode>, so one contains-match
+          rule covers the page fetch and every check that follows it. The rest
+          of the string says what the request is doing. The exception is the two
+          steps that run in a hosted browser, the optional page screenshot and
+          opening the login page of a form login: those send that
+          browser&rsquo;s own User-Agent, so the rule does not match them.
         </p>
         <DocsTable
           caption="The User-Agent sent to the target, by kind of request"
