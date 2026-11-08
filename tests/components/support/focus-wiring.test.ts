@@ -80,14 +80,25 @@ describe.each([
 });
 
 describe("the customer's ticket screen", () => {
-  it("moves into the form when New ticket removes the button that had focus", () => {
+  it("moves into the form when New ticket opens the dialog, without a hand-off", () => {
+    // The button stays mounted, so there is nothing to hand focus on from; the
+    // dialog's first field takes it by autoFocus.
     expect(CUSTOMER).toContain('data-focus-id="new-ticket"');
-    expect(CUSTOMER).toContain('focusOn("ticket-subject")');
-    expect(CUSTOMER).toContain('data-focus-id="ticket-subject"');
+    expect(CUSTOMER).not.toContain('focusOn("ticket-subject")');
+    expect(CUSTOMER).not.toContain('data-focus-id="ticket-subject"');
+    const dialog = CUSTOMER.slice(
+      CUSTOMER.indexOf("export function NewTicketDialog"),
+    );
+    const subject = dialog.slice(dialog.indexOf('id="ticket-subject"'));
+    expect(subject.slice(0, 400)).toContain("autoFocus");
   });
 
-  it("goes back to that button when the form is cancelled", () => {
-    expect(CUSTOMER).toContain('focusOn("new-ticket")');
+  it("goes back to that button when the dialog is cancelled", () => {
+    // New ticket is no longer gated on the view, so it is still there to
+    // return to, and the dialog's own focus restore does the return.
+    expect(CUSTOMER).not.toContain('view !== "new"');
+    expect(CUSTOMER).not.toContain('focusOn("new-ticket")');
+    expect(CUSTOMER).toContain('data-focus-id="new-ticket"');
   });
 
   it("hands focus on when resolve, close and reopen remove their own button", () => {

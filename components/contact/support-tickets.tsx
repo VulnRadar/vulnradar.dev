@@ -6,6 +6,7 @@ import { useFocusIntent } from "@/components/support/use-focus-intent";
 import {
   AlertCircle,
   ArrowLeft,
+  Check,
   ChevronRight,
   LifeBuoy,
   Loader2,
@@ -41,6 +42,22 @@ import {
 import { InlineAlert } from "@/components/shared/inline-alert";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { EditDialog } from "@/components/shared/edit-dialog";
+import {
+  EMPTY_TICKET_DRAFT,
+  createTicket,
+  fetchShares,
+  newTicketCanSave,
+  newTicketDirty,
+  planShareOps,
+  remainingStaged,
+  runShareOps,
+  sendShareOp,
+  shareFailureMessage,
+  shareLabel,
+  type NewTicketDraft,
+  type ShareLists,
+} from "@/components/contact/support-ticket-dialog-logic";
 
 interface TicketListItem {
   id: number;
@@ -80,12 +97,6 @@ interface Thread {
   messages: ThreadMessage[];
   viewerIsStaff: boolean;
   viewerIsOwner: boolean;
-}
-
-interface ShareEntry {
-  userId: number;
-  email: string;
-  name: string | null;
 }
 
 // This file used to carry its own timeAgo, whose date fallback rendered
@@ -156,7 +167,7 @@ export function SupportTickets() {
   const { me, isLoading } = useAuth();
 
   const [tickets, setTickets] = useState<TicketListItem[] | null>(null);
-  const [view, setView] = useState<"list" | "new" | "thread">("list");
+  const [view, setView] = useState<"list" | "thread">("list");
   const [thread, setThread] = useState<Thread | null>(null);
   /** The ticket the thread pane is showing, kept even when the fetch fails so
    *  the failure state can offer a retry rather than only a dead end. */
@@ -164,22 +175,17 @@ export function SupportTickets() {
   const [threadLoading, setThreadLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // New-ticket form
-  const [subject, setSubject] = useState("");
-  const [category, setCategory] = useState<TicketCategory>("other");
-  const [message, setMessage] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  // The draft, the captcha token and the busy state live in the dialog itself,
+  // so every opening starts empty with a fresh widget.
+  const [newOpen, setNewOpen] = useState(false);
 
   // Reply box
   const [reply, setReply] = useState("");
   const [replying, setReplying] = useState(false);
 
-  // Sharing with teammates (owner only)
-  const [showShare, setShowShare] = useState(false);
-  const [shares, setShares] = useState<ShareEntry[]>([]);
-  const [eligible, setEligible] = useState<ShareEntry[]>([]);
-  const [sharesLoading, setSharesLoading] = useState(false);
+  // Sharing with teammates (owner only). The lists and the staged changes live
+  // in the dialog; opening another thread closes it.
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Closing is the one status change a requester cannot walk back (reopening
   // is resolved-only, see canReopen below), so it is the one that asks first.
@@ -225,7 +231,7 @@ export function SupportTickets() {
       // with whatever has focus.
       setThread((prev) => (prev && prev.ticket.id === id ? prev : null));
       setThreadLoading(true);
-      setShowShare(false);
+      setShareOpen(false);
       setError(null);
       // Only when the person chose to open it. A reload after a reply or a
       // status change leaves focus where they put it, and the deep link from
@@ -297,40 +303,13 @@ export function SupportTickets() {
     );
   }
 
-  async function submitNew(e: React.FormEvent) {
-    e.preventDefault();
-    if (submitting) return;
-    if (TURNSTILE_ENABLED && !turnstileToken) {
-      setError("Please complete the captcha verification.");
-      return;
-    }
-    setError(null);
-    setSubmitting(true);
-    try {
-      const res = await fetch(API.SUPPORT_TICKETS, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject,
-          category,
-          message,
-          turnstileToken: TURNSTILE_ENABLED ? turnstileToken : null,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Could not open the ticket.");
-      setSubject("");
-      setMessage("");
-      setCategory("other");
-      setTurnstileToken(null);
-      await loadTickets();
-      // The form that had focus is gone; the new ticket's thread is next.
-      await openThread(data.ticket.id, { moveFocus: true });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not open the ticket.");
-    } finally {
-      setSubmitting(false);
-    }
+  // The dialog has already closed by the time this runs, so the list and the
+  // thread load behind a page that is fully interactive again.
+  async function afterCreate(id: number) {
+    await loadTickets();
+    // The dialog's own focus return would land on New ticket; the new ticket's
+    // thread is where the person is going.
+    await openThread(id, { moveFocus: true });
   }
 
   async function sendReply(e: React.FormEvent) {
@@ -402,62 +381,6 @@ export function SupportTickets() {
     setConfirmClose(false);
   }
 
-  async function loadShares(ticketId: number) {
-    setSharesLoading(true);
-    try {
-      const res = await fetch(API.SUPPORT_TICKET_SHARES(ticketId));
-      if (!res.ok) throw new Error("Could not load sharing.");
-      const data = await res.json();
-      setShares(data.shares ?? []);
-      setEligible(data.eligible ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load sharing.");
-    } finally {
-      setSharesLoading(false);
-    }
-  }
-
-  async function toggleShare() {
-    if (!thread) return;
-    const next = !showShare;
-    setShowShare(next);
-    if (next) await loadShares(thread.ticket.id);
-  }
-
-  async function addShare(userId: number) {
-    if (!thread) return;
-    setError(null);
-    try {
-      const res = await fetch(API.SUPPORT_TICKET_SHARES(thread.ticket.id), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error || "Could not share the ticket.");
-      }
-      await loadShares(thread.ticket.id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not share the ticket.");
-    }
-  }
-
-  async function removeShare(userId: number) {
-    if (!thread) return;
-    setError(null);
-    try {
-      const res = await fetch(
-        `${API.SUPPORT_TICKET_SHARES(thread.ticket.id)}?userId=${userId}`,
-        { method: "DELETE" },
-      );
-      if (!res.ok) throw new Error("Could not update sharing.");
-      await loadShares(thread.ticket.id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update sharing.");
-    }
-  }
-
   // Owner only, resolved only: `closed` is deliberately terminal for the
   // requester and the route 409s on posting to it.
   const canReopen =
@@ -483,111 +406,25 @@ export function SupportTickets() {
             Talk to our team directly.
           </p>
         </div>
-        {view !== "new" && (
-          <Button
-            size="sm"
-            className="h-9 shrink-0 gap-1.5 px-3"
-            data-focus-id="new-ticket"
-            onClick={() => {
-              setView("new");
-              setError(null);
-              // This button is removed the moment the form opens.
-              focusOn("ticket-subject");
-            }}
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            New ticket
-          </Button>
-        )}
+        <Button
+          size="sm"
+          className="h-9 shrink-0 gap-1.5 px-3"
+          data-focus-id="new-ticket"
+          aria-haspopup="dialog"
+          onClick={() => {
+            setError(null);
+            setNewOpen(true);
+          }}
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          New ticket
+        </Button>
       </div>
 
       {error && (
         <InlineAlert tone="error" className="mb-4">
           {error}
         </InlineAlert>
-      )}
-
-      {view === "new" && (
-        <form
-          onSubmit={submitNew}
-          className="overflow-hidden rounded-xl border border-border bg-card"
-        >
-          <div className="border-b border-border/60 bg-muted/20 px-4 py-2.5 sm:px-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              New ticket
-            </p>
-          </div>
-          <div className="space-y-4 p-4 sm:p-5">
-            <div className="space-y-1.5">
-              <Label htmlFor="ticket-subject">Subject</Label>
-              <Input
-                id="ticket-subject"
-                data-focus-id="ticket-subject"
-                value={subject}
-                maxLength={TICKET_SUBJECT_MAX}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="Short summary of the issue"
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="ticket-category">Category</Label>
-              <select
-                id="ticket-category"
-                value={category}
-                onChange={(e) => setCategory(e.target.value as TicketCategory)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {TICKET_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {TICKET_CATEGORY_LABELS[c]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="ticket-message">Message</Label>
-              <Textarea
-                id="ticket-message"
-                value={message}
-                maxLength={TICKET_MESSAGE_MAX}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="Tell us what's going on. Include the URL you scanned or the invoice, if relevant."
-                rows={5}
-                required
-              />
-            </div>
-            <div className="flex justify-center sm:justify-start">
-              <TurnstileWidget
-                onVerify={setTurnstileToken}
-                onExpire={() => setTurnstileToken(null)}
-                className="cf-turnstile"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                type="submit"
-                disabled={submitting || (TURNSTILE_ENABLED && !turnstileToken)}
-              >
-                {submitting ? "Opening..." : "Open ticket"}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setView("list");
-                  setError(null);
-                  setTurnstileToken(null);
-                  // Back to the button that opened the form.
-                  focusOn("new-ticket");
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </form>
       )}
 
       {view === "list" && (
@@ -696,11 +533,11 @@ export function SupportTickets() {
                 variant="ghost"
                 size="sm"
                 className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
-                onClick={toggleShare}
-                aria-expanded={showShare}
+                onClick={() => setShareOpen(true)}
+                aria-haspopup="dialog"
               >
                 <Users className="h-3.5 w-3.5" aria-hidden="true" />
-                {showShare ? "Done sharing" : "Share"}
+                Share
               </Button>
             )}
           </div>
@@ -796,59 +633,6 @@ export function SupportTickets() {
                   </div>
                 )}
               </div>
-            </div>
-          )}
-
-          {thread && thread.viewerIsOwner && showShare && (
-            <div className="border-b border-border/60 bg-muted/20 p-3 sm:p-4">
-              <p className="mb-2 text-xs font-medium text-foreground">
-                Share this ticket with a teammate
-              </p>
-              {sharesLoading ? (
-                <p className="text-xs text-muted-foreground">Loading...</p>
-              ) : (
-                <div className="space-y-3">
-                  {shares.length > 0 && (
-                    <div className="space-y-1.5">
-                      {shares.map((s) => (
-                        <div
-                          key={s.userId}
-                          className="flex items-center justify-between gap-2 text-sm"
-                        >
-                          <span className="truncate text-foreground">
-                            {s.name ? `${s.name} (${s.email})` : s.email}
-                          </span>
-                          <button
-                            onClick={() => removeShare(s.userId)}
-                            className="shrink-0 rounded-sm text-xs text-destructive hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {eligible.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {eligible.map((u) => (
-                        <button
-                          key={u.userId}
-                          onClick={() => addShare(u.userId)}
-                          className="rounded-full border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 ease-out hover:bg-primary/10 hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          + {u.name ?? u.email}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      {shares.length > 0
-                        ? "Everyone on your team already has access."
-                        : "No teammates to share with yet. Add people to a team first."}
-                    </p>
-                  )}
-                </div>
-              )}
             </div>
           )}
 
@@ -976,6 +760,23 @@ export function SupportTickets() {
         </div>
       )}
 
+      {newOpen && (
+        <NewTicketDialog
+          onClose={() => setNewOpen(false)}
+          onCreated={(id) => {
+            setNewOpen(false);
+            void afterCreate(id);
+          }}
+        />
+      )}
+
+      {shareOpen && thread?.viewerIsOwner && (
+        <ShareTicketDialog
+          ticketId={thread.ticket.id}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
+
       <ConfirmDialog
         open={confirmClose}
         danger
@@ -986,5 +787,313 @@ export function SupportTickets() {
         onConfirm={handleCloseTicket}
       />
     </section>
+  );
+}
+
+/**
+ * Opening a ticket. Mounted only while it is open, so every opening starts
+ * with empty fields and a fresh captcha widget.
+ */
+export function NewTicketDialog({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (id: number) => void;
+}) {
+  const [draft, setDraft] = useState<NewTicketDraft>(EMPTY_TICKET_DRAFT);
+  const patch = (next: Partial<NewTicketDraft>) =>
+    setDraft((prev) => ({ ...prev, ...next }));
+
+  return (
+    <EditDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      size="md"
+      title="New ticket"
+      saveLabel="Open ticket"
+      savingLabel="Opening..."
+      dirty={newTicketDirty(draft)}
+      canSave={newTicketCanSave(draft, TURNSTILE_ENABLED)}
+      onSave={async () => {
+        const result = await createTicket(draft, TURNSTILE_ENABLED);
+        if (!result.ok) return result.error;
+        onCreated(result.id);
+      }}
+    >
+      <div className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="ticket-subject">Subject</Label>
+          <Input
+            id="ticket-subject"
+            value={draft.subject}
+            maxLength={TICKET_SUBJECT_MAX}
+            onChange={(e) => patch({ subject: e.target.value })}
+            placeholder="Short summary of the issue"
+            autoFocus
+            required
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="ticket-category">Category</Label>
+          <select
+            id="ticket-category"
+            value={draft.category}
+            onChange={(e) =>
+              patch({ category: e.target.value as TicketCategory })
+            }
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-base shadow-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring md:text-sm"
+          >
+            {TICKET_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {TICKET_CATEGORY_LABELS[c]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="ticket-message">Message</Label>
+          <Textarea
+            id="ticket-message"
+            value={draft.message}
+            maxLength={TICKET_MESSAGE_MAX}
+            onChange={(e) => patch({ message: e.target.value })}
+            placeholder="Tell us what's going on. Include the URL you scanned or the invoice, if relevant."
+            rows={5}
+            required
+          />
+        </div>
+        {/* The widget is 300px wide and the body is narrower than that on the
+            smallest phones; scrolling beats cutting it off. */}
+        <div className="flex max-w-full justify-center overflow-x-auto sm:justify-start">
+          <TurnstileWidget
+            onVerify={(token) => patch({ turnstileToken: token })}
+            onExpire={() => patch({ turnstileToken: null })}
+            className="cf-turnstile"
+          />
+        </div>
+      </div>
+    </EditDialog>
+  );
+}
+
+type ShareLoad =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | ({ status: "ready" } & ShareLists);
+
+/**
+ * Who can see a ticket. Add and Remove are staged here and sent together by
+ * Save, which is also the confirmation that taking someone's access away
+ * asks for: nothing happens until it is pressed.
+ */
+export function ShareTicketDialog({
+  ticketId,
+  onClose,
+}: {
+  ticketId: number;
+  onClose: () => void;
+}) {
+  const [load, setLoad] = useState<ShareLoad>({ status: "loading" });
+  const [added, setAdded] = useState<ReadonlySet<number>>(new Set());
+  const [removed, setRemoved] = useState<ReadonlySet<number>>(new Set());
+
+  const loadLists = useCallback(async () => {
+    const result = await fetchShares(ticketId);
+    setLoad(
+      result.ok
+        ? { status: "ready", shares: result.shares, eligible: result.eligible }
+        : { status: "error", message: result.error },
+    );
+  }, [ticketId]);
+
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-open: setState runs only in loadLists' async continuation
+    void loadLists();
+  }, [loadLists]);
+
+  const toggle = (
+    set: ReadonlySet<number>,
+    setter: (next: ReadonlySet<number>) => void,
+    userId: number,
+  ) => {
+    const next = new Set(set);
+    if (next.has(userId)) next.delete(userId);
+    else next.add(userId);
+    setter(next);
+  };
+
+  const staged = added.size + removed.size;
+
+  return (
+    <EditDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      size="md"
+      title="Who can see this ticket"
+      saveLabel="Save sharing"
+      dirty={staged > 0}
+      canSave={load.status === "ready" && staged > 0}
+      onSave={async () => {
+        if (load.status !== "ready") return;
+        const ops = planShareOps(load, added, removed);
+        const run = await runShareOps(ops, (op) => sendShareOp(ticketId, op));
+        const message = shareFailureMessage(run);
+        if (message === null) return;
+        const left = remainingStaged(run);
+        setAdded(left.added);
+        setRemoved(left.removed);
+        await loadLists();
+        return message;
+      }}
+    >
+      {load.status === "loading" && (
+        <p role="status" className="text-sm text-muted-foreground">
+          Loading...
+        </p>
+      )}
+      {load.status === "error" && (
+        <div className="space-y-3">
+          <InlineAlert tone="error">{load.message}</InlineAlert>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 px-3 text-xs"
+            onClick={() => {
+              setLoad({ status: "loading" });
+              void loadLists();
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+            Try again
+          </Button>
+        </div>
+      )}
+      {load.status === "ready" && (
+        <ShareTicketFields
+          lists={load}
+          added={added}
+          removed={removed}
+          onToggleAdd={(id) => toggle(added, setAdded, id)}
+          onToggleRemove={(id) => toggle(removed, setRemoved, id)}
+        />
+      )}
+    </EditDialog>
+  );
+}
+
+export function ShareTicketFields({
+  lists,
+  added,
+  removed,
+  onToggleAdd,
+  onToggleRemove,
+}: {
+  lists: ShareLists;
+  added: ReadonlySet<number>;
+  removed: ReadonlySet<number>;
+  onToggleAdd: (userId: number) => void;
+  onToggleRemove: (userId: number) => void;
+}) {
+  const { shares, eligible } = lists;
+  return (
+    <div className="space-y-5">
+      {shares.length > 0 && (
+        <section aria-labelledby="share-current">
+          <h3
+            id="share-current"
+            className="mb-1 text-xs font-medium text-muted-foreground"
+          >
+            Can see this ticket
+          </h3>
+          <ul className="divide-y divide-border/40">
+            {shares.map((s) => {
+              const pressed = removed.has(s.userId);
+              return (
+                <li
+                  key={s.userId}
+                  className="flex min-h-8 items-center justify-between gap-3 py-1.5"
+                >
+                  <span
+                    className={cn(
+                      "min-w-0 truncate text-sm",
+                      pressed
+                        ? "text-muted-foreground line-through"
+                        : "text-foreground",
+                    )}
+                  >
+                    {shareLabel(s)}
+                  </span>
+                  <Button
+                    type="button"
+                    variant={pressed ? "destructive" : "outline"}
+                    size="sm"
+                    className="h-8 shrink-0 px-2.5 text-xs"
+                    aria-pressed={pressed}
+                    aria-label={`Remove ${shareLabel(s)}`}
+                    onClick={() => onToggleRemove(s.userId)}
+                  >
+                    Remove
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-2 text-xs text-muted-foreground">
+            A teammate you remove can no longer see or reply to this ticket.
+          </p>
+        </section>
+      )}
+      {eligible.length > 0 ? (
+        <section aria-labelledby="share-eligible">
+          <h3
+            id="share-eligible"
+            className="mb-1 text-xs font-medium text-muted-foreground"
+          >
+            Share with a teammate
+          </h3>
+          <ul className="divide-y divide-border/40">
+            {eligible.map((u) => {
+              const pressed = added.has(u.userId);
+              return (
+                <li
+                  key={u.userId}
+                  className="flex min-h-8 items-center justify-between gap-3 py-1.5"
+                >
+                  <span className="min-w-0 truncate text-sm text-foreground">
+                    {shareLabel(u)}
+                  </span>
+                  <Button
+                    type="button"
+                    variant={pressed ? "default" : "outline"}
+                    size="sm"
+                    className="h-8 shrink-0 gap-1 px-2.5 text-xs"
+                    aria-pressed={pressed}
+                    aria-label={`Add ${shareLabel(u)}`}
+                    onClick={() => onToggleAdd(u.userId)}
+                  >
+                    {pressed && (
+                      <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    Add
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          {shares.length > 0
+            ? "Everyone on your team already has access."
+            : "No teammates to share with yet. Add people to a team first."}
+        </p>
+      )}
+    </div>
   );
 }
