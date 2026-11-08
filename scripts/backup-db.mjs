@@ -70,7 +70,11 @@
  *                               a chicken-and-egg security smell.
  *   BACKUP_OFFSITE_UPLOAD_URL  A presigned PUT URL (or any HTTP receiver).
  *                               When set, the finished backup file is PUT
- *                               there after the local write succeeds.
+ *                               there after the local write succeeds. It is
+ *                               one object: an encrypted file carries its own
+ *                               IV and auth tag (see BACKUP_HEADER_BYTES),
+ *                               because a presigned URL authorises exactly
+ *                               one path. A failed upload fails the run.
  *   BACKUP_FORCE_JS            "1" forces the built-in JavaScript dumper even
  *                               where pg_dump exists. The env var exists as
  *                               well as --js because the admin panel spawns
@@ -85,7 +89,14 @@ import { spawn } from "node:child_process";
 import { createGzip } from "node:zlib";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  open,
+  readdir,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Readable } from "node:stream";
@@ -93,6 +104,7 @@ import { pipeline } from "node:stream/promises";
 import { loadEnv, requireDatabaseUrl, ROOT } from "./_lib/_lib.env.mjs";
 import { createPool, pgToolConnection } from "./_lib/_lib.db.mjs";
 import { getProjectMeta } from "./_lib/_lib.meta.mjs";
+import { isValidKeyHex } from "./_lib/_lib.2fa-crypto-mirror.mjs";
 import {
   generateSqlDump,
   DUMP_LIMITS_NOTICE,
@@ -118,6 +130,40 @@ import {
 // second copy of the algorithm name that could drift from it.
 export const ENCRYPTION_ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
+const AUTH_TAG_LENGTH = 16;
+
+/**
+ * What an encrypted backup starts with: magic, IV, auth tag, then ciphertext.
+ *
+ * The auth tag does not exist until the last byte has been encrypted, so the
+ * space is reserved when the file is opened and filled in afterwards rather
+ * than the tag trailing the data: a reader can then learn everything it needs
+ * from the first bytes, and a run killed before the stamp leaves zeroes, which
+ * no reader will take for a header.
+ */
+const BACKUP_MAGIC = Buffer.from("VRBKENC1", "latin1");
+export const BACKUP_HEADER_BYTES =
+  BACKUP_MAGIC.length + IV_LENGTH + AUTH_TAG_LENGTH;
+
+/**
+ * Read the header off the first bytes of a file, or null when it has none
+ * (a backup from before the header existed, which relies on its sidecar).
+ * Exported for tests and for restore.
+ */
+export function parseBackupHeader(bytes) {
+  if (
+    bytes.length < BACKUP_HEADER_BYTES ||
+    !bytes.subarray(0, BACKUP_MAGIC.length).equals(BACKUP_MAGIC)
+  ) {
+    return null;
+  }
+  const tagStart = BACKUP_MAGIC.length + IV_LENGTH;
+  return {
+    iv: bytes.subarray(BACKUP_MAGIC.length, tagStart).toString("hex"),
+    authTag: bytes.subarray(tagStart, BACKUP_HEADER_BYTES).toString("hex"),
+    payloadOffset: BACKUP_HEADER_BYTES,
+  };
+}
 
 /** `vulnradar-backup-<ISO-with-safe-chars>.sql.gz`. Exported for tests. */
 export function backupFileName(date = new Date()) {
@@ -147,7 +193,7 @@ export function selectExpiredBackups(entries, retentionDays, now = new Date()) {
  * written, so it can't be read up front. Exported for tests.
  */
 export function createBackupCipher(hexKey) {
-  if (!/^[0-9a-f]{64}$/i.test(hexKey)) {
+  if (!isValidKeyHex(hexKey)) {
     throw new Error(
       "BACKUP_ENCRYPTION_KEY must be a 64-character hex string (32 bytes).",
     );
@@ -241,9 +287,55 @@ async function pruneOldBackups(dir, retentionDays) {
   }
 }
 
-async function uploadOffsite(filePath, url) {
-  const body = createReadStream(filePath);
-  const res = await fetch(url, { method: "PUT", body, duplex: "half" });
+/**
+ * Fill in the header reserved at the start of the file, then write the sidecar.
+ * The sidecar is only a convenience for whoever is looking at the local
+ * directory: everything restore needs is in the file. Exported for tests.
+ */
+export async function finishEncryptedBackup(filePath, cipherInfo) {
+  const authTag = cipherInfo.getAuthTagHex();
+  const header = Buffer.concat([
+    BACKUP_MAGIC,
+    Buffer.from(cipherInfo.ivHex, "hex"),
+    Buffer.from(authTag, "hex"),
+  ]);
+  const file = await open(filePath, "r+");
+  try {
+    await file.write(header, 0, header.length, 0);
+  } finally {
+    await file.close();
+  }
+  await writeFile(
+    `${filePath}.json`,
+    JSON.stringify(
+      {
+        algorithm: ENCRYPTION_ALGORITHM,
+        iv: cipherInfo.ivHex,
+        authTag,
+        payloadOffset: BACKUP_HEADER_BYTES,
+        createdAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+}
+
+/**
+ * PUT the finished file. Exported for tests.
+ *
+ * The length is sent explicitly because a stream body otherwise goes out
+ * chunked, and S3 answers a chunked PUT with 501, on the presigned URLs this
+ * setting exists for.
+ */
+export async function uploadOffsite(filePath, url) {
+  const { size } = await stat(filePath);
+  const res = await fetch(url, {
+    method: "PUT",
+    body: createReadStream(filePath),
+    duplex: "half",
+    headers: { "content-length": String(size) },
+  });
   if (!res.ok) {
     throw new Error(`Offsite upload failed: HTTP ${res.status}`);
   }
@@ -309,7 +401,6 @@ async function runBackup() {
   if (!usePgDump) for (const line of DUMP_LIMITS_NOTICE) info(line);
 
   const gzip = createGzip();
-  const dest = createWriteStream(finalPath);
 
   let cipherInfo = null;
   // Everything downstream of the dump source, shared by both paths verbatim:
@@ -320,6 +411,10 @@ async function runBackup() {
     cipherInfo = createBackupCipher(encryptionKey);
     tail.push(cipherInfo.cipher);
   }
+  // Opened after the key is known to be usable, so a malformed key cannot
+  // leave an empty file for the admin panel to list as a backup.
+  const dest = createWriteStream(finalPath);
+  if (cipherInfo) dest.write(Buffer.alloc(BACKUP_HEADER_BYTES));
   tail.push(dest);
 
   // Removes the half-written artefact and its sidecar. Every throw below has
@@ -415,19 +510,12 @@ async function runBackup() {
   }
 
   if (cipherInfo) {
-    await writeFile(
-      `${finalPath}.json`,
-      JSON.stringify(
-        {
-          algorithm: ENCRYPTION_ALGORITHM,
-          iv: cipherInfo.ivHex,
-          authTag: cipherInfo.getAuthTagHex(),
-          createdAt: new Date().toISOString(),
-        },
-        null,
-        2,
-      ) + "\n",
-    );
+    try {
+      await finishEncryptedBackup(finalPath, cipherInfo);
+    } catch (err) {
+      await discardPartial();
+      throw err;
+    }
   }
 
   const written = await stat(finalPath);
@@ -458,14 +546,6 @@ async function runBackup() {
   if (offsiteUrl) {
     section("Offsite upload");
     await uploadOffsite(finalPath, offsiteUrl);
-    if (cipherInfo) {
-      await uploadOffsite(`${finalPath}.json`, `${offsiteUrl}.json`).catch(
-        (err) =>
-          warn(
-            `Offsite upload of the encryption metadata sidecar failed (the backup itself uploaded fine, but you'll need the .json file to decrypt it): ${err.message}`,
-          ),
-      );
-    }
     success("Offsite upload complete.");
   }
 

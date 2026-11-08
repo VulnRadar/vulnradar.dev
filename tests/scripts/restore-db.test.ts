@@ -1,4 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import { createGunzip, gzipSync } from "node:zlib";
+import { Readable, Writable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -9,7 +12,17 @@ import {
   decryptBackupToFile,
   backupKeyCandidates,
   decryptBackupWithFallback,
+  REPLACE_SCHEMA_SQL,
+  assertGzipIntact,
+  preflightTarget,
+  psqlRestoreInput,
 } from "../../scripts/restore-db.mjs";
+import {
+  DUMP_FORMAT,
+  DUMP_FORMAT_VERSION,
+  marker,
+  restoreSqlDump,
+} from "../../scripts/_lib/_lib.sql-backup.mjs";
 
 describe("restorePsqlArgs", () => {
   it("passes ON_ERROR_STOP so a failed statement is not reported as success", () => {
@@ -290,5 +303,208 @@ describe("psql follows the shared TLS rule", () => {
     expect(src).toContain("await pgToolConnection(");
     expect(src).not.toContain("splitDbUrlForEnv");
     expect(src).toContain("await releaseTlsFiles()");
+  });
+});
+
+describe("--replace", () => {
+  const src = readFileSync("scripts/restore-db.mjs", "utf8");
+  let logged: string[];
+  let logSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    logged = [];
+    logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
+      logged.push(args.join(" "));
+    });
+  });
+
+  afterEach(() => {
+    logSpy.mockRestore();
+  });
+
+  const output = () => logged.join("\n");
+
+  it("resets the public schema and leaves it reachable by other roles", () => {
+    expect(REPLACE_SCHEMA_SQL).toMatch(/DROP SCHEMA public CASCADE;/);
+    expect(REPLACE_SCHEMA_SQL).toMatch(/CREATE SCHEMA public;/);
+    expect(REPLACE_SCHEMA_SQL).toMatch(
+      /GRANT USAGE ON SCHEMA public TO PUBLIC;/,
+    );
+    expect(REPLACE_SCHEMA_SQL.indexOf("DROP")).toBeLessThan(
+      REPLACE_SCHEMA_SQL.indexOf("CREATE"),
+    );
+  });
+
+  it("sends the reset to psql ahead of the dump, inside its one transaction", async () => {
+    // restorePsqlArgs has --single-transaction, which covers everything on
+    // stdin, so the reset has to be on stdin too: a separate psql -c would
+    // commit the DROP before the restore had a chance to fail.
+    async function* dump() {
+      yield Buffer.from("CREATE TABLE a ();\n");
+      yield Buffer.from("COPY a FROM stdin;\n");
+    }
+    const parts: string[] = [];
+    for await (const chunk of psqlRestoreInput(dump(), { replace: true })) {
+      parts.push(chunk.toString());
+    }
+    expect(parts[0]).toBe(REPLACE_SCHEMA_SQL);
+    expect(parts.slice(1).join("")).toContain("CREATE TABLE a");
+  });
+
+  it("composes with gunzip in a real stream pipeline", async () => {
+    // pipeline() treats a generator function as a transform, which is how the
+    // psql path uses this. Asserted because no CI job exercises that path.
+    const chunks: Buffer[] = [];
+    await pipeline(
+      Readable.from([gzipSync(Buffer.from("CREATE TABLE a ();\n"))]),
+      createGunzip(),
+      (dump: AsyncIterable<Buffer>) =>
+        psqlRestoreInput(dump, { replace: true }),
+      new Writable({
+        write(chunk, _encoding, done) {
+          chunks.push(Buffer.from(chunk));
+          done();
+        },
+      }),
+    );
+    expect(Buffer.concat(chunks).toString()).toBe(
+      `${REPLACE_SCHEMA_SQL}CREATE TABLE a ();\n`,
+    );
+  });
+
+  it("sends only the dump without the flag", async () => {
+    async function* dump() {
+      yield Buffer.from("CREATE TABLE a ();\n");
+    }
+    const parts: string[] = [];
+    for await (const chunk of psqlRestoreInput(dump(), { replace: false })) {
+      parts.push(chunk.toString());
+    }
+    expect(parts.join("")).toBe("CREATE TABLE a ();\n");
+  });
+
+  it("refuses a populated target with neither flag", () => {
+    expect(() => preflightTarget(3, { force: false, replace: false })).toThrow(
+      /Refusing/,
+    );
+    expect(output()).toContain("--replace");
+  });
+
+  it("lets --force start the attempt without claiming it replaces anything", () => {
+    preflightTarget(3, { force: true, replace: false });
+    expect(output()).toMatch(/--force only lets the attempt start/);
+    expect(output()).toMatch(/--replace/);
+  });
+
+  it("proceeds with --replace and says what it drops", () => {
+    preflightTarget(3, { force: false, replace: true });
+    expect(output()).toMatch(/3 table\(s\)/);
+    expect(output()).toMatch(/same transaction/);
+  });
+
+  it("has nothing to warn about on an empty target", () => {
+    preflightTarget(0, { force: false, replace: false });
+    expect(output()).toContain("empty");
+  });
+
+  it("does nothing without --yes", () => {
+    // The explicit confirmation comes first: the unconfirmed branch exits
+    // before the flag can reach either restore path.
+    const unconfirmed = src.indexOf("if (!confirmed)");
+    const firstUse = src.indexOf(
+      "await restoreWithBuiltInReader(",
+      unconfirmed,
+    );
+    expect(unconfirmed).toBeGreaterThan(-1);
+    expect(src.slice(unconfirmed, firstUse)).toContain("process.exit(0)");
+  });
+
+  it("names the flag in the header and stops offering --force as a way to overwrite", () => {
+    expect(src).toMatch(/--yes --replace/);
+    expect(src).not.toMatch(/add --force to restore into one/);
+  });
+
+  it("proves the file is whole before psql can drop anything", async () => {
+    // With --single-transaction psql COMMITs at end of input. A gunzip failure
+    // part way through ends its stdin, so a corrupt file would otherwise commit
+    // the reset and whatever had been read by then.
+    const dir = await mkdtemp(join(tmpdir(), "vulnradar-gzip-check-"));
+    try {
+      const whole = join(dir, "whole.sql.gz");
+      const compressed = gzipSync(Buffer.from("SELECT 1;\n".repeat(5000)));
+      await writeFile(whole, compressed);
+      await expect(assertGzipIntact(whole)).resolves.toBeUndefined();
+
+      const cut = join(dir, "cut.sql.gz");
+      await writeFile(cut, compressed.subarray(0, compressed.length - 12));
+      await expect(assertGzipIntact(cut)).rejects.toThrow();
+
+      const preflight = src.indexOf("assertGzipIntact(plaintextPath)");
+      const spawnPsql = src.indexOf('spawn("psql", restorePsqlArgs(');
+      expect(preflight).toBeGreaterThan(-1);
+      expect(preflight).toBeLessThan(spawnPsql);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("restoreSqlDump with a reset", () => {
+  function recorder() {
+    const queries: string[] = [];
+    return {
+      queries,
+      client: {
+        query: async (sql: unknown) => {
+          queries.push(typeof sql === "string" ? sql : "(parameterised)");
+          return { rows: [] };
+        },
+      },
+    };
+  }
+
+  const header = marker("DUMP", {
+    format: DUMP_FORMAT,
+    version: DUMP_FORMAT_VERSION,
+  });
+
+  async function* minimalDump() {
+    yield header;
+    yield marker("END", { rows: 0 });
+  }
+
+  it("runs the reset straight after BEGIN, so a later failure rolls it back", async () => {
+    const { queries, client } = recorder();
+    await restoreSqlDump({
+      client,
+      lines: minimalDump(),
+      resetSql: REPLACE_SCHEMA_SQL,
+    });
+    expect(queries[0]).toBe("BEGIN");
+    expect(queries[1]).toBe(REPLACE_SCHEMA_SQL);
+    expect(queries).toContain("COMMIT");
+  });
+
+  it("rolls the reset back when the file turns out to be truncated", async () => {
+    const { queries, client } = recorder();
+    async function* truncated() {
+      yield header;
+    }
+    await expect(
+      restoreSqlDump({
+        client,
+        lines: truncated(),
+        resetSql: REPLACE_SCHEMA_SQL,
+      }),
+    ).rejects.toThrow(/truncated/);
+    expect(queries).toContain(REPLACE_SCHEMA_SQL);
+    expect(queries).toContain("ROLLBACK");
+    expect(queries).not.toContain("COMMIT");
+  });
+
+  it("runs no reset unless asked", async () => {
+    const { queries, client } = recorder();
+    await restoreSqlDump({ client, lines: minimalDump() });
+    expect(queries.join("\n")).not.toContain("DROP SCHEMA");
   });
 });

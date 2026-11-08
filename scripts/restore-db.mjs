@@ -23,19 +23,27 @@
  *   npm run db:restore -- --file=./backups/vulnradar-backup-2026-08-14T00-00-00-000Z.sql.gz --yes
  *   npm run db:restore -- --file=./backups/vulnradar-backup-...sql.gz.enc --yes   (needs BACKUP_ENCRYPTION_KEY, or API_KEY_ENCRYPTION_KEY, the fallback;
  *                                                                                  a backup from before a key rotation also tries PREVIOUS_API_KEY_ENCRYPTION_KEY)
- *   npm run db:restore -- --file=... --yes --force   (allow restoring into a database that already has tables)
+ *   npm run db:restore -- --file=... --yes --replace (drop everything in the public schema, then load the backup, in one transaction)
+ *   npm run db:restore -- --file=... --yes --force   (only let the attempt start on a database that already has tables; see below)
  *
  * Destructive: this applies whatever the dump contains on top of the database
  * DATABASE_URL points at. Requires --yes -- without it, this only prints what
  * it would do and exits.
+ *
+ * Neither dump format contains DROP statements, so loading one over the schema
+ * it came from stops at its first CREATE. --replace is what makes that case
+ * work, and the reset runs in the restore's own transaction: if the backup does
+ * not apply, the DROP goes back with it and the database is untouched. --force
+ * replaces nothing; it is for a dump that shares no objects with the target.
  */
 import { spawn } from "node:child_process";
 import { createGunzip } from "node:zlib";
 import { createReadStream, createWriteStream } from "node:fs";
-import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { open, readFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { loadEnv, requireDatabaseUrl } from "./_lib/_lib.env.mjs";
 import { createPool, pgToolConnection } from "./_lib/_lib.db.mjs";
@@ -48,7 +56,11 @@ import {
   section,
   warningBox,
 } from "./_lib/_lib.output.mjs";
-import { createBackupDecipher } from "./backup-db.mjs";
+import {
+  BACKUP_HEADER_BYTES,
+  createBackupDecipher,
+  parseBackupHeader,
+} from "./backup-db.mjs";
 import {
   detectBackupFormat,
   readDumpLines,
@@ -69,6 +81,87 @@ const EVIDENCE_TABLES = [
   "scan_history",
   "teams",
 ];
+
+/**
+ * What --replace runs first, in the restore's own transaction. The GRANT is
+ * Postgres's default for the schema and DROP takes it away: without it a
+ * restore run as an admin role leaves the app's own role unable to see a single
+ * table.
+ */
+export const REPLACE_SCHEMA_SQL =
+  "DROP SCHEMA public CASCADE;\nCREATE SCHEMA public;\nGRANT USAGE ON SCHEMA public TO PUBLIC;\n";
+
+/**
+ * What psql reads. The reset goes down the same stdin as the dump because
+ * --single-transaction covers exactly what arrives on stdin; a separate
+ * `psql -c` would commit the DROP before the restore had a chance to fail.
+ */
+export async function* psqlRestoreInput(dump, { replace }) {
+  if (replace) yield REPLACE_SCHEMA_SQL;
+  yield* dump;
+}
+
+/**
+ * Read a whole gzip file and throw if it is damaged.
+ *
+ * psql commits a --single-transaction run when its stdin ends, and a gunzip
+ * error part way through ends it just as a clean finish does. An interrupted
+ * copy would therefore commit whatever had been read so far, which under
+ * --replace means a dropped schema and half a backup. Encrypted files already
+ * passed GCM by this point; a plain .sql.gz has nothing else protecting it.
+ */
+export async function assertGzipIntact(gzPath) {
+  await pipeline(
+    createReadStream(gzPath),
+    createGunzip(),
+    new Writable({
+      write(_chunk, _encoding, done) {
+        done();
+      },
+    }),
+  );
+}
+
+/**
+ * The same decision for both restore paths: what to do about tables that are
+ * already there. Throws rather than exiting because the caller has a decrypted
+ * temp file to clean up.
+ */
+export function preflightTarget(existingTables, { force, replace }) {
+  if (existingTables === 0) {
+    info("Target database is empty.");
+    return;
+  }
+  if (replace) {
+    warn(
+      `--replace: all ${existingTables} table(s) in the public schema, and ` +
+        "everything else in it, are dropped in the same transaction as the " +
+        "restore. If the backup does not apply, none of it happens.",
+    );
+    return;
+  }
+  if (!force) {
+    warningBox("The target database is not empty.", [
+      `It already has ${existingTables} table(s) in the public schema.`,
+      "This dump contains no DROP statements, so restoring on top of an",
+      "existing schema fails on every CREATE.",
+      "Pass --replace to drop the public schema and load this backup in its",
+      "place, or restore into a fresh database.",
+    ]);
+    throw new Error("Refusing to restore into a database that has tables.");
+  }
+  info(
+    `Target has ${existingTables} existing table(s), continuing because --force was passed.`,
+  );
+  // Said out loud rather than left to be discovered: --force does not turn
+  // this into a merge or an overwrite.
+  warn(
+    "--force only lets the attempt start. This dump creates objects and never " +
+      "drops them, so it will stop at the first one that already exists and " +
+      "roll the whole restore back, leaving this database unchanged. To " +
+      "overwrite the database with this backup, use --replace.",
+  );
+}
 
 /**
  * argv for the psql process the dump is streamed into.
@@ -101,11 +194,51 @@ export function restorePsqlArgs(connArg) {
 export async function decryptBackupToFile({ sourcePath, key, meta, destPath }) {
   const decipher = createBackupDecipher(key, meta.iv, meta.authTag);
   await pipeline(
-    createReadStream(sourcePath),
+    createReadStream(sourcePath, { start: meta.payloadOffset ?? 0 }),
     decipher,
     createWriteStream(destPath),
   );
   return destPath;
+}
+
+/**
+ * Where to find the IV and auth tag: the file's own header, or for a backup
+ * written before the header existed (and for db:migrate's pre-migration dumps,
+ * which still use only the sidecar) `<file>.json`.
+ * Exported for tests.
+ *
+ * @param {string} filePath
+ * @returns {Promise<{ iv: string, authTag: string, payloadOffset?: number }>}
+ */
+export async function readBackupEncryption(filePath) {
+  const file = await open(filePath, "r");
+  let header;
+  try {
+    const { buffer, bytesRead } = await file.read(
+      Buffer.alloc(BACKUP_HEADER_BYTES),
+      0,
+      BACKUP_HEADER_BYTES,
+      0,
+    );
+    header = parseBackupHeader(buffer.subarray(0, bytesRead));
+  } finally {
+    await file.close();
+  }
+  if (header) return header;
+
+  const sidecar = `${filePath}.json`;
+  let text;
+  try {
+    text = await readFile(sidecar, "utf8");
+  } catch {
+    throw new Error(
+      `This backup has no encryption header and ${sidecar} could not be ` +
+        "read, so it cannot be decrypted. Backups from before the header " +
+        "existed need that file beside them.",
+    );
+  }
+  const { iv, authTag } = JSON.parse(text);
+  return { iv, authTag };
 }
 
 /**
@@ -248,42 +381,14 @@ export async function countPublicTables(pool) {
  * GENERATED clause on a server that renders it differently). It is forward
  * only, so it can never move a sequence backwards over the file's value.
  */
-async function restoreWithBuiltInReader(plaintextPath, force) {
+async function restoreWithBuiltInReader(plaintextPath, { force, replace }) {
   const pool = createPool();
   let client = null;
   try {
     client = await pool.connect();
 
     section("Preflight");
-    const existingTables = await countPublicTables(pool);
-    if (existingTables > 0 && !force) {
-      warningBox("The target database is not empty.", [
-        `It already has ${existingTables} table(s) in the public schema.`,
-        "This dump contains no DROP statements, so restoring on top of an",
-        "existing schema fails on every CREATE.",
-        "Restore into a fresh database, or pass --force if you know the dump",
-        "and the target are compatible.",
-      ]);
-      throw new Error("Refusing to restore into a database that has tables.");
-    }
-    if (existingTables === 0) {
-      info("Target database is empty.");
-    } else {
-      info(
-        `Target has ${existingTables} existing table(s), continuing because --force was passed.`,
-      );
-      // Said out loud rather than left to be discovered: --force does not turn
-      // this into a merge or an overwrite. The dump has no DROP statements
-      // (pg_dump without --clean is the same), so the first object that
-      // already exists aborts the run, and the whole thing rolls back.
-      warn(
-        "--force only lets the attempt start. This dump creates objects and " +
-          "never drops them, so it will stop at the first one that already " +
-          "exists and roll the whole restore back, leaving this database " +
-          "unchanged. Restore into an empty database to get the backup's " +
-          "contents.",
-      );
-    }
+    preflightTarget(await countPublicTables(pool), { force, replace });
     for (const line of DUMP_LIMITS_NOTICE) info(line);
 
     section("Restoring");
@@ -292,6 +397,7 @@ async function restoreWithBuiltInReader(plaintextPath, force) {
       client,
       lines: readDumpLines(plaintextPath),
       onLog: info,
+      resetSql: replace ? REPLACE_SCHEMA_SQL : undefined,
     });
     success(
       `Applied ${result.statements} statement(s) and ${result.rows} row(s) ` +
@@ -331,6 +437,7 @@ async function runRestore() {
     ?.slice("--file=".length);
   const confirmed = args.includes("--yes");
   const force = args.includes("--force");
+  const replace = args.includes("--replace");
 
   if (!filePath) {
     error("Usage: npm run db:restore -- --file=<path-to-backup> --yes");
@@ -342,7 +449,9 @@ async function runRestore() {
       `File: ${filePath}`,
       "This is destructive -- it applies the dump on top of whatever is there now.",
       "Re-run with --yes once you're sure, ideally against a throwaway/staging DB first.",
-      "The target must be an empty database; add --force to restore into one that already has tables.",
+      replace
+        ? "--replace drops everything in the public schema first, in the same transaction as the restore."
+        : "The target must be an empty database. Add --replace to drop what is there and load this backup instead.",
     ]);
     process.exit(0);
   }
@@ -374,7 +483,7 @@ async function runRestore() {
             "to restore it.",
         );
       }
-      const meta = JSON.parse(await readFile(`${filePath}.json`, "utf8"));
+      const meta = await readBackupEncryption(filePath);
 
       // Decrypt and authenticate in full before a single byte reaches the
       // database. See decryptBackupToFile above for why streaming a decipher
@@ -415,7 +524,7 @@ async function runRestore() {
     const format = await detectBackupFormat(plaintextPath);
     if (format === "vulnradar-sql") {
       info("Format: VulnRadar built-in SQL dump.");
-      await restoreWithBuiltInReader(plaintextPath, force);
+      await restoreWithBuiltInReader(plaintextPath, { force, replace });
       success("Restore complete.");
       return;
     }
@@ -460,21 +569,8 @@ async function runRestore() {
         `Could not read the target's table count (psql returned "${tableCount.value}").`,
       );
     }
-    if (existingTables > 0 && !force) {
-      warningBox("The target database is not empty.", [
-        `It already has ${existingTables} table(s) in the public schema.`,
-        "This dump contains no DROP statements, so restoring on top of an",
-        "existing schema fails on every CREATE and every COPY.",
-        "Restore into a fresh database, or pass --force if you know the dump",
-        "and the target are compatible.",
-      ]);
-      throw new Error("Refusing to restore into a database that has tables.");
-    }
-    info(
-      existingTables === 0
-        ? "Target database is empty."
-        : `Target has ${existingTables} existing table(s), continuing because --force was passed.`,
-    );
+    preflightTarget(existingTables, { force, replace });
+    await assertGzipIntact(plaintextPath);
 
     const source = createReadStream(plaintextPath);
 
@@ -490,7 +586,12 @@ async function runRestore() {
     });
 
     try {
-      await pipeline(source, createGunzip(), psql.stdin);
+      await pipeline(
+        source,
+        createGunzip(),
+        (dump) => psqlRestoreInput(dump, { replace }),
+        psql.stdin,
+      );
     } catch (err) {
       // With ON_ERROR_STOP psql aborts mid-dump and closes its stdin, so the
       // pipe fails with EPIPE before it has written everything. The child's

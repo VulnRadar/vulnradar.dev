@@ -1362,9 +1362,11 @@ export async function* readDumpLines(gzPath) {
  *   test can pass a recorder without reimplementing 30 unrelated members
  * @param {AsyncIterable<string>} input.lines
  * @param {(message: string) => void} [input.onLog]
+ * @param {string} [input.resetSql] run first, inside the restore's transaction,
+ *   so a restore that later fails takes the reset back with it
  * @returns {Promise<{statements: number, tables: number, rows: number, header: object|null}>}
  */
-export async function restoreSqlDump({ client, lines, onLog }) {
+export async function restoreSqlDump({ client, lines, onLog, resetSql }) {
   const log = onLog || (() => {});
 
   let header = null;
@@ -1385,6 +1387,8 @@ export async function restoreSqlDump({ client, lines, onLog }) {
 
   await client.query("BEGIN");
   try {
+    if (resetSql) await client.query(resetSql);
+
     const flushStatement = async () => {
       if (statementLines.length === 0) return;
       const text = statementLines.join("\n").trim();
