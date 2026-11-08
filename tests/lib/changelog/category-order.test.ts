@@ -33,3 +33,19 @@ describe("changelog category order", () => {
     expect(unknown).toEqual([]);
   });
 });
+
+/**
+ * One commit widened a 4.0.0 entry to cover this fix and added a second entry
+ * saying the same things, both under "fixed". The labels differ, so a check
+ * for repeated labels would not have caught it.
+ */
+describe("changelog entries", () => {
+  it("lists the mixed-case email fix once per release", () => {
+    for (const release of CHANGELOG) {
+      const entries = release.changes.filter((c) =>
+        c.label.startsWith("Mixed-Case Email Addresses"),
+      );
+      expect(entries.length, release.version).toBeLessThanOrEqual(1);
+    }
+  });
+});
