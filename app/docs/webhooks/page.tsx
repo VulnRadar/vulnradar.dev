@@ -2,6 +2,12 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { APP_NAME, ROUTES } from "@/lib/config/constants";
 import { PLANS } from "@/lib/billing/catalog";
+import {
+  DELIVERY_TIMEOUT_MS,
+  RETRY_DELAY_MS,
+  TEST_SEND_TARGET_LIMIT,
+  TEST_SEND_USER_LIMIT,
+} from "@/lib/webhooks/delivery-contract";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "../docs-toc-spy";
 import {
@@ -26,8 +32,57 @@ const WEBHOOK_CAPS = PLANS.map(
   (plan) => `${webhookCapLabel(plan.limits.webhooks)} on ${plan.name}`,
 ).join(", ");
 
+const DELIVERY_DEADLINE_SECONDS = DELIVERY_TIMEOUT_MS / 1000;
+const RETRY_DELAY_SECONDS = RETRY_DELAY_MS / 1000;
+
+/** Where a webhook is added, spelled the way the app labels each step. */
+const ADD_WEBHOOK_PATH = "Profile > Developer > Webhooks > Add";
+
+const NODE_VERIFY = `import crypto from "node:crypto";
+import express from "express";
+
+const app = express();
+// The whole string you were shown, used as it is. Do not hex-decode it.
+const secret = process.env.VULNRADAR_WEBHOOK_SECRET;
+
+// express.raw, not express.json: the signature covers the exact bytes.
+app.post("/hooks/vulnradar", express.raw({ type: "application/json" }), (req, res) => {
+  const sent = Buffer.from(req.get("X-VulnRadar-Signature") ?? "");
+  const expected = Buffer.from(
+    "sha256=" + crypto.createHmac("sha256", secret).update(req.body).digest("hex"),
+  );
+  if (sent.length !== expected.length || !crypto.timingSafeEqual(sent, expected)) {
+    return res.sendStatus(401);
+  }
+
+  res.sendStatus(204); // answer first, then do the work
+  handleDelivery(JSON.parse(req.body));
+});`;
+
+const PYTHON_VERIFY = `import hashlib
+import hmac
+import os
+
+from flask import Flask, abort, request
+
+app = Flask(__name__)
+# The whole string you were shown, used as it is. Do not hex-decode it.
+secret = os.environ["VULNRADAR_WEBHOOK_SECRET"].encode()
+
+@app.post("/hooks/vulnradar")
+def receive():
+    body = request.get_data()  # the exact bytes, before any JSON parsing
+    sent = request.headers.get("X-VulnRadar-Signature", "").encode()
+    expected = b"sha256=" + hmac.new(secret, body, hashlib.sha256).hexdigest().encode()
+    if not hmac.compare_digest(sent, expected):
+        abort(401)
+
+    handle_delivery(request.get_json())
+    return "", 204`;
+
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
+  { id: "receive-and-verify", label: "Receive and verify a delivery" },
   { id: "supported-platforms", label: "Supported Platforms" },
   { id: "endpoints", label: "API Endpoints" },
   { id: "events", label: "Events" },
@@ -77,10 +132,109 @@ export default function WebhooksPage() {
           saw a delivery from a crawl or an authenticated scan, that is why.
         </p>
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-          A webhook can also be assigned to a team. A team-assigned webhook is
-          visible to every co-member, editable by those with write access, and
-          fires on a teammate&apos;s scans as well as its creator&apos;s.
+          Failed, cancelled and timed-out scans never fire a webhook. The events
+          below describe a scan that finished and was saved.
         </p>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          A webhook can also be assigned to a team. It then fires on any scan
+          shared with that team, for as long as the person who created it is
+          still a member; once they leave, it goes back to firing on their own
+          scans only. Teammates whose role manages scans (team owner, admin,
+          member) can see the full address, pause, rename, test and delete it. A
+          viewer sees the name and the host only, because the URL of a Discord
+          or Slack webhook is the credential for posting there. The address, the
+          type, the team and the signing secret stay with the creator.
+        </p>
+      </DocsSection>
+
+      <DocsSection
+        id="receive-and-verify"
+        title="Receive and verify a delivery"
+      >
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Each delivery is one POST with these headers. Check the signature
+          before you trust the body, and answer with a 2xx within{" "}
+          {DELIVERY_DEADLINE_SECONDS} seconds. Anything else gets one retry
+          after {RETRY_DELAY_SECONDS} seconds, and then the delivery is given up
+          on.
+        </p>
+        <DocsTable
+          caption="Headers sent with every webhook delivery"
+          columns={[
+            { key: "header", header: "Header" },
+            { key: "value", header: "Value" },
+          ]}
+          data={[
+            { header: "Content-Type", value: "application/json" },
+            { header: "User-Agent", value: `${APP_NAME}-Webhook/1.0` },
+            {
+              header: "X-VulnRadar-Signature",
+              value:
+                "sha256=<hex>, the HMAC-SHA256 of the exact body. Absent only on a webhook with no secret.",
+            },
+            {
+              header: "X-VulnRadar-Delivery",
+              value: "A UUID for this delivery. The retry sends the same one.",
+            },
+            {
+              header: "X-VulnRadar-Event",
+              value: "scan.completed, scan.regressed or test",
+            },
+            {
+              header: "X-VulnRadar-Attempt",
+              value: "1, or 2 on the retry",
+            },
+            {
+              header: "X-VulnRadar-Timestamp",
+              value: "Unix seconds when this attempt was sent",
+            },
+            {
+              header: "X-VulnRadar-Signature-V2",
+              value:
+                "t=<unix>,v1=<hex>, the HMAC-SHA256 of the timestamp, a dot, then the body",
+            },
+          ]}
+        />
+        <CodeBlock code={NODE_VERIFY} language="javascript" />
+        <CodeBlock code={PYTHON_VERIFY} language="python" />
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          No timestamp is signed in the first signature header, so a captured
+          delivery still verifies later. Check that scanned_at is recent, or
+          verify the V2 header when present and compare its{" "}
+          <InlineCode>t</InlineCode> with your clock, which also covers the
+          timestamp itself.
+        </p>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          A retry can reach you after you already handled the first attempt, if
+          your answer was lost on the way back. Treat the event together with
+          data.scan_id as the idempotency key, or the{" "}
+          <InlineCode>X-VulnRadar-Delivery</InlineCode> value, and ignore a
+          repeat.
+        </p>
+        <DocsTable
+          caption="What each event sends to a generic endpoint"
+          columns={[
+            { key: "event", header: "Event" },
+            { key: "payload", header: "Payload" },
+          ]}
+          data={[
+            {
+              event: "scan.completed",
+              payload:
+                "id, event, created_at, api_version, scan_public_id, and data with the target, scan_id, summary, findings_count, duration, scanned_at",
+            },
+            {
+              event: "scan.regressed",
+              payload:
+                "The same top-level keys, and data with the target, scan_id, scanned_at and the new and outstanding findings",
+            },
+            {
+              event: "test",
+              payload:
+                "id, event, created_at, api_version, message, webhook_name, timestamp",
+            },
+          ]}
+        />
       </DocsSection>
 
       <DocsSection id="supported-platforms" title="Supported Platforms">
@@ -169,19 +323,32 @@ export default function WebhooksPage() {
             method="GET"
             path="/webhooks"
             title="List Webhooks"
-            description="Your own webhooks plus any assigned to a team you belong to. All team roles can read them."
+            description="Your own webhooks plus any assigned to a team you belong to."
             responseExample={`{
   "webhooks": [
     {
       "id": 1,
       "url": "https://discord.com/api/webhooks/xxx/yyy",
+      "url_host": "discord.com",
       "name": "Security Alerts",
       "type": "discord",
       "active": true,
       "created_at": "2026-03-10T15:30:00.000Z"
+    },
+    {
+      "id": 2,
+      "url": null,
+      "url_host": "hooks.slack.com",
+      "name": "Team alerts",
+      "type": "slack",
+      "active": true,
+      "created_at": "2026-03-11T09:12:00.000Z"
     }
   ]
 }`}
+            notes={[
+              "url is null, with only url_host to go on, for a teammate who cannot write to that webhook: a viewer, or anyone on a webhook whose creator is a super admin.",
+            ]}
             errors={[{ code: 401, description: "Unauthorized" }]}
           />
 
@@ -238,21 +405,35 @@ export default function WebhooksPage() {
   "message": "Test webhook sent successfully"
 }`}
             notes={[
-              "The test delivery is NOT signed and carries no User-Agent: it goes out with Content-Type: application/json only. A consumer that rejects unsigned payloads will fail the Test button even though real deliveries would verify fine. Allow the test through, or verify against a real scan instead.",
+              "It is signed with the stored secret and carries the same headers as a real delivery, so a consumer that verifies signatures can be tested with it. It gets one attempt, no retry.",
+              `Limited to ${TEST_SEND_USER_LIMIT.maxAttempts} tests per account in ${TEST_SEND_USER_LIMIT.windowSeconds / 60} minutes and ${TEST_SEND_TARGET_LIMIT.maxAttempts} per destination domain in ${TEST_SEND_TARGET_LIMIT.windowSeconds / 60} minutes. Discord and Slack count per webhook, since every webhook there shares one domain.`,
             ]}
             errors={[
               {
                 code: 400,
-                description:
-                  "Missing id, the target is now SSRF-blocked, or your endpoint returned a non-2xx status",
+                description: "Missing id, or the target is now SSRF-blocked",
               },
               { code: 401, description: "Unauthorized" },
               {
                 code: 403,
                 description:
-                  "You can read this webhook but have no write access to it",
+                  "You can read this webhook but have no write access to it, or webhooks are disabled on this deployment",
               },
               { code: 404, description: "Webhook not found, or no access" },
+              {
+                code: 429,
+                description:
+                  "Too many tests. Retry-After says when to try again",
+              },
+              {
+                code: 502,
+                description:
+                  "Your endpoint answered with a non-2xx, or could not be reached",
+              },
+              {
+                code: 504,
+                description: `Your endpoint did not answer within ${DELIVERY_DEADLINE_SECONDS} seconds`,
+              },
             ]}
           />
 
@@ -277,7 +458,9 @@ export default function WebhooksPage() {
               "Send { active: true|false } alone to pause or resume without touching the URL",
               "url, name, type and teamId are all optional and independent -- send only what changed",
               "A new url goes through the same HTTPS + SSRF checks as creation",
-              "The owner, or a team co-member with write access, may edit. A read-only co-member gets 403 because they legitimately know it exists; anyone with no access at all gets 404. Changing teamId is owner-only.",
+              "The owner, or a team co-member with write access, may pause and rename. A read-only co-member gets 403 because they legitimately know it exists; anyone with no access at all gets 404.",
+              "Only this webhook's creator can change its URL, type or teamId, since every delivery is signed with their secret. A co-member who sends any of the three gets 403, even with the current value.",
+              "url: null is refused with a 400: it is the redacted form GET shows a read-only teammate, not a way to clear the address.",
             ]}
             errors={[
               {
@@ -288,7 +471,7 @@ export default function WebhooksPage() {
               {
                 code: 403,
                 description:
-                  "Read access but not write access, or not the owner when changing teamId",
+                  "Read access but not write access, or not the creator when changing url, type or teamId",
               },
               { code: 404, description: "Webhook not found, or no access" },
             ]}
@@ -307,13 +490,17 @@ export default function WebhooksPage() {
   "success": true
 }`}
             notes={[
-              "An id that does not exist returns { success: true } with a 200, not a 404: there is nothing to delete and nothing to reveal about whose id it might be.",
+              "An id that does not exist returns 404, the same answer as a webhook you have no access to, so a caller cannot tell the two apart.",
             ]}
             errors={[
               { code: 401, description: "Unauthorized" },
               {
                 code: 403,
                 description: "No write access to this webhook",
+              },
+              {
+                code: 404,
+                description: "No such webhook, or no access to it",
               },
             ]}
           />
@@ -340,7 +527,30 @@ export default function WebhooksPage() {
                 "A scan turns up a critical or high finding that was not in the previous scan of the same target",
               carries: "The new findings themselves, plus what is outstanding",
             },
+            {
+              event: "test",
+              fires:
+                "Someone presses the paper-plane Send test webhook button on the row",
+              carries:
+                "A message and the webhook's name, and no data key. Signed with the stored secret like any other delivery.",
+            },
           ]}
+        />
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          A generic endpoint receives this for <InlineCode>test</InlineCode>.
+          Discord and Slack get a short message in their own format.
+        </p>
+        <CodeBlock
+          code={`{
+  "id": "6f1d1c0e-8a43-4f0b-9b7e-1f1c2a3b4c5d",
+  "created_at": "2026-03-10T15:30:00.000Z",
+  "api_version": "1",
+  "event": "test",
+  "message": "This is a test webhook from ${APP_NAME}",
+  "webhook_name": "Security Alerts",
+  "timestamp": "2026-03-10T15:30:00.000Z"
+}`}
+          language="json"
         />
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           Both go to the same registered webhooks, and{" "}
@@ -459,6 +669,10 @@ export default function WebhooksPage() {
           </h3>
           <CodeBlock
             code={`{
+  "id": "6f1d1c0e-8a43-4f0b-9b7e-1f1c2a3b4c5d",
+  "created_at": "2026-03-10T15:30:00.000Z",
+  "api_version": "1",
+  "scan_public_id": "9f2c41d7a0b34e6c8d15e27f6b3a904c",
   "event": "scan.completed",
   "data": {
     "url": "https://example.com",
@@ -488,12 +702,12 @@ export default function WebhooksPage() {
             Slack as an extra section, since neither format has a key to read.
           </p>
           <p className="text-xs text-muted-foreground mt-3">
-            Delivered with{" "}
-            <InlineCode>Content-Type: application/json</InlineCode>,{" "}
-            <InlineCode>{`User-Agent: ${APP_NAME}-Webhook/1.0`}</InlineCode>,
-            and (if the webhook has a secret) an{" "}
-            <InlineCode>X-VulnRadar-Signature</InlineCode> header -- see
-            Security below.
+            <InlineCode>id</InlineCode> is the same value as the{" "}
+            <InlineCode>X-VulnRadar-Delivery</InlineCode> header.{" "}
+            <InlineCode>api_version</InlineCode> is the version of this payload
+            and moves separately from the REST API.{" "}
+            <InlineCode>scan_public_id</InlineCode> is the id the app and its
+            URLs use for the scan.
           </p>
         </Card>
 
@@ -503,6 +717,10 @@ export default function WebhooksPage() {
           </h3>
           <CodeBlock
             code={`{
+  "id": "0b7f3a52-1c9e-4d27-a6e4-7c2f90d1b8aa",
+  "created_at": "2026-03-10T15:30:00.000Z",
+  "api_version": "1",
+  "scan_public_id": "9f2c41d7a0b34e6c8d15e27f6b3a904c",
   "event": "scan.regressed",
   "data": {
     "url": "https://example.com",
@@ -570,16 +788,15 @@ export default function WebhooksPage() {
             <InlineCode>{`X-VulnRadar-Signature: sha256=<hex>`}</InlineCode>, an
             HMAC-SHA256 of the exact request body using that secret -- compute
             the same HMAC on your end and compare to verify a payload actually
-            came from {APP_NAME}. The one exception is the Test button, whose
-            delivery is unsigned and carries no{" "}
-            <InlineCode>User-Agent</InlineCode>. Lost or leaked the secret? Call{" "}
+            came from {APP_NAME}. Test deliveries are signed with the stored
+            secret too. Lost or leaked the secret? Call{" "}
             <InlineCode>
               POST /api/v3/webhooks/{"{id}"}/rotate-secret
             </InlineCode>{" "}
             (owner only) for a new one on the same row: the id and the URL
             survive, so your consumer&rsquo;s configuration does not have to
-            change. Every signature it is currently verifying stops matching the
-            moment that returns, so deploy the new secret first.
+            change. There is no overlap: old signatures stop matching at once,
+            so update your consumer as soon as that returns.
           </li>
           <li>
             <strong className="text-foreground">Timeout:</strong> 10 seconds per
@@ -591,7 +808,8 @@ export default function WebhooksPage() {
             a network error, an SSRF block, or a non-2xx response gets exactly
             one retry a few seconds later. Every attempt (including the retry)
             is recorded with its status. If both attempts fail and you have the
-            notification enabled, you get an email -- this is still best-effort
+            notification enabled, the person who created the webhook gets an
+            email, whoever&apos;s scan it was. This is still best-effort
             delivery, not a guaranteed queue, so build idempotency into your
             consumer regardless.
           </li>
@@ -603,8 +821,9 @@ export default function WebhooksPage() {
             <strong className="text-foreground">Session-only API:</strong>{" "}
             Bearer keys cannot manage webhooks: only logged-in users can create,
             list, edit, pause, test, and delete them. Every write is scoped to
-            webhooks the caller owns or has team write access to; rotating the
-            secret and reassigning the team are owner-only.
+            webhooks the caller owns or has team write access to; changing the
+            URL or type, rotating the secret and reassigning the team are
+            owner-only.
           </li>
         </ul>
       </DocsSection>
@@ -620,14 +839,15 @@ export default function WebhooksPage() {
               Webhook. Copy the URL.
             </li>
             <li>
-              Log in to {APP_NAME}, open <InlineCode>/profile</InlineCode> →
-              Webhooks → Add Webhook.
+              Log in to {APP_NAME} and open{" "}
+              <strong className="text-foreground">{ADD_WEBHOOK_PATH}</strong>.
             </li>
             <li>Paste the URL and an optional label. Type is auto-detected.</li>
             <li>
-              Click <strong className="text-foreground">Test</strong>. A test
-              payload posts to Discord; you should see a colored embed within a
-              few seconds.
+              Press the paper-plane{" "}
+              <strong className="text-foreground">Send test webhook</strong>{" "}
+              button on its row. A test payload posts to Discord; you should see
+              a colored embed within a few seconds.
             </li>
           </ol>
         </Card>
@@ -642,8 +862,9 @@ export default function WebhooksPage() {
               URL.
             </li>
             <li>
-              Paste it as a webhook in {APP_NAME}. It is detected as{" "}
-              <InlineCode>generic</InlineCode>.
+              Paste it as a webhook in {APP_NAME}, at{" "}
+              <strong className="text-foreground">{ADD_WEBHOOK_PATH}</strong>.
+              It is detected as <InlineCode>generic</InlineCode>.
             </li>
             <li>
               Run any scan. The full JSON payload appears at the top of your
