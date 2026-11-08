@@ -75,6 +75,15 @@ describe.each(forms)("%s post-sign-in push", (_name, element) => {
     await expect(pushedFor(value)).resolves.toBe("/dashboard");
   });
 
+  // A link that double-encodes the tab arrives still encoded. The URL parser
+  // leaves %09 alone, so this is a page on this site, not a way off it.
+  it("keeps a tab that is still percent-encoded on this site", async () => {
+    const pushed = await pushedFor("/%09/evil.example");
+    expect(new URL(pushed, "https://app.example/login").origin).toBe(
+      "https://app.example",
+    );
+  });
+
   it("passes a path on this site through", async () => {
     await expect(pushedFor("/history?scan=abc")).resolves.toBe(
       "/history?scan=abc",

@@ -10,6 +10,10 @@ import {
   VerifyEmailAlready,
 } from "@/components/auth";
 import { AuthLayout } from "@/components/auth/auth-layout";
+import {
+  readPostVerifyRedirect,
+  rememberPostVerifyRedirect,
+} from "@/components/auth/redirect-target";
 import { API, ROUTES } from "@/lib/config/client-constants";
 
 type VerifyStatus =
@@ -88,9 +92,14 @@ export default function VerifyEmailClient() {
         setStatus("success");
         setMessage(data.message);
 
-        // Redirect to dashboard after 2 seconds
+        // Read now rather than when the timer fires: the cookie is scoped to
+        // this page, and anyone who clicked the button has already left it.
+        const target = readPostVerifyRedirect(ROUTES.DASHBOARD);
         setTimeout(() => {
-          router.push(ROUTES.DASHBOARD);
+          // Cleared after one use, or an email change verified later in this
+          // browser would land on the target of an unrelated signup.
+          rememberPostVerifyRedirect(null);
+          router.push(target);
           router.refresh();
         }, 2000);
       } catch {

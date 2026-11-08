@@ -5,11 +5,17 @@
  * across a verification email opened from their inbox. The cookie that holds
  * it is client-writable, so what comes back out is judged again.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { submitForm } from "../../_helpers/dom";
 
+const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+  useSearchParams: () => new URLSearchParams("token=abc"),
+}));
 vi.mock("@/lib/hooks/use-oauth-providers", () => ({
   useOAuthProviders: () => ({}),
 }));
@@ -25,6 +31,7 @@ import {
 import { SignupForm } from "@/components/auth/signup-form";
 import { SignupSuccess } from "@/components/auth/signup-success";
 import { VerifyEmailSuccess } from "@/components/auth/verify-email-success";
+import VerifyEmailClient from "@/app/verify-email/VerifyEmailClient";
 
 function at(pathname: string): void {
   window.history.pushState({}, "", pathname);
@@ -83,6 +90,15 @@ describe("the post-verify cookie", () => {
     expect(document.cookie).not.toContain("post_verify_redirect");
   });
 
+  it("keeps a semicolon in the path from ending the cookie's value", () => {
+    at("/signup");
+    rememberPostVerifyRedirect("/a;Path=/;b");
+    // Written raw, `Path=/` would become an attribute and widen the scope.
+    expect(readPostVerifyRedirect("/dashboard")).toBe("/dashboard");
+    at("/verify-email");
+    expect(readPostVerifyRedirect("/dashboard")).toBe("/a;Path=/;b");
+  });
+
   it("clears an older signup's target", () => {
     at("/verify-email");
     rememberPostVerifyRedirect("/teams");
@@ -124,6 +140,74 @@ describe("VerifyEmailSuccess button", () => {
     plant(encodeURIComponent("//evil.example"));
     render(<VerifyEmailSuccess message="Done." />);
     expect(button().getAttribute("href")).toBe("/dashboard");
+  });
+});
+
+/**
+ * The button is the slow path. Two seconds after a successful check the page
+ * moves on by itself, so the timer decides where most people actually land.
+ */
+describe("the verify page's timer", () => {
+  const TARGET = "/history?scan=abc";
+
+  beforeEach(() => {
+    router.push.mockClear();
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout"],
+      shouldAdvanceTime: true,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ message: "Done." }),
+      })),
+    );
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  async function verified(): Promise<void> {
+    render(<VerifyEmailClient />);
+    await screen.findByText("Email verified");
+  }
+
+  it("goes to the stored path", async () => {
+    plant(encodeURIComponent(TARGET));
+    await verified();
+    vi.advanceTimersByTime(2000);
+    expect(router.push).toHaveBeenCalledWith(TARGET);
+  });
+
+  it("goes to the dashboard with nothing stored", async () => {
+    at("/verify-email");
+    await verified();
+    vi.advanceTimersByTime(2000);
+    expect(router.push).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("is not pulled back to the dashboard after the button left the page", async () => {
+    plant(encodeURIComponent(TARGET));
+    await verified();
+    // Path-scoped: from the target page the cookie can no longer be read.
+    at("/history");
+    vi.advanceTimersByTime(2000);
+    expect(router.push).toHaveBeenCalledWith(TARGET);
+    expect(router.push).not.toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("uses the target once", async () => {
+    plant(encodeURIComponent(TARGET));
+    await verified();
+    vi.advanceTimersByTime(2000);
+    expect(document.cookie).not.toContain("post_verify_redirect");
+  });
+
+  it("ignores a hostile stored target", async () => {
+    plant(encodeURIComponent("//evil.example"));
+    await verified();
+    vi.advanceTimersByTime(2000);
+    expect(router.push).toHaveBeenCalledWith("/dashboard");
   });
 });
 

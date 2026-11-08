@@ -57,11 +57,13 @@ function JoinContent() {
               size="lg"
               className={cn("h-11 w-full border-border/60", authFocusRing)}
             >
-              <Link href="/signup">Create an account first</Link>
+              <Link href={`/signup?redirect=${encodeURIComponent(back)}`}>
+                Create an account first
+              </Link>
             </Button>
           </>
         }
-        footnote="Signing in brings you straight back to this invitation. If you sign up instead, open the invite link from your email again once the account is verified."
+        footnote="Signing in brings you straight back to this invitation. So does signing up, if you open the verification email in this browser."
       >
         <p>
           Team membership attaches to an account, so we need to know which one
