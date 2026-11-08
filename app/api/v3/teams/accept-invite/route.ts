@@ -130,7 +130,10 @@ export async function POST(request: Request) {
   const userEmail = userRes.rows[0]?.email;
   const emailVerified = Boolean(userRes.rows[0]?.email_verified_at);
 
-  if (userEmail !== invite.email) {
+  // Compared as getUserByEmail does (see the reason there). The invite row
+  // is stored lowercased, so an account saved with capitals saw this invite
+  // in its list and its bell and was then told it went to someone else.
+  if (userEmail?.toLowerCase() !== invite.email?.toLowerCase()) {
     return NextResponse.json(
       { error: "This invite was sent to a different email address." },
       { status: 403 },

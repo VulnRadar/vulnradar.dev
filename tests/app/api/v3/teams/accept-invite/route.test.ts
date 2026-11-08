@@ -223,6 +223,33 @@ describe("POST /api/v3/teams/accept-invite", () => {
     expect(memberSql).toContain("ON CONFLICT (team_id, user_id) DO NOTHING");
   });
 
+  it("accepts for an account whose address was saved with capitals", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [invite()] }); // find by id
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ ...VERIFIED_USER, email: "Bob@Example.com" }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // existingMember
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 7 }] }); // claim the invite
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT team_members
+
+    const res = await POST(postRequest({ inviteId: 7 }));
+
+    expect(res.status).toBe(200);
+    expect(mockMarkHandled).toHaveBeenCalledWith(7);
+  });
+
+  it("still requires the verified address on the case-insensitive match", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [invite()] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ email: "Bob@Example.com", email_verified_at: null }],
+    });
+
+    const res = await POST(postRequest({ inviteId: 7 }));
+
+    expect(res.status).toBe(403);
+    expect(mockMarkHandled).not.toHaveBeenCalled();
+  });
+
   it("rejects an inviteId whose email doesn't match the logged-in user, even though the id is valid", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [invite({ email: "someone-else@example.com" })],

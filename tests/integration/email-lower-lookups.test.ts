@@ -138,6 +138,8 @@ const { POST: sendTeamInvite } =
   await import("@/app/api/v3/teams/members/route");
 const { GET: listInvitations, DELETE: declineInvitation } =
   await import("@/app/api/v3/teams/invitations/route");
+const { POST: acceptTeamInvite } =
+  await import("@/app/api/v3/teams/accept-invite/route");
 
 /** A row as it was stored before every writer lowercased the address. */
 async function createLegacyUser(
@@ -476,6 +478,29 @@ describeIntegration("every account lookup by address folds case", () => {
 
     expect(res.status).toBe(200);
     expect(await inviteExists(inviteId)).toBe(false);
+  });
+
+  it("the account can accept the team invite sent to its address", async () => {
+    const legacy = await createLegacyUser();
+    const inviteId = await insertTeamInvite(legacy.email);
+    sessionUserId = legacy.id;
+
+    const res = await acceptTeamInvite(
+      new NextRequest("http://localhost/api/v3/teams/accept-invite", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ inviteId }),
+      }),
+    );
+    await flushMail();
+
+    expect(res.status).toBe(200);
+    expect(
+      await count(
+        "SELECT COUNT(*)::int AS n FROM team_members WHERE user_id = $1",
+        [legacy.id],
+      ),
+    ).toBe(1);
   });
 
   it("the invitations route still ignores another address and an unverified account", async () => {
