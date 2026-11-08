@@ -656,6 +656,14 @@ export function hasSummary(result) {
  * visible to fix. `summary` is only the fallback for a result with no findings
  * array. `suppressed` is how many findings were left out, so the caller can
  * say so.
+ *
+ * `unreadable` names the first summary count that is not a whole number below
+ * ten digits, or is null. The Action and the GitLab template refuse such a
+ * count and exit 2, because their shell comparison errors on it and the gate
+ * used to pass a scan it had not judged. Here `Number(value) || 0` read
+ * "lots" and NaN as 0 and took -1 and a fraction as they were, so the CLI
+ * failed open where they now fail closed. A missing count, null and false
+ * read as 0, as jq's `// 0` reads them there.
  */
 export function gateCounts(result, { includeSuppressed = false } = {}) {
   const findings = result?.findings;
@@ -677,17 +685,26 @@ export function gateCounts(result, { includeSuppressed = false } = {}) {
       low: count("low"),
       total: kept.length,
       suppressed: all.length - kept.length,
+      unreadable: null,
     };
   }
   const summary = result?.summary ?? {};
-  const n = (value) => Number(value) || 0;
+  let unreadable = null;
+  const n = (field) => {
+    const value = summary[field];
+    if (value === undefined || value === null || value === false) return 0;
+    if (Number.isInteger(value) && value >= 0 && value < 1e9) return value;
+    unreadable ??= field;
+    return 0;
+  };
   return {
-    critical: n(summary.critical),
-    high: n(summary.high),
-    medium: n(summary.medium),
-    low: n(summary.low),
-    total: n(summary.total),
+    critical: n("critical"),
+    high: n("high"),
+    medium: n("medium"),
+    low: n("low"),
+    total: n("total"),
     suppressed: 0,
+    unreadable,
   };
 }
 

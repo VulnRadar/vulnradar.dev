@@ -815,6 +815,33 @@ describe.each([
   },
 );
 
+describe("the CLI refuses the summary counts the two scripts refuse", () => {
+  // Number(value) || 0 read "lots" and NaN as 0 and took -1 and a fraction
+  // as they were, so a summary-only result failed open in the CLI alone.
+  // 2.0 is left out: JSON.parse reads it as the whole number 2, which only
+  // jq 1.7 prints back as written.
+  it.each(REFUSALS.filter(([, label]) => label !== "2.0"))(
+    "names a %s count that is %s",
+    (field, _label, value) => {
+      const summary = { critical: 0, high: 0, medium: 0, low: 0, total: 0 };
+      const counts = gateCounts({
+        summary: { ...summary, [field]: JSON.parse(value.literal) },
+      });
+      expect(counts.unreadable).toBe(field);
+    },
+  );
+
+  it.each([
+    ["a null count", null, 0],
+    ["a missing count", undefined, 0],
+    ["the largest nine-digit count", 999_999_999, 999_999_999],
+  ])("reads %s as the scripts do", (_label, value, expected) => {
+    const counts = gateCounts({ summary: { critical: value } });
+    expect(counts.unreadable).toBeNull();
+    expect(counts.critical).toBe(expected);
+  });
+});
+
 describe("the documented flags and exit codes are the ones the CLI has", () => {
   const flags = [
     ...new Set(

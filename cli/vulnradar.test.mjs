@@ -1232,6 +1232,7 @@ test("gateCounts: findings marked a false positive are not counted, unless asked
     low: 1,
     total: 3,
     suppressed: 2,
+    unreadable: null,
   });
   assert.deepEqual(gateCounts(result, { includeSuppressed: true }), {
     critical: 2,
@@ -1240,6 +1241,7 @@ test("gateCounts: findings marked a false positive are not counted, unless asked
     low: 1,
     total: 5,
     suppressed: 0,
+    unreadable: null,
   });
 });
 
@@ -1262,7 +1264,62 @@ test("gateCounts: with no findings array it falls back to the summary", () => {
     low: 0,
     total: 0,
     suppressed: 0,
+    unreadable: null,
   });
+});
+
+// The Action and the GitLab template exit 2 on a summary count they cannot
+// compare. Number(value) || 0 read "lots" and NaN as 0 and took -1 as it was,
+// so a summary-only result failed open in the CLI alone.
+test("gateCounts: a summary count that is not a whole number is named, not read as a number", () => {
+  for (const [bad, field] of [
+    ["lots", "critical"],
+    ["3", "high"],
+    [-1, "medium"],
+    [2.5, "low"],
+    [1e19, "total"],
+    [1e9, "critical"],
+    [true, "high"],
+    [[1], "medium"],
+    [{ n: 1 }, "low"],
+    [Number.NaN, "total"],
+  ]) {
+    const counts = gateCounts({ summary: { ...CLEAN, [field]: bad } });
+    assert.equal(counts.unreadable, field, JSON.stringify(bad));
+  }
+  assert.equal(
+    gateCounts({ summary: { critical: "x", total: "y" } }).unreadable,
+    "critical",
+  );
+});
+
+test("gateCounts: a missing, null or false summary count reads as 0, and the largest nine-digit count is taken", () => {
+  const counts = gateCounts({
+    summary: { critical: null, high: false, low: 999_999_999, total: 0 },
+  });
+  assert.deepEqual(counts, {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 999_999_999,
+    total: 0,
+    suppressed: 0,
+    unreadable: null,
+  });
+});
+
+test("cli: a summary count that is not a whole number exits 2 without judging the gate", async () => {
+  const body = completedWith({}, { ...CLEAN, critical: "lots" });
+  const { code, stdout, stderr } = await runCli(SCAN_ARGS, {
+    routes: routesFor(body),
+  });
+  assert.equal(code, EXIT.ERROR);
+  assert.match(
+    stderr,
+    /Scan s1 reported a critical count that is not a whole number, so the thresholds cannot be judged\./,
+  );
+  assert.doesNotMatch(stderr, /lots/);
+  assert.doesNotMatch(stdout, /Scan complete/);
 });
 
 test("hasSummary: only an object counts", () => {

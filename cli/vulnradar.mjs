@@ -564,6 +564,13 @@ async function main() {
   const counts = gateCounts(result, {
     includeSuppressed: opts.includeSuppressed,
   });
+  // The same refusal, worded the same, as the Action and the GitLab template:
+  // a count the gate cannot compare must not pass. The value is not echoed.
+  if (counts.unreadable !== null) {
+    fail(
+      `Scan ${scanId} reported a ${counts.unreadable} count that is not a whole number, so the thresholds cannot be judged.`,
+    );
+  }
   const incomplete = incompleteOutcome(result, opts);
   if (opts.json) {
     await writeStdout(`${JSON.stringify(result, null, 2)}\n`);
