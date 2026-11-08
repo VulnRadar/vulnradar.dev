@@ -120,7 +120,6 @@ export function CommandPalette({
     featureApiKeys,
     featureWebhooks,
     featureScheduledScans,
-    featureEmailNotifications,
     featureDomainVerification,
   } = useClientConfig();
 
@@ -297,21 +296,13 @@ export function CommandPalette({
             icon: Lock,
             keywords: "2fa totp password sessions backup codes",
           },
-          // Every switch on that tab is an email preference, and
-          // sendNotificationEmail() returns early for every category when
-          // FEATURE_EMAIL_NOTIFICATIONS is off, so with the flag down the tab
-          // is a page of controls that change nothing.
-          ...(featureEmailNotifications
-            ? [
-                {
-                  id: "notifications",
-                  label: "Notification preferences",
-                  href: `${ROUTES.PROFILE}?tab=notifications`,
-                  icon: Activity,
-                  keywords: "email digest alerts",
-                },
-              ]
-            : []),
+          {
+            id: "notifications",
+            label: "Notification preferences",
+            href: `${ROUTES.PROFILE}?tab=notifications`,
+            icon: Activity,
+            keywords: "email digest alerts",
+          },
           {
             id: "privacy",
             label: "Privacy and data",
@@ -424,7 +415,6 @@ export function CommandPalette({
     featureApiKeys,
     featureWebhooks,
     featureScheduledScans,
-    featureEmailNotifications,
     featureDomainVerification,
   ]);
 

@@ -98,15 +98,13 @@ export function developerTabEnabled(flags: FeatureFlags): boolean {
 /**
  * Is this top-level profile tab worth showing?
  *
- * Notifications is nothing but email preferences, and
- * lib/notifications/notifications.ts returns early for every category when
- * FEATURE_EMAIL_NOTIFICATIONS is off, so with that flag down every switch on
- * that tab changes nothing that will ever be read.
+ * Notifications stays when FEATURE_EMAIL_NOTIFICATIONS is off. Security mail
+ * goes out regardless, so its switches still mean something, and the tab is
+ * the only place they can be changed: /unsubscribe sends people here for them.
+ * The tab itself drops the rows the flag has silenced.
  */
 export function profileTabEnabled(tab: string, flags: FeatureFlags): boolean {
   if (tab === "developer") return developerTabEnabled(flags);
-  if (tab === "notifications")
-    return isSurfaceEnabled("emailNotifications", flags);
   return true;
 }
 

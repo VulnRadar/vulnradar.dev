@@ -32,8 +32,10 @@ import {
   ALWAYS_ON_COLUMNS,
   DEFAULT_PREFERENCES,
   PREFERENCE_COPY,
+  isSecurityColumn,
   type NotificationColumn,
 } from "@/lib/notifications/columns";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 
 // Which columns the server refuses to turn off (ALWAYS_ON_COLUMNS), and what an
 // account that never chose gets (DEFAULT_PREFERENCES), come from
@@ -72,6 +74,10 @@ export function ProfileNotificationsTab({
   preloadedNotifPrefs,
   preloadedDigestEmailEnabled,
 }: ProfileTabProps) {
+  // FEATURE_EMAIL_NOTIFICATIONS silences everything except security mail, so
+  // with it off only the switches that still decide something are drawn.
+  const { featureEmailNotifications } = useClientConfig();
+
   // null means "we do not know", not "everything is on". The parent only
   // calls setNotifPrefs when the GET succeeded, so falling back to the
   // defaults rendered twenty switches in their default position for a failed
@@ -232,9 +238,9 @@ export function ProfileNotificationsTab({
   return (
     <div className="flex flex-col gap-8">
       <p className="text-sm text-muted-foreground leading-relaxed max-w-prose">
-        We only send what is checked below. Security alerts marked Always on
-        stay on regardless, since they are how you find out about access you did
-        not grant.
+        {featureEmailNotifications
+          ? "We only send what is checked below. Security alerts marked Always on stay on regardless, since they are how you find out about access you did not grant."
+          : "This instance sends security email only, so these are the only alerts it has to offer. Those marked Always on stay on regardless, since they are how you find out about access you did not grant."}
       </p>
 
       {/* --- SECURITY --- */}
@@ -314,153 +320,161 @@ export function ProfileNotificationsTab({
         </Card>
       </section>
 
-      {/* --- SCANNING --- */}
-      <section className="flex flex-col gap-4">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight text-foreground">
-            Scans
-          </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Results, critical findings, and scheduled runs.
-          </p>
-        </div>
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="p-0 divide-y divide-border/60">
-            {withCopy([
-              {
-                key: "email_scan_complete" as const,
-                icon: CheckCircle2,
-              },
-              {
-                key: "email_critical_findings" as const,
-                icon: ShieldAlert,
-              },
-              {
-                key: "email_regression_alert" as const,
-                icon: AlertCircle,
-              },
-              {
-                key: "email_schedules" as const,
-                icon: CalendarClock,
-              },
-            ] as const).map(({ key, icon: Icon, label, desc }) => (
-              <div
-                key={key}
-                className="flex items-center justify-between gap-4 px-5 py-4"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <Icon
-                      className="h-3.5 w-3.5 text-muted-foreground"
-                      aria-hidden="true"
+      {featureEmailNotifications && (
+        <>
+          {/* --- SCANNING --- */}
+          <section className="flex flex-col gap-4">
+            <div>
+              <h2 className="text-base font-semibold tracking-tight text-foreground">
+                Scans
+              </h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Results, critical findings, and scheduled runs.
+              </p>
+            </div>
+            <Card className="border-border/50 bg-card/50">
+              <CardContent className="p-0 divide-y divide-border/60">
+                {withCopy([
+                  {
+                    key: "email_scan_complete" as const,
+                    icon: CheckCircle2,
+                  },
+                  {
+                    key: "email_critical_findings" as const,
+                    icon: ShieldAlert,
+                  },
+                  {
+                    key: "email_regression_alert" as const,
+                    icon: AlertCircle,
+                  },
+                  {
+                    key: "email_schedules" as const,
+                    icon: CalendarClock,
+                  },
+                ] as const).map(({ key, icon: Icon, label, desc }) => (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between gap-4 px-5 py-4"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Icon
+                          className="h-3.5 w-3.5 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                        <p className="text-sm font-medium text-foreground">
+                          {label}
+                        </p>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {desc}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={notifPrefs[key]}
+                      onCheckedChange={(checked) => handleToggle(key, checked)}
+                      aria-label={label}
                     />
-                    <p className="text-sm font-medium text-foreground">
-                      {label}
+                  </div>
+                ))}
+                <div className="flex items-center justify-between gap-4 px-5 py-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <BarChart3
+                        className="h-3.5 w-3.5 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                      <p className="text-sm font-medium text-foreground">
+                        {PREFERENCE_COPY.email_posture_digest.label}
+                      </p>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {PREFERENCE_COPY.email_posture_digest.description}{" "}
+                      {digestEmailEnabled === null
+                        ? "We could not check whether you are subscribed to it, so no switch is shown. Reload the page to check again."
+                        : "Off by default."}
                     </p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">{desc}</p>
-                </div>
-                <Switch
-                  checked={notifPrefs[key]}
-                  onCheckedChange={(checked) => handleToggle(key, checked)}
-                  aria-label={label}
-                />
-              </div>
-            ))}
-            <div className="flex items-center justify-between gap-4 px-5 py-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <BarChart3
-                    className="h-3.5 w-3.5 text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                  <p className="text-sm font-medium text-foreground">
-                    {PREFERENCE_COPY.email_posture_digest.label}
-                  </p>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {PREFERENCE_COPY.email_posture_digest.description}{" "}
-                  {digestEmailEnabled === null
-                    ? "We could not check whether you are subscribed to it, so no switch is shown. Reload the page to check again."
-                    : "Off by default."}
-                </p>
-              </div>
-              {/* Its opt-in lives on its own endpoint, so it can be unknown
+                  {/* Its opt-in lives on its own endpoint, so it can be unknown
                   while every other switch on this tab is real. Off by default
                   is exactly what a failed check used to render, which reads
                   as "you are unsubscribed" rather than "we do not know". */}
-              {digestEmailEnabled === null ? (
-                <span className="text-xs font-medium text-muted-foreground shrink-0">
-                  Unknown
-                </span>
-              ) : (
-                <Switch
-                  checked={postureDigestOn}
-                  onCheckedChange={handleTogglePostureDigest}
-                  aria-label={PREFERENCE_COPY.email_posture_digest.label}
-                />
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* --- API & INTEGRATIONS --- */}
-      <section className="flex flex-col gap-4">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight text-foreground">
-            API and webhooks
-          </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Key activity, rate limits, and delivery failures.
-          </p>
-        </div>
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="p-0 divide-y divide-border/60">
-            {withCopy([
-              {
-                key: "email_api_keys" as const,
-                icon: Key,
-              },
-              {
-                key: "email_api_limit_warning" as const,
-                icon: Gauge,
-              },
-              {
-                key: "email_webhooks" as const,
-                icon: Webhook,
-              },
-              {
-                key: "email_webhook_failure" as const,
-                icon: XCircle,
-              },
-            ] as const).map(({ key, icon: Icon, label, desc }) => (
-              <div
-                key={key}
-                className="flex items-center justify-between gap-4 px-5 py-4"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <Icon
-                      className="h-3.5 w-3.5 text-muted-foreground"
-                      aria-hidden="true"
+                  {digestEmailEnabled === null ? (
+                    <span className="text-xs font-medium text-muted-foreground shrink-0">
+                      Unknown
+                    </span>
+                  ) : (
+                    <Switch
+                      checked={postureDigestOn}
+                      onCheckedChange={handleTogglePostureDigest}
+                      aria-label={PREFERENCE_COPY.email_posture_digest.label}
                     />
-                    <p className="text-sm font-medium text-foreground">
-                      {label}
-                    </p>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">{desc}</p>
+                  )}
                 </div>
-                <Switch
-                  checked={notifPrefs[key]}
-                  onCheckedChange={(checked) => handleToggle(key, checked)}
-                  aria-label={label}
-                />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </section>
+              </CardContent>
+            </Card>
+          </section>
+
+          {/* --- API & INTEGRATIONS --- */}
+          <section className="flex flex-col gap-4">
+            <div>
+              <h2 className="text-base font-semibold tracking-tight text-foreground">
+                API and webhooks
+              </h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Key activity, rate limits, and delivery failures.
+              </p>
+            </div>
+            <Card className="border-border/50 bg-card/50">
+              <CardContent className="p-0 divide-y divide-border/60">
+                {withCopy([
+                  {
+                    key: "email_api_keys" as const,
+                    icon: Key,
+                  },
+                  {
+                    key: "email_api_limit_warning" as const,
+                    icon: Gauge,
+                  },
+                  {
+                    key: "email_webhooks" as const,
+                    icon: Webhook,
+                  },
+                  {
+                    key: "email_webhook_failure" as const,
+                    icon: XCircle,
+                  },
+                ] as const).map(({ key, icon: Icon, label, desc }) => (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between gap-4 px-5 py-4"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Icon
+                          className="h-3.5 w-3.5 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                        <p className="text-sm font-medium text-foreground">
+                          {label}
+                        </p>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {desc}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={notifPrefs[key]}
+                      onCheckedChange={(checked) => handleToggle(key, checked)}
+                      aria-label={label}
+                    />
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </section>
+        </>
+      )}
 
       {/* --- ACCOUNT --- */}
       <section className="flex flex-col gap-4">
@@ -469,7 +483,9 @@ export function ProfileNotificationsTab({
             Account and teams
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Data exports, deletion, and team membership.
+            {featureEmailNotifications
+              ? "Data exports, deletion, and team membership."
+              : "Account deletion."}
           </p>
         </div>
         <Card className="border-border/50 bg-card/50">
@@ -491,35 +507,41 @@ export function ProfileNotificationsTab({
                 key: "email_team_changes" as const,
                 icon: Users,
               },
-            ] as const).map(({ key, icon: Icon, label, desc }) => (
-              <div
-                key={key}
-                className="flex items-center justify-between gap-4 px-5 py-4"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <Icon
-                      className="h-3.5 w-3.5 text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                    <p className="text-sm font-medium text-foreground">
-                      {label}
-                    </p>
+            ] as const)
+              .filter(
+                ({ key }) => featureEmailNotifications || isSecurityColumn(key),
+              )
+              .map(({ key, icon: Icon, label, desc }) => (
+                <div
+                  key={key}
+                  className="flex items-center justify-between gap-4 px-5 py-4"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Icon
+                        className="h-3.5 w-3.5 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                      <p className="text-sm font-medium text-foreground">
+                        {label}
+                      </p>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">{desc}</p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">{desc}</p>
+                  <Switch
+                    checked={notifPrefs[key]}
+                    onCheckedChange={(checked) => handleToggle(key, checked)}
+                    aria-label={label}
+                  />
                 </div>
-                <Switch
-                  checked={notifPrefs[key]}
-                  onCheckedChange={(checked) => handleToggle(key, checked)}
-                  aria-label={label}
-                />
-              </div>
-            ))}
+              ))}
           </CardContent>
         </Card>
       </section>
 
-      {/* --- PRODUCT ---
+      {featureEmailNotifications && (
+        <>
+          {/* --- PRODUCT ---
           These two columns exist in notification_preferences and are accepted
           by PUT /api/v3/account/notifications, but the only place they could
           be changed was the token-gated /unsubscribe page reached from an
@@ -527,53 +549,57 @@ export function ProfileNotificationsTab({
           and nowhere else, and a user who unsubscribed could not opt back in
           from their own account. Mirrors app/unsubscribe/page.tsx's Product
           group. */}
-      <section className="flex flex-col gap-4">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight text-foreground">
-            Product
-          </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Release notes and occasional guidance. Never sales email.
-          </p>
-        </div>
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="p-0 divide-y divide-border/60">
-            {withCopy([
-              {
-                key: "email_product_updates" as const,
-                icon: Sparkles,
-              },
-              {
-                key: "email_tips_guides" as const,
-                icon: GraduationCap,
-              },
-            ] as const).map(({ key, icon: Icon, label, desc }) => (
-              <div
-                key={key}
-                className="flex items-center justify-between gap-4 px-5 py-4"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <Icon
-                      className="h-3.5 w-3.5 text-muted-foreground"
-                      aria-hidden="true"
+          <section className="flex flex-col gap-4">
+            <div>
+              <h2 className="text-base font-semibold tracking-tight text-foreground">
+                Product
+              </h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Release notes and occasional guidance. Never sales email.
+              </p>
+            </div>
+            <Card className="border-border/50 bg-card/50">
+              <CardContent className="p-0 divide-y divide-border/60">
+                {withCopy([
+                  {
+                    key: "email_product_updates" as const,
+                    icon: Sparkles,
+                  },
+                  {
+                    key: "email_tips_guides" as const,
+                    icon: GraduationCap,
+                  },
+                ] as const).map(({ key, icon: Icon, label, desc }) => (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between gap-4 px-5 py-4"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Icon
+                          className="h-3.5 w-3.5 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                        <p className="text-sm font-medium text-foreground">
+                          {label}
+                        </p>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {desc}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={notifPrefs[key]}
+                      onCheckedChange={(checked) => handleToggle(key, checked)}
+                      aria-label={label}
                     />
-                    <p className="text-sm font-medium text-foreground">
-                      {label}
-                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">{desc}</p>
-                </div>
-                <Switch
-                  checked={notifPrefs[key]}
-                  onCheckedChange={(checked) => handleToggle(key, checked)}
-                  aria-label={label}
-                />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </section>
+                ))}
+              </CardContent>
+            </Card>
+          </section>
+        </>
+      )}
     </div>
   );
 }

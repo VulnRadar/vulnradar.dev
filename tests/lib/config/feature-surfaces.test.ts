@@ -196,11 +196,11 @@ describe("profileTabEnabled", () => {
     }
   });
 
-  it("hides Notifications when email notifications are off", () => {
+  it("keeps Notifications when email notifications are off, because security mail still sends", () => {
     expect(profileTabEnabled("notifications", ALL_ON)).toBe(true);
     expect(
       profileTabEnabled("notifications", off("featureEmailNotifications")),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("hides Developer only when all three of its features are off", () => {

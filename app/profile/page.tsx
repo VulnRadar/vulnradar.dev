@@ -155,14 +155,11 @@ function ProfileContent() {
     "tab",
     "general",
   );
-  // Two of the eight tabs are entirely one feature each, and both features can
-  // be turned off. Developer is API keys + webhooks + scheduled scans, so it
-  // survives while any one of the three is on; Notifications is nothing but
-  // email preferences, and sendNotificationEmail() returns early for every
-  // category when FEATURE_EMAIL_NOTIFICATIONS is off, so with that down every
-  // switch on it changes nothing. Each flag stands in at its compiled
-  // build-time default until the live config lands, which is the value the
-  // deployment was built with, so the strip does not reflow after paint.
+  // Developer is entirely one feature group: API keys + webhooks + scheduled
+  // scans, so it survives while any one of the three is on. Each flag stands
+  // in at its compiled build-time default until the live config lands, which
+  // is the value the deployment was built with, so the strip does not reflow
+  // after paint.
   const clientConfig = useClientConfig();
   const tabEnabled = (tab: ProfileTab): boolean =>
     profileTabEnabled(tab, clientConfig);
