@@ -436,8 +436,8 @@ npm start`}
               it against the first account demotes it, and no screen in the
               product can restore <InlineCode>super_admin</InlineCode>. A
               restart can: when no account holds the role, the next boot
-              promotes the lowest-id account, which is the first one ever
-              registered while it still exists.
+              promotes the lowest-id verified, non-disabled account, which is
+              normally the first one ever registered.
             </p>
             <CodeBlock
               code={`docker compose exec postgres psql -U vulnradar -d vulnradar -c \\

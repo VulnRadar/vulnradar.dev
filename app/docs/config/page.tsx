@@ -1580,8 +1580,8 @@ export default function ConfigPage() {
             there is nothing to promote, and setting its role to{" "}
             <InlineCode>admin</InlineCode> by SQL would demote it. Further staff
             are invited from the admin panel. A restart gives{" "}
-            <InlineCode>super_admin</InlineCode> back to the lowest-id account
-            if nobody holds it, as{" "}
+            <InlineCode>super_admin</InlineCode> back to the lowest-id verified,
+            non-disabled account if nobody holds it, as{" "}
             <a
               href="/docs/self-hosting#admin"
               className="text-primary underline-offset-2 hover:underline"

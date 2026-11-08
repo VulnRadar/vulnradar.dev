@@ -618,17 +618,19 @@ WHERE email = 'a-colleague@yourdomain.com';`}
         </DocsCallout>
         <DocsCallout
           variant="warning"
-          title="A restart re-promotes the lowest-id account"
+          title="A restart re-promotes the lowest-id verified account"
         >
           <p>
             On every boot, if no account at all holds{" "}
             <InlineCode>super_admin</InlineCode>, the app promotes the account
-            with the lowest id that still exists. That is the first one ever
-            registered, until it is deleted. It is the way back for a first
-            account you demoted by mistake, and it is also why you cannot retire
-            the last super admin by editing the role: the next restart hands the
-            role to whoever has the lowest id then. While any account holds{" "}
-            <InlineCode>super_admin</InlineCode> the check does nothing.
+            with the lowest id that is verified and not disabled, and records it
+            in the audit log. That is normally the first one ever registered. If
+            no account qualifies, nobody is promoted. It is the way back for a
+            first account you demoted by mistake, and it is also why you cannot
+            retire the last super admin by editing the role: the next restart
+            hands the role to whoever qualifies with the lowest id then. While
+            any account holds <InlineCode>super_admin</InlineCode> the check
+            does nothing.
           </p>
         </DocsCallout>
       </DocsSection>

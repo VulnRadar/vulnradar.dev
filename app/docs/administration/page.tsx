@@ -68,9 +68,10 @@ export default function AdministrationPage() {
           is what stops an escalation path existing at all: there is exactly one
           way to become super admin, and it is being first. The one safety net
           is on boot: if no account holds the role at all, the server promotes
-          the lowest-id account that still exists. That is how a first account
-          demoted by mistake comes back, and it means a restart, not a screen,
-          is what restores the role.
+          the lowest-id account that is verified and not disabled, and records
+          it in the audit log. That is how a first account demoted by mistake
+          comes back, and it means a restart, not a screen, is what restores the
+          role.
         </p>
         <p className="text-sm leading-relaxed text-muted-foreground">
           Everyone else is invited. An admin sends a staff invite for a specific
