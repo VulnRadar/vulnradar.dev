@@ -51,10 +51,18 @@ function fakeClient(counts: number[]) {
   return {
     statements,
     released: 0,
-    query: vi.fn(async (sql: string, _params?: unknown[]) => {
+    query: vi.fn(async (sql: string, params: unknown[] = []) => {
       statements.push(sql.trim().split(/\s+/).slice(0, 3).join(" "));
       if (sql.includes("COUNT(*)")) {
         return { rows: [{ count: remaining.shift() ?? 0 }] };
+      }
+      if (sql.includes("public_id")) {
+        return {
+          rows: (params[0] as number[]).map((id) => ({
+            id,
+            public_id: `pub-${id}`,
+          })),
+        };
       }
       return { rows: [] };
     }),
@@ -150,11 +158,13 @@ describe("reserveConcurrentScanSlot", () => {
 
     const result = await reserveConcurrentScanSlot(7, insertRow);
 
-    expect(result).toEqual({ ok: true, scanId: 42 });
+    expect(result).toEqual({ ok: true, scanId: 42, publicId: "pub-42" });
     expect(client.statements[0]).toBe("BEGIN");
     expect(client.statements[1]).toContain("pg_advisory_xact_lock");
     expect(client.statements[2]).toContain("SELECT COUNT(*)::int");
-    expect(client.statements[3]).toBe("COMMIT");
+    // Read before COMMIT, on the connection that inserted the row.
+    expect(client.statements[3]).toBe("SELECT id, public_id");
+    expect(client.statements[4]).toBe("COMMIT");
     expect(insertRow).toHaveBeenCalledWith(client);
     expect(client.release).toHaveBeenCalledTimes(1);
   });
@@ -216,8 +226,8 @@ describe("reserveConcurrentScanSlot", () => {
 
     const result = await reserveConcurrentScanSlot(7, insertRow);
 
-    expect(result).toEqual({ ok: true, scanId: 5 });
-    expect(client.statements).toEqual([]);
+    expect(result).toEqual({ ok: true, scanId: 5, publicId: "pub-5" });
+    expect(client.statements).toEqual(["SELECT id, public_id"]);
     expect(insertRow).toHaveBeenCalledWith(client);
     expect(client.release).toHaveBeenCalledTimes(1);
   });
@@ -231,6 +241,48 @@ describe("reserveConcurrentScanSlot", () => {
  * them. ref: AUDIT-011#drift-06
  */
 describe("reserveConcurrentScanBatch", () => {
+  it("pairs public ids with scan ids in the order the caller returned them", async () => {
+    mockGetUserPlanLimits.mockResolvedValue(planLimits(2));
+    const client = fakeClient([0]);
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql.includes("COUNT(*)")) return { rows: [{ count: 0 }] };
+      if (sql.includes("public_id")) {
+        // Postgres promises no order without ORDER BY.
+        return {
+          rows: [
+            { id: 30, public_id: "c" },
+            { id: 10, public_id: "a" },
+            { id: 20, public_id: "b" },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    mockConnect.mockResolvedValue(client);
+
+    const result = await reserveConcurrentScanBatch(7, async () => [
+      20, 30, 10,
+    ]);
+
+    expect(result).toMatchObject({ publicIds: ["b", "c", "a"] });
+  });
+
+  it("rolls the reservation back rather than admit a row with no public id", async () => {
+    mockGetUserPlanLimits.mockResolvedValue(planLimits(2));
+    const client = fakeClient([0]);
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql.includes("COUNT(*)")) return { rows: [{ count: 0 }] };
+      return { rows: [] };
+    });
+    mockConnect.mockResolvedValue(client);
+
+    await expect(
+      reserveConcurrentScanBatch(7, async () => [1]),
+    ).rejects.toThrow(/no public id/);
+    expect(client.query).toHaveBeenCalledWith("ROLLBACK");
+    expect(client.query).not.toHaveBeenCalledWith("COMMIT");
+  });
+
   it("takes the per-user advisory lock BEFORE counting, then inserts every row and commits", async () => {
     mockGetUserPlanLimits.mockResolvedValue(planLimits(2));
     const client = fakeClient([1]);
@@ -239,11 +291,16 @@ describe("reserveConcurrentScanBatch", () => {
 
     const result = await reserveConcurrentScanBatch(7, insertRows);
 
-    expect(result).toEqual({ ok: true, scanIds: [11, 12, 13] });
+    expect(result).toEqual({
+      ok: true,
+      scanIds: [11, 12, 13],
+      publicIds: ["pub-11", "pub-12", "pub-13"],
+    });
     expect(client.statements[0]).toBe("BEGIN");
     expect(client.statements[1]).toContain("pg_advisory_xact_lock");
     expect(client.statements[2]).toContain("SELECT COUNT(*)::int");
-    expect(client.statements[3]).toBe("COMMIT");
+    expect(client.statements[3]).toBe("SELECT id, public_id");
+    expect(client.statements[4]).toBe("COMMIT");
     expect(insertRows).toHaveBeenCalledWith(client);
     expect(client.release).toHaveBeenCalledTimes(1);
   });
@@ -302,8 +359,8 @@ describe("reserveConcurrentScanBatch", () => {
 
     const result = await reserveConcurrentScanBatch(7, async () => [9]);
 
-    expect(result).toEqual({ ok: true, scanIds: [9] });
-    expect(client.statements).toEqual([]);
+    expect(result).toEqual({ ok: true, scanIds: [9], publicIds: ["pub-9"] });
+    expect(client.statements).toEqual(["SELECT id, public_id"]);
     expect(client.release).toHaveBeenCalledTimes(1);
   });
 });

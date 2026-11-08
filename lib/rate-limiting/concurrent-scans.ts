@@ -157,11 +157,36 @@ export function __resetInlineScanSlots(): void {
   inlineSlots.clear();
 }
 
+/**
+ * The opaque ids of rows just inserted, in the order of `scanIds`, read on the
+ * inserting connection so an open transaction sees its own rows. Here rather
+ * than in each caller's INSERT because every caller writes its own statement,
+ * and the column is filled by a database default none of them mention.
+ */
+async function publicIdsOf(
+  client: PoolClient,
+  scanIds: number[],
+): Promise<string[]> {
+  const { rows } = await client.query<{ id: number; public_id: string }>(
+    "SELECT id, public_id FROM scan_history WHERE id = ANY($1)",
+    [scanIds],
+  );
+  const byId = new Map(rows.map((row) => [row.id, row.public_id]));
+  return scanIds.map((id) => {
+    const publicId = byId.get(id);
+    if (publicId === undefined) {
+      throw new Error(`Inserted scan ${id} has no public id`);
+    }
+    return publicId;
+  });
+}
+
 export async function reserveConcurrentScanSlot(
   userId: number,
   insertRow: (client: PoolClient) => Promise<number>,
 ): Promise<
-  { ok: true; scanId: number } | { ok: false; check: ConcurrentScanCheck }
+  | { ok: true; scanId: number; publicId: string }
+  | { ok: false; check: ConcurrentScanCheck }
 > {
   const limit = await resolveConcurrentLimit(userId);
   const client = await pool.connect();
@@ -169,7 +194,8 @@ export async function reserveConcurrentScanSlot(
     // Unlimited: no slot accounting needed, just insert.
     if (limit === -1) {
       const scanId = await insertRow(client);
-      return { ok: true, scanId };
+      const [publicId] = await publicIdsOf(client, [scanId]);
+      return { ok: true, scanId, publicId };
     }
 
     await client.query("BEGIN");
@@ -198,8 +224,9 @@ export async function reserveConcurrentScanSlot(
       };
     }
     const scanId = await insertRow(client);
+    const [publicId] = await publicIdsOf(client, [scanId]);
     await client.query("COMMIT");
-    return { ok: true, scanId };
+    return { ok: true, scanId, publicId };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
     throw e;
@@ -231,14 +258,16 @@ export async function reserveConcurrentScanBatch(
   userId: number,
   insertRows: (client: PoolClient) => Promise<number[]>,
 ): Promise<
-  { ok: true; scanIds: number[] } | { ok: false; check: ConcurrentScanCheck }
+  | { ok: true; scanIds: number[]; publicIds: string[] }
+  | { ok: false; check: ConcurrentScanCheck }
 > {
   const limit = await resolveConcurrentLimit(userId);
   const client = await pool.connect();
   try {
     if (limit === -1) {
       const scanIds = await insertRows(client);
-      return { ok: true, scanIds };
+      const publicIds = await publicIdsOf(client, scanIds);
+      return { ok: true, scanIds, publicIds };
     }
 
     await client.query("BEGIN");
@@ -264,8 +293,9 @@ export async function reserveConcurrentScanBatch(
       };
     }
     const scanIds = await insertRows(client);
+    const publicIds = await publicIdsOf(client, scanIds);
     await client.query("COMMIT");
-    return { ok: true, scanIds };
+    return { ok: true, scanIds, publicIds };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
     throw e;
