@@ -5,6 +5,10 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
+vi.mock("@/lib/config/runtime-config", () => ({
+  getSetting: async () => 90,
+}));
+
 const {
   extractCheckId,
   aggregateCheckAccuracy,
@@ -59,6 +63,14 @@ describe("extractCheckId", () => {
 });
 
 describe("aggregateCheckAccuracy", () => {
+  it("counts only verdicts inside the feedback retention window", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await aggregateCheckAccuracy();
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("created_at >= NOW() - ($1 * INTERVAL '1 day')");
+    expect(params).toEqual([90]);
+  });
+
   it("aggregates verdict counts per check and computes a rounded false-positive rate", async () => {
     mockQuery.mockResolvedValue({
       rows: [

@@ -14,6 +14,7 @@
  */
 
 import pool from "@/lib/database/db";
+import { getSetting } from "@/lib/config/runtime-config";
 
 /**
  * Everything before the LAST "--" in a stable finding id
@@ -49,14 +50,25 @@ interface FeedbackVerdictRow {
  * Callers that run this often (every scan, potentially) should cache the
  * result themselves rather than calling this per-finding or per-scan --
  * see adaptive-confidence.ts's own TTL cache.
+ *
+ * Bounded to the feedback retention window. The retention pass deletes
+ * confirmed and not_applicable rows at that age and keeps a user's
+ * false_positive rows for good, so without the bound every check's false
+ * positive rate would only ever drift upward, and that rate feeds the adaptive
+ * confidence discount.
  */
 export async function aggregateCheckAccuracy(): Promise<
   Map<string, CheckAccuracyCounts>
 > {
+  const retentionDays = await getSetting(
+    "CLEANUP_SCAN_FINDING_FEEDBACK_RETENTION_DAYS",
+  );
   const result = await pool.query<FeedbackVerdictRow>(
     `SELECT finding_id, verdict, COUNT(*)::int AS count
      FROM scan_finding_feedback
+     WHERE created_at >= NOW() - ($1 * INTERVAL '1 day')
      GROUP BY finding_id, verdict`,
+    [retentionDays],
   );
 
   const byCheck = new Map<
