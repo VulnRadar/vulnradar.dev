@@ -119,6 +119,7 @@ describe("classifySubresource", () => {
     "https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js",
     "https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js",
     "//cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js",
+    "https://cdn.jsdelivr.net/combine/npm/a@1.2.3,npm/@scope/b@4.5.6",
   ])("%s is a pinned library CDN", (url) => {
     expect(classifySubresource(url, PAGE)).toBe("library-cdn-pinned");
   });
@@ -130,6 +131,10 @@ describe("classifySubresource", () => {
       "https://cdn.jsdelivr.net/npm/lodash@4/lodash.min.js",
       "https://cdn.jsdelivr.net/npm/lodash@4.17/lodash.min.js",
       "https://cdn.jsdelivr.net/npm/lodash@latest/dist-1.2.3/lodash.min.js",
+      "https://cdn.jsdelivr.net/npm/lodash@latest/vendor@1.2.3/lodash.min.js",
+      "https://unpkg.com/react/vendor@1.2.3/index.js",
+      "https://cdn.jsdelivr.net/combine/npm/a@1,npm/b@1.2.3",
+      "https://cdn.jsdelivr.net/combine/npm/a@1.2.3,npm/b@latest",
       "https://cdn.jsdelivr.net/npm/widget-1.2.3/index.js",
       "https://cdn.jsdelivr.net/gh/user/repo@main/x.js",
       "https://unpkg.com/react",

@@ -141,23 +141,32 @@ const LIBRARY_CDN_HOST =
 const NPM_STYLE_CDN_HOST = /^(?:unpkg\.com|(?:[a-z0-9-]+\.)?jsdelivr\.net)$/;
 
 /**
- * An exact `@x.y.z` that ends its path segment. A version anywhere else in the
- * path is not one: `/npm/thing@latest/dist-1.2.3/a.js` still moves, and
+ * An exact `@x.y.z` on the package itself, the segment after any `npm/`,
+ * `gh/owner/` or `@scope/`. A version anywhere else in the path is not one:
+ * `/npm/thing@latest/vendor@1.2.3/a.js` still moves, and
  * `/npm/widget-1.2.3/a.js` is a package name that resolves to newest.
  */
 const EXACT_AT_VERSION =
-  /@v?\d{1,9}\.\d{1,9}\.\d{1,9}(?:[-+][\w.+-]*)?(?:\/|$)/;
+  /^\/?(?:npm\/|gh\/[^/]+\/)?(?:@[^/]+\/)?[^/@]+@v?\d{1,9}\.\d{1,9}\.\d{1,9}(?:[-+][\w.+-]*)?(?:\/|$)/;
+
+const COMBINE_PREFIX = "/combine/";
+
+/** A jsDelivr `/combine/` URL is only as fixed as its loosest file. */
+function namesExactPackageVersion(pathname: string): boolean {
+  const packages = pathname.startsWith(COMBINE_PREFIX)
+    ? pathname.slice(COMBINE_PREFIX.length).split(",")
+    : [pathname];
+  return packages.every((pkg) => EXACT_AT_VERSION.test(pkg));
+}
 
 /** `/jquery/3.7.1/`, `/jquery-3.7.1.min.js`. Not `/jquery/3/` or `-latest`. */
 const EXACT_PATH_VERSION = /[/-]v?\d{1,9}\.\d{1,9}\.\d{1,9}(?!\d)/;
 
 function isPinnedLibraryCdn(url: URL): boolean {
   if (!LIBRARY_CDN_HOST.test(url.hostname)) return false;
-  return (
-    NPM_STYLE_CDN_HOST.test(url.hostname)
-      ? EXACT_AT_VERSION
-      : EXACT_PATH_VERSION
-  ).test(url.pathname);
+  return NPM_STYLE_CDN_HOST.test(url.hostname)
+    ? namesExactPackageVersion(url.pathname)
+    : EXACT_PATH_VERSION.test(url.pathname);
 }
 
 /** `rawUrl` resolved against the page, or null unless it is fetched over HTTP. */
