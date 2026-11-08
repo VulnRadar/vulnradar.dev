@@ -406,6 +406,23 @@ and the new container boots, sees a database older than
 MIN_SCHEMA_VERSION, prints a SCHEMA VERSION
 MISMATCH box and exits 1, which is a crash loop, not a rollback.
 
+> **WARNING: Upgrade note: staff SSO needs email_verified**
+> Staff single sign-on now trusts an email address only when the ID
+token says email_verified is true.
+Microsoft Entra ID sends no such claim unless you configure it, so
+on an Entra install every staff SSO sign-in is refused after this
+upgrade. Either add the claim at your provider, or have the super
+admin turn on
+STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED in
+Settings, Advanced. Only the super admin can set it, and a token
+that says false is still refused with it
+on. Until then, staff sign in another way, such as with a password.
+The details are in the
+
+staff SSO section of the administration docs
+
+.
+
 > **WARNING: Rehearse this before you need it**
 > A restore path you have never run is not a rollback plan. Point a
 throwaway database at a copy of your dump and bring the app up
@@ -875,7 +892,7 @@ Re-run every finding on a scan you own through AI verification and persist the r
 ```
 
 #### `POST /scan/verify-batch`: AI-Verify a Findings Array
-AI verification rate limit or AI token quota exceeded
+AI verification rate limit, an AI token quota that cannot cover the first finding, or an allowance that ran out before any finding was verified. A pass the allowance stopped partway is a 200 with ai.budgetExhausted.
 
 - **Request body:**
 ```json
@@ -907,7 +924,12 @@ AI verification rate limit or AI token quota exceeded
       "aiConfidence": 92,
       "aiReason": "No Strict-Transport-Security header on any response checked."
     }
-  ]
+  ],
+  "ai": {
+    "configured": true,
+    "verdicts": 1,
+    "attempted": 1
+  }
 }
 ```
 
@@ -2720,7 +2742,7 @@ per-window cap is bypassed entirely, because those calls cost
 - The GitHub scanner is a separate scanning mode from the live-URL scanner. Instead of fetching a website and inspecting its HTTP responses, it authenticates as your connected GitHub account, lists a repo's files, fetches the text ones, and reviews the source itself. Two passes run over that source: a deterministic secret scan that reuses the URL scanner's credential detectors verbatim, and an AI pass that reads whole files looking for injection, weak crypto, auth logic mistakes, and secrets the patterns missed.
 - Everything here requires a logged-in session. There is no Bearer-key path for GitHub scanning yet, unlike the URL scan API. Requests without a session return 401.
 - The whole flow lives on /repos: connect an account, curate a working set of repos, scan one, read the findings, and file an issue. The sections below map each step to the endpoint behind it.
-- POST /api/v3/scan/github runs the pipeline in order and short-circuits at the first gate that fails, so an oversized or empty repo is rejected before a single AI token is spent.
+- POST /api/v3/scan/github runs the pipeline in order and stops at the first gate that fails. An empty repo, or one with no scannable files, is rejected before any AI token is spent. An oversized repo is not rejected: every file that fits the file caps below is pattern-scanned, the AI review covers as much as the per-run ceiling and your allowance admit, and the result says how much. The free plan is the one exception, when no file fits a single AI batch (see the planning step below).
 - Filtering happens on tree metadata alone, before any content is fetched, so it is cheap enough to run as a gate. Directory segments like node_modules, vendor, dist, build, .next, target, and venv are skipped, as are binary-looking extensions (images, fonts, archives, compiled artifacts) and, deliberately, .lock and .map files. Anything not recognized as binary is fetched and only then size-checked, so an unusual-but-valid text extension is not silently dropped.
 - Three caps bound cost and abuse. They are runtime settings an admin can retune, shipped at:
 - When a cap cuts the list short, the scan still runs on what fit and the response reports filesSkippedByCaps: true.
@@ -3171,7 +3193,7 @@ individual URLs instead.
 | `/docs` | ✓ | 5 | 0 | 0 | 1 | 0 | 0 | 9 | 1 |
 | `/docs/setup` | - | 12 | 4 | 0 | 23 | 0 | 0 | 31 | 31 |
 | `/docs/extension` | ✓ | 11 | 2 | 0 | 0 | 0 | 0 | 16 | 2 |
-| `/docs/self-hosting` | - | 17 | 15 | 0 | 18 | 0 | 0 | 51 | 3 |
+| `/docs/self-hosting` | - | 17 | 16 | 0 | 18 | 0 | 0 | 51 | 3 |
 | `/docs/config` | - | 9 | 6 | 0 | 2 | 0 | 0 | 40 | 0 |
 | `/docs/api` | - | 8 | 5 | 0 | 6 | 42 | 0 | 18 | 5 |
 | `/docs/api/playground` | - | 2 | 1 | 0 | 0 | 0 | 0 | 3 | 0 |

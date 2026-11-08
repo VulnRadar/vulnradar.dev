@@ -573,7 +573,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Sparkles] **[SECURITY]** **AI Verification Reserves Credits Before It Runs**
   AI finding verification now sets aside the tokens a pass can use from your window allowance and AI credits before it starts, gives back what it did not use, and stops at the first finding your allowance cannot cover instead of spending past it. Two verifications started at once can no longer both draw on the same credits.
 - [GitMerge] **[SECURITY]** **GitHub Repo Review Reserves Credits Before It Runs**
-  A GitHub repo review now sets aside what it can use from your window allowance and GitHub review credits before any file is fetched, instead of starting on any positive balance, and the AI review stops at the files that allowance does not cover. Unused tokens go back to you when it finishes. A second review on the same account is refused (HTTP 429) while the first is still running, rather than waiting for it, so start it again once the first one finishes.
+  A GitHub repo review now sets aside what it can use from your window allowance and GitHub review credits before any file is fetched, instead of starting on any positive balance, and the AI review stops at the files that allowance does not cover. Unused tokens go back to you when it finishes. A second review on the same account that has to set tokens aside while the first is still running is refused (HTTP 429) rather than waiting for it, so start it again once the first one finishes.
 - [Timer] **[SECURITY]** **Verification Probe Reads a Capped Body**
   The live probe AI verification sends to the scanned site now stops reading the response at its snippet size and probe timeout, instead of downloading the whole body first.
 - [ShieldCheck] **[SECURITY]** **False-Positive Marks Stay Private**
@@ -620,8 +620,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   AI verification and AI code review now count every call at its worst case before sending it, so a page or repository full of emoji, CJK text or dense code can no longer make a call cost more than was set aside for it. A pass stops at the first call that would not fit and reports what was left unverified, instead of charging it afterwards. Counting the worst case means a repo review covers fewer files on the same allowance, though you are still charged only for what it really used.
 - [FileText] **[SECURITY]** **Verification Logs No Longer Accept Forged Lines**
   Values from a verification request, a scanned site or an AI provider are escaped and shortened before they reach the admin error log, so line breaks in them can no longer add fake entries there. The scan summary, tag suggestion and reasoning notices log your own saved AI model and endpoint the same way, and a reply from your own endpoint that is not JSON is logged escaped too, with the stack that shows where it failed.
-- [Code] **[API]** **AI-Verifying a Findings Array Refuses a Malformed Request Up Front**
-  POST /scan/verify-batch now answers 400 for a url that is not an http or https address, and for a finding other than null without a string id, before any AI allowance is reserved. A bare host such as example.com is still accepted. Before, such a url ended in a failed probe, and an id that could not be read as text ended in a server error.
+- [Code] **[API]** **AI-Verifying a Findings Array Refuses Only a Bad URL**
+  POST /scan/verify-batch now answers 400, before any AI allowance is reserved, for a url that is not an http or https address. Before, such a url ended in a failed probe. A bare host such as example.com is still accepted, and so is every finding v3 took: any id, including a number, an empty one or none at all. A null element used to end the request with a server error; it now comes back unchanged, and nothing is sent to the AI for it. A finding with a field that cannot be converted to text is handed back unverified, as it was in 3.9.1, while the rest of the array is verified.
 - [Link2] **[SECURITY]** **Scan Links Cannot Redirect Your Requests**
   A crafted History link could make your browser send your own signed-in requests, such as revoking an API key, to a different part of the API when you opened it or used the scan's menu. Scan ids from links are now accepted only in the shape VulnRadar issues, and every request for a scan is built from that checked id. Host report and shared scan pages encode the hostname or link token they put into a request the same way.
 - [Search] **[SECURITY]** **Query Parameters Read Safely**
@@ -658,8 +658,6 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The web app now builds share, public listing, AI summary and delete requests for a scan from named endpoints instead of adding text to the scan's address, so they keep working when the scan endpoint moves to v4.
 - [Sparkles] **[FIXED]** **AI Verification Starts With Less of Your Allowance Free**
   AI finding verification used to need room for one finding on a full-size page before it would start. On the free plan that meant a 429 after about 17k of the window's 80k tokens. It now needs only enough for one finding on an empty page, about 22k tokens with the default settings. Each call is still checked against the page it really fetched and is not sent if it would go past what was set aside, so you are never charged beyond your reservation. When the allowance or the provider stops a pass, the result says so, and the findings it did not reach are no longer described as timed out.
-- [Code] **[API]** **Verify-Batch Takes the Findings It Always Took**
-  POST /api/v3/scan/verify-batch accepts a null element, an empty finding id and a long finding id again, as v3 always did. It still answers 400 for a finding other than null whose id is not a string, and for a url that is not an http or https address. A null element used to end the request with a server error. It now comes back unchanged, and nothing is sent to the AI for it. The stricter id rule (non-empty, at most 200 characters) moves to the v4 API.
 - [GitMerge] **[CHANGED]** **Large Repos Get a Partial AI Review Instead of a Refusal**
   A GitHub repo scan no longer refuses a repo that is larger than your remaining GitHub review allowance or the server's per-run AI review limit. The pattern-based secret scan always checks every file. The AI review covers as many files as the allowance and the limit allow, stops between batches, and the result says how many files it covered. When not even the first batch fits, or your plan's allowance for the window is already used up, the scan still runs and the result says the AI review did not run and why.
 - [ShieldCheck] **[SECURITY]** **Repo Review Per-Run Limit Counts Dense Text at Its Worst Case**
@@ -692,6 +690,30 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Removed two old social card images and the square app icon variants that are no longer used.
 - [ScanSearch] **[ENGINE]** **A Download Link to a ZIP Is No Longer Called a Backup**
   The check for a link to a backup, config or version-control file on your own site reported every .zip, .tar.gz and .tgz link, so a download page or a press kit got a medium finding for doing its job. An archive is now reported only when its name or folder says it is a backup or a dump, such as backup.zip, db-dump.tar.gz or anything under /backups/. Links to .env, .sql, .bak, .git and the other file types it covers are reported as before.
+- [Code] **[API]** **AI-Verifying a Findings Array Says How Far It Got**
+  POST /scan/verify-batch now returns an ai field next to the findings, in the shape POST /scan/verify returns: whether an AI endpoint is configured, how many findings came back with a verdict out of how many there were to judge, and whether the AI provider's rate limit or your AI allowance stopped the pass partway. A pass your allowance stopped before any finding was verified answers 429 with the error alone, as an account out of allowance did in 3.9.1. A request with no finding to judge, an empty array or only null elements, answers at once without reserving any AI allowance or fetching the page. This is an additive v3 change.
+- [GitMerge] **[SECURITY]** **A Token of Credit No Longer Buys Free Repo Scans**
+  On the free plan a repo review is paid for by today's free review or by GitHub review credits. With the free review used and credits below what one AI batch needs, it now gets the same refusal (HTTP 403) as no credits at all, instead of a pattern scan that never spent them. A repo in which no file is small enough for one AI batch under the server's per-run limit gets that 403 too, whether or not today's free review is used, and neither the free review nor any credit is spent on it. Paid plans still get the pattern scan and a note when their allowance runs out.
+- [GitMerge] **[IMPROVED]** **One Large File No Longer Stops a Repo's AI Review**
+  A file too large for the server's per-run AI review limit on its own is now skipped and named in the result, and the AI review carries on with the rest of the repo. It used to stop at that file, so nothing after it got an AI review. When a batch fails and a limit stops the review later, the note now says both instead of blaming the limit for the batch that failed.
+- [GitMerge] **[FIXED]** **Repo Scans Reopened From History Show Their AI Coverage**
+  A repo scan reopened from the repo's timeline now shows the same note about how much of the repo the AI review covered as it did when the scan ran. Scans run before this release have no saved coverage and show no note.
+- [Settings] **[SELFHOST]** **Per-Run AI Review Limit Explained**
+  The setting's help text and the GitHub docs now say the per-run AI review limit is a conservative count: its default of 300,000 admits about 300 KB of code per run. An admin can raise it in the admin panel's settings, up to 2,000,000, without a redeploy.
+- [Webhook] **[FIXED]** **Discord /slack and /github Webhooks Get a Payload They Can Read**
+  A Discord webhook URL ending in /slack or /github used to be treated as a regular Discord webhook and sent an embed, which those endpoints do not read. /slack now gets the Slack payload and /github gets the plain JSON body, for scan alerts and for the test message, and webhooks you already saved are handled the same way without being edited. Slack notifications also carry a plain text line, so the alert preview shows the result.
+- [ScanSearch] **[ENGINE]** **Leaked Discord Webhooks Found in Any Letter Case**
+  The scanner now reports a leaked Discord webhook URL written with capital letters in the host or path, such as Discord.com or /API/WEBHOOKS/. It uses the same host and path rules that webhook type detection uses, so the two can no longer drift apart.
+- [ShieldCheck] **[SECURITY]** **Scan Gate Refuses a Count It Cannot Compare**
+  The GitHub Action, the GitLab CI template and the CLI now stop with exit code 2 when a scan with no findings list reports a severity count that is not a whole number, such as 2.5, a negative number or a quoted string. Before, a count like that made the Action and the template's comparison error out and pass a scan they had not judged, and the CLI read most of them as 0. In the Action, a count containing a line break could also add an output of its own.
+- [Timer] **[CLI]** **CLI No Longer Sends a Doomed Status Check Right Before Its Timeout**
+  When the wait before the timeout ended a moment early, the CLI sent a status check with almost no time left, printed a status-check failure that never happened, and then checked a third time. It now waits out those last moments and makes one final check, so a scan that finishes right at the timeout is still reported as complete.
+- [UserCheck] **[FIXED]** **Mixed-Case Email Addresses Found Again**
+  Accounts whose email address was saved with capital letters before addresses were normalised can sign in again, signing up with that address no longer tries to create a second account, and such an account can accept a staff invite without being asked for a password it has no field to enter.
+- [UserCog] **[SECURITY]** **Staff Invites See Every Existing Account**
+  Inviting staff now recognises an existing account or a pending invite whatever the letter case of the stored address, so the protection for the super admin account and the duplicate-invite check cannot be bypassed by an older mixed-case address.
+- [BookOpen] **[SELFHOST]** **Docs: Repo Review Limits and Staff SSO Upgrade**
+  The GitHub scanning docs now say an oversized repo is fully pattern-scanned and partly AI-reviewed, not rejected. The self-hosting docs gain an upgrade note for staff single sign-on on Microsoft Entra ID, naming the super-admin setting that accepts a token without an email_verified claim.
 
 ---
 
@@ -3000,6 +3022,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1192
+- **Total changes documented:** 1203
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
