@@ -137,6 +137,103 @@ describe("sendAdminAlert", () => {
     expect(opts.headers["X-VulnRadar-Signature"]).toBeUndefined();
   });
 
+  describe("the body each destination can read", () => {
+    const SLACK = "https://hooks.slack.com/services/T000/B000/secretpart";
+    const DISCORD = "https://discord.com/api/webhooks/123456/secret-token";
+    const alert = {
+      event: "scheduled_scans_stopped",
+      severity: "critical" as const,
+      message: "Scheduled scans have stopped.",
+      context: { failures: 3, worker: "scheduled" },
+    };
+
+    async function sentTo(url: string, overrides = {}) {
+      SETTINGS.ADMIN_ALERT_WEBHOOK_URL = url;
+      await sendAdminAlert({ ...alert, ...overrides });
+      const [, opts] = mockSafeFetch.mock.calls[0];
+      return { opts, body: JSON.parse(opts.body) };
+    }
+
+    it("sends Slack a text field and nothing it would reject", async () => {
+      const { body } = await sentTo(SLACK);
+
+      expect(Object.keys(body)).toEqual(["text"]);
+      expect(body.text).toContain("critical: scheduled_scans_stopped");
+      expect(body.text).toContain("Scheduled scans have stopped.");
+      expect(body.text).toContain("failures: 3");
+    });
+
+    it("sends Discord a content field", async () => {
+      const { body } = await sentTo(DISCORD);
+
+      expect(body.content).toContain("critical: scheduled_scans_stopped");
+      expect(body.content).toContain("Scheduled scans have stopped.");
+      expect(body.event).toBeUndefined();
+    });
+
+    it("sends Discord's /slack endpoint the Slack body", async () => {
+      const { body } = await sentTo(`${DISCORD}/slack`);
+
+      expect(Object.keys(body)).toEqual(["text"]);
+    });
+
+    it("keeps the JSON body for any other URL", async () => {
+      const { body } = await sentTo("https://siem.example.com/ingest");
+
+      expect(body).toMatchObject({
+        event: alert.event,
+        severity: alert.severity,
+        message: alert.message,
+        context: alert.context,
+      });
+      expect(body.text).toBeUndefined();
+      expect(body.content).toBeUndefined();
+    });
+
+    it("is not fooled by a provider's name in someone else's URL", async () => {
+      const { body } = await sentTo(
+        "https://hooks.slack.com.example.net/services/x",
+      );
+
+      expect(body.event).toBe(alert.event);
+    });
+
+    it("cannot ping a Slack channel from the alert text", async () => {
+      const { body } = await sentTo(SLACK, {
+        message: "worker said <!channel> & left",
+      });
+
+      expect(body.text).toContain("worker said &lt;!channel&gt; &amp; left");
+    });
+
+    it("cannot ping anyone on Discord from the alert text", async () => {
+      const { body } = await sentTo(DISCORD, { message: "@everyone look" });
+
+      expect(body.allowed_mentions).toEqual({ parse: [] });
+    });
+
+    it("stays inside Discord's message limit", async () => {
+      const { body } = await sentTo(DISCORD, { message: "x".repeat(5000) });
+
+      expect(body.content.length).toBeLessThanOrEqual(2000);
+    });
+
+    it("signs only the JSON body", async () => {
+      SETTINGS.ADMIN_ALERT_WEBHOOK_SECRET = "shh-secret";
+
+      const slack = await sentTo(SLACK);
+      expect(slack.opts.headers["X-VulnRadar-Signature"]).toBeUndefined();
+
+      mockSafeFetch.mockClear();
+      const discord = await sentTo(DISCORD);
+      expect(discord.opts.headers["X-VulnRadar-Signature"]).toBeUndefined();
+
+      mockSafeFetch.mockClear();
+      const generic = await sentTo("https://siem.example.com/ingest");
+      expect(generic.opts.headers["X-VulnRadar-Signature"]).toMatch(/^sha256=/);
+    });
+  });
+
   // AUDIT-012#obs-11: sendAdminAlert now REPORTS the delivery outcome
   // instead of returning void, so a "Send test alert" action can tell the
   // operator why nothing arrived. It still must never throw.

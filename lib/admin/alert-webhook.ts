@@ -14,11 +14,18 @@
  * top of an already-durable record, not the record itself.
  */
 import { signWebhookPayload } from "@/lib/webhooks/delivery";
+import {
+  detectWebhookType,
+  type WebhookType,
+} from "@/lib/webhooks/detect-type";
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { getSetting } from "@/lib/config/runtime-config";
 import { APP_NAME } from "@/lib/config/constants";
 
 const DELIVERY_TIMEOUT_MS = 10000;
+
+/** Discord refuses a message past this with a 400, so the alert would be lost. */
+const DISCORD_CONTENT_MAX_CHARS = 2000;
 
 export type AdminAlertSeverity = "critical" | "warning";
 
@@ -35,6 +42,56 @@ export interface AdminAlert {
 /** What actually happened to one alert delivery. */
 export type AdminAlertResult =
   { delivered: true; status: number } | { delivered: false; reason: string };
+
+/** The alert as lines a person reads in a channel. */
+function chatText(alert: AdminAlert): string {
+  const context = Object.entries(alert.context ?? {}).map(
+    ([key, value]) =>
+      `${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`,
+  );
+  return [
+    `[${APP_NAME}] ${alert.severity}: ${alert.event}`,
+    alert.message,
+    ...context,
+  ].join("\n");
+}
+
+/**
+ * The body for one destination.
+ *
+ * It was the generic JSON for every URL, and Slack and Discord both answer
+ * that with a 400 because neither has a field they can render in it. Those are
+ * the two destinations the setting names, so "scheduled scans have stopped"
+ * and a boot schema failure never reached the channel they were sent to.
+ *
+ * The text can carry a worker's error or a value from the context, so neither
+ * chat format is left able to notify anyone: Slack's control sequences need a
+ * literal `<`, and Discord takes the list of who may be pinged in the payload.
+ */
+function alertPayload(format: WebhookType, alert: AdminAlert): unknown {
+  if (format === "slack") {
+    return {
+      text: chatText(alert)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;"),
+    };
+  }
+  if (format === "discord") {
+    return {
+      content: chatText(alert).slice(0, DISCORD_CONTENT_MAX_CHARS),
+      allowed_mentions: { parse: [] },
+    };
+  }
+  return {
+    app: APP_NAME,
+    event: alert.event,
+    severity: alert.severity,
+    message: alert.message,
+    context: alert.context ?? {},
+    timestamp: new Date().toISOString(),
+  };
+}
 
 /**
  * Fire an admin alert. No-op (and no network call at all) when no webhook
@@ -80,21 +137,17 @@ export async function sendAdminAlert(
       };
     }
 
-    const body = JSON.stringify({
-      app: APP_NAME,
-      event: alert.event,
-      severity: alert.severity,
-      message: alert.message,
-      context: alert.context ?? {},
-      timestamp: new Date().toISOString(),
-    });
+    const format = detectWebhookType(url);
+    const body = JSON.stringify(alertPayload(format, alert));
 
     const secret = await getSetting("ADMIN_ALERT_WEBHOOK_SECRET");
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "User-Agent": `${APP_NAME}-Admin-Alert/1.0`,
     };
-    if (secret) {
+    // Only a receiver the operator built can check this. Slack and Discord
+    // authenticate by the secret in the URL and ignore the header.
+    if (secret && format === "generic") {
       headers["X-VulnRadar-Signature"] =
         `sha256=${signWebhookPayload(secret, body)}`;
     }
