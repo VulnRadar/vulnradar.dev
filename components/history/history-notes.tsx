@@ -1,8 +1,27 @@
 "use client";
 
-import { useState } from "react";
-import { MessageSquare, Pencil, Save, Loader2 } from "lucide-react";
+import { useId, useState } from "react";
+import { MessageSquare, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { EditDialog } from "@/components/shared/edit-dialog";
+
+/** Same cap the PATCH route and the old inline textarea enforced. */
+export const NOTES_MAX_LENGTH = 2000;
+
+export const NOTES_KEPT_SENTENCE =
+  "Your text is still here, nothing was saved.";
+
+/** Resolves to null when the note saved, or to the message the dialog shows
+ *  while it stays open with the draft in it. */
+export async function saveNotesDraft(
+  onSave: (notes: string) => Promise<string | null>,
+  draft: string,
+): Promise<string | null> {
+  const error = await onSave(draft);
+  return error ? `${error} ${NOTES_KEPT_SENTENCE}` : null;
+}
 
 interface HistoryNotesProps {
   notes: string;
@@ -13,30 +32,11 @@ interface HistoryNotesProps {
   onSave: (notes: string) => Promise<string | null>;
 }
 
-export function HistoryNotes({
-  notes: initialNotes,
-  isOwner,
-  onSave,
-}: HistoryNotesProps) {
-  const [notes, setNotes] = useState(initialNotes);
+export function HistoryNotes({ notes, isOwner, onSave }: HistoryNotesProps) {
+  // The card renders the prop, never a copy of it. The copy this replaced was
+  // seeded once and never re-synced, so the card could go on showing a note
+  // the scan no longer had.
   const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  const handleSave = async () => {
-    setSaving(true);
-    setSaveError(null);
-    const error = await onSave(notes);
-    setSaving(false);
-    if (error) {
-      // Stay in edit mode with the typed text intact. Collapsing the editor
-      // here is what made a lost paragraph of remediation notes read as a
-      // successful save.
-      setSaveError(error);
-      return;
-    }
-    setEditing(false);
-  };
 
   return (
     <div className="rounded-xl border border-border bg-card p-4">
@@ -46,73 +46,19 @@ export function HistoryNotes({
           <h3 className="text-sm font-medium text-foreground">Notes</h3>
         </div>
         {isOwner && (
-          <>
-            {!editing ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setEditing(true)}
-                className="h-7 text-xs gap-1.5 text-muted-foreground"
-              >
-                <Pencil className="h-3 w-3" />
-                {notes ? "Edit" : "Add note"}
-              </Button>
-            ) : (
-              <div className="flex gap-1.5">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setEditing(false);
-                    setNotes(initialNotes);
-                    setSaveError(null);
-                  }}
-                  className="h-7 text-xs text-muted-foreground"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="h-7 text-xs gap-1.5 bg-transparent"
-                >
-                  {saving ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Save className="h-3 w-3" />
-                  )}
-                  Save
-                </Button>
-              </div>
-            )}
-          </>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setEditing(true)}
+            className="h-7 text-xs gap-1.5 text-muted-foreground"
+          >
+            <Pencil className="h-3 w-3" />
+            {notes ? "Edit" : "Add note"}
+          </Button>
         )}
       </div>
 
-      {editing && isOwner ? (
-        <>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            onKeyDown={(e) => e.stopPropagation()}
-            onKeyUp={(e) => e.stopPropagation()}
-            placeholder="Add notes about this scan..."
-            aria-label="Scan notes"
-            maxLength={2000}
-            // rounded-md and a 2px ring: this is a control, and both the
-            // radius ladder and every other input in the product say so. It
-            // was the only text field left drawing a 1px focus ring.
-            className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring resize-y"
-          />
-          {saveError && (
-            <p role="alert" className="mt-2 text-xs text-destructive">
-              {saveError} Your text is still here, nothing was saved.
-            </p>
-          )}
-        </>
-      ) : notes ? (
+      {notes ? (
         <p className="text-sm text-muted-foreground whitespace-pre-wrap">
           {notes}
         </p>
@@ -123,6 +69,69 @@ export function HistoryNotes({
             : "No notes for this scan."}
         </p>
       )}
+
+      {editing && isOwner && (
+        <NotesDialog
+          notes={notes}
+          onSave={onSave}
+          onClose={() => setEditing(false)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Mounted only while open, so the draft is seeded from the saved note on every
+ * opening and a refetch of the scan cannot reset it mid-edit. An empty note is
+ * a valid save: it is how a note is cleared.
+ */
+export function NotesDialog({
+  notes,
+  onSave,
+  onClose,
+}: {
+  notes: string;
+  onSave: (notes: string) => Promise<string | null>;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState(notes);
+  const fieldId = useId();
+
+  return (
+    <EditDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title="Notes on this scan"
+      saveLabel="Save note"
+      size="md"
+      dirty={draft !== notes}
+      onSave={() => saveNotesDraft(onSave, draft)}
+    >
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={fieldId}>Scan notes</Label>
+        <Textarea
+          id={fieldId}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          // The history page's letter shortcuts listen above this tree, and a
+          // React portal still bubbles through it, so typing a note would
+          // fire them. Ctrl or Cmd+Enter is let through: it is the dialog's
+          // own save chord and no shortcut uses it.
+          onKeyDown={(e) => {
+            if (!(e.key === "Enter" && (e.ctrlKey || e.metaKey))) {
+              e.stopPropagation();
+            }
+          }}
+          onKeyUp={(e) => e.stopPropagation()}
+          placeholder="Add notes about this scan..."
+          maxLength={NOTES_MAX_LENGTH}
+          autoFocus
+          className="min-h-[140px] resize-y"
+        />
+      </div>
+    </EditDialog>
   );
 }
