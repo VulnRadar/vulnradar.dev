@@ -312,8 +312,13 @@ describe("/docs/account-security", () => {
   });
 
   it("does not claim more emails are translated than are", () => {
-    expect(read("lib/email/email.ts").match(/getTranslator\(/g)).toHaveLength(
-      1,
+    // One message namespace per translated template. The shell's footer has
+    // its own, so a second template translating its body is what trips this.
+    const namespaces = read("lib/email/email.ts").matchAll(
+      /\bt\(\s*"email\.(\w+)\./g,
+    );
+    expect(new Set(Array.from(namespaces, (m) => m[1]))).toEqual(
+      new Set(["verify", "layout"]),
     );
     expect(page).toContain(
       "sign-up verification email goes out in your account language",
