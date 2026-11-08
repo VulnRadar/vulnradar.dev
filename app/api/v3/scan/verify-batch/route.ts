@@ -9,7 +9,7 @@ import {
 } from "@/lib/api/api-key-scopes";
 import {
   estimateVerifyTokens,
-  isAcceptedBatchElement,
+  isAskableFinding,
   verifyFindingsBatchWithOutcome,
 } from "@/lib/ai/verify-findings";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
@@ -143,25 +143,13 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  // v3 changes only by addition, so this refuses only an element the prompt
-  // builder cannot turn into text, which pricing would otherwise answer with
-  // a 500 (3.9.1 handed it back unverified). A numeric, missing, empty or
-  // long id, a primitive element and a null element are all still taken
-  // (see isAcceptedBatchElement).
-  const unreadable = findings.findIndex((f) => !isAcceptedBatchElement(f));
-  if (unreadable !== -1) {
-    return NextResponse.json(
-      {
-        error: `findings[${unreadable}] has an id, title, category, severity, evidence or evidenceExcerpts that cannot be converted to text.`,
-      },
-      { status: 400 },
-    );
-  }
-
-  // Nothing but null elements: there is nothing to ask about, so nothing is
-  // reserved and the target is not probed. Going through the gate could
-  // answer 429 for a request that would not have spent a token.
-  if (findings.every((f) => f === null)) {
+  // No element is refused on v3. A null one, and one the prompt builder cannot
+  // turn into text, come back as sent and unverified, as 3.9.1 handed them
+  // back (see isAskableFinding). When that is all there is, there is nothing
+  // to ask about, so nothing is reserved and the target is not probed. Going
+  // through the gate could answer 429 for a request that would not have
+  // spent a token.
+  if (!findings.some(isAskableFinding)) {
     return NextResponse.json({
       findings,
       ai: { configured: true, verdicts: 0, attempted: 0 },

@@ -3,8 +3,9 @@
  * client-supplied findings, not a stored scan). Auth (session or API key) is
  * mocked at the boundary; the pass (verifyFindingsBatchWithOutcome in
  * lib/ai/verify-findings.ts) and its estimate are mocked since the pass is
- * itself an LLM network boundary. isAcceptedBatchElement runs for real: it is
- * the rule for which elements the route refuses.
+ * itself an LLM network boundary. isAskableFinding runs for real: it is the
+ * rule for when the route can answer without a pass at all.
+ * unreadable-element.test.ts runs the real pass for an element it skips.
  *
  * Unlike verify/route.ts, this route never reads scan_history: the caller
  * supplies url + findings[] directly in the body, so there is no scan
@@ -348,22 +349,23 @@ describe("POST /api/v3/scan/verify-batch: which findings[] elements are taken", 
   // prompt builder throws converting it to text, and that answered 500.
   const unconvertible = { toString: 1 };
 
+  // 3.9.1 answered 200 for such a finding and handed it back unverified, so
+  // v3 does not refuse it: the pass skips it (unreadable-element.test.ts).
   it.each(["id", "title", "category", "severity", "evidence"])(
-    "refuses a finding whose %s cannot be converted to text, before reserving anything",
+    "takes a finding whose %s cannot be converted to text and hands it to the pass",
     async (field) => {
+      const body = [findings[0], { id: "x", [field]: unconvertible }];
       const res = await POST(
-        postRequest({
-          url: "https://example.com",
-          findings: [findings[0], { id: "x", [field]: unconvertible }],
-        }),
+        postRequest({ url: "https://example.com", findings: body }),
       );
-      expect(res.status).toBe(400);
-      expect((await res.json()).error).toBe(
-        "findings[1] has an id, title, category, severity, evidence or evidenceExcerpts that cannot be converted to text.",
+      expect(res.status).toBe(200);
+      expect(mockReserveAiTokens).toHaveBeenCalled();
+      expect(mockVerifyFindingsBatch).toHaveBeenCalledWith(
+        "https://example.com",
+        body,
+        42,
+        RESERVATION,
       );
-      expect(mockEstimateVerifyTokens).not.toHaveBeenCalled();
-      expect(mockReserveAiTokens).not.toHaveBeenCalled();
-      expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
     },
   );
 
@@ -373,14 +375,22 @@ describe("POST /api/v3/scan/verify-batch: which findings[] elements are taken", 
       "evidenceExcerpts",
       { id: "x", evidenceExcerpts: { length: unconvertible } },
     ],
-  ])("refuses a field the prompt builder cannot read: %s", async (_l, bad) => {
-    const res = await POST(
-      postRequest({ url: "https://example.com", findings: [bad] }),
-    );
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toMatch(/^findings\[0\] /);
-    expect(mockReserveAiTokens).not.toHaveBeenCalled();
-  });
+    ["a title", { id: "x", title: unconvertible }],
+  ])(
+    "answers a batch of only unreadable findings (%s) as sent, without reserving",
+    async (_l, bad) => {
+      const res = await POST(
+        postRequest({ url: "https://example.com", findings: [bad, null] }),
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toStrictEqual({
+        findings: [bad, null],
+        ai: { configured: true, verdicts: 0, attempted: 0 },
+      });
+      expect(mockReserveAiTokens).not.toHaveBeenCalled();
+      expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
+    },
+  );
 
   // Everything 3.9.1 answered 200 for stays accepted, and a null element,
   // which 3.9.1 answered with a 500, is carried through as sent.

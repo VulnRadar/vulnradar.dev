@@ -466,10 +466,10 @@ export function admittedCallCeiling(
  * overspend: admitWithinBudget measures each call against the page it really
  * fetched and refuses a call that would not fit what was reserved.
  *
- * A null element (verify-batch accepts one on v3) is never asked about, so it
- * is not priced. Pricing the minimum on a leading null priced the bare
- * template, below what the first real finding needs, and let in an account
- * that could then verify nothing.
+ * An element the pass never asks about (see isAskableFinding) is not priced.
+ * Pricing the minimum on a leading null priced the bare template, below what
+ * the first real finding needs, and let in an account that could then verify
+ * nothing.
  */
 export async function estimateVerifyTokens(
   findings: Vulnerability[],
@@ -485,29 +485,31 @@ export async function estimateVerifyTokens(
 }
 
 /**
- * The findings a pass asks about: every element but a null one, which
- * verify-batch accepts on v3 and hands back as it was sent.
+ * The findings a pass asks about, in order (see isAskableFinding).
  */
 function askableFindings(findings: Vulnerability[]): Vulnerability[] {
-  return findings.filter((f) => f != null);
+  return findings.filter(isAskableFinding);
 }
 
 /**
- * Whether v3 POST /scan/verify-batch takes this findings[] element.
+ * Whether a pass asks the AI about this element of a findings array.
  *
- * v3 changes only by addition, so the route refuses one kind of element: one
- * the prompt builder cannot turn into text, such as an id, title, category,
- * severity, evidence or evidenceExcerpts that is an object with a toString
- * that is not a function, or one with no prototype to convert with. Pricing
- * builds the prompt before the gate, so such an element answered 500 there.
- * 3.9.1 built it inside the call and handed the finding back unverified
- * without saying why. Everything else 3.9.1 took is still taken: a numeric,
- * missing, empty or long id, a primitive element, and a null element, which
- * the pass carries through untouched. The stricter id rule belongs to the v4
- * contract.
+ * verify-batch takes its findings from the request body, and v3 hands two
+ * kinds of element back as they were sent, unpriced, never sent to the model
+ * and not counted in `attempted`. One is a null element. The other is one the
+ * prompt builder cannot turn into text: an id, title, category, severity,
+ * evidence or evidenceExcerpts that is an object whose toString is not a
+ * function, that has no prototype to convert with, or that nests deeper than
+ * the stack. 3.9.1 built that prompt inside the call, so the throw was
+ * swallowed and the finding came back unverified; pricing builds it before
+ * the gate, where it answered 500, and refusing it with a 400 would refuse
+ * what 3.9.1 answered 200 for. The refusal belongs to the v4 contract.
+ *
+ * Everything else is asked about as 3.9.1 asked about it: a numeric, missing,
+ * empty or long id, and a primitive element.
  */
-export function isAcceptedBatchElement(element: unknown): boolean {
-  if (element === null) return true;
+export function isAskableFinding(element: unknown): element is Vulnerability {
+  if (element == null) return false;
   try {
     buildVerifyPrompt(element as Vulnerability, EMPTY_PROBE);
     return true;
@@ -690,9 +692,10 @@ async function verifyInChunks(
   // calls all timed out admit every finding, however small the budget.
   let held = 0;
   let next = 0;
-  // A null element (accepted by verify-batch on v3) has nothing to ask about.
-  // It is left out before any chunk is formed, so it takes no slot and no
-  // admission, and applyVerdicts hands it back as it was sent.
+  // An element the pass does not ask about (a null one, or one the prompt
+  // builder cannot read, see isAskableFinding) is left out before any chunk
+  // is formed, so it takes no slot and no admission, and applyVerdicts hands
+  // it back as it was sent.
   const askable = askableFindings(findings);
   while (next < askable.length) {
     if (Date.now() >= deadline) break;
@@ -743,9 +746,10 @@ async function verifyInChunks(
     // On verify-batch the URL and the findings array are the request body,
     // so both go through logValue. The route checks that the url is an http
     // or https address and that findings is an array within the batch cap
-    // whose elements the prompt builder can read (isAcceptedBatchElement);
-    // an id may still be a number or missing, and the count is escaped with
-    // the rest rather than trusted to be the number those checks imply.
+    // whose elements are not otherwise checked: one the prompt builder cannot
+    // read is skipped (isAskableFinding), an id may be a number or missing,
+    // and the count is escaped with the rest rather than trusted to be the
+    // number those checks imply.
     if (rateLimited) {
       console.error(
         `[AI-VERIFY] ${logValue(endpoint.baseUrl)} rate-limited the pass for ${logValue(url)}; stopped after ${verdictMap.size} of ${logValue(findings.length)} verdicts.`,
@@ -817,12 +821,14 @@ export async function verifyFindingsBatchWithOutcome(
 ): Promise<{ findings: Vulnerability[]; outcome: AiVerificationOutcome }> {
   const spent = { tokens: 0 };
   try {
-    // `attempted` counts what there was to ask about. A null element is
-    // handed back as sent rather than judged, so counting it would report a
-    // finding left unverified that was never a finding. A batch with nothing
-    // else in it returns here, before the endpoint lookup and the probe of
-    // the target: nothing in it would use either.
-    const attempted = askableFindings(findings).length;
+    // `attempted` counts what there was to ask about. An element the pass
+    // does not ask about (isAskableFinding) is handed back as sent rather
+    // than judged, so counting it would report it as stopped by the budget or
+    // the provider when neither reached it. A batch with nothing else in it
+    // returns here, before the endpoint lookup and the probe of the target:
+    // nothing in it would use either.
+    const askable = askableFindings(findings);
+    const attempted = askable.length;
     if (attempted === 0) {
       return {
         findings,
@@ -864,11 +870,9 @@ export async function verifyFindingsBatchWithOutcome(
     // that id, so verdictMap.size undercounted what the caller received. Not
     // read off aiVerdict either, which a finding from an earlier pass
     // already carries when it is sent back.
-    const verdicts = askableFindings(findings).filter((f) =>
-      verdictMap.has(f.id),
-    ).length;
+    const verdicts = askable.filter((f) => verdictMap.has(f.id)).length;
     return {
-      findings: applyVerdicts(findings, verdictMap),
+      findings: applyVerdicts(findings, verdictMap, new Set(askable)),
       outcome: {
         configured: true,
         verdicts,
@@ -987,10 +991,13 @@ async function syncFeedbackFromAiVerdicts(
 function applyVerdicts(
   findings: Vulnerability[],
   verdictMap: Map<string, Omit<VerifyResult, "id">>,
+  askable?: ReadonlySet<Vulnerability>,
 ): Vulnerability[] {
   return findings.map((f) => {
-    // verify-batch's null element comes back as it was sent.
-    if (!f) return f;
+    // verify-batch's null element comes back as it was sent, and so does one
+    // the pass skipped, even when it shares an id with a finding that was
+    // judged: it was never asked about, so no verdict is its own.
+    if (!f || (askable && !askable.has(f))) return f;
     const v = verdictMap.get(f.id);
     if (!v) return f;
     return {

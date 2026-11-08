@@ -333,8 +333,8 @@ const endpoints: Endpoint[] = [
 }`,
     notes: [
       "url and findings[] are both required. The response is the same array, enriched in place with aiVerdict, aiConfidence and aiReason. Nothing is persisted.",
-      "ai says whether the pass ran, in the shape POST /scan/verify returns: configured is false when no AI endpoint is set up, verdicts counts the findings that came back with a verdict, and attempted counts the findings there were to judge (a null element is handed back as sent and not counted). rateLimited is true when the AI provider rate-limited the pass, and budgetExhausted is true when your AI allowance ran out partway: the pass stopped at the first finding it could not pay for, and that finding and the ones after it carry no verdict.",
-      "A finding element may have any id, including a number, an empty string or none at all, and may be null. One whose id, title, category, severity, evidence or evidenceExcerpts cannot be converted to text is a 400 naming its index.",
+      "ai says whether the pass ran, in the shape POST /scan/verify returns: configured is false when no AI endpoint is set up, verdicts counts the findings that came back with a verdict, and attempted counts the findings there were to judge (a skipped element, described below, is not counted). rateLimited is true when the AI provider rate-limited the pass, and budgetExhausted is true when your AI allowance ran out partway: the pass stopped at the first finding it could not pay for, and that finding and the ones after it carry no verdict.",
+      "A finding element may have any id, including a number, an empty string or none at all, and may be null. A null element, and one whose id, title, category, severity, evidence or evidenceExcerpts cannot be converted to text, is skipped: it is not priced or sent to the AI, and comes back as it was sent, with no verdict, while the rest of the array is verified.",
       "Shares one rate-limit bucket with POST /scan/verify (RATE_LIMITS.aiVerify, keyed per account), so hitting both routes does not double your effective AI-verification quota.",
       "findings[] is hard-capped by the AI_VERIFY_BATCH_MAX_FINDINGS admin setting, which ships at 50. Unlike /scan/verify, which only ever processes findings already stored on one of your own scans, this route accepts an arbitrary array, so the cap is what stops one request forcing unbounded AI spend. Over the cap is a 400 naming the limit.",
       "Bounded by the account's AI token quota per plan; a BYOK account (its own AI provider key configured) bypasses that cap entirely.",
@@ -345,7 +345,7 @@ const endpoints: Endpoint[] = [
       {
         code: 400,
         description:
-          "Unparseable body, missing url or findings[], a url that is not an http or https address, a finding with a field that cannot be converted to text, or more findings than AI_VERIFY_BATCH_MAX_FINDINGS",
+          "Unparseable body, missing url or findings[], a url that is not an http or https address, or more findings than AI_VERIFY_BATCH_MAX_FINDINGS",
       },
       { code: 401, description: "Unauthorized, or invalid API key" },
       {

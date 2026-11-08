@@ -606,7 +606,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             },
             "400": {
               description:
-                "Missing url or findings[], a url that is not an http or https address, a finding whose id, title, category, severity, evidence or evidenceExcerpts cannot be converted to text, or more findings than the deployment's batch cap",
+                "Missing url or findings[], a url that is not an http or https address, or more findings than the deployment's batch cap",
             },
             "401": { $ref: "#/components/responses/Unauthorized" },
             "403": {
@@ -2079,7 +2079,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             attempted: {
               type: "integer",
               description:
-                "Findings there were to judge. On /scan/verify-batch a null element is handed back as sent and not counted.",
+                "Findings there were to judge. On /scan/verify-batch a skipped element (a null one, or one with a field that cannot be converted to text) is handed back as sent and not counted.",
             },
             rateLimited: {
               type: "boolean",
@@ -2524,7 +2524,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
               type: "array",
               items: { type: "object" },
               description:
-                "The findings to verify. Capped by the deployment's AI verify batch setting, which ships at 50; over it is a 400 naming the limit. An element may be null, and an id may be any value; an element whose id, title, category, severity, evidence or evidenceExcerpts cannot be converted to text is a 400.",
+                "The findings to verify. Capped by the deployment's AI verify batch setting, which ships at 50; over it is a 400 naming the limit. An element may be null, and an id may be any value. A null element, and one whose id, title, category, severity, evidence or evidenceExcerpts cannot be converted to text, is skipped: not priced, not sent to the AI, and handed back as sent with no verdict.",
             },
           },
         },

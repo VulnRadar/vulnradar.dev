@@ -1311,12 +1311,11 @@ describe("verifyFindingsBatchWithOutcome: counting verdicts on a caller-supplied
   });
 });
 
-describe("isAcceptedBatchElement: what v3 verify-batch takes as a findings[] element", () => {
-  // The rule is what the prompt builder can turn into text, because that is
-  // what took a request down with a 500. Everything else 3.9.1 took stays
-  // accepted.
+describe("isAskableFinding: which findings[] elements a pass asks about", () => {
+  // The rule is what the prompt builder can turn into text, because pricing
+  // builds the prompt before the gate and a throw there was a 500. Everything
+  // 3.9.1 asked about is still asked about.
   it.each<[string, unknown]>([
-    ["a null element", null],
     ["a full finding", makeFinding("f1")],
     ["a numeric id", { id: 7, title: "t" }],
     ["a missing id", { title: "no id" }],
@@ -1328,9 +1327,14 @@ describe("isAcceptedBatchElement: what v3 verify-batch takes as a findings[] ele
     ["an array element", ["a", "b"]],
     ["an object field that converts", { id: "x", title: { a: 1 } }],
     ["a string evidenceExcerpts", { id: "x", evidenceExcerpts: "abc" }],
-  ])("accepts %s", async (_label, element) => {
-    const { isAcceptedBatchElement } = await import("@/lib/ai/verify-findings");
-    expect(isAcceptedBatchElement(element)).toBe(true);
+  ])("asks about %s", async (_label, element) => {
+    const { isAskableFinding } = await import("@/lib/ai/verify-findings");
+    expect(isAskableFinding(element)).toBe(true);
+  });
+
+  it("does not ask about a null element", async () => {
+    const { isAskableFinding } = await import("@/lib/ai/verify-findings");
+    expect(isAskableFinding(null)).toBe(false);
   });
 
   const unconvertible = JSON.parse('{"toString":1}');
@@ -1338,37 +1342,118 @@ describe("isAcceptedBatchElement: what v3 verify-batch takes as a findings[] ele
   nullPrototype.text = "no prototype to convert with";
 
   it.each(["id", "title", "category", "severity", "evidence"])(
-    "refuses a finding whose %s cannot be converted to text",
+    "does not ask about a finding whose %s cannot be converted to text",
     async (field) => {
-      const { isAcceptedBatchElement } =
-        await import("@/lib/ai/verify-findings");
-      expect(isAcceptedBatchElement({ id: "x", [field]: unconvertible })).toBe(
+      const { isAskableFinding } = await import("@/lib/ai/verify-findings");
+      expect(isAskableFinding({ id: "x", [field]: unconvertible })).toBe(false);
+      expect(isAskableFinding({ id: "x", [field]: nullPrototype })).toBe(false);
+      expect(isAskableFinding({ id: "x", [field]: [unconvertible] })).toBe(
         false,
       );
-      expect(isAcceptedBatchElement({ id: "x", [field]: nullPrototype })).toBe(
-        false,
-      );
-      expect(
-        isAcceptedBatchElement({ id: "x", [field]: [unconvertible] }),
-      ).toBe(false);
     },
   );
 
-  it("refuses evidenceExcerpts the prompt builder cannot read", async () => {
-    const { isAcceptedBatchElement } = await import("@/lib/ai/verify-findings");
+  it("does not ask about evidenceExcerpts the prompt builder cannot read", async () => {
+    const { isAskableFinding } = await import("@/lib/ai/verify-findings");
     expect(
-      isAcceptedBatchElement({
+      isAskableFinding({
         id: "x",
         evidenceExcerpts: { length: unconvertible },
       }),
     ).toBe(false);
   });
 
-  it("refuses an element that is itself a null-prototype object", async () => {
-    const { isAcceptedBatchElement } = await import("@/lib/ai/verify-findings");
+  it("does not ask about an element that is itself a null-prototype object", async () => {
+    const { isAskableFinding } = await import("@/lib/ai/verify-findings");
     const bare = Object.create(null) as Record<string, unknown>;
     bare.id = nullPrototype;
-    expect(isAcceptedBatchElement(bare)).toBe(false);
+    expect(isAskableFinding(bare)).toBe(false);
+  });
+});
+
+describe("verifyFindingsBatchWithOutcome: an element the prompt builder cannot read", () => {
+  // 3.9.1 answered 200 and handed such a finding back unverified, so v3
+  // keeps that: it is not priced, not sent, and comes back as it was sent
+  // while the rest of the batch is verified.
+  const unconvertible = JSON.parse('{"toString":1}');
+
+  it("hands it back unverified and verifies the others", async () => {
+    const prompts: string[] = [];
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(init.body as string);
+        prompts.push(body.messages.at(-1).content);
+        return confirmedResponseWithUsage("x", 100, 50);
+      },
+    );
+    // It shares its id with a finding that is judged, so a verdict keyed by
+    // id would land on it too if the skip were not carried through.
+    const unreadable = {
+      ...makeFinding("f1"),
+      title: unconvertible,
+    } as unknown as Vulnerability;
+    const sent = [makeFinding("f1"), unreadable, makeFinding("f2")];
+
+    const { findings: out, outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      sent,
+      42,
+      reservation({ budget: null }),
+    );
+
+    expect(out).toHaveLength(3);
+    expect(out[0]).toMatchObject({ id: "f1", aiVerdict: "confirmed" });
+    expect(out[1]).toBe(unreadable);
+    expect(out[1]).not.toHaveProperty("aiVerdict");
+    expect(out[2]).toMatchObject({ id: "f2", aiVerdict: "confirmed" });
+    expect(outcome).toStrictEqual({
+      configured: true,
+      verdicts: 2,
+      attempted: 2,
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(prompts.every((p) => p.includes("title: Finding f"))).toBe(true);
+  });
+
+  it("is not priced, so it neither raises the estimate nor sets the minimum", async () => {
+    const { estimateVerifyTokens } = await import("@/lib/ai/verify-findings");
+    const unreadable = {
+      id: "x",
+      evidence: unconvertible,
+    } as unknown as Vulnerability;
+
+    expect(await estimateVerifyTokens([unreadable, makeFinding("f1")])).toEqual(
+      await estimateVerifyTokens([makeFinding("f1")]),
+    );
+    expect(await estimateVerifyTokens([unreadable])).toEqual({
+      estimate: 0,
+      minimum: 0,
+    });
+  });
+
+  it("returns before the endpoint lookup and the probe when it is all there is", async () => {
+    const held = reservation({ budget: 1 });
+    const sent = [
+      { id: "x", severity: unconvertible } as unknown as Vulnerability,
+      null as unknown as Vulnerability,
+    ];
+
+    const { findings: out, outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      sent,
+      42,
+      held,
+    );
+
+    expect(out).toBe(sent);
+    expect(outcome).toStrictEqual({
+      configured: true,
+      verdicts: 0,
+      attempted: 0,
+    });
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 
