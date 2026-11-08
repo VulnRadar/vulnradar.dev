@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { matchesPathPattern } from "@/lib/notifications/match-path";
+import { fastestRunMs } from "../../_helpers/timing";
 
 /**
  * matchesPathPattern is the fix for a real dead-column bug: admin
@@ -81,8 +82,9 @@ describe("matchesPathPattern: wildcard semantics and cost", () => {
   it("returns promptly on the pattern shape that used to backtrack exponentially", () => {
     const evil = "/" + "a*".repeat(20) + "b";
     const path = "/" + "a".repeat(60);
-    const started = Date.now();
     expect(matchesPathPattern(path, evil)).toBe(false);
-    expect(Date.now() - started).toBeLessThan(100);
+    expect(fastestRunMs(() => matchesPathPattern(path, evil))).toBeLessThan(
+      100,
+    );
   });
 });

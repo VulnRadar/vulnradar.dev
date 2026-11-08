@@ -14,8 +14,20 @@ import { describe, it, expect } from "vitest";
 import { runSyncChecks } from "@/lib/scanner/engine";
 import { checkIdOf } from "@/lib/scanner/dedupe";
 import { stripProse, withProseStripped } from "@/lib/scanner/_helpers";
+import { fastestRunMs } from "../../_helpers/timing";
 
 const URL = "https://docs.example.com/guide";
+
+/**
+ * stripProse remembers the last body it was given, so a repeat of the same
+ * body would time the memo. A different body first makes each run do the work.
+ */
+function fastestUncachedStripMs(body: string): number {
+  return fastestRunMs(() => {
+    stripProse("x");
+    stripProse(body);
+  });
+}
 
 /** The code a vulnerable page runs, and a documentation page quotes. */
 const SNIPPETS = [
@@ -173,9 +185,7 @@ describe("stripProse", () => {
       "<!--x".repeat(30_000),
       "<" + "a < b ".repeat(30_000),
     ]) {
-      const started = Date.now();
-      stripProse(body);
-      expect(Date.now() - started).toBeLessThan(250);
+      expect(fastestUncachedStripMs(body)).toBeLessThan(250);
     }
   });
 
@@ -203,9 +213,8 @@ describe("stripProse on a hostile opening", () => {
   // run of comments followed by anything that is not an element.
   it("decides in linear time on a page of comments with no element after them", () => {
     const body = "<!--a-->".repeat(500) + "x";
-    const started = performance.now();
     expect(stripProse(body)).toBe(body);
-    expect(performance.now() - started).toBeLessThan(50);
+    expect(fastestUncachedStripMs(body)).toBeLessThan(50);
   });
 
   it("still reads a document that opens with comments as HTML", () => {

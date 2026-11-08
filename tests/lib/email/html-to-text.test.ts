@@ -8,6 +8,7 @@ import {
   emailLink,
   emailParagraph,
 } from "@/lib/email/layout";
+import { fastestRunMs } from "../../_helpers/timing";
 
 /**
  * The plain-text part of a broadcast. It used to be the HTML with every
@@ -145,16 +146,13 @@ describe("htmlToText", () => {
   describe("on hostile or broken input", () => {
     it("stays linear on a long run of opening brackets", () => {
       const input = "<".repeat(200_000) + "x";
-      const started = performance.now();
       expect(htmlToText(input)).toBe(input);
-      expect(performance.now() - started).toBeLessThan(500);
+      expect(fastestRunMs(() => htmlToText(input))).toBeLessThan(500);
     });
 
     it("stays fast on thousands of unterminated tags with an open quote in each", () => {
       const input = '<a "'.repeat(30_000) + ">";
-      const started = performance.now();
-      htmlToText(input);
-      expect(performance.now() - started).toBeLessThan(2_000);
+      expect(fastestRunMs(() => htmlToText(input))).toBeLessThan(2_000);
     });
 
     it("ends the message at a tag still open after the tag-length cap", () => {
