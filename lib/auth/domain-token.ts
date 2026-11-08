@@ -1,3 +1,4 @@
+import { isKeyHex, requireSigningKey } from "@/lib/auth/key-hex";
 import { openEnvelope, sealEnvelope } from "@/lib/auth/signed-envelope";
 
 /**
@@ -10,23 +11,15 @@ import { openEnvelope, sealEnvelope } from "@/lib/auth/signed-envelope";
  * domain (see resolveStateSecret in signed-envelope.ts).
  */
 
-function encryptionKey(purpose: string): Buffer {
-  const hex = process.env.API_KEY_ENCRYPTION_KEY;
-  if (!hex || hex.length !== 64) {
-    throw new Error(
-      `API_KEY_ENCRYPTION_KEY must be set to a 64-character hex string (32 bytes) to sign ${purpose}.`,
-    );
-  }
-  return Buffer.from(hex, "hex");
-}
-
 export interface DomainToken {
   /** Sign a payload into an opaque `body.signature` string. */
   sign(payload: unknown): string;
   /**
    * The payload if the token's signature verifies, otherwise null: missing,
-   * malformed, forged, tampered, or signed under another key or domain. Only
-   * the signature is checked; freshness and shape are the caller's.
+   * malformed, forged, tampered, or signed under another key or domain, and
+   * also when the configured key is not 64 hex characters, since a key that
+   * could not have signed anything authenticates nothing. Only the signature
+   * is checked; freshness and shape are the caller's.
    */
   verify<T>(token: string | undefined | null): T | null;
 }
@@ -39,11 +32,11 @@ export interface DomainToken {
  *                the error thrown when the key is not configured.
  */
 export function domainToken(domain: string, purpose: string): DomainToken {
-  const key = () => encryptionKey(purpose);
+  const key = () => requireSigningKey(purpose);
   return {
     sign: (payload) => sealEnvelope(payload, key, domain),
     verify: <T>(token: string | undefined | null): T | null => {
-      if (!token) return null;
+      if (!token || !isKeyHex(process.env.API_KEY_ENCRYPTION_KEY)) return null;
       const opened = openEnvelope(token, key, domain);
       return opened.ok ? (opened.payload as T) : null;
     },

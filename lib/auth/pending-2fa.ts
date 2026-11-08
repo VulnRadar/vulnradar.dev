@@ -1,5 +1,4 @@
 import { domainToken } from "@/lib/auth/domain-token";
-import { isKeyHex, requireSigningKey } from "@/lib/auth/key-hex";
 
 /**
  * Tamper-proof "first factor already passed" token for the 2FA step.
@@ -21,15 +20,13 @@ import { isKeyHex, requireSigningKey } from "@/lib/auth/key-hex";
  * (and userId) weren't altered.
  */
 
-const PURPOSE = "2FA pending tokens";
-const pendingToken = domainToken("vulnradar.2fa-pending.v1", PURPOSE);
+const pendingToken = domainToken(
+  "vulnradar.2fa-pending.v1",
+  "2FA pending tokens",
+);
 
 /** Sign a pending-2FA payload into an opaque cookie value. */
 export function signPendingToken(payload: Record<string, unknown>): string {
-  // domainToken only counts the key's characters. A 64-character key that is
-  // not hex decodes short or empty, and a tag under an empty key is one any
-  // attacker can compute, so the real check has to happen before it signs.
-  requireSigningKey(PURPOSE);
   return pendingToken.sign(payload);
 }
 
@@ -41,7 +38,5 @@ export function signPendingToken(payload: Record<string, unknown>): string {
 export function verifyPendingToken<T = Record<string, unknown>>(
   token: string | undefined | null,
 ): T | null {
-  // A key that could not have signed anything authenticates nothing.
-  if (!isKeyHex(process.env.API_KEY_ENCRYPTION_KEY)) return null;
   return pendingToken.verify<T>(token);
 }

@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { domainToken } from "@/lib/auth/domain-token";
 
@@ -54,11 +55,33 @@ describe("domainToken", () => {
     ["unset", undefined],
     ["too short", "c".repeat(63)],
     ["too long", "c".repeat(65)],
+    ["the right length but not hex", "z".repeat(64)],
+    ["hex that stops part way", "ab" + "z".repeat(62)],
+    ["hex with trailing junk", "c".repeat(64) + "z"],
   ])("refuses to sign when the key is %s, naming the purpose", (_l, value) => {
     if (value === undefined) delete process.env.API_KEY_ENCRYPTION_KEY;
     else process.env.API_KEY_ENCRYPTION_KEY = value;
     expect(() => alpha.sign({ id: 1 })).toThrow(
       "API_KEY_ENCRYPTION_KEY must be set to a 64-character hex string (32 bytes) to sign alpha tokens.",
     );
+  });
+
+  it.each([
+    ["unset", undefined],
+    ["the right length but not hex", "z".repeat(64)],
+  ])("verifies nothing when the key is %s", (_l, value) => {
+    const token = alpha.sign({ id: 1 });
+    if (value === undefined) delete process.env.API_KEY_ENCRYPTION_KEY;
+    else process.env.API_KEY_ENCRYPTION_KEY = value;
+    expect(alpha.verify(token)).toBeNull();
+  });
+
+  it("does not accept a tag computed under the empty key a non-hex value decodes to", () => {
+    process.env.API_KEY_ENCRYPTION_KEY = "z".repeat(64);
+    const body = Buffer.from(JSON.stringify({ id: 1 })).toString("base64url");
+    const tag = createHmac("sha256", Buffer.alloc(0))
+      .update(`test.alpha.v1.${body}`)
+      .digest("base64url");
+    expect(alpha.verify(`${body}.${tag}`)).toBeNull();
   });
 });
