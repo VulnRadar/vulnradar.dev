@@ -4,6 +4,7 @@ import { privatePageMetadata } from "@/lib/seo/metadata";
 export const metadata: Metadata = privatePageMetadata(
   "Buy Credits",
   "/checkout",
+  { isSectionRoot: true },
 );
 
 export default function CheckoutLayout({

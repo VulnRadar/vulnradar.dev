@@ -46,15 +46,11 @@ function setsPlainTitle(source: string): boolean {
 }
 
 /**
- * The same shape, on signed-in pages only. privatePageMetadata has no way to
- * opt in yet, so these are named until it does, and the list only shrinks: an
- * entry that stops being an offender fails below.
+ * The same shape, on signed-in pages only. Empty now that privatePageMetadata
+ * can opt in, and it only shrinks: an entry that stops being an offender fails
+ * below.
  */
-const PRIVATE_SECTIONS_WITHOUT_OPT_IN = [
-  "admin/layout.tsx",
-  "checkout/layout.tsx",
-  "teams/layout.tsx",
-];
+const PRIVATE_SECTIONS_WITHOUT_OPT_IN: string[] = [];
 
 const offenders = layoutsUnder(APP_DIR)
   .filter(

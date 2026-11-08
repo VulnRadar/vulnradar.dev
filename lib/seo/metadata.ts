@@ -142,11 +142,16 @@ export function pageMetadata({
  * Metadata for authenticated pages. They render a redirect for anyone not
  * signed in, so an indexed copy would be a thin duplicate of the login page.
  */
-export function privatePageMetadata(title: string, path: string): Metadata {
+export function privatePageMetadata(
+  title: string,
+  path: string,
+  options: { isSectionRoot?: boolean } = {},
+): Metadata {
   return pageMetadata({
     title,
     description: APP_DESCRIPTION,
     path,
     noIndex: true,
+    ...options,
   });
 }
