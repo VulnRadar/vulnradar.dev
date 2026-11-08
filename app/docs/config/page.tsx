@@ -913,9 +913,10 @@ export default function ConfigPage() {
               Replacing it is a rotation, described under Key rotation below.
             </li>
             <li>
-              <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode>: public URL of the
-              deployment. It is also the address OAuth redirect URIs are built
-              from, see{" "}
+              <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> or{" "}
+              <InlineCode>APP_URL</InlineCode>: public URL of the deployment,
+              and one of the two has to be set. It is also the address OAuth
+              redirect URIs are built from, see{" "}
               <a
                 href="#oauth-redirect-uris"
                 className="text-primary underline-offset-2 hover:underline"

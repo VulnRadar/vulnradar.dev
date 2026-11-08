@@ -682,9 +682,8 @@ jobs:
 
       - name: Boot against an empty database and wait for health
         # APP_URL is the origin this container serves: the build above baked
-        # in build.invalid, and server code must not be reading that.
-        # NEXT_PUBLIC_APP_URL stays because lib/config/env.ts still requires it
-        # to be set at boot, whichever of the two the links are built from.
+        # in build.invalid, and server code must not be reading that. It is
+        # the only URL set, which is also the plain `docker run` the docs give.
         run: |
           set -euo pipefail
           docker run -d --name vr-smoke --network host \
@@ -692,7 +691,6 @@ jobs:
             -e DATABASE_URL='postgresql://vulnradar:ci_smoke_test_password@localhost:5432/vulnradar' \
             -e DATABASE_SSL=false \
             -e APP_URL=http://localhost:3000 \
-            -e NEXT_PUBLIC_APP_URL=http://localhost:3000 \
             -e API_KEY_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff \
             vulnradar:ci
 

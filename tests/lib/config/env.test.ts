@@ -176,6 +176,42 @@ describe("empty optional values count as unset", () => {
   });
 });
 
+describe("the instance URL can come from either variable", () => {
+  const { NEXT_PUBLIC_APP_URL: _unused, ...withoutUrl } = REQUIRED;
+
+  it("boots on APP_URL alone, which is how a pulled image is documented", async () => {
+    await expect(
+      validate({ ...withoutUrl, APP_URL: "https://scan.example.test" }),
+    ).resolves.toMatchObject({ APP_URL: "https://scan.example.test" });
+  });
+
+  it("boots on NEXT_PUBLIC_APP_URL alone", async () => {
+    await expect(validate(REQUIRED)).resolves.toMatchObject({
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000",
+    });
+  });
+
+  it("refuses neither, naming both", async () => {
+    const refused = validate(withoutUrl);
+    await expect(refused).rejects.toThrow("APP_URL or NEXT_PUBLIC_APP_URL");
+  });
+
+  it("treats an empty APP_URL as unset", async () => {
+    await expect(validate({ ...withoutUrl, APP_URL: "" })).rejects.toThrow(
+      "APP_URL or NEXT_PUBLIC_APP_URL",
+    );
+  });
+
+  it("refuses a malformed value of either", async () => {
+    await expect(
+      validate({ ...withoutUrl, APP_URL: "not a url" }),
+    ).rejects.toThrow("APP_URL must be a valid URL");
+    await expect(
+      validate({ ...REQUIRED, NEXT_PUBLIC_APP_URL: "not a url" }),
+    ).rejects.toThrow("NEXT_PUBLIC_APP_URL must be a valid URL");
+  });
+});
+
 describe("API_KEY_ENCRYPTION_KEY is 64 hex characters, not just 64 characters", () => {
   // A length check let every one of these boot. Each is exactly 64 characters
   // and none of them decodes to 32 bytes, so AES threw on the first encrypt

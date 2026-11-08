@@ -29,9 +29,6 @@ const RequiredSchema = z.object({
       "API_KEY_ENCRYPTION_KEY must be a 64-character hex string (32 bytes). " +
         "Generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
     ),
-  NEXT_PUBLIC_APP_URL: z
-    .string()
-    .url("NEXT_PUBLIC_APP_URL must be a valid URL"),
 });
 
 // Boolean-style envs accept only "true" / "false". Any other value
@@ -53,6 +50,14 @@ function optional<T extends z.ZodType>(schema: T) {
 }
 
 const OptionalSchema = z.object({
+  // The instance's public URL, as serverAppUrl() reads it at run time. Each is
+  // optional only in the sense that one of the two is enough: EnvSchema below
+  // refuses neither. A pulled image is a plain `docker run -e APP_URL=...` away
+  // from working, and requiring the NEXT_PUBLIC_ spelling stopped that at boot.
+  APP_URL: optional(z.string().url("APP_URL must be a valid URL")),
+  NEXT_PUBLIC_APP_URL: optional(
+    z.string().url("NEXT_PUBLIC_APP_URL must be a valid URL"),
+  ),
   // The HMAC key for the OAuth and Discord state tokens (lib/auth/signed-envelope.ts)
   // and for the stored digests of password-reset and email-verification tokens
   // (lib/auth/token-hash.ts) when set. API_KEY_ENCRYPTION_KEY is the fallback;
@@ -184,7 +189,17 @@ export function assertProductionSafe(): void {
   }
 }
 
-const EnvSchema = RequiredSchema.merge(OptionalSchema);
+const EnvSchema = RequiredSchema.merge(OptionalSchema).superRefine(
+  (env, ctx) => {
+    if (env.APP_URL || env.NEXT_PUBLIC_APP_URL) return;
+    ctx.addIssue({
+      code: "custom",
+      path: ["NEXT_PUBLIC_APP_URL"],
+      message:
+        "Set APP_URL or NEXT_PUBLIC_APP_URL to this instance's public URL",
+    });
+  },
+);
 
 export type Env = z.infer<typeof EnvSchema>;
 
