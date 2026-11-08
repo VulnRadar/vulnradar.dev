@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import type { ReactNode } from "react";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -46,7 +47,9 @@ import {
   isSidebarGroupOpen,
   DocsSidebar,
 } from "@/components/docs/docs-sidebar";
-import { DOCS_NAV } from "@/components/docs/docs-nav";
+import { DOCS_NAV, docsPageContext } from "@/components/docs/docs-nav";
+import { scrollRailToItem } from "@/components/docs/docs-toc";
+import { DocsTocSpy } from "@/app/docs/docs-toc-spy";
 import type { NavSection } from "@/components/docs/docs-types";
 
 beforeEach(() => {
@@ -84,6 +87,77 @@ describe("moved anchors", () => {
     window.location.hash = "#roles";
     render(<DocsShell>page</DocsShell>);
     expect(replace).not.toHaveBeenCalled();
+  });
+});
+
+describe("the scroll spy", () => {
+  it("watches the registry's sections, and the rail follows it", () => {
+    let report: IntersectionObserverCallback = () => {};
+    const observe = vi.fn();
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          report = callback;
+        }
+        observe = observe;
+        disconnect = vi.fn();
+      },
+    );
+    const [first, second] = docsPageContext("/docs/teams").current!.toc;
+
+    render(
+      <DocsShell>
+        <DocsTocSpy />
+        <div id={first.id} />
+        <div id={second.id} />
+      </DocsShell>,
+    );
+    expect(observe.mock.calls.map(([el]) => el.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
+
+    act(() =>
+      report(
+        [
+          {
+            isIntersecting: true,
+            target: document.getElementById(second.id)!,
+          } as unknown as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver,
+      ),
+    );
+    const link = screen
+      .getAllByRole("link", { name: second.label })
+      .find((el) => el.getAttribute("href") === `#${second.id}`)!;
+    expect(link.getAttribute("aria-current")).toBe("true");
+  });
+});
+
+describe("scrollRailToItem", () => {
+  const rail = (scrollTop: number) =>
+    ({ scrollTop, clientHeight: 100 }) as HTMLElement;
+  const item = (offsetTop: number) =>
+    ({ offsetTop, offsetHeight: 20 }) as HTMLElement;
+
+  it("scrolls up to an item above the viewport", () => {
+    const r = rail(200);
+    scrollRailToItem(r, item(150));
+    expect(r.scrollTop).toBe(150);
+  });
+
+  it("scrolls down just far enough for an item below it", () => {
+    const r = rail(0);
+    scrollRailToItem(r, item(150));
+    expect(r.scrollTop).toBe(70);
+  });
+
+  it("leaves a visible item alone", () => {
+    const r = rail(100);
+    scrollRailToItem(r, item(120));
+    expect(r.scrollTop).toBe(100);
   });
 });
 

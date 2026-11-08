@@ -93,7 +93,7 @@ export function Callout({
         <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <span>{title ?? styles.label}</span>
       </p>
-      <div className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground [&_a]:text-primary [&_a]:underline [&_a]:decoration-primary/40 [&_a]:underline-offset-2 [&_a:hover]:decoration-primary">
+      <div className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground [&_a]:text-[hsl(var(--primary-text))] [&_a]:underline [&_a]:decoration-primary/40 [&_a]:underline-offset-2 [&_a:hover]:decoration-primary">
         {children}
       </div>
     </aside>

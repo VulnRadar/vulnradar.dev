@@ -83,7 +83,11 @@ export interface DocsNextStep {
   reason: string;
 }
 
-/** Up to three explicit next links, so a page does not just stop. */
+/**
+ * Up to three explicit next links, so a page does not just stop. The ! classes
+ * keep the bullets and indent of the prose list rules off it when it sits
+ * directly inside a DocsSection.
+ */
 export function DocsNextSteps({
   steps,
   className,
@@ -92,12 +96,12 @@ export function DocsNextSteps({
   className?: string;
 }) {
   return (
-    <ul className={cn("space-y-3", className)}>
+    <ul className={cn("list-none! space-y-3! pl-0!", className)}>
       {steps.slice(0, 3).map((step) => (
         <li key={step.href}>
           <Link
             href={step.href}
-            className="-my-1.5 block rounded-sm py-1.5 text-[15px] font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            className="-my-1.5 block rounded-sm py-1.5 text-[15px] font-medium text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             {step.label}
           </Link>

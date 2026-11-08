@@ -20,13 +20,17 @@ describe("Callout link classes", () => {
   });
 
   it.each([
-    "[&amp;_a]:text-primary",
+    "[&amp;_a]:text-[hsl(var(--primary-text))]",
     "[&amp;_a]:underline ",
     "[&amp;_a]:decoration-primary/40",
     "[&amp;_a]:underline-offset-2",
     "[&amp;_a:hover]:decoration-primary",
   ])("carries %s", (token) => {
     expect(html).toContain(token);
+  });
+
+  it("uses the AA link colour, which a text-primary variant does not get", () => {
+    expect(html).not.toContain("[&amp;_a]:text-primary");
   });
 
   it("does not wait for hover to underline", () => {

@@ -107,6 +107,33 @@ describe("DocsTable on a phone", () => {
   });
 });
 
+describe("a DocsTable key column on a phone", () => {
+  const html = renderToStaticMarkup(
+    <DocsTable
+      columns={[
+        {
+          key: "name",
+          header: "Name",
+          className: "font-mono whitespace-nowrap w-1/3",
+        },
+        { key: "what", header: "What" },
+      ]}
+      data={[{ name: "A_LONG_CONSTANT_NAME", what: "Something." }]}
+    />,
+  );
+  const stacked = html.slice(0, html.indexOf("<table"));
+
+  it("keeps the column's type treatment", () => {
+    expect(stacked).toContain("font-mono");
+  });
+
+  it("drops the nowrap and width that belong to the table", () => {
+    expect(stacked).not.toContain("whitespace-nowrap");
+    expect(stacked).not.toContain("w-1/3");
+    expect(html.slice(html.indexOf("<table"))).toContain("whitespace-nowrap");
+  });
+});
+
 describe("EndpointTable", () => {
   it("keeps its scroller at every width, having no stacked layout", () => {
     const html = renderToStaticMarkup(

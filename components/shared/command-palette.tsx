@@ -100,6 +100,9 @@ export function CommandPalette({
   const [open, setOpen] = useState(defaultOpen);
   const [search, setSearch] = useState("");
   const searching = search.trim() !== "";
+  // The input is controlled so the Docs group knows when someone is searching,
+  // which means unmounting it on close no longer clears the text by itself.
+  if (!open && search !== "") setSearch("");
   const router = useRouter();
   const pathname = usePathname();
   const { me, isStaff } = useAuth();

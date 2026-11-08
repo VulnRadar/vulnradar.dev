@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -52,12 +52,9 @@ describe("docs page templates", () => {
   );
 
   it("every page fits its template (warn mode)", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    for (const line of report) console.warn(`[docs-templates] ${line}`);
-    warn.mockRestore();
     if (report.length > 0 && !STRICT) {
       process.stderr.write(
-        `docs-templates: ${report.length} page problems (warn mode)\n`,
+        `docs-templates: ${report.length} page problems (warn mode)\n${report.join("\n")}\n`,
       );
     }
     expect(STRICT ? report : []).toEqual([]);

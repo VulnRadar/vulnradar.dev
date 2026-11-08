@@ -19,8 +19,10 @@ export const DOCS_PROSE = cn(
   "[&>ul]:list-disc [&>ol]:list-decimal [&>ul]:pl-5 [&>ol]:pl-5",
   "[&>ul]:space-y-1.5 [&>ol]:space-y-2 [&_li]:marker:text-muted-foreground [&>ol]:marker:tabular-nums",
   // Links in running text are underlined at rest: brand blue alone cannot be
-  // told from inline code or emphasis without pointing at it.
-  "[&_p_a]:text-primary [&_li_a]:text-primary",
+  // told from inline code or emphasis without pointing at it. The colour is
+  // the token, not text-primary: the AA remap in globals.css is on the literal
+  // .text-primary class, so a variant of it paints the light theme's --primary.
+  "[&_p_a]:text-[hsl(var(--primary-text))] [&_li_a]:text-[hsl(var(--primary-text))]",
   "[&_p_a]:underline [&_li_a]:underline [&_p_a]:decoration-primary/40 [&_li_a]:decoration-primary/40",
   "[&_p_a]:underline-offset-2 [&_li_a]:underline-offset-2",
   "[&_p_a:hover]:decoration-primary [&_li_a:hover]:decoration-primary",

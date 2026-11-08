@@ -56,6 +56,9 @@ export function DocsStep({ title, id, children }: DocsStepProps) {
  *
  * `steps` is the old data-only form, kept for one release while its call sites
  * move to <DocsStep> children.
+ *
+ * The ! classes are because a list directly inside a DocsSection also matches
+ * the prose list rules, whose indent, measure and 8px rhythm are for sentences.
  */
 export function DocsSteps({
   steps,
@@ -67,7 +70,12 @@ export function DocsSteps({
   className?: string;
 }) {
   return (
-    <ol className={cn("space-y-8 [counter-reset:docs-step]", className)}>
+    <ol
+      className={cn(
+        "max-w-none! space-y-8! pl-0! [counter-reset:docs-step]",
+        className,
+      )}
+    >
       {steps?.map((item) => (
         <DocsStep key={item.step} title={item.title}>
           <p>{item.description}</p>

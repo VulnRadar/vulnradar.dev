@@ -117,6 +117,9 @@ export function DocsTable<T extends Record<string, unknown>>({
               className={cn(
                 "text-[13px] font-medium leading-relaxed text-foreground wrap-anywhere",
                 keyColumn.className,
+                // A column's nowrap and width are for the table; here they
+                // would push a long key past the edge of the phone.
+                "w-auto whitespace-normal",
               )}
             >
               {text(row, keyColumn)}

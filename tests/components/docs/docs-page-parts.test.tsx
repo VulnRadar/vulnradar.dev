@@ -21,6 +21,7 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+import { DocsSection } from "@/components/docs/docs-section";
 import { DocsSteps, DocsStep } from "@/components/docs/docs-steps";
 import { DocsUiPath } from "@/components/docs/docs-ui-path";
 import {
@@ -94,7 +95,43 @@ describe("DocsSteps", () => {
   });
 });
 
+describe("lists directly inside a DocsSection", () => {
+  // The section's prose rules include [&>ol] and [&>ul], whose indent and 8px
+  // gap win over a plain utility on the list, so these have to be important.
+  it("DocsSteps keeps its own spacing, with no prose indent or measure", () => {
+    const out = html(
+      <DocsSection id="s" title="S">
+        <DocsSteps>
+          <DocsStep title="One">x</DocsStep>
+        </DocsSteps>
+      </DocsSection>,
+    );
+    const ol = out.match(/<ol class="([^"]*)"/)![1];
+    expect(ol.split(" ")).toEqual(
+      expect.arrayContaining(["space-y-8!", "pl-0!", "max-w-none!"]),
+    );
+  });
+
+  it("DocsNextSteps is not a bulleted prose list", () => {
+    const out = html(
+      <DocsSection id="s" title="S">
+        <DocsNextSteps steps={[{ href: "/a", label: "A", reason: "Why" }]} />
+      </DocsSection>,
+    );
+    const ul = out.match(/<ul class="([^"]*)"/)![1];
+    expect(ul.split(" ")).toEqual(
+      expect.arrayContaining(["list-none!", "pl-0!", "space-y-3!"]),
+    );
+  });
+});
+
 describe("DocsUiPath", () => {
+  it("is a chip inside a paragraph, not a prose link", () => {
+    const out = html(<DocsUiPath to="profile.general" />);
+    expect(out).toContain("text-foreground!");
+    expect(out).toContain("no-underline!");
+  });
+
   it("renders the path as one deep link", () => {
     const out = html(<DocsUiPath to="profile.developer.apiKeys" />);
     expect(text(out)).toBe("Profile&gt;Developer&gt;API Keys");

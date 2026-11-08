@@ -68,6 +68,12 @@ describe("DOCS_PROSE", () => {
     expect(DOCS_PROSE).toContain("[&_p_a:hover]:decoration-primary");
   });
 
+  it("colours links with the AA token, which a text-primary variant misses", () => {
+    expect(DOCS_PROSE).toContain("[&_p_a]:text-[hsl(var(--primary-text))]");
+    expect(DOCS_PROSE).toContain("[&_li_a]:text-[hsl(var(--primary-text))]");
+    expect(DOCS_PROSE).not.toContain("_a]:text-primary");
+  });
+
   it("sets body text at 15px without touching a callout's own <p>", () => {
     expect(DOCS_PROSE).toContain(
       "[&_p:not(aside_p,figure_p,.text-xs)]:text-[15px]",
