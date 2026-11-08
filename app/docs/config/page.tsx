@@ -24,6 +24,7 @@ import {
   CONFIG_BILLING_ELITE_SUPPORTER_RETENTION,
   CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS,
 } from "@/lib/config/config-values";
+import { BUILD_TIME_VARIABLES } from "./build-time-variables";
 
 /** Build-tier keys, counted from the registry rather than restated. The three
  *  numbers in the prose below were hand-written and had no way to notice a new
@@ -37,6 +38,11 @@ const BUILD_TIER_SOCIAL_COUNT = BUILD_TIER_KEYS.filter((k) =>
 const BUILD_TIER_SEO_COUNT = BUILD_TIER_KEYS.filter((k) =>
   k.startsWith("SEO_"),
 ).length;
+
+/** Anchor of one generated settings group. The prefix is there because "Rate
+ *  Limits" would otherwise collide with the Layer 1 #rate-limits section. */
+const settingsGroupId = (group: string) =>
+  `settings-${group.toLowerCase().replace(/\s+/g, "-")}`;
 
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
@@ -82,12 +88,29 @@ export default function ConfigPage() {
           secrets out of source code while making non-secret deployment settings
           easy to customize for self-hosters.
         </p>
-        <DocsCallout variant="info" title="TL;DR">
-          Most things you want to change live in{" "}
-          <InlineCode>lib/config/config-values.ts</InlineCode>. Secrets go in{" "}
-          <InlineCode>.env</InlineCode>. Edit{" "}
-          <InlineCode>config-values.ts</InlineCode> first.
-        </DocsCallout>
+        <DocsTable
+          caption="Where each kind of value lives and how to change it"
+          columns={[
+            { key: "kind", header: "Kind of value" },
+            { key: "change", header: "How to change it" },
+          ]}
+          data={[
+            {
+              kind: "Build tier: app name, URL, branding, SEO",
+              change:
+                "Edit lib/config/config-values.ts or set the NEXT_PUBLIC_* build arg, then rebuild.",
+            },
+            {
+              kind: "Runtime tier: rate limits, feature flags, billing, timeouts",
+              change:
+                "Admin > Settings, or a bare-key env var such as RATE_LIMIT_LOGIN_ATTEMPTS=10. The database value wins.",
+            },
+            {
+              kind: "Secrets: database URL, encryption keys, SMTP, OAuth, Stripe secret key",
+              change: ".env",
+            },
+          ]}
+        />
       </DocsSection>
 
       <DocsSection id="quick-reference" title="Quick Reference">
@@ -95,26 +118,48 @@ export default function ConfigPage() {
           columns={[
             { key: "what", header: "What you want to change" },
             { key: "where", header: "Where" },
+            { key: "build", header: "Needs a source build" },
           ]}
           data={[
             {
-              what: "App name, URL, emails, branding, SEO",
+              what: "App name, emails, branding, SEO",
               where:
                 "lib/config/config-values.ts (or the NEXT_PUBLIC_* env var named in the field's help), then rebuild. Saving these in Admin -> Settings records the value but does not change what the app renders.",
+              build: "Yes",
+            },
+            {
+              what: "Your own domain",
+              where:
+                ".env as NEXT_PUBLIC_APP_URL, then docker compose build app or npm run build.",
+              build: "Yes",
             },
             {
               what: "Rate limits, feature flags, billing plans, retention",
               where:
                 "Admin -> Settings (takes effect within ~30s, no restart). Falls back to lib/config/config-values.ts.",
+              build: "No",
             },
             {
-              what: "Database URL, API encryption key, Stripe keys",
+              what: "Database URL, API encryption key, Stripe secret keys",
               where: ".env (or docker-compose.yml env)",
+              build: "No",
             },
-            { what: "SMTP credentials, Discord OAuth", where: ".env" },
             {
-              what: "Client-side public values (Turnstile site key, app URL)",
-              where: ".env as NEXT_PUBLIC_*",
+              what: "SMTP credentials, Discord OAuth",
+              where: ".env",
+              build: "No",
+            },
+            {
+              what: "Turnstile",
+              where:
+                ".env as NEXT_PUBLIC_TURNSTILE_SITE_KEY, then docker compose build app or npm run build.",
+              build: "Yes",
+            },
+            {
+              what: "Stripe checkout",
+              where:
+                ".env as NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, then docker compose build app or npm run build.",
+              build: "Yes",
             },
           ]}
         />
@@ -330,50 +375,21 @@ export default function ConfigPage() {
         </DocsSubSection>
 
         <DocsSubSection id="rate-limits" title="Rate limits">
-          <p className="text-sm text-muted-foreground">
-            All values are per-IP unless noted. The window is in minutes.
-            Internally <InlineCode>lib/config/constants.ts</InlineCode>{" "}
-            multiplies by 60 for the per-second window.
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            Every limit is a runtime setting. Attempts, windows and defaults are
+            in the generated{" "}
+            <a
+              href={`#${settingsGroupId("Rate Limits")}`}
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Rate Limits group
+            </a>{" "}
+            further down, so there is no second copy here to go stale. Each
+            shipped default is the key with a <InlineCode>CONFIG_</InlineCode>{" "}
+            prefix, such as{" "}
+            <InlineCode>CONFIG_RATE_LIMIT_LOGIN_ATTEMPTS</InlineCode>, and the
+            key name says whether a window is in minutes or hours.
           </p>
-          <DocsTable
-            columns={[
-              { key: "constant", header: "Constant" },
-              { key: "attempts", header: "Attempts" },
-              { key: "window", header: "Window (min)" },
-            ]}
-            data={[
-              {
-                constant: "CONFIG_RATE_LIMIT_LOGIN_ATTEMPTS",
-                attempts: "5",
-                window: "15",
-              },
-              {
-                constant: "CONFIG_RATE_LIMIT_SIGNUP_ATTEMPTS",
-                attempts: "3",
-                window: "60",
-              },
-              {
-                constant: "CONFIG_RATE_LIMIT_FORGOT_PASSWORD_ATTEMPTS",
-                attempts: "3",
-                window: "10",
-              },
-              {
-                constant: "CONFIG_RATE_LIMIT_API_REQUESTS",
-                attempts: "100",
-                window: "60",
-              },
-              {
-                constant: "CONFIG_RATE_LIMIT_SCAN_REQUESTS",
-                attempts: "100",
-                window: "60",
-              },
-              {
-                constant: "CONFIG_RATE_LIMIT_BULK_SCAN_REQUESTS",
-                attempts: "10",
-                window: "60",
-              },
-            ]}
-          />
         </DocsSubSection>
 
         <DocsSubSection id="scanning" title="Scanning">
@@ -740,6 +756,15 @@ export default function ConfigPage() {
             does today.
           </p>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
+            That environment variable is the bare registry key, with no{" "}
+            <InlineCode>CONFIG_</InlineCode> or{" "}
+            <InlineCode>NEXT_PUBLIC_</InlineCode> prefix:{" "}
+            <InlineCode>RATE_LIMIT_LOGIN_ATTEMPTS=10</InlineCode> in{" "}
+            <InlineCode>.env</InlineCode> applies until someone saves a value in
+            Admin &gt; Settings, and from then on the database value wins. Each
+            runtime row in the tables below names its variable.
+          </p>
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
             This chain does <strong className="text-foreground">not</strong>{" "}
             apply to build-tier keys. Nothing calls the resolver for them, so
             the first term is inert: they are the compiled constant, or its{" "}
@@ -804,7 +829,7 @@ export default function ConfigPage() {
         </DocsSubSection>
 
         {SETTINGS_TABS.map((group) => (
-          <DocsSubSection key={group} title={group}>
+          <DocsSubSection key={group} id={settingsGroupId(group)} title={group}>
             <DocsTable
               caption={`${group} settings`}
               columns={[
@@ -819,11 +844,47 @@ export default function ConfigPage() {
                 tier: def.tier === "build" ? "Build" : "Runtime",
                 type: def.type,
                 default: String(def.default),
-                description: def.help,
+                description:
+                  def.tier === "runtime"
+                    ? `${def.help} Env var: ${key}.`
+                    : def.help,
               }))}
             />
           </DocsSubSection>
         ))}
+      </DocsSection>
+
+      <DocsSection
+        id="build-time-variables"
+        title="Build-time vs runtime variables"
+      >
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Next.js copies every <InlineCode>NEXT_PUBLIC_*</InlineCode> value into
+          the compiled code while it builds, so these are the variables where
+          editing <InlineCode>.env</InlineCode> and recreating the container
+          changes nothing in the browser. Everything else in{" "}
+          <InlineCode>.env</InlineCode> is read when the process starts, and{" "}
+          <InlineCode>docker compose up -d app</InlineCode> picks it up.
+        </p>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          The published image is built with only{" "}
+          <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> set, to upstream&rsquo;s
+          domain. Turnstile, Stripe checkout and your own domain therefore need
+          a source build from a checkout. A Docker build does not see{" "}
+          <InlineCode>.env</InlineCode> as a file: only the names{" "}
+          <InlineCode>docker-compose.yml</InlineCode> lists under{" "}
+          <InlineCode>build.args</InlineCode> reach it, and the table says which
+          those are.
+        </p>
+        <DocsTable
+          caption="NEXT_PUBLIC variables, what each sets and what applies a change"
+          columns={[
+            { key: "name", header: "Variable", className: "font-mono" },
+            { key: "sets", header: "What it sets" },
+            { key: "apply", header: "Needs" },
+          ]}
+          data={BUILD_TIME_VARIABLES.map((v) => ({ ...v }))}
+        />
       </DocsSection>
 
       <DocsSection id="layer-2" title="Layer 2: Runtime Secrets">
@@ -837,7 +898,7 @@ export default function ConfigPage() {
           before it accepts any requests.
         </p>
 
-        <DocsSubSection title="Required">
+        <DocsSubSection id="required" title="Required">
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <InlineCode>DATABASE_URL</InlineCode>: PostgreSQL connection
@@ -866,7 +927,7 @@ export default function ConfigPage() {
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="Auth">
+        <DocsSubSection id="auth" title="Auth">
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <InlineCode>AUTH_SECRET</InlineCode>: the HMAC key for OAuth state
@@ -879,7 +940,7 @@ export default function ConfigPage() {
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="Key rotation (optional)">
+        <DocsSubSection id="key-rotation" title="Key rotation (optional)">
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <InlineCode>PREVIOUS_API_KEY_ENCRYPTION_KEY</InlineCode>: the old
@@ -906,7 +967,7 @@ export default function ConfigPage() {
           </p>
         </DocsSubSection>
 
-        <DocsSubSection title="Database">
+        <DocsSubSection id="database" title="Database">
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <InlineCode>DATABASE_SSL</InlineCode>:{" "}
@@ -921,10 +982,16 @@ export default function ConfigPage() {
               <InlineCode>DATABASE_SSL_CA</InlineCode>: CA cert contents (when
               SSL is on and the CA is not in the system trust store)
             </li>
+          </ul>
+        </DocsSubSection>
+
+        <DocsSubSection id="proxy" title="Reverse proxy">
+          <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <InlineCode>TRUSTED_PROXY_CIDR</InlineCode>: comma-separated CIDRs
               used when reading <InlineCode>X-Forwarded-For</InlineCode> for
-              client-IP. Example:{" "}
+              client-IP. The client is the rightmost hop outside these ranges;
+              left unset, it is simply the rightmost hop. Example:{" "}
               <InlineCode>
                 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8
               </InlineCode>
@@ -932,7 +999,7 @@ export default function ConfigPage() {
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="Email (SMTP)">
+        <DocsSubSection id="smtp" title="Email (SMTP)">
           <p className="text-sm text-muted-foreground">
             Required for password reset, email verification, billing verify, and
             webhook lifecycle emails. Without SMTP configured, those flows fail
@@ -958,7 +1025,7 @@ export default function ConfigPage() {
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="Stripe (billing)">
+        <DocsSubSection id="stripe" title="Stripe (billing)">
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <InlineCode>STRIPE_SECRET_KEY</InlineCode>
@@ -979,7 +1046,7 @@ export default function ConfigPage() {
           </p>
         </DocsSubSection>
 
-        <DocsSubSection title="Discord OAuth">
+        <DocsSubSection id="oauth" title="Discord OAuth">
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <InlineCode>DISCORD_CLIENT_ID</InlineCode>,{" "}
@@ -998,7 +1065,7 @@ export default function ConfigPage() {
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="Google & GitHub sign-in">
+        <DocsSubSection id="google-github" title="Google & GitHub sign-in">
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <InlineCode>GOOGLE_CLIENT_ID</InlineCode>,{" "}
@@ -1106,7 +1173,10 @@ export default function ConfigPage() {
           </DocsCallout>
         </DocsSubSection>
 
-        <DocsSubSection title="IPv4 session capture (optional)">
+        <DocsSubSection
+          id="ipv4-capture"
+          title="IPv4 session capture (optional)"
+        >
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <InlineCode>NEXT_PUBLIC_IPV4_ECHO_URL</InlineCode>: an IPv4-only
@@ -1119,7 +1189,10 @@ export default function ConfigPage() {
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="Database pool tuning (optional)">
+        <DocsSubSection
+          id="database-pool"
+          title="Database pool tuning (optional)"
+        >
           <p className="text-sm text-muted-foreground">
             Read straight from the environment (not the admin settings) when the
             pool is constructed, so a change needs a process restart. Sensible
@@ -1143,7 +1216,7 @@ export default function ConfigPage() {
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="Cloudflare Turnstile">
+        <DocsSubSection id="turnstile" title="Cloudflare Turnstile">
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <InlineCode>TURNSTILE_SECRET_KEY</InlineCode>
@@ -1154,15 +1227,18 @@ export default function ConfigPage() {
           </ul>
           <p className="text-sm text-muted-foreground">
             Turnstile is auto-enabled when the site key is present. It protects
-            the four unauthenticated write endpoints that verify a token:
-            signup, the contact form, the landing-page contact form, and support
-            ticket creation. Password reset is not one of them; that flow is
-            defended by <InlineCode>RATE_LIMIT_FORGOT_PASSWORD_*</InlineCode>{" "}
-            per IP and per email address instead.
+            the three write endpoints that verify a token: signup and the
+            contact form, which need no account, and support ticket creation,
+            which does. Password reset is not one of them; that flow is defended
+            by <InlineCode>RATE_LIMIT_FORGOT_PASSWORD_*</InlineCode> per IP and
+            per email address instead.
           </p>
         </DocsSubSection>
 
-        <DocsSubSection title="Threat reputation & CVE intelligence">
+        <DocsSubSection
+          id="threat-reputation"
+          title="Threat reputation & CVE intelligence"
+        >
           <p className="text-sm text-muted-foreground">
             The reputation check and the software-inventory CVE correlation are
             all optional. Web Risk is skipped when its key is unset, URLhaus is
@@ -1206,7 +1282,10 @@ export default function ConfigPage() {
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="BrowserBase (live browser sessions)">
+        <DocsSubSection
+          id="browserbase"
+          title="BrowserBase (live browser sessions)"
+        >
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <InlineCode>BROWSERBASE_API_KEY</InlineCode>
@@ -1242,7 +1321,7 @@ export default function ConfigPage() {
           </p>
         </DocsSubSection>
 
-        <DocsSubSection title="AI Provider (optional)">
+        <DocsSubSection id="ai-provider" title="AI Provider (optional)">
           <p className="max-w-[68ch] text-sm text-muted-foreground">
             AI features (chat, finding verification, audit summaries) work
             against any OpenAI-compatible endpoint or Anthropic&rsquo;s native
@@ -1285,7 +1364,7 @@ export default function ConfigPage() {
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="Debug: DISABLE_CSP=1">
+        <DocsSubSection id="disable-csp" title="Debug: DISABLE_CSP=1">
           <p className="max-w-[68ch] text-sm text-muted-foreground">
             Set <InlineCode>DISABLE_CSP=1</InlineCode> in{" "}
             <InlineCode>.env.local</InlineCode> to ship the app{" "}
@@ -1362,7 +1441,10 @@ export default function ConfigPage() {
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="Contact / support overrides">
+        <DocsSubSection
+          id="contact-overrides"
+          title="Contact / support overrides"
+        >
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <InlineCode>SUPPORT_EMAIL</InlineCode> (or{" "}
@@ -1388,7 +1470,7 @@ export default function ConfigPage() {
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="Database backups">
+        <DocsSubSection id="backups" title="Database backups">
           <p className="max-w-[68ch] text-sm text-muted-foreground">
             All optional. Read by the built-in backup/restore scripts (
             <InlineCode>npm run db:backup</InlineCode> /{" "}
@@ -1438,12 +1520,14 @@ export default function ConfigPage() {
             <li>
               <InlineCode>BACKUP_OFFSITE_UPLOAD_URL</InlineCode>: presigned PUT
               URL (S3/R2/B2 or any receiver). When set, the finished backup is
-              uploaded there after the local write.
+              uploaded there after the local write. It receives exactly one
+              object per backup, because a presigned URL authorises only one:
+              the IV and auth tag travel inside the encrypted file.
             </li>
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="Docker-only">
+        <DocsSubSection id="docker-only" title="Docker-only">
           <p className="text-sm text-muted-foreground">
             Read by <InlineCode>docker-compose.yml</InlineCode>; not used by the
             app itself.
@@ -1583,20 +1667,16 @@ export default function ConfigPage() {
             in a fresh install.
           </li>
           <li>
-            Sign up the first user via <InlineCode>/signup</InlineCode>. That
-            account is given <InlineCode>super_admin</InlineCode> on its own, so
-            there is nothing to promote, and setting its role to{" "}
-            <InlineCode>admin</InlineCode> by SQL would demote it. Further staff
-            are invited from the admin panel. A restart gives{" "}
-            <InlineCode>super_admin</InlineCode> back to the lowest-id verified,
-            non-disabled account if nobody holds it, as{" "}
+            Sign up the first user at <InlineCode>/signup</InlineCode>. That
+            account is created as <InlineCode>super_admin</InlineCode>; there is
+            nothing to promote. Only promote a later account, see{" "}
             <a
               href="/docs/self-hosting#admin"
               className="text-primary underline-offset-2 hover:underline"
             >
-              Self-Hosting, First Admin User
-            </a>{" "}
-            explains.
+              Self-Hosting &gt; First Admin User
+            </a>
+            .
           </li>
           <li>
             (Optional) Configure SMTP, Stripe, Discord, Turnstile in{" "}
