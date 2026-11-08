@@ -772,6 +772,48 @@ export default defineConfig({
           functions: 75,
           branches: 80,
         },
+        // Measured on the suites that reach these six files, so a lower bound
+        // on what a full run sees. The safe-fetch branch floor sits under 2
+        // points below actual on purpose: its suite is redundant enough that
+        // deleting its strongest test moves branches by 1.8, and a wider
+        // margin could never fail on one lost test.
+        "lib/scanner/safe-fetch.ts": {
+          lines: 85,
+          statements: 82,
+          functions: 87,
+          branches: 77,
+        },
+        "lib/auth/authorization.ts": {
+          lines: 95,
+          statements: 93,
+          functions: 100,
+          branches: 86,
+        },
+        "lib/auth/auth.ts": {
+          lines: 87,
+          statements: 88,
+          functions: 80,
+          branches: 72,
+        },
+        "lib/api/api-keys.ts": {
+          lines: 41,
+          statements: 43,
+          functions: 55,
+          branches: 47,
+        },
+        // Follows the route when the Move relocates it.
+        "app/api/v3/webhooks/stripe/route.ts": {
+          lines: 78,
+          statements: 77,
+          functions: 67,
+          branches: 71,
+        },
+        "lib/scanner/scan-jobs.ts": {
+          lines: 93,
+          statements: 92,
+          functions: 80,
+          branches: 86,
+        },
       },
     },
   },
