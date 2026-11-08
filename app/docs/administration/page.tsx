@@ -500,7 +500,10 @@ export default function AdministrationPage() {
           Each SSO sign-in writes an audit row, shown as{" "}
           <strong className="text-foreground">Staff SSO Sign-in</strong>(
           <InlineCode>staff_oidc_login</InlineCode>), recording who signed in,
-          the address they came from and the hostname of your provider.
+          the address they came from and the hostname of your provider. If the
+          token carried no <InlineCode>email_verified</InlineCode> claim and{" "}
+          <InlineCode>STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED</InlineCode>{" "}
+          allowed it, the row says so.
         </p>
       </DocsSection>
 
