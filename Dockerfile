@@ -6,10 +6,14 @@
 # `node:22-alpine` tag. The patch lives in three places that must agree: the
 # two FROM node lines in this file, .nvmrc and .node-version. CI and
 # tests/repo/ci-node-pin.test.ts fail when they drift, so bump them together.
-# Self-hosters who want a fully immutable build can also add the digest to
-# both FROM lines (`node:<patch>-alpine@sha256:<digest>`): pull the image
-# locally and read the digest from `docker images --digests node`.
-FROM node:22.23.4-alpine AS builder
+#
+# security: and to a digest, because a tag can be republished and a build
+# pinned only by tag is not reproducible from this repository. The digest is
+# the multi-architecture index, so one value serves the amd64 and arm64 builds.
+# Dependabot's docker ecosystem moves the tag and the digest together
+# (.github/dependabot.yml); tests/repo/dockerfile-pins.test.ts fails on a FROM
+# line without one.
+FROM node:22.23.4-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202 AS builder
 
 WORKDIR /app
 
@@ -52,10 +56,16 @@ ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 # That turns out not to matter, for a different reason than the old comment
 # gave: nothing in the production tree needs an install script. sharp 0.35
 # ships its binaries as @img/* optional dependencies rather than building at
-# install time, and the Next SWC binaries are prebuilt the same way. The
-# only three lockfile entries with hasInstallScript are core-js (a donation
-# banner), fsevents (macOS-only, optional) and unrs-resolver (dev-only, for
-# eslint, and this build never lints).
+# install time, and the Next SWC binaries are prebuilt the same way. Five
+# lockfile entries have hasInstallScript, and
+# tests/repo/package-deps-guard.test.ts fails when that list changes:
+#   @parcel/watcher (under next-intl): prebuilt binaries as optional
+#     dependencies; the script only compiles on request
+#   @swc/core (nested under next-intl): prebuilt the same way; the script
+#     checks that a binding loads
+#   core-js: a donation banner
+#   fsevents: macOS only, optional
+#   unrs-resolver: dev only, for eslint, and this build never lints
 #
 # If a future dependency genuinely needs its install script, add a targeted
 # `npm rebuild <pkg>` after this line. Do not drop --ignore-scripts.
@@ -108,30 +118,10 @@ RUN npm run build
 # needs no network round trip and no lockfile in the final image, and it
 # cannot resolve a different tree than the one the build was verified
 # against. --ignore-scripts for the same reason as the install above.
-#
-# One caveat worth naming: `vitest` and `@vitest/coverage-v8` are declared
-# under `dependencies` rather than `devDependencies` (AUDIT-013#deps-02), so
-# prune keeps them and their ~43 MB rolldown/vite subtree. Moving those two
-# entries requires regenerating package-lock.json on Linux, which is a
-# separate change; this line is correct either way and gets bigger once they
-# move.
 RUN npm prune --omit=dev --ignore-scripts
 
-# infra: cosign binary, pulled from Sigstore's own distroless
-# image rather than curl+checksum-verified by hand -- the standard
-# multi-stage COPY pattern for bundling cosign into another image.
-# Pinned to v2.4.1, the exact version .github/workflows/release.yml
-# signs releases with, so verify-blob's bundle format always matches
-# what was signed. Without cosign on PATH, lib/updater/cosign.ts soft-
-# skips signature verification entirely (checksum verification still
-# runs and is a hard gate either way) -- this is what makes real
-# signature verification actually happen by default in the published
-# image, instead of only for someone who happened to install cosign
-# themselves.
-FROM gcr.io/projectsigstore/cosign:v3.1.4 AS cosign
-
 # ── Production stage ───────────────────────────────────────────
-FROM node:22.23.4-alpine AS runner
+FROM node:22.23.4-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202 AS runner
 
 LABEL org.opencontainers.image.source="https://github.com/VulnRadar/vulnradar.dev"
 LABEL org.opencontainers.image.description="VulnRadar - Website Security Scanner"
@@ -143,12 +133,18 @@ WORKDIR /app
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Copy necessary files from builder
+# Copy necessary files from builder.
+#
+# security: root-owned, every one of them. The server runs as uid 1001, and
+# code that uid owns turns any write primitive in the app into code execution
+# for the life of the container. What the app does need to write is handed
+# over below, directory by directory.
 COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
-COPY --from=builder --chown=nextjs:nodejs /app/next.config.mjs ./next.config.mjs
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/next.config.mjs ./next.config.mjs
+COPY --from=builder /app/server.mjs ./server.mjs
 
 # infra: scripts/ is REQUIRED at runtime, not a build-time convenience.
 # `npm run db:create` and `npm run db:migrate` are the documented way to
@@ -157,19 +153,14 @@ COPY --from=builder --chown=nextjs:nodejs /app/next.config.mjs ./next.config.mjs
 # self-updater runs the migrator (lib/updater/apply.ts). Without this the
 # container tells the operator to run a script that is not in the image.
 # It is also why postgresql-client is installed below.
-COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+COPY --from=builder /app/scripts ./scripts
 
 # infra: lib/ carries data files the app reads from disk at runtime, not
 # just code Next.js bundles into .next. app/api/v3/ai/context/route.ts
 # reads lib/ai/*-knowledge.md through process.cwd() and returns an empty
 # string when the file is missing, so /docs, /changelog, /checks and
 # /legal silently answer with no context in a published image.
-COPY --from=builder --chown=nextjs:nodejs /app/lib ./lib
-
-# cosign binary for the self-updater's release signature verification
-# (lib/updater/cosign.ts) -- see the cosign build stage above for why.
-# /usr/local/bin is on Alpine's default PATH already.
-COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
+COPY --from=builder /app/lib ./lib
 
 # Install wget for health checks, tini for proper PID 1 signal handling
 # (npm as PID 1 does not forward SIGTERM to the Node worker on
@@ -188,11 +179,14 @@ RUN apk add --no-cache wget tini postgresql-client
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/v3/health || exit 1
 
-# infra: the app writes to two directories that are not in the image, and
-# could not be created at runtime either. WORKDIR /app is created by root and
-# the COPY --chown flags above only chown the children they copy, so /app
-# itself stays root:root and the uid-1001 process gets EACCES from
-# `mkdir -p`. That silently broke both the admin Backup button and
+# infra: everything the server writes, and nothing else. .next/cache is Next's
+# image and fetch cache; this build has no ISR route, so nothing writes under
+# .next/server at run time.
+#
+# The other two are not in the image and could not be created at runtime
+# either: WORKDIR /app and everything copied above is root:root, so the
+# uid-1001 process gets EACCES from `mkdir -p`. That silently broke both the
+# admin Backup button and
 # scripts/backup-db.mjs (BACKUP_DIR defaults to <cwd>/backups), the dump
 # db:migrate takes first (it used to go to <cwd>/databases, which nothing
 # created, and now goes to BACKUP_DIR/pre-migration) and the legacy
@@ -200,8 +194,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 # user, so a named volume mounted over either path also inherits that
 # ownership. docker-compose.yml mounts both so the contents survive the
 # `docker compose pull && docker compose up -d` upgrade.
-RUN mkdir -p /app/backups /app/data/avatars && \
-    chown -R nextjs:nodejs /app/backups /app/data
+RUN mkdir -p /app/.next/cache /app/backups /app/data/avatars && \
+    chown -R nextjs:nodejs /app/.next/cache /app/backups /app/data
 
 USER nextjs
 
@@ -219,10 +213,10 @@ ENV HOSTNAME="0.0.0.0"
 # (see the note above CONFIG_DB_POOL_MAX).
 ENV UV_THREADPOOL_SIZE=16
 # NEXT_PUBLIC_APP_URL is deliberately not carried over from the builder. The
-# published image is built with the upstream origin, and the OAuth redirects
-# (lib/config/server-app-url.ts) fall back to the origin of the request only
-# when neither APP_URL nor NEXT_PUBLIC_APP_URL is set at runtime: baking it in
-# here would point every pulled image's sign-in redirects upstream instead.
+# OAuth redirects (lib/config/server-app-url.ts) fall back to the origin of the
+# request only when neither APP_URL nor NEXT_PUBLIC_APP_URL is set at runtime,
+# so a value baked in here would become every container's origin. The published
+# image is built with it empty for the same reason.
 # Reset, verification, invite and unsubscribe links are built from the same
 # runtime variables and otherwise fall back to CONFIG_APP_URL, which is the
 # upstream origin too, so set APP_URL or NEXT_PUBLIC_APP_URL when the
@@ -233,7 +227,8 @@ ENV UV_THREADPOOL_SIZE=16
 # and being told "yes" here (someone runs as root, or bind-mounts /app) would
 # not make an in-place update stick, because the writable layer goes away with
 # the next `docker compose pull`. So the image says so, and the updater shows
-# that instead of a button.
+# that instead of a button. It is also why this image has no cosign binary:
+# the updater is the only thing that would run one.
 #
 # Only this image sets it. A source install running inside a container, which
 # is how the Pterodactyl and Pelican eggs run, has a real persistent app

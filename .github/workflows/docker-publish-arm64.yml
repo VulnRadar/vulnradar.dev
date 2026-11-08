@@ -177,8 +177,9 @@ jobs:
           cache-from: type=gha,scope=buildkit-arm64
           cache-to: type=gha,mode=max,scope=buildkit-arm64
           provenance: mode=max
+          # security: empty on purpose, as in docker-publish.yml.
           build-args: |
-            NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL || 'https://vulnradar.dev' }}
+            NEXT_PUBLIC_APP_URL=
 
       - name: Merge both architectures into the release tags
         if: steps.vars.outputs.skip != 'true'

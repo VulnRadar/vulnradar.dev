@@ -39,9 +39,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Only a pull request's superseded run is worth cancelling. docker-publish
+# refuses a commit without a green run here, so a push to main that cancelled
+# the run of the commit before it made a tag on that commit fail the publish
+# for a run that had simply been stopped.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -577,14 +581,19 @@ jobs:
           echo "${cfg}" | jq -e '(.services.app.depends_on // {}) | length == 0'
 
       - name: Build the production image
-        run: docker build -t vulnradar:ci .
+        # build.invalid is a sentinel: it can never resolve, and the step
+        # after next fails if it reached the code that writes password-reset
+        # links. The published image is built with this value empty, which
+        # would pass that check whether or not the origin was inlined.
+        run: docker build --build-arg NEXT_PUBLIC_APP_URL=https://build.invalid -t vulnradar:ci .
 
       - name: Assert the runtime image carries what the docs tell operators to run
         # A published image that cannot run its own documented recovery
         # command is the defect this step exists to catch.
         run: |
           set -euo pipefail
-          for path in scripts/migrate/migrate.mjs \
+          for path in server.mjs \
+                      scripts/migrate/migrate.mjs \
                       scripts/create-fresh-db/create-fresh-db.mjs \
                       scripts/backup-db.mjs \
                       lib/database/schema/index.mjs \
@@ -594,13 +603,94 @@ jobs:
               || { echo "MISSING from runtime image: $path"; exit 1; }
           done
 
+      - name: Assert the build's origin did not reach server code
+        # grep exits 1 for "searched and found nothing" and 2 for "could not
+        # search", so a route that moved fails here instead of passing.
+        run: |
+          docker run --rm --entrypoint sh vulnradar:ci -c \
+            'grep -rl build.invalid .next/server/app/api/v3/auth/forgot-password; test $? -eq 1'
+
+      - name: Assert the server cannot rewrite its own code
+        # security: these run as the image's default user, the uid the server
+        # runs as. Code that uid owns turns any write primitive in the app
+        # into code execution for the life of the container.
+        run: |
+          docker run --rm --entrypoint sh vulnradar:ci -c '
+            set -e
+            test ! -w node_modules/next/package.json
+            test ! -w package.json
+            test ! -w server.mjs
+            test ! -w lib
+            test ! -w scripts
+            test ! -w .next/BUILD_ID
+            test -w .next/cache
+            test -w backups
+            test -w data/avatars
+          '
+
+      - name: Assert the image has no cosign binary
+        # Only the self-updater would run one, and the image disables the
+        # updater, so a binary here is unreviewed weight and nothing else.
+        run: |
+          docker run --rm --entrypoint sh vulnradar:ci -c '
+            if command -v cosign; then
+              echo "cosign is on PATH in the image"
+              exit 1
+            fi
+          '
+
+      - name: Boot the documented compose quick start
+        # The steps docker-compose.yml's header gives a self-hoster: copy
+        # .env.example, set the two variables compose refuses to start
+        # without, `docker compose up -d`.
+        # Both emails stay empty, which is how the quick start reaches the app
+        # and what crash-looped it when validation rejected an empty string.
+        # Runs the image this job just built, tagged as the one compose names,
+        # so a commit that has never been published can still be tested.
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          cleanup() {
+            status=$?
+            if [ "$status" -ne 0 ]; then docker compose logs --no-color --tail 200 app || true; fi
+            docker compose down -v --remove-orphans || true
+            rm -f .env
+            exit "$status"
+          }
+          trap cleanup EXIT
+          sed -i -E \
+            -e 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci_compose_quickstart_password/' \
+            -e 's/^API_KEY_ENCRYPTION_KEY=.*/API_KEY_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff/' \
+            .env
+          printf 'CONTACT_EMAIL=\nSUPPORT_EMAIL=\n' >> .env
+
+          IMAGE=$(docker compose config --format json | jq -r '.services.app.image')
+          docker tag vulnradar:ci "${IMAGE}"
+          docker compose up -d --no-build
+
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:3000/api/v3/health 2>/dev/null || true)
+            if [ "$code" = "200" ]; then
+              echo "compose quick start healthy after $((i * 5))s"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "the compose quick start never answered 200 on /api/v3/health"
+          exit 1
+
       - name: Boot against an empty database and wait for health
+        # APP_URL is the origin this container serves: the build above baked
+        # in build.invalid, and server code must not be reading that.
+        # NEXT_PUBLIC_APP_URL stays because lib/config/env.ts still requires it
+        # to be set at boot, whichever of the two the links are built from.
         run: |
           set -euo pipefail
           docker run -d --name vr-smoke --network host \
             -e NODE_ENV=production \
             -e DATABASE_URL='postgresql://vulnradar:ci_smoke_test_password@localhost:5432/vulnradar' \
             -e DATABASE_SSL=false \
+            -e APP_URL=http://localhost:3000 \
             -e NEXT_PUBLIC_APP_URL=http://localhost:3000 \
             -e API_KEY_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff \
             vulnradar:ci

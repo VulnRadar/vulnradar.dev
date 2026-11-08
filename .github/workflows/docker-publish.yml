@@ -56,6 +56,12 @@ jobs:
               break
             fi
             if echo "$runs" | jq -e 'length > 0 and all(.[]; .status == "completed")' > /dev/null; then
+              # A stopped run says nothing about the code, and "fix main" sent
+              # people hunting for a failure that never happened.
+              if echo "$runs" | jq -e 'all(.[]; .conclusion == "cancelled")' > /dev/null; then
+                echo "::error::CI was cancelled for ${sha}, so it never reported on this commit: rerun CI for this sha, then re-run this workflow."
+                exit 1
+              fi
               echo "::error::CI did not pass for ${sha}: ${runs}. Fix main, then tag the fixed commit."
               exit 1
             fi
@@ -86,9 +92,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        # release: pin the cosign binary by digest. v2.4.1 is the
-        # current Sigstore cosign; pinning by digest makes the install
-        # reproducible and tamper-evident.
+        # release: the installer is pinned by commit, and that commit names
+        # the cosign release it downloads and verifies, so the signing binary
+        # only moves when Dependabot moves this line.
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       # release: nothing used to check that the tag being published agreed
@@ -194,13 +200,16 @@ jobs:
           # `cosign verify-attestation --type slsaprovenance ...` or
           # `docker buildx imagetools inspect --format '{{ json .Provenance }}'`.
           provenance: mode=max
+          # security: empty on purpose. Next.js inlines NEXT_PUBLIC_* at build
+          # time, so a value here was compiled into every pulled image, and a
+          # self-hosted instance's reset, verification and invite links could
+          # point at the upstream site with a live token in them. Server code
+          # reads the origin at run time now. A self-hoster who wants their
+          # own origin in the client bundles still builds the image themselves
+          # (`docker compose build app`), which is why docker-compose.yml
+          # carries a build context. See .env.example.
           build-args: |
-            NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL || 'https://vulnradar.dev' }}
-          # Next.js inlines NEXT_PUBLIC_* at build time, so the published
-          # image is hard-coded to the URL above. A self-hoster who wants
-          # their own origin in the client bundles has to build the image
-          # themselves (`docker compose build app`), which is why
-          # docker-compose.yml carries a build context. See .env.example.
+            NEXT_PUBLIC_APP_URL=
 
       - name: Sign image with cosign (keyless)
         # release: keyless signing via Sigstore Fulcio + Rekor. No

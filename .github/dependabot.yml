@@ -166,8 +166,11 @@ updates:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
 
-  # Base images: the Dockerfile's node:22.x-alpine (build + runner stages)
-  # and the cosign image, plus postgres:16.x-alpine in both compose files.
+  # Base images: the Dockerfile's node:22.x-alpine (build + runner stages),
+  # plus postgres:16.x-alpine in both compose files. The Dockerfile's FROM
+  # lines carry tag@sha256:digest, and Dependabot moves the two together, so
+  # the digest cannot go stale behind the tag. Registry rebuilds of the same
+  # tag also arrive as a PR, which is the point of pinning the digest.
   # Every one of those pins is deliberate and commented "bump intentionally",
   # but nothing opened the bump PR that assumed a human would remember, so
   # the pins drifted a year behind published CVE fixes on their own. Patch
