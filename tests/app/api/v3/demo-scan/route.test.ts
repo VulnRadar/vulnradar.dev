@@ -101,11 +101,6 @@ function installRateLimitQueryMock() {
       counts.set(key, next);
       return { rows: [{ count: String(next) }] };
     }
-    if (sql.startsWith("UPDATE rate_limits")) {
-      const key = params[0] as string;
-      counts.set(key, params[1] as number);
-      return { rows: [] };
-    }
     if (sql.startsWith("SELECT key, value FROM system_settings")) {
       return { rows: settingsRows };
     }
