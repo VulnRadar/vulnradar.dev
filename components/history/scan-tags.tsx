@@ -281,10 +281,6 @@ export function AddTagDialog({
           id={fieldId}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          // A React portal still bubbles through the history row, so keys
-          // typed here would otherwise reach the page's shortcuts. Enter
-          // still submits: that is the form's default action, not a bubble.
-          onKeyDown={(e) => e.stopPropagation()}
           maxLength={TAG_INPUT_MAX_LENGTH}
           placeholder="e.g. staging"
           autoComplete="off"

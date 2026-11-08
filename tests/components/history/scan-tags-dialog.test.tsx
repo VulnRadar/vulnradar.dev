@@ -156,6 +156,27 @@ describe("AddTagDialog", () => {
     expect(props.dirty).toBe(false);
   });
 
+  it("leaves the keyboard to the dialog's form", () => {
+    // Its handler stopped every key on the way to a letter shortcut /history
+    // does not have, Ctrl or Cmd+Enter included.
+    renderToStaticMarkup(
+      <AddTagDialog
+        scanId="abc"
+        tags={TAGS}
+        onAdd={async () => null}
+        onClose={() => {}}
+      />,
+    );
+    const body = lastProps().children as {
+      props: { children: { props: Record<string, unknown> }[] };
+    };
+    const input = body.props.children.find(
+      (child) => child.props.maxLength === TAG_INPUT_MAX_LENGTH,
+    );
+    expect(input).toBeDefined();
+    expect(input!.props.onKeyDown).toBeUndefined();
+  });
+
   it("caps the field at the length the server keeps", () => {
     expect(TAG_INPUT_MAX_LENGTH).toBe(Math.min(CONFIG_MAX_TAG_LENGTH, 50));
   });

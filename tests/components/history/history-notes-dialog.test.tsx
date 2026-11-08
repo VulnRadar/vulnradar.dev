@@ -193,7 +193,9 @@ describe("NotesDialog", () => {
     );
   });
 
-  it("lets the save chord through the shortcut guard and stops other keys", () => {
+  it("leaves the keyboard to the dialog's form", () => {
+    // The handlers that stood here guarded letter shortcuts /history does not
+    // have, and the Ctrl+Enter carve-out existed only to work around them.
     renderToStaticMarkup(
       <NotesDialog
         notes=""
@@ -203,27 +205,10 @@ describe("NotesDialog", () => {
     );
     const textarea = findProps(
       lastProps().children,
-      (props) => typeof props.onKeyUp === "function",
-    ) as {
-      onKeyDown: (e: unknown) => void;
-      onKeyUp: (e: unknown) => void;
-    };
-    const event = (init: Record<string, unknown>) => {
-      const e = {
-        stopped: false,
-        stopPropagation: () => (e.stopped = true),
-        ...init,
-      };
-      return e;
-    };
-    const letter = event({ key: "e" });
-    textarea.onKeyDown(letter);
-    expect(letter.stopped).toBe(true);
-    const chord = event({ key: "Enter", ctrlKey: true });
-    textarea.onKeyDown(chord);
-    expect(chord.stopped).toBe(false);
-    const up = event({ key: "e" });
-    textarea.onKeyUp(up);
-    expect(up.stopped).toBe(true);
+      (props) => props.placeholder === "Add notes about this scan...",
+    );
+    expect(textarea).not.toBeNull();
+    expect(textarea!.onKeyDown).toBeUndefined();
+    expect(textarea!.onKeyUp).toBeUndefined();
   });
 });

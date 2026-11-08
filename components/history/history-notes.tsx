@@ -116,16 +116,6 @@ export function NotesDialog({
           id={fieldId}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          // The history page's letter shortcuts listen above this tree, and a
-          // React portal still bubbles through it, so typing a note would
-          // fire them. Ctrl or Cmd+Enter is let through: it is the dialog's
-          // own save chord and no shortcut uses it.
-          onKeyDown={(e) => {
-            if (!(e.key === "Enter" && (e.ctrlKey || e.metaKey))) {
-              e.stopPropagation();
-            }
-          }}
-          onKeyUp={(e) => e.stopPropagation()}
           placeholder="Add notes about this scan..."
           maxLength={NOTES_MAX_LENGTH}
           autoFocus
