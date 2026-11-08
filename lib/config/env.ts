@@ -49,7 +49,10 @@ function optional<T extends z.ZodType>(schema: T) {
 
 const OptionalSchema = z.object({
   // The HMAC key for the OAuth and Discord state tokens (lib/auth/signed-envelope.ts)
-  // when set. API_KEY_ENCRYPTION_KEY is the fallback; either one is sufficient.
+  // and for the stored digests of password-reset and email-verification tokens
+  // (lib/auth/token-hash.ts) when set. API_KEY_ENCRYPTION_KEY is the fallback;
+  // either one is sufficient. Rotating it, or setting it where the fallback was
+  // in use, also invalidates every unexpired reset and verification link.
   AUTH_SECRET: optional(
     z
       .string()

@@ -211,6 +211,13 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+# Node's four default threadpool threads also serve dns.lookup, file reads and
+# zlib, so the scanner's DNS queued behind password hashing. libuv reads this
+# once at the first threadpool job, which is why it is set here and not in app
+# code. It does not raise hashing memory: the scrypt limiter in
+# lib/auth/password-hash.ts stays at 2 x 128 MiB however many threads exist
+# (see the note above CONFIG_DB_POOL_MAX).
+ENV UV_THREADPOOL_SIZE=16
 # NEXT_PUBLIC_APP_URL is deliberately not carried over from the builder. The
 # published image is built with the upstream origin, and the OAuth redirects
 # (lib/config/server-app-url.ts) fall back to the origin of the request only
