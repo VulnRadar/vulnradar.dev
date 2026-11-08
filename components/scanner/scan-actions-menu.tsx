@@ -408,7 +408,7 @@ export function ScanActionsMenu({
             id: number;
             name: string;
             role: string;
-            member_count?: number | string;
+            member_count?: number;
           }[];
         }) => {
           if (cancelled) return;
@@ -419,9 +419,7 @@ export function ScanActionsMenu({
                 id: t.id,
                 name: t.name,
                 role: t.role,
-                // COUNT(*) comes back from pg as a string, so this has to be
-                // coerced before it can be compared for pluralisation.
-                memberCount: Number(t.member_count) || 0,
+                memberCount: t.member_count ?? 0,
               })),
           );
         },
@@ -493,8 +491,9 @@ export function ScanActionsMenu({
   // earlier. And repo scans never reach this menu at all: GET
   // /api/v3/history filters scan_type != 'github' and app/repos renders its own
   // GithubScanResultModal. Gating on repo-ness would have deleted the feature.
-  // It is a URL-scan action by design (the issue body it files links to
-  // /host/<hostname>); the repo is only where the issue gets filed.
+  // It is a URL-scan action by design (for a public scan, the issue body it
+  // files links to /host/<hostname>); the repo is only where the issue gets
+  // filed.
   useEffect(() => {
     if (!scanId || !isOwner) return;
     let cancelled = false;
