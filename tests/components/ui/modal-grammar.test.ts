@@ -90,7 +90,12 @@ describe("modal panels do not restate the grammar", () => {
   const BANNED: [RegExp, string][] = [
     [/\bp-0\b/, 'the shell tier already removes padding (variant="shell")'],
     [/\bgap-0\b/, "the shell tier already removes the grid gap"],
-    [/\brounded-(?:xl|2xl|none)\b/, "a modal is rounded-lg (radius ladder)"],
+    // A max-sm: override is a phone-only full-screen sheet, which has no
+    // corners to round and no width to set, and no effect at sm and up.
+    [
+      /(?<!max-sm:)\brounded-(?:xl|2xl|none)\b/,
+      "a modal is rounded-lg (radius ladder)",
+    ],
     [/\bborder-0\b/, "a modal panel keeps its --border edge"],
     [/\bborder-input\b/, "a panel edge is --border, not the control token"],
     [/\bborder-border\/\d+\b/, "the panel edge is a bare `border`"],
@@ -98,7 +103,10 @@ describe("modal panels do not restate the grammar", () => {
     [/\bshadow-(?:2xl|xl|md|sm|none)\b/, "modalPanel sets shadow-lg"],
     [/\bmax-h-\[/, "modalPanel owns the max-height (dvh aware)"],
     [/\boverflow-y-auto\b/, "the body band scrolls, not the panel"],
-    [/\bsm:max-w-/, "use the `size` prop; a sm: width outranks an override"],
+    [
+      /(?<!max-)\bsm:max-w-/,
+      "use the `size` prop; a sm: width outranks an override",
+    ],
   ];
 
   it.each(BANNED)("no modal panel sets %s", (pattern, why) => {
