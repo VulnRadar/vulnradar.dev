@@ -142,8 +142,8 @@ export async function register() {
     try {
       // ── Schema version gate (BEFORE any table creation) ──────────────
       // Under the lock because its first statement creates the meta table, and
-      // two first boots on an empty database raced that CREATE TABLE IF NOT
-      // EXISTS into a crash on pg_type's unique index (bug-db-9).
+      // two first boots on an empty database raced that statement into a
+      // crash on pg_type's unique index (bug-db-9).
       const { ensureSchemaVersion } =
         await import("./lib/database/boot/schema-version");
       await ensureSchemaVersion(pool, {
