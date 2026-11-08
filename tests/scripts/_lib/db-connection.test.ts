@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { rootCertificates } from "node:tls";
 import pg from "pg";
 import {
@@ -69,6 +70,31 @@ describe("createPool", () => {
       connectionTimeoutMillis: 10000,
       statement_timeout: 30000,
     });
+  });
+});
+
+describe("every connection a script opens", () => {
+  it("goes through pgPoolOptions, so a new pool cannot skip the TLS rule", () => {
+    const scriptsDir = resolve(import.meta.dirname, "../../../scripts");
+    const files = readdirSync(scriptsDir, { recursive: true, encoding: "utf8" })
+      .filter((name) => /\.(mjs|ts)$/.test(name))
+      .map((name) => join(scriptsDir, name));
+
+    const openers: { file: string; firstOption: string }[] = [];
+    for (const file of files) {
+      const source = readFileSync(file, "utf8");
+      for (const match of source.matchAll(
+        /new (?:pg\.)?(?:Pool|Client)\(\s*(?:\{\s*)?(\S+)/g,
+      )) {
+        openers.push({ file, firstOption: match[1] });
+      }
+    }
+
+    // createPool, listDatabases, db:create's two and the backup dumper.
+    expect(openers.length).toBeGreaterThanOrEqual(5);
+    expect(
+      openers.filter((o) => !o.firstOption.startsWith("...pgPoolOptions(")),
+    ).toEqual([]);
   });
 });
 
@@ -158,6 +184,17 @@ describe("pgToolConnection", () => {
     expect(readFileSync(env.PGSSLROOTCERT as string, "utf8")).toBe(CA);
     await cleanup();
     expect(existsSync(env.PGSSLROOTCERT as string)).toBe(false);
+  });
+
+  it("hands libpq the rest of the query string with its encoding intact", async () => {
+    useTls();
+    const { connArg, cleanup } = await pgToolConnection(
+      `${URL_WITH_TLS}&options=-c%20search_path%3Dapp`,
+    );
+    expect(connArg).toBe(
+      "postgresql://user@db.example.test:5432/app?options=-c%20search_path%3Dapp",
+    );
+    await cleanup();
   });
 
   it("falls back to the roots Node trusts when no CA is set", async () => {

@@ -91,7 +91,41 @@ describe("with DATABASE_SSL=true the explicit config wins over the URL", () => {
     },
   );
 
-  it("leaves a connection string it cannot parse alone", () => {
+  it.each([
+    // Both of these throw in `new URL`, and node-pg reads them anyway.
+    "postgres://user:pa%40ss@/app?host=db.example.test&sslmode=disable",
+    "postgres://user:pa%40ss@/app?host=db.example.test&sslmode=no-verify",
+    "postgresql://user:pa%40ss@db exa.test:5432/app?sslmode=no-verify",
+    // node-pg decodes the name, and its URL parser drops tabs before that.
+    `${BASE}?%73slmode=disable`,
+    `${BASE}?ssl\tmode=disable`,
+    `${BASE}?sslmode=disable&sslmode=no-verify`,
+  ])("%j cannot get past the rule", (url) => {
+    expect(effectiveSsl(url, verified)).toEqual({
+      rejectUnauthorized: true,
+      ca: CA,
+    });
+  });
+
+  it("refuses a client certificate in a URL the URL API cannot parse", () => {
+    expect(() =>
+      pgConnectionString(
+        "postgres://user:pa%40ss@/app?host=db.example.test&sslcert=/c.crt",
+        verified,
+      ),
+    ).toThrow(/sslcert or sslkey/);
+  });
+
+  it("leaves the encoding of what it keeps alone, because libpq reads + literally", () => {
+    expect(
+      pgConnectionString(
+        `${BASE}?options=-c%20search_path%3Dapp&sslmode=require&application_name=my%20app`,
+        verified,
+      ),
+    ).toBe(`${BASE}?options=-c%20search_path%3Dapp&application_name=my%20app`);
+  });
+
+  it("leaves a connection string with no query string alone", () => {
     expect(pgConnectionString("host=localhost dbname=x", verified)).toBe(
       "host=localhost dbname=x",
     );
