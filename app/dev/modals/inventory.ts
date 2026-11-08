@@ -177,6 +177,12 @@ export const MODAL_INVENTORY: readonly InventoryEntry[] = [
     size: "sm",
   },
   {
+    name: "Edit dialog (every edit of something that already exists)",
+    source: "components/shared/edit-dialog.tsx",
+    tier: "shell",
+    size: "md",
+  },
+  {
     name: "Backup codes",
     source: "components/shared/backup-codes-modal.tsx",
     tier: "overlay",

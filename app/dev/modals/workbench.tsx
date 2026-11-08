@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AlertTriangle, Loader2, Search, Shield } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/sheet";
 import { ModalShell } from "@/components/ui/modal-shell";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { EditDialog } from "@/components/shared/edit-dialog";
 import { ShareModal } from "@/components/scanner/share-modal";
 import { EmptyState } from "@/components/shared/empty-state";
 import { InlineAlert } from "@/components/shared/inline-alert";
@@ -195,6 +196,56 @@ function dialogSpecimen(
   };
 }
 
+/**
+ * A two-field edit that is dirty after typing and whose first save fails with
+ * a message, so the error band, the discard prompt and the busy state can all
+ * be reached without a real backend.
+ */
+function EditDialogSpecimen({ close }: { close: () => void }) {
+  const [name, setName] = useState("Production frontend");
+  const [host, setHost] = useState("app.example.com");
+  const attempts = useRef(0);
+  const dirty = name !== "Production frontend" || host !== "app.example.com";
+
+  return (
+    <EditDialog
+      open
+      onOpenChange={(open) => !open && close()}
+      title="Edit target"
+      description="Save once to see the failure message, then again to see it succeed."
+      dirty={dirty}
+      canSave={dirty && name.trim() !== "" && host.trim() !== ""}
+      onSave={async () => {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        attempts.current += 1;
+        if (attempts.current === 1) {
+          return "The target could not be reached. Nothing was changed.";
+        }
+      }}
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="wb-edit-name">Display name</Label>
+          <Input
+            id="wb-edit-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="wb-edit-host">Hostname</Label>
+          <Input
+            id="wb-edit-host"
+            value={host}
+            onChange={(e) => setHost(e.target.value)}
+          />
+        </div>
+      </div>
+    </EditDialog>
+  );
+}
+
 const SPECIMENS: Specimen[] = [
   dialogSpecimen("shell-sm", "Dialog shell", "sm", "shell"),
   dialogSpecimen("shell-md", "Dialog shell", "md", "shell"),
@@ -312,6 +363,16 @@ const SPECIMENS: Specimen[] = [
         onCancel={close}
       />
     ),
+  },
+  {
+    id: "edit-dialog",
+    name: "EditDialog",
+    group: "Real components",
+    tier: "shell",
+    size: "md",
+    source: "components/shared/edit-dialog.tsx",
+    states: ["default"],
+    render: (_state, close) => <EditDialogSpecimen close={close} />,
   },
   {
     id: "share",

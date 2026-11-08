@@ -42,7 +42,6 @@ function code(rel: string): string {
  */
 const BOTTOM_PINNED = [
   "app/profile/page.tsx",
-  "components/admin/users/user-detail-panel.tsx",
   "components/admin/features/system-settings-manager.tsx",
   "components/admin/shared/admin-mobile-toc.tsx",
   "components/admin/shared/toast.tsx",
