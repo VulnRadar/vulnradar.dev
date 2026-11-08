@@ -28,7 +28,7 @@ Access: public, no account needed
 Page title: Open-Source Scanner Alternatives Compared
 Heading on the page: How VulnRadar compares
 
-VulnRadar is an open-source, GPL-3.0 web vulnerability scanner you can self-host, with a free tier and paid plans from $5 a month. Here is an honest look at where it fits next to the better-known commercial tools. No invented competitor prices, no disparagement.
+VulnRadar is an open-source, GPL-3.0 web vulnerability scanner you can self-host. Here is an honest look at where it fits next to the better-known commercial tools. No invented competitor prices, no disparagement.
 
 ### Assets
 Route: /assets
@@ -89,7 +89,7 @@ Access: public, no account needed
 Page title: Every Web Vulnerability Check, With Fixes
 Heading on the page: Every check VulnRadar runs
 
-The 855+ checks a scan runs, grouped into 18 categories. Not a marketing number: most have a real page here that tells you what the check catches, why it matters, and how to fix it with code you can paste. The rest only fire across several pages at once, so there is no single check to link to.
+The 855+ checks a scan runs, grouped into 18 categories. Not a marketing number: most have a real page here that tells you what the check catches, why it matters, and how to fix it with code you can paste. The rest report under their own ids and do not have a page yet.
 
 ### Compare scans
 Route: /compare

@@ -433,7 +433,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Heart] **[ADDED]** **Footer Credits Who Hosts the Site**
   The footer now names the company whose servers run this site. A self-hosted install names its own host, or removes the line, in its configuration before building.
 - [AlertTriangle] **[API]** **Shared Error Codes for API v4**
-  Errors from the new API carry a stable code from a closed list, the request id, and a Retry-After header on every 429 and 503. This release adds the list and the shared error shape; API v4 itself is not switched on yet, and v3 error bodies are unchanged. v4-only change.
+  Errors from the new API carry a stable code from a closed list, the request id, and a Retry-After header on every 429 and 503. This release adds the list and the shared error shape; API v4 itself is not switched on yet. v3 error bodies keep every field they had and only gain the code and, where one is known, the request id.
 - [CalendarClock] **[API]** **API v3 Retirement Headers Prepared**
   The headers that announce API v3's retirement (Deprecation, Sunset and a link to the migration guide) and the optional switch that makes an instance answer 410 after the Sunset date are built and tested, but stay off until the release date is set. Self-hosted instances are never cut off unless the operator opts in. v3 deprecation groundwork.
 - [Link2] **[IMPROVED]** **One Route Registry and Permanent URLs**
@@ -475,7 +475,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Network] **[SELFHOST]** **Self-Hosting Guide Lists Every Outbound Call**
   The self-hosting guide has a Network egress section naming each host the server contacts, what is sent to it, whether it needs a key, and what you see when a firewall blocks it. Blocked lookups show as unavailable, never as clean.
 - [BookOpen] **[SELFHOST]** **Key Rotation, Health Check and Updater Documented**
-  Added a step-by-step encryption key rotation runbook, a health check reference, an explanation of the in-app updater, the automatic pre-migration backup, and a note that a restart re-promotes the lowest-id account when no super admin exists. The configuration page now covers the OAuth redirect URIs to register (they never move), how the app URL is resolved behind a proxy, and the maintenance and debug environment variables.
+  Added a step-by-step encryption key rotation runbook, a health check reference, an explanation of the in-app updater, the automatic pre-migration backup, and a note that a restart re-promotes the lowest-id verified, non-disabled account when no super admin exists. The configuration page now covers the OAuth redirect URIs to register (they never move), how the app URL is resolved behind a proxy, and the maintenance and debug environment variables.
 - [Settings] **[ADMIN]** **Administration Guide Covers Incident Switches and Staff SSO**
   The administration docs now explain the four incident switches and who each one exempts, how to use maintenance mode when the database is down, how to set up staff SSO, and what every admin tab is for.
 - [Wrench] **[FIXED]** **Stripe Event List and Updater Message Corrected**
@@ -788,6 +788,154 @@ The largest release since 3.0, and a pass over the whole product rather than one
   When a findings array repeated an id, a finding your AI allowance never reached, or one whose own AI call failed, could come back with another finding's verdict. Each finding now gets only its own verdict, and findings after the stop carry none.
 - [Activity] **[API]** **Both AI Verify Endpoints Count the Same Way**
   In the ai field, POST /scan/verify and POST /scan/verify-batch now both count verdicts per finding, and neither counts a skipped element in attempted.
+- [CreditCard] **[SECURITY]** **Deleting an Account Cancels Its Subscription**
+  Deleting an account, by the user or by an admin, now cancels its Stripe subscription first, and the confirmation says the cancellation is immediate. If Stripe cannot confirm it, the account is kept and you are asked to try again, so nobody goes on being charged for an account that no longer exists.
+- [Crown] **[SECURITY]** **Super Admin Accounts Cannot Delete Themselves**
+  A super admin can no longer delete their own account from the profile page, which the admin panel already refused.
+- [CreditCard] **[FIXED]** **Correct Plan After a Missing Subscription**
+  When a subscription no longer exists in Stripe, a super admin now returns to Elite Supporter instead of Pro Supporter.
+- [CreditCard] **[FIXED]** **Clearer Subscription Cancel Errors**
+  Cancelling a subscription with an empty or malformed request now answers 400 instead of 500, and an immediate value that is not true or false is rejected rather than ending the subscription at once.
+- [Webhook] **[SECURITY]** **Shared Webhooks Are Safer**
+  Only the person who created a webhook can change its URL or type. Teammates who cannot edit a webhook now see its host instead of the full address, because a Discord or Slack webhook URL is the credential for posting to that channel, and its delivery log no longer shows them what the receiver answered.
+- [Webhook] **[FIXED]** **Team Webhooks Follow the Team**
+  A team webhook now fires for every team a scan is shared with, and stops firing for that team once the person who created it leaves. The delivery failure email goes to the webhook's creator instead of whoever ran the scan.
+- [Webhook] **[CHANGED]** **Test Button Matches Real Deliveries**
+  Send test webhook is now signed with the stored secret and carries the same headers as a real delivery. It is rate limited per account and per destination, and it answers 502 or 504 with a plain sentence when your endpoint fails.
+- [Webhook] **[API]** **Delivery Headers and Replay Protection**
+  Every webhook delivery now names its delivery id, event, attempt and timestamp in headers, with an optional timestamped signature beside the unchanged one. Generic payloads gain id, created_at, api_version and scan_public_id. The webhook docs now open with how to receive and verify a delivery.
+- [Database] **[SECURITY]** **Database TLS Settings Now Apply Everywhere**
+  DATABASE_SSL and DATABASE_SSL_CA are no longer lost when DATABASE_URL carries sslmode, and migrations, repairs, backups and restores now connect under the same verified TLS rule as the app instead of possibly running in plaintext. With DATABASE_SSL=true, a DATABASE_URL that sets sslcert or sslkey is refused at startup.
+- [Settings] **[SELFHOST]** **Database Commands Read .env**
+  The db commands now load .env.local and then .env key by key, using the same parsing as the app, so a source install finds its settings and an exported DATABASE_URL no longer causes a backup to skip its encryption key.
+- [Database] **[FIXED]** **db:create Can Clone a 3.x Database**
+  Cloning no longer fails on generated columns, connects to the right database when the role and database share a name, keeps JSON arrays as arrays, and checks JSON value types after the copy. A v1 database with renamed or missing scan columns clones too.
+- [Database] **[PERFORMANCE]** **One Database Pool per Process**
+  The server now holds a single connection pool, so the connection limit you configure is the real limit and pool errors keep their stack trace in the error log.
+- [Settings] **[SECURITY]** **Settings Survive a Database Blip**
+  A failed read of the settings table no longer puts every admin override back on its shipped default for half a minute. The server keeps the last values it read and tries again a few seconds later, so a switch like enforcing staff two-factor stays on.
+- [ShieldCheck] **[SECURITY]** **Staff SSO Audit Detail**
+  When staff single sign-on accepts a token with no email_verified claim because the operator allowed it, the sign-in's audit entry now says so.
+- [Timer] **[FIXED]** **Rate Limit Refusals Write Nothing**
+  A request refused by a rate limit no longer writes to the database, and concurrent requests can no longer push a bucket past its cap, even briefly. Admin settings also gain limits for reputation lookups and API key identity checks, which take effect once those endpoints start using them.
+- [Container] **[SELFHOST]** **Larger Threadpool in the Docker Image**
+  The published image now runs with 16 libuv threads, so DNS lookups and file reads no longer wait behind password hashing. Hashing memory is unchanged.
+- [Flag] **[FIXED]** **False-Positive Marks No Longer Expire**
+  A finding you marked as a false positive used to come back after 90 days when the retention pass deleted the mark. Your false-positive verdicts now stay until you change them or delete your account, and verdicts set by AI verification are kept as well.
+- [Timer] **[FIXED]** **Long Rate-Limit Windows Hold**
+  The cleanup pass cleared rate-limit counters after one day, so any window longer than 24 hours, such as a 72-hour demo scan cap, reset early. Counters are now kept for the longest window a limit can be set to.
+- [FileText] **[ADMIN]** **Audit Log Rows Are Archived Once**
+  Two cleanup runs overlapping could copy the same expired admin audit rows into the archive twice, inflating any count taken from it. Each expired row is now deleted and archived in one step, so it is archived exactly once.
+- [Trash2] **[SELFHOST]** **Usage Counters and Stripe Event Markers Are Pruned**
+  AI usage and live-browser usage counters had no retention and grew forever. They now follow the usage retention setting, and the current window and the one before it are always kept. Stripe webhook replay markers are removed after 30 days.
+- [Code] **[API]** **Error Codes on API Errors**
+  API errors now include a machine-readable code, and a request id where one is known, next to the fields they already had. Existing v3 fields are unchanged.
+- [Shield] **[SECURITY]** **Request Bodies Capped While Reading**
+  Bodies read through the shared request parser are now counted as they arrive and refused once they pass the 1 MiB limit, even with no declared length, instead of being read into memory first.
+- [Timer] **[API]** **New Helpers for 429 Answers**
+  The shared refusals for rate limits and running-scan limits now always tell the client when to retry, and name which limit was hit.
+- [Fingerprint] **[IMPROVED]** **Scan Reservations Return the Public Id**
+  Creating a scan now yields its opaque public id internally, ready for the API to return beside the numeric id.
+- [Key] **[FIXED]** **API Requests No Longer Stall Under Bursts**
+  Metering an API key now uses a single database connection per request, so a burst of concurrent requests can no longer exhaust the connection pool and fail with timeouts. Daily limits are still enforced exactly under concurrency.
+- [KeyRound] **[FIXED]** **Rotating an API Key Clears Its IP Binding**
+  On deployments with API key IP binding switched on, rotating a key now clears its pinned network, and the new secret binds to wherever it is first used. Before, a key that had moved networks stayed refused even after its secret was replaced.
+- [UserCog] **[FIXED]** **Staff Keep a Higher Paid or Gifted Plan**
+  A staff member on a paid or gifted Elite plan now keeps Elite limits. The staff role used to cut every account to Pro limits, even while the Elite subscription was still being charged. Staff on Pro or below still get the Pro limits.
+- [GitMerge] **[FIXED]** **GitHub Issues Link Only to Reports People Can Open**
+  Issues filed from a scan now carry a report link only for public URL scans. Repo scans and private scans no longer link to a page that cannot show them, and a repo scan's issue is titled with the whole repository name.
+- [Timer] **[FIXED]** **Timeouts When Filing Issues and Connecting GitHub**
+  If GitHub does not answer while an issue is being filed, you now get a 504 warning that the issue may have been created, so check the repository before filing again. Connecting a GitHub account no longer hangs when GitHub stops responding.
+- [Lock] **[SECURITY]** **Credentials Removed From Old Audit Rows**
+  Audit log rows written before the admin alert webhook URL, the alert signing secret and the staff SSO client secret became secrets are redacted on the next start, so those values can no longer be read from the log.
+- [Crown] **[SELFHOST]** **Boot Promotion to Super Admin Is Stricter and Recorded**
+  When no super admin exists, a restart now promotes only the lowest-id account that is verified and not disabled, and records the promotion in the audit log.
+- [Layers] **[FIXED]** **Assets List Caps Hosts, Not Scans**
+  One site rescanned many times no longer pushes your other hosts off the Assets list. The totals are real figures for your retention window, and the page tells you when more hosts exist than it can show.
+- [Zap] **[PERFORMANCE]** **Faster Public and Dashboard Reads**
+  Public host reports, the host score trend, the dashboard and the health check do less database work per request. Health checks now share one database probe for up to two seconds.
+- [Network] **[API]** **API Version Discovery**
+  GET /api/version now includes an api block with the current version, the supported versions and any deprecation dates, so a client can tell what a server speaks. Additive; existing fields are unchanged. The shares list also adds limit and truncated, and the Shares page says when it is showing only part of your links.
+- [ShieldQuestion] **[SELFHOST]** **One security.txt**
+  A stale static security.txt was answering in place of the live one on the standard path. Self-hosted instances now publish their own security contact and their own address, with an expiry under one year.
+- [Users] **[ADMIN]** **Team Changes in the Audit Log**
+  Removing a member, leaving a team, changing a member's role, cancelling an invite, and renaming or deleting a team now each write a row to the admin audit log naming the team.
+- [Users] **[FIXED]** **Invalid Team Ids Answer 400**
+  A team, member or invite id that is not a whole number now gets a clear 400 from the team endpoints instead of a server error.
+- [MailOpen] **[FIXED]** **One-Click Unsubscribe on Team Invites**
+  Team invite emails sent to existing accounts now carry the one-click unsubscribe headers, which turn off team invite emails only.
+- [Users] **[CHANGED]** **Team List and Owner-Leave Error**
+  The team list now returns member_count as a number instead of a numeric string. An owner who tries to leave is told to delete the team or ask support, since ownership cannot be transferred.
+- [Bot] **[FIXED]** **AI Verdicts No Longer Silence Findings**
+  A finding only the AI verifier doubted now still triggers the critical and high alert email, stays in the posture digest, stays visible on your scan and still counts in its score. Only a verdict you gave yourself hides a finding from these.
+- [Code] **[CLI]** **CI Gate Counts AI-Doubted Findings Again**
+  The GitHub Action, the CLI and the GitLab template dropped findings the AI verifier had called false positives, even though the gate only promises to skip findings you marked. Those findings now count, so a build can start failing on one that was being skipped. To keep one out of the gate, mark it a false positive yourself.
+- [ScanSearch] **[ENGINE]** **Refused Pages Are Recognised**
+  The engine can now tell a page the site served from a bot challenge, a refusal (401, 403, 407, 429 or 451), a server error or a redirect that never reaches a page. Only the bot challenge result changes a scan so far: the other answers are recognised, and the page is still graded.
+- [Shield] **[ENGINE]** **More Bot Challenges Recognised**
+  The scanner now recognises proof-of-work gates with unusual titles, script-only gate pages, and challenges from AWS WAF, DataDome, HUMAN, Vercel and Anubis, so their scripts are no longer reported as the site's code.
+- [Eye] **[IMPROVED]** **Clearer Not-Checked Message**
+  The not-checked note now says the site refused the scanner or showed it a bot challenge, rather than always blaming a bot challenge.
+- [ShieldCheck] **[ENGINE]** **HSTS Preload Is No Longer Demanded**
+  The HSTS check no longer reports a missing preload token, since preloading is optional. It now reports a max-age under one year or a preload token the list would refuse, reads directives in any case, and handles a header sent twice.
+- [Layout] **[ENGINE]** **X-Frame-Options Read the Way Browsers Read It**
+  The same X-Frame-Options value sent twice is no longer called invalid, differing values are reported as conflicting, and ALLOW-FROM is now reported because browsers ignore it, unless CSP frame-ancestors covers the page.
+- [Filter] **[ENGINE]** **Cookie Caching Check Rebuilt**
+  The Vary: Cookie check now reports an application cookie on a response a shared cache may store, names the cookie and the cache signal, and ignores cookies a CDN or load balancer adds for itself. Its page now leads with Cache-Control, because Vary: Cookie does not stop a stored cookie being replayed.
+- [CheckCheck] **[ENGINE]** **Fewer Findings for Correct or Irrelevant Headers**
+  A CSP that only sets frame-ancestors no longer gets frame-src and object-src findings, document-only headers are no longer demanded of JSON responses, the standard Pragma and Expires no-cache idioms are left alone, login pages are no longer told to add no-store, and duplicate CSP and clickjacking findings now merge into one.
+- [Package] **[ENGINE]** **SRI Findings Know Whose File It Is**
+  The page and third-party Subresource Integrity checks now compare a resource with the page. A site's own assets, its own subdomains and vendors that change their files on purpose (Tag Manager, Maps, reCAPTCHA, Google Fonts) are no longer reported by them.
+- [Package] **[ENGINE]** **Medium SRI Finding Means a Hash Would Hold**
+  The medium SRI findings now fire only for a library loaded from a public CDN at an exact version. A host with cdn in its name no longer counts, and other third-party scripts are reported at low.
+- [FileSearch] **[IMPROVED]** **SRI Evidence Names the URLs**
+  These SRI findings list the script or stylesheet URLs, up to three and then a count, instead of only saying how many there were.
+- [Code] **[FIXED]** **eval of a Constant String Is Not Reported**
+  The inline eval check no longer fires when every argument is a constant string, because no outside input can reach it. eval or new Function on anything else is still reported.
+- [Copy] **[FIXED]** **Permissions-Policy Fixes You Can Paste**
+  The Permissions-Policy check pages no longer show the invalid feature=('self') form. Each page now recommends one value in both the steps and the code, and explains what an embedded frame could actually do when the policy grants a feature to every origin.
+- [ShieldCheck] **[IMPROVED]** **Safer HSTS and CSP Guidance**
+  The HSTS page now starts with a five minute max-age and raises it to one year, with preload treated as optional. The CSP page shows a per-request nonce for server-rendered apps and keeps 'self' for static sites.
+- [Server] **[IMPROVED]** **More Server Snippets for Header Checks**
+  Fifteen of the most searched header checks now include copyable fixes for Nginx, Apache, Caddy, IIS web.config, Cloudflare and an app framework.
+- [Gauge] **[ENGINE]** **Header Severities Recalibrated**
+  Missing HSTS, missing CSP and CSP unsafe-eval are now medium. Missing includeSubDomains, form-action, base-uri and no-store on sensitive pages are now low, and a missing upgrade-insecure-requests is info. The hsts-no-preload check is retitled because a missing preload token is no longer a defect, and three body-pattern checks no longer report header-level confidence.
+- [Volume2] **[ACCESSIBILITY]** **Browser Viewer Session Clock No Longer Reads Out Every Second**
+  Screen readers used to announce each tick of the live browser session countdown. The clock is now a plain timer, and a separate hidden status message is spoken only when the session starts, at 30 seconds and 10 seconds left, when it ends, and when you add time.
+- [Monitor] **[PERFORMANCE]** **Browser Viewer Stops Polling in Hidden Tabs**
+  The network log panel in the live browser viewer no longer fetches while its tab is in the background, no longer stacks requests when the server is slow, and no longer redraws the list when nothing new has arrived. It catches up once when you return to the tab.
+- [Pencil] **[FIXED]** **Edit Dialogs Save Only Their Own Form**
+  Pressing Ctrl+Enter in a dropdown or popover inside an edit dialog no longer saves the dialog, and a save that fails without a reason now says so instead of showing an empty box.
+- [Link2] **[IMPROVED]** **Check Pages Link Their Real Neighbours**
+  Each check page now links the checks around it, with those sharing a CWE first, so every check page is linked from a sibling. Pages also list checks a scan folds into one finding, and related checks that are reported separately.
+- [Crosshair] **[FIXED]** **Active Probe Pages Say When They Run**
+  Pages for active probes no longer claim they run on every scan. They now say the probe only runs when active probing is switched on, against a domain you have verified, and link to where you verify one.
+- [List] **[FIXED]** **Check Category and Reference Copy Corrected**
+  The SSL, TLS and DNS category pages now describe the checks they contain, the duplicate MITRE link is gone from check references, and the checks index gives an accurate reason why some detectors have no page yet.
+- [Image] **[FIXED]** **Check Social Cards Fit and Refresh**
+  Social cards for checks with long titles or descriptions no longer overflow, and a card's URL now changes when its content does, so an edited check stops unfurling with the old card.
+- [Search] **[FIXED]** **llms.txt Tells the Truth About Coverage**
+  The files that AI answer engines read now state the same check count as the rest of the site, list every documentation page, and link the OpenAPI document, which robots.txt now lets crawlers fetch.
+- [Globe] **[FIXED]** **Dead Links Have Their Own Title**
+  A page that does not exist now shows 'Page not found' in the browser tab instead of the home page title, and stays out of search results.
+- [Newspaper] **[CHANGED]** **Landing and Comparison Claims Corrected**
+  The FAQ now says what the REST API covers, fix snippets are described as what they are, the comparison pages say where AI code review does decide a finding, and the scan time promise is gone because nothing measures it.
+- [Smartphone] **[ACCESSIBILITY]** **Larger Tap Targets on Marketing Links**
+  Standalone text links on the landing page and the error pages now meet the 24 pixel minimum on phones.
+- [BookOpen] **[IMPROVED]** **Know Before You Scan**
+  The docs now say up front that a finished scan is published by default, and name the exact switches that change it, on the docs home, the sharing guide and the account guide.
+- [ShieldCheck] **[ADDED]** **Site-Owner Controls Documented**
+  New guidance on verifying a domain and on unpublishing reports, revoking share links or blocking scans of it, plus how to recognise scanner traffic and tell a staff block from an owner block. Public reports now link to it.
+- [BookOpen] **[IMPROVED]** **Guides Match the Product**
+  A new page covers scan modes, result panels, signing in and API spec import. Account, teams, reports, billing, scheduled scans and troubleshooting were corrected against what the app really does, including the failure messages people actually see.
+- [Zap] **[PERFORMANCE]** **Faster Reports, No Sideways Scrolling on Phones**
+  Shared and host reports start fetching their data while the page loads instead of after it. Host reports and API docs no longer render wider than a phone screen.
+- [Lock] **[SECURITY]** **Signed-In Scans Stay Private Unless You Say Otherwise**
+  An account with public scans by default published a scan run behind a login without anyone choosing that, although the result can hold what only a logged-in user sees. Adding a login to the scan form now turns on Keep this scan private, and it stays on unless you turn it off yourself.
+- [Eye] **[FIXED]** **Domain Owners Are Told What Unpublish Leaves Up**
+  The Unpublish dialog said a scan comes off the Public Scans directory. A live share link keeps a listed scan there, so the dialog now says to revoke the link as well.
+- [BarChart3] **[ADMIN]** **Check Accuracy Compares Like With Like**
+  Now that false-positive verdicts are kept for good while confirmations age out, the Engine Feedback rates and the confidence discount read only verdicts inside the feedback retention window, so a check's rate does not climb just because time passed.
 
 ---
 
@@ -3096,6 +3244,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1240
+- **Total changes documented:** 1314
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

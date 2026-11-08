@@ -416,12 +416,15 @@ your account exists and deleted when you delete your account.
 - Security alerts: 180 days, then
 automatically deleted; deleting your account deletes them
 immediately.
-- Finding feedback: if you mark a finding
-confirmed, false positive, or not applicable, that verdict and any
-notes you add are kept for 90 days, then automatically
-deleted. Deleting your account deletes the entry immediately
-rather than waiting for that window, because it carries the URL
-you scanned and whatever you typed into the notes field.
+- Finding feedback: if you mark a finding confirmed
+or not applicable, that verdict and any notes you add are kept for
+90 days, then automatically deleted. A false positive
+you mark, and any verdict set automatically by AI verification, is
+kept until you change it or delete your account, because a false
+positive you marked is what keeps that finding hidden. Deleting
+your account deletes every entry immediately rather than waiting
+for that window, because each one carries the URL you scanned and
+whatever you typed into the notes field.
 - In-app notifications: the notification-bell feed
 (e.g. "your scheduled scan finished") is kept for
 90 days, then automatically deleted; deleting your

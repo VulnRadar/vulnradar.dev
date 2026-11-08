@@ -227,7 +227,7 @@ remediation documentation in the docs.
 
 ### configuration (23)
 - [medium  ] `ratelimit-policy-missing` [combined] - No Rate-Limit Policy Detected
-- [medium  ] `vary-header-cookie` [header] - Vary: Cookie Missing on Cookie-Bearing Response
+- [medium  ] `vary-header-cookie` [header] - Set-Cookie on a Response a Shared Cache May Store
 - [low     ] `cookie-too-large` [header] - Set-Cookie Header Exceeds 4 KB
 - [low     ] `vary-header-missing` [header] - Vary Header Missing on Compressed Responses
 - [info    ] `content-disposition-inline` [header] - Downloadable Content Served as inline
@@ -486,8 +486,8 @@ remediation documentation in the docs.
 - [info    ] `email-bimi-without-vmc` [network-probe] - BIMI record publishes a logo with no verified mark certificate
 
 ### headers (117)
-- [high    ] `hsts-missing` [combined] - Missing HTTP Strict Transport Security (HSTS)
-- [high    ] `csp-missing` [header-missing] - Missing Content Security Policy (CSP)
+- [medium  ] `hsts-missing` [combined] - Missing HTTP Strict Transport Security (HSTS)
+- [medium  ] `csp-missing` [header-missing] - Missing Content Security Policy (CSP)
 - [medium  ] `clickjack-missing` [combined] - Missing Clickjacking Protection
 - [low     ] `permissions-policy-missing` [combined] - Missing Permissions-Policy Header
 - [low     ] `cors-wildcard` [combined] - Wildcard CORS Policy
@@ -499,13 +499,13 @@ remediation documentation in the docs.
 - [medium  ] `csp-frame-ancestors-missing` [combined] - Missing CSP frame-ancestors Directive
 - [low     ] `cors-origin-reflection` [combined] - CORS Origin Reflection with Credentials (unverified)
 - [low     ] `clear-site-data-missing` [combined] - Logout Page Missing Clear-Site-Data Header
-- [medium  ] `csp-form-action-missing` [combined] - CSP Missing form-action Directive
-- [medium  ] `csp-base-uri-missing` [combined] - CSP Missing base-uri Directive
+- [low     ] `csp-form-action-missing` [combined] - CSP Missing form-action Directive
+- [low     ] `csp-base-uri-missing` [combined] - CSP Missing base-uri Directive
 - [medium  ] `csp-object-src-missing` [combined] - CSP Missing object-src Directive
 - [info    ] `coep-credentialless` [header] - Script Relies on Cross-Origin Isolation That COEP Prevents
 - [info    ] `csp-report-uri-deprecated` [header] - CSP Uses Deprecated report-uri
 - [high    ] `csp-unsafe-inline-script` [combined] - CSP Allows unsafe-inline Scripts
-- [high    ] `csp-unsafe-eval-detected` [combined] - CSP Allows unsafe-eval
+- [medium  ] `csp-unsafe-eval-detected` [combined] - CSP Allows unsafe-eval
 - [medium  ] `csp-wildcard-source` [combined] - CSP Uses Wildcard Source
 - [low     ] `csp-no-default-src` [combined] - CSP Missing default-src Fallback
 - [low     ] `timing-allow-origin-wide` [header] - Timing-Allow-Origin wildcard
@@ -515,9 +515,9 @@ remediation documentation in the docs.
 - [medium  ] `csp-object-src-unsafe` [combined] - CSP Allows Object/Embed Sources
 - [info    ] `csp-script-src-self-only` [combined] - CSP script-src Too Restrictive
 - [medium  ] `x-frame-options-invalid` [header-present] - Invalid X-Frame-Options Value
-- [medium  ] `cache-control-no-store-missing` [combined] - Sensitive Page Missing no-store
-- [info    ] `pragma-no-cache-legacy` [header-present] - Legacy Pragma Header Used
-- [info    ] `expires-past` [header-present] - Expires Header Set to Past
+- [low     ] `cache-control-no-store-missing` [combined] - Sensitive Page Missing no-store
+- [info    ] `pragma-no-cache-legacy` [header-present] - Pragma: no-cache Without a Cache-Control Directive
+- [info    ] `expires-past` [header-present] - Static Asset Expires in the Past
 - [info    ] `coop-missing` [header] - Missing Cross-Origin-Opener-Policy (COOP) Header
 - [info    ] `charset-meta-missing` [header] - Missing <meta charset> Declaration
 - [medium  ] `access-control-allow-headers-wildcard` [header] - CORS Allow-Headers Wildcard
@@ -554,12 +554,12 @@ remediation documentation in the docs.
 - [low     ] `access-control-expose` [header-missing] - Sensitive header exposed via Access-Control-Expose-Headers
 - [low     ] `access-control-expose-broad` [header-missing] - Access-Control-Expose-Headers lists many response headers
 - [low     ] `access-control-max-age-long` [header-missing] - CORS preflight cache time is too long
-- [low     ] `csp-no-upgrade-insecure` [header-missing] - CSP missing upgrade-insecure-requests directive
+- [info    ] `csp-no-upgrade-insecure` [header-missing] - CSP missing upgrade-insecure-requests directive
 - [medium  ] `csp-data-uri-allowed` [header-missing] - CSP allows data: URIs in script or object sources
 - [medium  ] `csp-allows-http-sources` [header] - CSP script-src allows HTTP sources
 - [info    ] `feature-policy-deprecated` [header-missing] - Deprecated Feature-Policy header in use
 - [medium  ] `nosniff-incorrect` [header-missing] - X-Content-Type-Options set to an invalid value
-- [low     ] `hsts-no-preload` [header-missing] - HSTS header has weak directives (missing preload and/or low max-age)
+- [low     ] `hsts-no-preload` [header-missing] - HSTS max-age is short or the preload token is unusable
 - [low     ] `server-header-disclosure` [header-missing] - Server header discloses software identity
 - [low     ] `server-version-detailed` [header-missing] - Server header reveals detailed version number
 - [low     ] `x-powered-by-exposed` [header-missing] - X-Powered-By header reveals application framework
@@ -576,13 +576,13 @@ remediation documentation in the docs.
 - [high    ] `deprecated-tls` [header-missing] - Site served over plain HTTP (no TLS at all)
 - [high    ] `mixed-content` [header-missing] - HTTP resources loaded on HTTPS page (mixed content)
 - [high    ] `form-action-http` [header-missing] - Form submits data over unencrypted HTTP
-- [low     ] `sri-missing` [header-missing] - External script loaded without Subresource Integrity
-- [low     ] `sri-stylesheet-missing` [header-missing] - External stylesheet without SRI
+- [low     ] `sri-missing` [body-pattern] - External script loaded without Subresource Integrity
+- [low     ] `sri-stylesheet-missing` [body-pattern] - External stylesheet without SRI
 - [medium  ] `cors-methods-too-permissive` [header-missing] - CORS allows overly broad HTTP methods
 - [low     ] `referrer-policy-no-referrer-strict-origin-when-cross-origin` [header-missing] - Referrer-Policy not set to strict-origin-when-cross-origin
-- [medium  ] `strict-transport-security-include-subdomains` [header-missing] - HSTS header missing includeSubDomains directive
+- [low     ] `strict-transport-security-include-subdomains` [header-missing] - HSTS header missing includeSubDomains directive
 - [low     ] `meta-redirect-no-url` [header-missing] - Meta refresh redirect with empty content or empty URL target
-- [info    ] `autocomplete-username` [header-missing] - Username field missing autocomplete="username"
+- [info    ] `autocomplete-username` [body-pattern] - Username field missing autocomplete="username"
 - [low     ] `image-protocol-relative` [header-missing] - Image URL uses protocol-relative scheme (//)
 - [low     ] `open-graph-image-not-https` [header-missing] - OpenGraph image URL is not HTTPS
 - [low     ] `doctype-missing` [header-missing] - HTML DOCTYPE declaration is missing
@@ -862,17 +862,17 @@ remediation documentation in the docs.
 - Total checks: **804**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - medium: 223
-  - high: 198
-  - low: 183
+  - medium: 222
+  - high: 195
+  - low: 186
+  - info: 101
   - critical: 100
-  - info: 100
 - By type:
-  - body-pattern: 462
+  - body-pattern: 465
   - header: 155
   - combined: 60
-  - header-missing: 41
   - network-probe: 40
+  - header-missing: 38
   - url-check: 19
   - header-value: 18
   - header-present: 9

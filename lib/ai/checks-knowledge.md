@@ -21,17 +21,17 @@ in this file and quote the title, description, and fix steps.
 - **Total checks:** 804
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - medium: 223
-  - high: 198
-  - low: 183
+  - medium: 222
+  - high: 195
+  - low: 186
+  - info: 101
   - critical: 100
-  - info: 100
 - **By type:**
-  - body-pattern: 462
+  - body-pattern: 465
   - header: 155
   - combined: 60
-  - header-missing: 41
   - network-probe: 40
+  - header-missing: 38
   - url-check: 19
   - header-value: 18
   - header-present: 9
@@ -6328,39 +6328,37 @@ http {
 ```
 
 ### `vary-header-cookie` [configuration / medium / header]
-**Vary: Cookie Missing on Cookie-Bearing Response**
+**Set-Cookie on a Response a Shared Cache May Store**
 
-The response sets cookies but does not include a Vary: Cookie header, and the response is not marked Cache-Control: no-store/no-cache/private. A shared cache (CDN, reverse proxy) that stores this response may serve one user's cookie-gated content to a different user requesting the same URL. Static assets are not reported: their bytes are identical for every visitor, and Vary: Cookie on one is itself a defect (see vary-cookie-on-static-resource).
+The response sets an application cookie, carries an explicit sign that a shared cache may store it, and has no Cache-Control: no-store, no-cache or private. A CDN or reverse proxy that stores it can replay the Set-Cookie to other visitors. Cookies a CDN or load balancer adds for itself are not reported, and neither are static assets, whose bytes are the same for every visitor.
 
-**Risk:** If a shared cache stores this response without varying by Cookie, a different user requesting the same URL can receive another user's session-specific or personalized content, including authentication state or PII.
+**Risk:** A shared cache that stores this response can hand the same Set-Cookie to later visitors, which puts one user's session or per-user state in another user's browser.
 
-**Why it matters:** Vary: Cookie tells caches that the response content differs based on the Cookie header value. When cookies are present (indicating per-user state) but Vary: Cookie is absent, a CDN or reverse proxy configured to cache this response may store and replay one user's response to another. This risk only applies when the response can actually be stored by a shared cache; Cache-Control: no-store, no-cache, or private already rule that out.
+**Why it matters:** Set-Cookie is meant for one browser, but a cache stores the whole response. Vary: Cookie does not prevent the replay: it keys the cache on the Cookie header the request sent, and a new visitor who sends none matches the stored copy. Cache-Control: no-store, no-cache or private rule a shared cache out, which is why the check stays quiet on those.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary
 - https://datatracker.ietf.org/doc/html/rfc7234
 
 **Fix:**
-- Add Vary: Cookie to any response that sets cookies and can be stored by a shared cache.
-- For responses that must never be shared between users, prefer Cache-Control: private or no-store instead of (or in addition to) Vary: Cookie.
-- Audit CDN and reverse proxy configuration to confirm Vary: Cookie is honored per distinct value, not treated as a simple cache on/off toggle.
-- **Nginx: vary auth-gated responses by cookie** (nginx):
+- Send Cache-Control: private or no-store on any response that sets an application cookie.
+- If the page has to be cached at the edge, have the CDN strip Set-Cookie before storing it, or set the cookie from a separate request that is never cached.
+- Vary: Cookie is for a body that changes with the request's Cookie header. Add it for that reason only: it does not stop a stored Set-Cookie from being replayed, so it does not clear this finding.
+- **Nginx: keep cookie-setting responses out of shared caches** (nginx):
 ```nginx
 location /account/ {
-  add_header Vary "Cookie" always;
-  # Or avoid shared caching entirely for this path:
-  # add_header Cache-Control "private, no-store" always;
+  add_header Cache-Control "private, no-store" always;
 }
 ```
 - **Next.js headers config** (javascript):
 ```javascript
-// In next.config.mjs: mark cookie-gated API responses so shared caches don't mix users
+// In next.config.mjs: keep cookie-setting routes out of shared caches
 export default {
   async headers() {
     return [{
       source: '/api/account/:path*',
       headers: [
-        { key: 'Vary', value: 'Cookie' },
+        { key: 'Cache-Control', value: 'private, no-store' },
       ],
     }];
   },
@@ -12978,7 +12976,7 @@ dig +short TXT _dmarc.example.com
 
 ## Category: headers (117 checks)
 
-### `hsts-missing` [headers / high / combined]
+### `hsts-missing` [headers / medium / combined]
 **Missing HTTP Strict Transport Security (HSTS)**
 
 The server does not send the Strict-Transport-Security header, which tells browsers to only connect via HTTPS.
@@ -12992,56 +12990,99 @@ The server does not send the Strict-Transport-Security header, which tells brows
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
 
 **Fix:**
-- Add the Strict-Transport-Security header to all HTTPS responses.
-- Set a max-age of at least 31536000 (1 year).
-- Consider adding includeSubDomains and preload directives.
-- Ensure your entire site works over HTTPS before enabling.
+- Serve the whole site over HTTPS and redirect HTTP to HTTPS first. Browsers refuse plain HTTP for this host for as long as the policy is cached.
+- Start with a short policy: Strict-Transport-Security: max-age=300. A mistake then expires in five minutes.
+- Raise it in stages, for example 604800 (a week) and then 2592000 (a month), checking for broken pages between each.
+- Finish at max-age=31536000 (one year), and add includeSubDomains once every subdomain answers on HTTPS.
+- Preload is optional. hstspreload.org does not recommend it for every site, and getting off the list can take months.
 - **Next.js (next.config.mjs)** (javascript):
 ```javascript
+// Start short so a mistake expires in five minutes.
 const nextConfig = {
   async headers() {
     return [{
       source: '/(.*)',
-      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],
+      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=300' }],
     }];
   },
 };
 export default nextConfig;
+// Once HTTPS holds everywhere, raise the value to: max-age=31536000; includeSubDomains
 ```
 - **Nginx** (nginx):
 ```nginx
-add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+# Start short so a mistake expires in five minutes.
+add_header Strict-Transport-Security "max-age=300" always;
+# Once HTTPS holds everywhere, raise the value to: max-age=31536000; includeSubDomains
 ```
 - **Apache** (apache):
 ```apache
-Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+# Start short so a mistake expires in five minutes.
+Header always set Strict-Transport-Security "max-age=300"
+# Once HTTPS holds everywhere, raise the value to: max-age=31536000; includeSubDomains
 ```
 - **Caddy** (plaintext):
 ```plaintext
-header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+# Start short so a mistake expires in five minutes.
+header Strict-Transport-Security "max-age=300"
+# Once HTTPS holds everywhere, raise the value to: max-age=31536000; includeSubDomains
 ```
 - **Express (Node.js)** (javascript):
 ```javascript
+// Start short so a mistake expires in five minutes.
 app.use((req, res, next) => {
-  res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  res.setHeader('Strict-Transport-Security', 'max-age=300');
   next();
 });
+// Once HTTPS holds everywhere, raise the value to: max-age=31536000; includeSubDomains
 ```
 - **Deno (Hono)** (typescript):
 ```typescript
+// Start short so a mistake expires in five minutes.
 app.use('*', async (c, next) => {
   await next();
-  c.header('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  c.header('Strict-Transport-Security', 'max-age=300');
 });
+// Once HTTPS holds everywhere, raise the value to: max-age=31536000; includeSubDomains
 ```
 - **Bun (Elysia)** (typescript):
 ```typescript
+// Start short so a mistake expires in five minutes.
 app.onAfterHandle(({ set }) => {
-  set.headers['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains; preload';
+  set.headers['Strict-Transport-Security'] = 'max-age=300';
 });
+// Once HTTPS holds everywhere, raise the value to: max-age=31536000; includeSubDomains
+```
+- **IIS (web.config)** (xml):
+```xml
+<!-- Start short so a mistake expires in five minutes. -->
+<configuration>
+  <system.webServer>
+    <httpProtocol>
+      <customHeaders>
+        <add name="Strict-Transport-Security" value="max-age=300" />
+      </customHeaders>
+    </httpProtocol>
+  </system.webServer>
+</configuration>
+<!-- Once HTTPS holds everywhere, raise the value to: max-age=31536000; includeSubDomains -->
+```
+- **Cloudflare** (text):
+```text
+# Start short so a mistake expires in five minutes.
+# Rules > Overview > Create rule > Response Header Transform Rule
+# Apply it to all incoming requests, then use the Set static operation.
+Header name: Strict-Transport-Security
+Value: max-age=300
+
+# Then delete that rule and turn on the one-year policy. The HSTS setting cannot go below 1 month.
+# SSL/TLS > Edge Certificates > HTTP Strict Transport Security (HSTS) > Enable HSTS
+Max Age Header: 12 months
+Apply HSTS policy to subdomains (includeSubDomains): On
+Preload: Off unless you want the preload list
 ```
 
-### `csp-missing` [headers / high / header-missing]
+### `csp-missing` [headers / medium / header-missing]
 **Missing Content Security Policy (CSP)**
 
 No Content-Security-Policy header was found. CSP helps prevent cross-site scripting (XSS) and data injection attacks.
@@ -13057,43 +13098,77 @@ No Content-Security-Policy header was found. CSP helps prevent cross-site script
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Define a Content-Security-Policy header with restrictive defaults.
-- Start with a report-only policy to identify issues.
+- Pick the policy by how the page is built: a server-rendered app needs a fresh nonce on every response, while a static site with no inline scripts can use script-src 'self'.
+- Ship it as Content-Security-Policy-Report-Only first and read the violations before enforcing.
 - Use 'self' as the default-src and explicitly allow trusted origins.
-- Avoid 'unsafe-inline' and 'unsafe-eval' where possible; use nonces or hashes instead.
-- **Next.js** (javascript):
-```javascript
-const nextConfig = {
-  async headers() {
-    return [{
-      source: '/(.*)',
-      headers: [{ key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';" }],
-    }];
-  },
+- Avoid 'unsafe-inline' and 'unsafe-eval' in script-src; use nonces or hashes instead.
+- **Next.js (nonce in middleware)** (typescript):
+```typescript
+// middleware.ts
+// next.config.mjs headers() are fixed at build time, so a per-request nonce has to be set here.
+// Next.js puts this nonce on its own scripts. Pages must render dynamically: a cached page would reuse an old nonce.
+import { NextResponse, type NextRequest } from "next/server";
+
+export function middleware(request: NextRequest) {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  const nonce = btoa(String.fromCharCode(...bytes));
+  // next dev evaluates hot-reloaded modules with eval(). A production build never does.
+  const devEval = process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'";
+  const csp = [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-<value>' 'strict-dynamic'<value>`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", csp);
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Content-Security-Policy", csp);
+  return response;
+}
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
 ```
 - **Nginx** (nginx):
 ```nginx
+# Static site with no inline scripts. A server-rendered app needs a per-request nonce instead.
 add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" always;
 ```
 - **Apache** (apache):
 ```apache
+# Static site with no inline scripts. A server-rendered app needs a per-request nonce instead.
 Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
 ```
 - **Caddy** (plaintext):
 ```plaintext
+# Static site with no inline scripts. A server-rendered app needs a per-request nonce instead.
 header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
 ```
 - **Express (Node.js)** (javascript):
 ```javascript
+import crypto from 'node:crypto';
+
 app.use((req, res, next) => {
+  res.locals.nonce = crypto.randomBytes(16).toString('base64');
   res.setHeader('Content-Security-Policy',
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;");
+    `default-src 'self'; script-src 'self' 'nonce-<value>' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;`);
   next();
 });
+// Put the nonce on every script tag your templates render: <script nonce="<%= nonce %>">
 ```
 - **Deno (Hono)** (typescript):
 ```typescript
+// Static site with no inline scripts. A server-rendered app needs a per-request nonce instead.
 app.use('*', async (c, next) => {
   await next();
   c.header('Content-Security-Policy',
@@ -13102,6 +13177,7 @@ app.use('*', async (c, next) => {
 ```
 - **Bun (Elysia)** (typescript):
 ```typescript
+// Static site with no inline scripts. A server-rendered app needs a per-request nonce instead.
 app.onAfterHandle(({ set }) => {
   set.headers['Content-Security-Policy'] =
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;";
@@ -13110,6 +13186,27 @@ app.onAfterHandle(({ set }) => {
 - **HTML Meta Tag** (html):
 ```html
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self';">
+```
+- **IIS (web.config)** (xml):
+```xml
+<!-- Static site with no inline scripts. A server-rendered app needs a per-request nonce instead. -->
+<configuration>
+  <system.webServer>
+    <httpProtocol>
+      <customHeaders>
+        <add name="Content-Security-Policy" value="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+      </customHeaders>
+    </httpProtocol>
+  </system.webServer>
+</configuration>
+```
+- **Cloudflare** (text):
+```text
+# Static site with no inline scripts. A server-rendered app needs a per-request nonce instead.
+# Rules > Overview > Create rule > Response Header Transform Rule
+# Apply it to all incoming requests, then use the Set static operation.
+Header name: Content-Security-Policy
+Value: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;
 ```
 
 ### `clickjack-missing` [headers / medium / combined]
@@ -13174,6 +13271,25 @@ app.onAfterHandle(({ set }) => {
   set.headers['X-Frame-Options'] = 'DENY';
 });
 ```
+- **IIS (web.config)** (xml):
+```xml
+<configuration>
+  <system.webServer>
+    <httpProtocol>
+      <customHeaders>
+        <add name="X-Frame-Options" value="DENY" />
+      </customHeaders>
+    </httpProtocol>
+  </system.webServer>
+</configuration>
+```
+- **Cloudflare** (text):
+```text
+# Rules > Overview > Create rule > Response Header Transform Rule
+# Apply it to all incoming requests, then use the Set static operation.
+Header name: X-Frame-Options
+Value: DENY
+```
 
 ### `permissions-policy-missing` [headers / low / combined]
 **Missing Permissions-Policy Header**
@@ -13236,6 +13352,25 @@ app.use('*', async (c, next) => {
 app.onAfterHandle(({ set }) => {
   set.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=(), payment=()';
 });
+```
+- **IIS (web.config)** (xml):
+```xml
+<configuration>
+  <system.webServer>
+    <httpProtocol>
+      <customHeaders>
+        <add name="Permissions-Policy" value="camera=(), microphone=(), geolocation=(), payment=()" />
+      </customHeaders>
+    </httpProtocol>
+  </system.webServer>
+</configuration>
+```
+- **Cloudflare** (text):
+```text
+# Rules > Overview > Create rule > Response Header Transform Rule
+# Apply it to all incoming requests, then use the Set static operation.
+Header name: Permissions-Policy
+Value: camera=(), microphone=(), geolocation=(), payment=()
 ```
 
 ### `cors-wildcard` [headers / low / combined]
@@ -13354,15 +13489,46 @@ No Cross-Origin-Resource-Policy header is set.
 ```javascript
 const nextConfig = { async headers() { return [{ source: '/(.*)', headers: [{ key: 'Cross-Origin-Resource-Policy', value: 'same-origin' }] }]; } };
 ```
+- **Nginx** (nginx):
+```nginx
+add_header Cross-Origin-Resource-Policy "same-origin" always;
+```
+- **Apache** (apache):
+```apache
+Header always set Cross-Origin-Resource-Policy "same-origin"
+```
+- **Caddy** (plaintext):
+```plaintext
+header Cross-Origin-Resource-Policy "same-origin"
+```
+- **IIS (web.config)** (xml):
+```xml
+<configuration>
+  <system.webServer>
+    <httpProtocol>
+      <customHeaders>
+        <add name="Cross-Origin-Resource-Policy" value="same-origin" />
+      </customHeaders>
+    </httpProtocol>
+  </system.webServer>
+</configuration>
+```
+- **Cloudflare** (text):
+```text
+# Rules > Overview > Create rule > Response Header Transform Rule
+# Apply it to all incoming requests, then use the Set static operation.
+Header name: Cross-Origin-Resource-Policy
+Value: same-origin
+```
 
 ### `csp-report-only` [headers / medium / combined]
 **CSP Report-Only Without Enforcement**
 
-CSP-Report-Only is set but no enforcing CSP header exists.
+Content-Security-Policy-Report-Only is sent but there is no enforcing Content-Security-Policy header, so violations are reported and nothing is blocked.
 
-**Risk:** The site is logging CSP violations but not actually blocking them.
+**Risk:** An injected script runs exactly as it would with no CSP at all. The only difference is a violation report after the fact.
 
-**Why it matters:** CSP-Report-Only is meant for testing before deployment. Running it without an enforcing CSP means zero protection.
+**Why it matters:** Report-Only is for trying a policy before enforcing it. With no enforcing header next to it, the browser runs everything and only sends reports.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -13371,8 +13537,8 @@ CSP-Report-Only is set but no enforcing CSP header exists.
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Deploy an enforcing Content-Security-Policy header alongside report-only.
-- Start with a restrictive policy and relax based on report-only findings.
+- Once the reports are clean, send the same policy as Content-Security-Policy.
+- Keep Report-Only only for trying the next, stricter version alongside the enforced one.
 - **Both headers** (text):
 ```text
 Content-Security-Policy: default-src 'self'; script-src 'self'
@@ -13508,7 +13674,7 @@ return new Response(null, {
 });
 ```
 
-### `csp-form-action-missing` [headers / medium / combined]
+### `csp-form-action-missing` [headers / low / combined]
 **CSP Missing form-action Directive**
 
 The CSP header exists but does not contain a form-action directive to restrict form submission targets.
@@ -13531,7 +13697,7 @@ The CSP header exists but does not contain a form-action directive to restrict f
 Content-Security-Policy: ... form-action 'self';
 ```
 
-### `csp-base-uri-missing` [headers / medium / combined]
+### `csp-base-uri-missing` [headers / low / combined]
 **CSP Missing base-uri Directive**
 
 The CSP header exists but does not contain a base-uri directive.
@@ -13662,7 +13828,7 @@ res.setHeader("Content-Security-Policy",
 // In HTML: <script nonce="{nonce}">...</script>
 ```
 
-### `csp-unsafe-eval-detected` [headers / high / combined]
+### `csp-unsafe-eval-detected` [headers / medium / combined]
 **CSP Allows unsafe-eval**
 
 Content Security Policy permits eval().
@@ -13804,7 +13970,7 @@ Referrer-Policy uses a value that leaks full URLs.
 
 **Fix:**
 - Use strict-origin-when-cross-origin or no-referrer.
-- **Set a safe Referrer-Policy** (javascript):
+- **Next.js** (javascript):
 ```javascript
 // next.config.mjs
 export default {
@@ -13814,6 +13980,37 @@ export default {
 };
 // strict-origin-when-cross-origin sends the full URL for same-origin requests
 // and only the origin for cross-origin HTTPS requests, nothing for HTTP downgrades
+```
+- **Nginx** (nginx):
+```nginx
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+```
+- **Apache** (apache):
+```apache
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+```
+- **Caddy** (plaintext):
+```plaintext
+header Referrer-Policy "strict-origin-when-cross-origin"
+```
+- **IIS (web.config)** (xml):
+```xml
+<configuration>
+  <system.webServer>
+    <httpProtocol>
+      <customHeaders>
+        <add name="Referrer-Policy" value="strict-origin-when-cross-origin" />
+      </customHeaders>
+    </httpProtocol>
+  </system.webServer>
+</configuration>
+```
+- **Cloudflare** (text):
+```text
+# Rules > Overview > Create rule > Response Header Transform Rule
+# Apply it to all incoming requests, then use the Set static operation.
+Header name: Referrer-Policy
+Value: strict-origin-when-cross-origin
 ```
 
 ### `csp-unsafe-hashes` [headers / medium / header-value]
@@ -13934,11 +14131,11 @@ res.setHeader("Content-Security-Policy",
 ### `x-frame-options-invalid` [headers / medium / header-present]
 **Invalid X-Frame-Options Value**
 
-X-Frame-Options has invalid value.
+X-Frame-Options carries a value browsers do not act on: something other than DENY or SAMEORIGIN, two different values across duplicate headers, or the obsolete ALLOW-FROM.
 
-**Risk:** Clickjacking protection may not work.
+**Risk:** A browser that cannot use the value ignores the header, so the page can be framed for clickjacking unless CSP frame-ancestors covers it.
 
-**Why it matters:** Only DENY, SAMEORIGIN, ALLOW-FROM are valid.
+**Why it matters:** Only DENY and SAMEORIGIN are honoured. Current browsers ignore a header carrying ALLOW-FROM, so a page relying on it can be framed by anyone. Repeating the same valid value is fine. To allow specific origins, use CSP frame-ancestors.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -13962,7 +14159,7 @@ export default {
 // Content-Security-Policy: frame-ancestors 'none'
 ```
 
-### `cache-control-no-store-missing` [headers / medium / combined]
+### `cache-control-no-store-missing` [headers / low / combined]
 **Sensitive Page Missing no-store**
 
 Page with credentials lacks Cache-Control: no-store.
@@ -13996,20 +14193,20 @@ export default {
 ```
 
 ### `pragma-no-cache-legacy` [headers / info / header-present]
-**Legacy Pragma Header Used**
+**Pragma: no-cache Without a Cache-Control Directive**
 
-Pragma: no-cache header present.
+Pragma: no-cache is set and no Cache-Control directive forbids caching. Pragma beside a Cache-Control that already does is a harmless pair for old proxies and is not reported.
 
-**Risk:** Legacy header, HTTP/1.0 only.
+**Risk:** The response looks uncacheable to whoever set the header, but HTTP/1.1 caches follow Cache-Control and do not act on Pragma in a response, so it can still be stored.
 
-**Why it matters:** Cache-Control is preferred for HTTP/1.1+.
+**Why it matters:** Pragma comes from HTTP/1.0 and is only defined for requests. Current caches decide from Cache-Control, so a response that relies on Pragma alone has not said what it meant to say.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Pragma
 
 **Fix:**
-- Use Cache-Control instead of Pragma.
+- If the response must not be cached, add Cache-Control: no-store. Pragma can stay beside it for very old proxies, or go.
 - **Replace Pragma: no-cache with Cache-Control** (javascript):
 ```javascript
 // Pragma: no-cache is a HTTP/1.0 artifact, use Cache-Control for modern browsers
@@ -14023,32 +14220,29 @@ export default {
 ```
 
 ### `expires-past` [headers / info / header-present]
-**Expires Header Set to Past**
+**Static Asset Expires in the Past**
 
-Expires header set to date in the past.
+A static asset is sent with an Expires date in the past and no Cache-Control lifetime, so caches treat it as already stale. A past Expires on a page is the standard way to say do not cache and is not reported.
 
-**Risk:** Signals no caching to legacy proxies.
+**Risk:** Every visit re-requests a file that could have been cached, which costs load time and origin traffic. There is no direct security impact.
 
-**Why it matters:** Past expiry prevents legacy caching.
+**Why it matters:** Cache-Control overrides Expires, so this only matters when no Cache-Control directive sets a lifetime. A past date on a file usually comes from a server default meant for dynamic pages.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Expires
 
 **Fix:**
-- Use Cache-Control for modern caching control.
-- **Remove Expires headers or set Cache-Control instead** (javascript):
+- Give static assets a lifetime with Cache-Control, for example public, max-age=31536000, immutable for fingerprinted files.
+- **Set a Cache-Control lifetime on static assets** (javascript):
 ```javascript
-// Expires header with a past date is a HTTP/1.0 mechanism, use Cache-Control
-// For no caching:
+// Cache-Control overrides Expires, so a lifetime here wins over the past date.
 // next.config.mjs
 export default {
   async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }] }];
+    return [{ source: "/assets/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] }];
   },
 };
-// For long caching of static assets:
-// Cache-Control: public, max-age=31536000, immutable
 ```
 
 ### `coop-missing` [headers / info / header]
@@ -14070,7 +14264,7 @@ No Cross-Origin-Opener-Policy header is set. The detector checks for the real, e
 - Add Cross-Origin-Opener-Policy: same-origin to responses.
 - Use same-origin-allow-popups if the page needs to open popups while staying isolated.
 - Preview with Cross-Origin-Opener-Policy-Report-Only first if you're unsure it's safe to enable.
-- **Add Cross-Origin-Opener-Policy header** (javascript):
+- **Next.js** (javascript):
 ```javascript
 // next.config.mjs
 export default {
@@ -14081,6 +14275,37 @@ export default {
 // same-origin: isolates your browsing context from cross-origin windows
 // Enables SharedArrayBuffer and high-resolution timers (required for some APIs)
 // same-origin-allow-popups: allows popups but isolates main page
+```
+- **Nginx** (nginx):
+```nginx
+add_header Cross-Origin-Opener-Policy "same-origin" always;
+```
+- **Apache** (apache):
+```apache
+Header always set Cross-Origin-Opener-Policy "same-origin"
+```
+- **Caddy** (plaintext):
+```plaintext
+header Cross-Origin-Opener-Policy "same-origin"
+```
+- **IIS (web.config)** (xml):
+```xml
+<configuration>
+  <system.webServer>
+    <httpProtocol>
+      <customHeaders>
+        <add name="Cross-Origin-Opener-Policy" value="same-origin" />
+      </customHeaders>
+    </httpProtocol>
+  </system.webServer>
+</configuration>
+```
+- **Cloudflare** (text):
+```text
+# Rules > Overview > Create rule > Response Header Transform Rule
+# Apply it to all incoming requests, then use the Set static operation.
+Header name: Cross-Origin-Opener-Policy
+Value: same-origin
 ```
 
 ### `charset-meta-missing` [headers / info / header]
@@ -14115,7 +14340,7 @@ The HTML document does not declare a character set via <meta charset>. Without a
 
 ACA-Headers: * lets any browser send any header. Restrict to the headers you actually use.
 
-**Risk:** Replace * with an explicit allowlist
+**Risk:** On requests without credentials, a script on any origin can send whatever custom headers it likes, so an API that treats a header such as X-Tenant as a boundary no longer has one. The wildcard does not cover Authorization.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -14174,7 +14399,7 @@ export function corsHeaders(req: Request) {
 
 ALLOWALL (Chromium extension) explicitly disables framing protection. Use CSP frame-ancestors instead.
 
-**Risk:** Remove X-Frame-Options or set DENY/SAMEORIGIN; rely on CSP frame-ancestors for modern browsers
+**Risk:** The header opts out of framing protection, so any site can embed this page and overlay it for clickjacking unless CSP frame-ancestors says otherwise.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -14205,7 +14430,7 @@ export default {
 
 The CSP names a directive browsers no longer implement (allow-http, reflected-xss), or its script-src combines 'none' with 'unsafe-inline' or 'unsafe-eval'. Directive names are matched as names, so a host or report endpoint whose path happens to contain one of those words is not reported.
 
-**Risk:** Remove legacy directives like allow-http and reflected-xss
+**Risk:** The policy looks stricter than it is: browsers skip a removed directive silently, and 'none' is ignored as soon as another source is listed, so a script-src with 'none' and 'unsafe-inline' still allows inline script.
 
 **Why it matters:** allow-http (Chrome 41-65) and reflected-xss were both removed and are silently ignored, so a policy relying on either has a gap it does not know about. A permissive script-src alongside a restrictive default-src is not reported here: default-src is a fallback that script-src is specified to override, and a genuinely wildcard script-src is covered by the check for wildcard hosts in script-src.
 
@@ -14236,7 +14461,7 @@ export default {
 
 CSP headers longer than ~4KB are silently dropped by some browsers.
 
-**Risk:** Split into multiple CSPs via report-to, or use nonces instead of inline source lists
+**Risk:** A browser or proxy that drops the oversized header leaves the page with no CSP at all, and nothing tells you it happened.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -14259,9 +14484,11 @@ const nonce = randomBytes(16).toString("base64");
 ### `permissions-policy-geolocation-blocked` [headers / info / header]
 **Permissions-Policy geolocation allowed**
 
-Geolocation should default to 'self' unless your app needs it.
+The policy grants geolocation to every origin (geolocation=*), which includes any third party the page embeds in an iframe. The Geolocation API reads the device position after a permission prompt. Store locators and delivery sites need it on their own pages, and almost nothing needs it inside an embedded frame.
 
-**Risk:** Set Permissions-Policy: geolocation=(self) or geolocation=() to block entirely
+**Risk:** An iframe embedded with allow="geolocation" can ask for the visitor position, and in Chromium and Firefox the prompt names this site rather than the owner of the iframe.
+
+**Why it matters:** geolocation=* lifts the limit the header would otherwise put on this feature. geolocation=() turns it off for the page and every frame. If a page of yours really uses it, geolocation=(self) keeps it away from embedded frames instead.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -14270,7 +14497,7 @@ Geolocation should default to 'self' unless your app needs it.
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Set Permissions-Policy: geolocation=(self) or geolocation=() to block entirely
+- Replace geolocation=* with geolocation=() in the Permissions-Policy header.
 - **Block geolocation in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
@@ -14279,9 +14506,9 @@ export default {
     return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "geolocation=()" }] }];
   },
 };
-// () means the feature is disabled for all frames
-// 'self' means only the same origin can use it
-// https://example.com means only that specific origin
+// () turns the feature off for the page and every frame
+// (self) keeps it on this origin only
+// (self "https://maps.example") also allows that one origin
 ```
 
 ### `permissions-policy-camera-blocked` [headers / info / header]
@@ -14289,7 +14516,7 @@ export default {
 
 The policy grants camera to every origin (camera=*), which includes any third party the page embeds in an iframe. Granting it to the page's own origin, restricting it to an allowlist, or blocking it outright is not reported.
 
-**Risk:** Set Permissions-Policy: camera=() to block entirely
+**Risk:** An iframe embedded with allow="camera" can ask to turn on the camera, and in Chromium and Firefox the prompt names this site rather than the owner of the iframe.
 
 **Why it matters:** camera=* hands the camera permission prompt to any embedded third-party frame, not just to this site. camera=(self) or camera=() keeps it with the page itself. A legacy Feature-Policy header is read with its own syntax (camera 'self'), which is restrictive and is not reported.
 
@@ -14300,25 +14527,26 @@ The policy grants camera to every origin (camera=*), which includes any third pa
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Set Permissions-Policy: camera=() to block entirely
+- Replace camera=* with camera=(self) in the Permissions-Policy header.
 - **Restrict camera access in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
 export default {
   async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "camera=('self')" }] }];
+    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "camera=(self)" }] }];
   },
 };
-// Blocks camera access for all third-party iframes by default
-// Only allow your own origin to request camera permission
+// Only your own origin can request the camera, embedded frames cannot
 ```
 
 ### `permissions-policy-microphone-blocked` [headers / info / header]
 **Permissions-Policy microphone allowed**
 
-Microphone should default to 'self' or be blocked.
+The policy grants microphone to every origin (microphone=*), which includes any third party the page embeds in an iframe. getUserMedia records from the microphone after a permission prompt. Voice and video apps need it on their own origin, and a page with no audio features needs it nowhere.
 
-**Risk:** Set Permissions-Policy: microphone=() to block entirely
+**Risk:** An iframe embedded with allow="microphone" can ask to record the visitor, and in Chromium and Firefox the prompt names this site rather than the owner of the iframe.
+
+**Why it matters:** microphone=* lifts the limit the header would otherwise put on this feature. microphone=(self) keeps it with the page and away from embedded frames. If the site never uses it, microphone=() turns it off completely.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -14327,24 +14555,26 @@ Microphone should default to 'self' or be blocked.
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Set Permissions-Policy: microphone=() to block entirely
+- Replace microphone=* with microphone=(self) in the Permissions-Policy header.
 - **Restrict microphone in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
 export default {
   async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "microphone=('self')" }] }];
+    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "microphone=(self)" }] }];
   },
 };
-// Only allow your own origin to request microphone permission
+// Only your own origin can request the microphone, embedded frames cannot
 ```
 
 ### `permissions-policy-payment-blocked` [headers / info / header]
 **Permissions-Policy payment allowed**
 
-Payment Request API should default to 'self'.
+The policy grants payment to every origin (payment=*), which includes any third party the page embeds in an iframe. The Payment Request API opens the browser payment sheet with saved cards. Checkout pages use it on their own origin.
 
-**Risk:** Set Permissions-Policy: payment=(self) to scope to your origin
+**Risk:** An iframe embedded with allow="payment" can open the browser payment sheet while the visitor is on this site, asking them to pay a merchant this site never chose.
+
+**Why it matters:** payment=* lifts the limit the header would otherwise put on this feature. payment=(self) keeps it with the page and away from embedded frames. If the site never uses it, payment=() turns it off completely.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -14353,13 +14583,13 @@ Payment Request API should default to 'self'.
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Set Permissions-Policy: payment=(self) to scope to your origin
+- Replace payment=* with payment=(self) in the Permissions-Policy header.
 - **Restrict Payment Request API in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
 export default {
   async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "payment=('self')" }] }];
+    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "payment=(self)" }] }];
   },
 };
 // Prevents third-party iframes from initiating payment requests
@@ -14368,9 +14598,11 @@ export default {
 ### `permissions-policy-usb-blocked` [headers / info / header]
 **Permissions-Policy USB allowed**
 
-WebUSB should default to 'self'.
+The policy grants usb to every origin (usb=*), which includes any third party the page embeds in an iframe. WebUSB gives a page direct access to a USB device the visitor picks in a chooser. It is Chromium only, and firmware tools and hardware dashboards are about the only sites that need it.
 
-**Risk:** Set Permissions-Policy: usb=(self)
+**Risk:** An iframe embedded with allow="usb" can open the USB chooser, and a visitor who picks a device gives that frame direct access to it.
+
+**Why it matters:** usb=* lifts the limit the header would otherwise put on this feature. usb=() turns it off for the page and every frame. If a page of yours really uses it, usb=(self) keeps it away from embedded frames instead.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -14379,7 +14611,7 @@ WebUSB should default to 'self'.
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Set Permissions-Policy: usb=(self)
+- Replace usb=* with usb=() in the Permissions-Policy header.
 - **Block USB API in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
@@ -14394,9 +14626,11 @@ export default {
 ### `permissions-policy-bluetooth-blocked` [headers / info / header]
 **Permissions-Policy bluetooth allowed**
 
-Web Bluetooth should default to 'self'.
+The policy grants bluetooth to every origin (bluetooth=*), which includes any third party the page embeds in an iframe. Web Bluetooth connects a page to a nearby Bluetooth Low Energy device the visitor picks in a chooser. It is Chromium only, and fitness, IoT and hardware setup pages are the realistic users.
 
-**Risk:** Set Permissions-Policy: bluetooth=(self)
+**Risk:** An iframe embedded with allow="bluetooth" can open the Bluetooth chooser, and a visitor who picks a device lets that frame read from it and write to it.
+
+**Why it matters:** bluetooth=* lifts the limit the header would otherwise put on this feature. bluetooth=() turns it off for the page and every frame. If a page of yours really uses it, bluetooth=(self) keeps it away from embedded frames instead.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -14405,7 +14639,7 @@ Web Bluetooth should default to 'self'.
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Set Permissions-Policy: bluetooth=(self)
+- Replace bluetooth=* with bluetooth=() in the Permissions-Policy header.
 - **Block Bluetooth API in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
@@ -14420,9 +14654,11 @@ export default {
 ### `permissions-policy-serial-blocked` [headers / info / header]
 **Permissions-Policy serial allowed**
 
-Web Serial should default to 'self'.
+The policy grants serial to every origin (serial=*), which includes any third party the page embeds in an iframe. Web Serial reads and writes a serial port the visitor picks in a chooser. It is Chromium desktop only, and microcontroller and device-flashing tools are the realistic users.
 
-**Risk:** Set Permissions-Policy: serial=(self)
+**Risk:** An iframe embedded with allow="serial" can open the serial port chooser, and a visitor who picks a port lets that frame send commands to whatever is attached.
+
+**Why it matters:** serial=* lifts the limit the header would otherwise put on this feature. serial=() turns it off for the page and every frame. If a page of yours really uses it, serial=(self) keeps it away from embedded frames instead.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -14431,7 +14667,7 @@ Web Serial should default to 'self'.
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Set Permissions-Policy: serial=(self)
+- Replace serial=* with serial=() in the Permissions-Policy header.
 - **Block Serial API in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
@@ -14446,9 +14682,11 @@ export default {
 ### `permissions-policy-screen-wake-lock-blocked` [headers / info / header]
 **Permissions-Policy wake-lock allowed**
 
-Wake Lock should default to 'self'.
+The policy grants screen-wake-lock to every origin (screen-wake-lock=*), which includes any third party the page embeds in an iframe. The Screen Wake Lock API keeps the display on. Recipe, navigation and presentation pages use it, and most sites never do.
 
-**Risk:** Set Permissions-Policy: screen-wake-lock=(self)
+**Risk:** An iframe embedded with allow="screen-wake-lock" can stop the screen from sleeping and run down the battery. This is a nuisance, not a data exposure.
+
+**Why it matters:** screen-wake-lock=* lifts the limit the header would otherwise put on this feature. screen-wake-lock=() turns it off for the page and every frame. If a page of yours really uses it, screen-wake-lock=(self) keeps it away from embedded frames instead.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -14457,7 +14695,7 @@ Wake Lock should default to 'self'.
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Set Permissions-Policy: screen-wake-lock=(self)
+- Replace screen-wake-lock=* with screen-wake-lock=() in the Permissions-Policy header.
 - **Block Screen Wake Lock in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
@@ -14466,15 +14704,17 @@ export default {
     return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "screen-wake-lock=()" }] }];
   },
 };
-// Prevents pages from preventing the device screen from sleeping
+// Stops embedded frames and the page from keeping the device screen awake
 ```
 
 ### `permissions-policy-publickey-credentials-get-blocked` [headers / info / header]
 **Permissions-Policy publickey-credentials-get allowed**
 
-Passkey / WebAuthn should default to 'self'.
+The policy grants publickey-credentials-get to every origin (publickey-credentials-get=*), which includes any third party the page embeds in an iframe. WebAuthn get() asks for a passkey or security key signature. Sign-in pages need it on their own origin, and only a deliberate cross-origin login embed needs it in a frame.
 
-**Risk:** Set Permissions-Policy: publickey-credentials-get=(self)
+**Risk:** An iframe embedded with allow="publickey-credentials-get" can prompt the visitor for a passkey on its own relying party while they sit on a page they trust. It cannot obtain an assertion for the credentials of this site.
+
+**Why it matters:** publickey-credentials-get=* lifts the limit the header would otherwise put on this feature. publickey-credentials-get=(self) keeps it with the page and away from embedded frames. If the site never uses it, publickey-credentials-get=() turns it off completely.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -14483,13 +14723,13 @@ Passkey / WebAuthn should default to 'self'.
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Set Permissions-Policy: publickey-credentials-get=(self)
+- Replace publickey-credentials-get=* with publickey-credentials-get=(self) in the Permissions-Policy header.
 - **Restrict WebAuthn credential access in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
 export default {
   async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "publickey-credentials-get=('self')" }] }];
+    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "publickey-credentials-get=(self)" }] }];
   },
 };
 // Allows WebAuthn (passkeys) only for your own origin, not third-party iframes
@@ -14498,9 +14738,11 @@ export default {
 ### `permissions-policy-unload-blocked` [headers / info / header]
 **Permissions-Policy unload allowed**
 
-Permissions-Policy: unload=() is recommended to prevent third parties from intercepting the page-unload event.
+The policy grants unload to every origin (unload=*), which includes any third party the page embeds in an iframe. Unload handlers run as a page is torn down and keep it out of the back/forward cache. Chrome is phasing the event out, and pagehide or visibilitychange do the same job.
 
-**Risk:** Set Permissions-Policy: unload=()
+**Risk:** Any frame on the page, including a third-party embed, can register an unload handler, which in Chromium keeps the whole page out of the back/forward cache and slows back navigation. This costs performance, not data.
+
+**Why it matters:** unload=* leaves unload handlers available to every frame. unload=() switches them off for the page and its frames, so one embed cannot cost the page its back/forward cache entry. beforeunload is not affected. Move any handler of your own to pagehide first.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -14509,7 +14751,7 @@ Permissions-Policy: unload=() is recommended to prevent third parties from inter
 - https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
 
 **Fix:**
-- Set Permissions-Policy: unload=()
+- Replace unload=* with unload=() in the Permissions-Policy header.
 - **Disable unload event handler in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
@@ -14518,28 +14760,30 @@ export default {
     return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "unload=()" }] }];
   },
 };
-// Disables the beforeunload/unload event, improves bfcache eligibility
-// Unload handlers prevent back-forward cache restores (hurts Core Web Vitals)
+// Disables unload handlers for the page and its frames, beforeunload is not affected
+// Unload handlers keep a page out of the back/forward cache
 ```
 
 ### `permissions-policy-clipboard-read-blocked` [headers / info / header]
 **Permissions-Policy clipboard-read allowed**
 
-Permissions-Policy does not restrict the clipboard-read feature.
+The policy grants clipboard-read to every origin (clipboard-read=*), which includes any third party the page embeds in an iframe. navigator.clipboard.readText() reads what the visitor last copied, after a permission prompt. Paste buttons in editors need it on their own origin, and most pages do not need it at all.
 
-**Risk:** Set Permissions-Policy: clipboard-read=() to fully block clipboard reading
+**Risk:** An iframe embedded with allow="clipboard-read" can ask to read the clipboard, which often holds passwords, tokens or other copied text.
+
+**Why it matters:** clipboard-read=* lifts the limit the header would otherwise put on this feature. clipboard-read=(self) keeps it with the page and away from embedded frames. If the site never uses it, clipboard-read=() turns it off completely.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/clipboard-read
 
 **Fix:**
-- Set Permissions-Policy: clipboard-read=() to fully block clipboard reading
+- Replace clipboard-read=* with clipboard-read=(self) in the Permissions-Policy header.
 - **Restrict clipboard-read in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
 export default {
   async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "clipboard-read=('self')" }] }];
+    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "clipboard-read=(self)" }] }];
   },
 };
 // Only your origin can read clipboard content, third-party iframes cannot
@@ -14548,21 +14792,23 @@ export default {
 ### `permissions-policy-clipboard-write-blocked` [headers / info / header]
 **Permissions-Policy clipboard-write allowed**
 
-Permissions-Policy does not restrict the clipboard-write feature.
+The policy grants clipboard-write to every origin (clipboard-write=*), which includes any third party the page embeds in an iframe. navigator.clipboard.writeText() replaces the clipboard contents. Copy buttons use it on their own origin.
 
-**Risk:** Set Permissions-Policy: clipboard-write=(self) to scope clipboard write to your origin
+**Risk:** An iframe embedded with allow="clipboard-write" can replace what the visitor copied, for example swapping a wallet address or a shell command before it is pasted.
+
+**Why it matters:** clipboard-write=* lifts the limit the header would otherwise put on this feature. clipboard-write=(self) keeps it with the page and away from embedded frames. If the site never uses it, clipboard-write=() turns it off completely.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/clipboard-write
 
 **Fix:**
-- Set Permissions-Policy: clipboard-write=(self) to scope clipboard write to your origin
+- Replace clipboard-write=* with clipboard-write=(self) in the Permissions-Policy header.
 - **Restrict clipboard-write in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
 export default {
   async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "clipboard-write=('self')" }] }];
+    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "clipboard-write=(self)" }] }];
   },
 };
 // Only your origin can write to the clipboard, third-party iframes cannot
@@ -14571,15 +14817,17 @@ export default {
 ### `permissions-policy-accelerometer-blocked` [headers / info / header]
 **Permissions-Policy accelerometer allowed**
 
-Permissions-Policy does not restrict the accelerometer sensor.
+The policy grants accelerometer to every origin (accelerometer=*), which includes any third party the page embeds in an iframe. The accelerometer reports how the device moves. Motion-controlled games and AR pages use it. Most sites never touch it.
 
-**Risk:** Set Permissions-Policy: accelerometer=() to block device motion sensors
+**Risk:** An iframe embedded with allow="accelerometer" can read device motion, a known source of device fingerprints and of guesses at what the visitor taps.
+
+**Why it matters:** accelerometer=* lifts the limit the header would otherwise put on this feature. accelerometer=() turns it off for the page and every frame. If a page of yours really uses it, accelerometer=(self) keeps it away from embedded frames instead.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/accelerometer
 
 **Fix:**
-- Set Permissions-Policy: accelerometer=() to block device motion sensors
+- Replace accelerometer=* with accelerometer=() in the Permissions-Policy header.
 - **Block accelerometer in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
@@ -14594,15 +14842,17 @@ export default {
 ### `permissions-policy-gyroscope-blocked` [headers / info / header]
 **Permissions-Policy gyroscope allowed**
 
-Permissions-Policy does not restrict the gyroscope sensor.
+The policy grants gyroscope to every origin (gyroscope=*), which includes any third party the page embeds in an iframe. The gyroscope reports how the device rotates. Motion-controlled games and AR pages use it. Most sites never touch it.
 
-**Risk:** Set Permissions-Policy: gyroscope=() to block orientation sensors
+**Risk:** An iframe embedded with allow="gyroscope" can read device rotation, a known source of device fingerprints and of guesses at what the visitor taps.
+
+**Why it matters:** gyroscope=* lifts the limit the header would otherwise put on this feature. gyroscope=() turns it off for the page and every frame. If a page of yours really uses it, gyroscope=(self) keeps it away from embedded frames instead.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/gyroscope
 
 **Fix:**
-- Set Permissions-Policy: gyroscope=() to block orientation sensors
+- Replace gyroscope=* with gyroscope=() in the Permissions-Policy header.
 - **Block gyroscope in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
@@ -14617,15 +14867,17 @@ export default {
 ### `permissions-policy-magnetometer-blocked` [headers / info / header]
 **Permissions-Policy magnetometer allowed**
 
-Permissions-Policy does not restrict the magnetometer sensor.
+The policy grants magnetometer to every origin (magnetometer=*), which includes any third party the page embeds in an iframe. The magnetometer reports the magnetic field around the device, which is how a compass works. Motion-controlled games and AR pages use it. Most sites never touch it.
 
-**Risk:** Set Permissions-Policy: magnetometer=() to block compass sensors
+**Risk:** An iframe embedded with allow="magnetometer" can read the magnetic field around the device, which can be used for fingerprinting and to work out which way the device faces.
+
+**Why it matters:** magnetometer=* lifts the limit the header would otherwise put on this feature. magnetometer=() turns it off for the page and every frame. If a page of yours really uses it, magnetometer=(self) keeps it away from embedded frames instead.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/magnetometer
 
 **Fix:**
-- Set Permissions-Policy: magnetometer=() to block compass sensors
+- Replace magnetometer=* with magnetometer=() in the Permissions-Policy header.
 - **Block magnetometer in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
@@ -14640,15 +14892,17 @@ export default {
 ### `permissions-policy-ambient-light-sensor-blocked` [headers / info / header]
 **Permissions-Policy ambient-light-sensor allowed**
 
-Permissions-Policy does not restrict the ambient-light-sensor feature.
+The policy grants ambient-light-sensor to every origin (ambient-light-sensor=*), which includes any third party the page embeds in an iframe. The ambient light sensor reports how bright the room is. Browsers mostly ship it disabled or behind a flag, and few sites use it.
 
-**Risk:** Set Permissions-Policy: ambient-light-sensor=() to block ambient light sensors
+**Risk:** Where the sensor is enabled, an iframe embedded with allow="ambient-light-sensor" can read light levels, which researchers have used to infer what is on the screen.
+
+**Why it matters:** ambient-light-sensor=* lifts the limit the header would otherwise put on this feature. ambient-light-sensor=() turns it off for the page and every frame. If a page of yours really uses it, ambient-light-sensor=(self) keeps it away from embedded frames instead.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/ambient-light-sensor
 
 **Fix:**
-- Set Permissions-Policy: ambient-light-sensor=() to block ambient light sensors
+- Replace ambient-light-sensor=* with ambient-light-sensor=() in the Permissions-Policy header.
 - **Block ambient-light-sensor in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
@@ -14663,21 +14917,23 @@ export default {
 ### `permissions-policy-display-capture-blocked` [headers / info / header]
 **Permissions-Policy display-capture allowed**
 
-Permissions-Policy does not restrict display-capture (screen capture).
+The policy grants display-capture to every origin (display-capture=*), which includes any third party the page embeds in an iframe. getDisplayMedia asks the visitor to share a screen, window or tab. Meeting and screen-recording apps need it on their own origin.
 
-**Risk:** Set Permissions-Policy: display-capture=() to block screen capture
+**Risk:** An iframe embedded with allow="display-capture" can open the screen-share picker, and a visitor who accepts gives that frame a live view of what is on screen.
+
+**Why it matters:** display-capture=* lifts the limit the header would otherwise put on this feature. display-capture=(self) keeps it with the page and away from embedded frames. If the site never uses it, display-capture=() turns it off completely.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/display-capture
 
 **Fix:**
-- Set Permissions-Policy: display-capture=() to block screen capture
+- Replace display-capture=* with display-capture=(self) in the Permissions-Policy header.
 - **Restrict display-capture in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
 export default {
   async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "display-capture=('self')" }] }];
+    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "display-capture=(self)" }] }];
   },
 };
 // Restricts screen capture (getDisplayMedia) to your own origin
@@ -14688,7 +14944,7 @@ export default {
 
 The policy grants fullscreen to every origin (fullscreen=*), which includes any third party the page embeds in an iframe. A site using fullscreen itself is not reported.
 
-**Risk:** Set Permissions-Policy: fullscreen=(self) to scope fullscreen requests to your origin
+**Risk:** An iframe embedded with allow="fullscreen" can take over the whole screen and draw a fake address bar or login form on it.
 
 **Why it matters:** fullscreen=* lets any embedded third-party frame take over the screen, which is the ingredient a clickjacking or spoofed-UI overlay needs. fullscreen=(self) keeps the capability with the page itself. A legacy Feature-Policy header is read with its own syntax (fullscreen 'self'), which is restrictive and is not reported.
 
@@ -14696,30 +14952,32 @@ The policy grants fullscreen to every origin (fullscreen=*), which includes any 
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/fullscreen
 
 **Fix:**
-- Set Permissions-Policy: fullscreen=(self) to scope fullscreen requests to your origin
+- Replace fullscreen=* with fullscreen=(self) in the Permissions-Policy header.
 - **Restrict fullscreen API in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
 export default {
   async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "fullscreen=('self')" }] }];
+    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "fullscreen=(self)" }] }];
   },
 };
-// Only your own origin and explicitly allowed iframes can go fullscreen
+// Only your own origin and frames you name in the allowlist can go fullscreen
 ```
 
 ### `permissions-policy-midi-blocked` [headers / info / header]
 **Permissions-Policy midi allowed**
 
-Permissions-Policy does not restrict Web MIDI access.
+The policy grants midi to every origin (midi=*), which includes any third party the page embeds in an iframe. Web MIDI talks to attached musical instruments. Music tools need it, and other sites do not.
 
-**Risk:** Set Permissions-Policy: midi=() to block MIDI device access
+**Risk:** An iframe embedded with allow="midi" can ask for the attached MIDI devices and, with SysEx access, send them firmware-level messages.
+
+**Why it matters:** midi=* lifts the limit the header would otherwise put on this feature. midi=() turns it off for the page and every frame. If a page of yours really uses it, midi=(self) keeps it away from embedded frames instead.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/midi
 
 **Fix:**
-- Set Permissions-Policy: midi=() to block MIDI device access
+- Replace midi=* with midi=() in the Permissions-Policy header.
 - **Block MIDI API in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
@@ -14734,21 +14992,23 @@ export default {
 ### `permissions-policy-picture-in-picture-blocked` [headers / info / header]
 **Permissions-Policy picture-in-picture allowed**
 
-Permissions-Policy does not restrict the picture-in-picture feature.
+The policy grants picture-in-picture to every origin (picture-in-picture=*), which includes any third party the page embeds in an iframe. Picture-in-picture floats a video above other windows. Video players use it, including embedded ones.
 
-**Risk:** Set Permissions-Policy: picture-in-picture=(self) to scope PiP to your origin
+**Risk:** A third-party frame can float a video window over the other apps of the visitor and keep it playing after they leave the tab. This is a nuisance, not a data exposure.
+
+**Why it matters:** picture-in-picture=* lets every frame use the floating player. picture-in-picture=(self) keeps it with the page, and it also takes the feature away from an embedded video player, so name that player in the allowlist if you want it to keep working.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/picture-in-picture
 
 **Fix:**
-- Set Permissions-Policy: picture-in-picture=(self) to scope PiP to your origin
+- Replace picture-in-picture=* with picture-in-picture=(self) in the Permissions-Policy header.
 - **Restrict picture-in-picture in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
 export default {
   async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "picture-in-picture=('self')" }] }];
+    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "picture-in-picture=(self)" }] }];
   },
 };
 // Only allow your origin to use picture-in-picture video mode
@@ -14757,38 +15017,42 @@ export default {
 ### `permissions-policy-storage-access-blocked` [headers / info / header]
 **Permissions-Policy storage-access allowed**
 
-Permissions-Policy does not restrict the Storage Access API used by third-party iframes.
+The policy grants storage-access to every origin (storage-access=*), which includes any third party the page embeds in an iframe. The Storage Access API lets an embedded third-party frame ask for its own unpartitioned cookies. Embedded login widgets and comment systems rely on it.
 
-**Risk:** Set Permissions-Policy: storage-access=() to block third-party storage access requests
+**Risk:** A third-party iframe can ask for its unpartitioned cookies, which lets it recognise the visitor across every site that embeds it.
+
+**Why it matters:** storage-access=* lets every embedded frame call document.requestStorageAccess(). storage-access=(self) stops embedded frames from calling it, so name a widget in the allowlist if it needs its cookies to work.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/storage-access
 
 **Fix:**
-- Set Permissions-Policy: storage-access=() to block third-party storage access requests
+- Replace storage-access=* with storage-access=(self) in the Permissions-Policy header.
 - **Restrict storage-access in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
 export default {
   async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "storage-access=('self')" }] }];
+    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "storage-access=(self)" }] }];
   },
 };
-// Restricts the Storage Access API (used for cross-site cookie access)
+// Stops embedded frames from requesting cross-site cookie access
 ```
 
 ### `permissions-policy-window-management-blocked` [headers / info / header]
 **Permissions-Policy window-management allowed**
 
-Permissions-Policy does not restrict the Window Management API for multi-screen layouts.
+The policy grants window-management to every origin (window-management=*), which includes any third party the page embeds in an iframe. The Window Management API lists attached screens and places windows across them. Trading desks and slide presenters use it, and most sites never do.
 
-**Risk:** Set Permissions-Policy: window-management=() to block window placement APIs
+**Risk:** An iframe embedded with allow="window-management" can ask for details of every attached screen, which is useful for fingerprinting, and open windows on them.
+
+**Why it matters:** window-management=* lifts the limit the header would otherwise put on this feature. window-management=() turns it off for the page and every frame. If a page of yours really uses it, window-management=(self) keeps it away from embedded frames instead.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/window-management
 
 **Fix:**
-- Set Permissions-Policy: window-management=() to block window placement APIs
+- Replace window-management=* with window-management=() in the Permissions-Policy header.
 - **Block window-management in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
@@ -14805,7 +15069,7 @@ export default {
 
 A cookie using the __Host- prefix must have Secure, Path=/, and no Domain attribute. Otherwise the browser silently rejects it.
 
-**Risk:** Add Secure and Path=/ and remove Domain from any __Host- prefixed cookie
+**Risk:** The browser rejects the cookie, so the session or setting it carries is never stored and whatever depends on it fails.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies
@@ -14853,6 +15117,33 @@ export default {
 ```nginx
 add_header X-Content-Type-Options "nosniff" always;
 ```
+- **Apache** (apache):
+```apache
+Header always set X-Content-Type-Options "nosniff"
+```
+- **Caddy** (plaintext):
+```plaintext
+header X-Content-Type-Options "nosniff"
+```
+- **IIS (web.config)** (xml):
+```xml
+<configuration>
+  <system.webServer>
+    <httpProtocol>
+      <customHeaders>
+        <add name="X-Content-Type-Options" value="nosniff" />
+      </customHeaders>
+    </httpProtocol>
+  </system.webServer>
+</configuration>
+```
+- **Cloudflare** (text):
+```text
+# Rules > Overview > Create rule > Response Header Transform Rule
+# Apply it to all incoming requests, then use the Set static operation.
+Header name: X-Content-Type-Options
+Value: nosniff
+```
 
 ### `coep-missing` [headers / info / header-missing]
 **Missing Cross-Origin-Embedder-Policy header**
@@ -14881,6 +15172,42 @@ export default {
     return [{ source: "/(.*)", headers: [{ key: "Cross-Origin-Embedder-Policy", value: "require-corp" }] }];
   },
 };
+```
+- **Nginx** (nginx):
+```nginx
+# Blocks any cross-origin resource that sends neither CORP nor CORS headers. Test before enforcing.
+add_header Cross-Origin-Embedder-Policy "require-corp" always;
+```
+- **Apache** (apache):
+```apache
+# Blocks any cross-origin resource that sends neither CORP nor CORS headers. Test before enforcing.
+Header always set Cross-Origin-Embedder-Policy "require-corp"
+```
+- **Caddy** (plaintext):
+```plaintext
+# Blocks any cross-origin resource that sends neither CORP nor CORS headers. Test before enforcing.
+header Cross-Origin-Embedder-Policy "require-corp"
+```
+- **IIS (web.config)** (xml):
+```xml
+<!-- Blocks any cross-origin resource that sends neither CORP nor CORS headers. Test before enforcing. -->
+<configuration>
+  <system.webServer>
+    <httpProtocol>
+      <customHeaders>
+        <add name="Cross-Origin-Embedder-Policy" value="require-corp" />
+      </customHeaders>
+    </httpProtocol>
+  </system.webServer>
+</configuration>
+```
+- **Cloudflare** (text):
+```text
+# Blocks any cross-origin resource that sends neither CORP nor CORS headers. Test before enforcing.
+# Rules > Overview > Create rule > Response Header Transform Rule
+# Apply it to all incoming requests, then use the Set static operation.
+Header name: Cross-Origin-Embedder-Policy
+Value: require-corp
 ```
 
 ### `cache-control-missing` [headers / low / header-missing]
@@ -14994,7 +15321,7 @@ return new Response(null, {
 });
 ```
 
-### `csp-no-upgrade-insecure` [headers / low / header-missing]
+### `csp-no-upgrade-insecure` [headers / info / header-missing]
 **CSP missing upgrade-insecure-requests directive**
 
 The Content-Security-Policy header does not include upgrade-insecure-requests, leaving HTTP sub-resources unprotected.
@@ -15133,38 +15460,61 @@ export default {
 ```
 
 ### `hsts-no-preload` [headers / low / header-missing]
-**HSTS header has weak directives (missing preload and/or low max-age)**
+**HSTS max-age is short or the preload token is unusable**
 
-The Strict-Transport-Security header is present but is missing the preload directive, has a max-age below the 1-year minimum, or both. The finding's evidence text states which of the two conditions actually applies.
+The Strict-Transport-Security header has a max-age below one year, or carries a preload token the preload list would reject. A header with no preload token is not reported: preloading is optional. The finding's evidence text states which condition applies.
 
-**Risk:** Without preload and inclusion in the browser HSTS preload list, first-time visitors who type the domain without https:// may connect over HTTP before being redirected, exposing that first request to interception. A max-age below one year means browsers stop enforcing HTTPS-only access sooner than recommended, reopening the downgrade window earlier than necessary.
+**Risk:** A short max-age lapses between visits, so a returning visitor's first request can go out over plain HTTP and be intercepted. An unusable preload token does nothing at all: the domain stays off the list while the header suggests otherwise.
 
-**Why it matters:** The preload directive enables submission to browser preload lists so the domain is always loaded over HTTPS, even on the first visit. max-age should be at least 31536000 (1 year) so HSTS enforcement doesn't lapse between visits.
+**Why it matters:** max-age is how long a browser remembers to refuse plain HTTP for this host, and one year is the level this check expects. The preload token only means something with a one-year max-age and includeSubDomains. On a hosted platform such as Shopify the value belongs to the platform, so the store owner cannot change it.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
 
 **Fix:**
-- Set your HSTS header to: max-age=63072000; includeSubDomains; preload
-- Ensure max-age is at least 31536000 and includeSubDomains is present
-- Submit to the preload list at hstspreload.org
+- Raise max-age to at least 31536000 (one year). A header without a preload token is fine and is not reported.
+- If the header carries preload, it also needs includeSubDomains and that one-year max-age, or hstspreload.org will reject it. Fix those or drop the token.
+- Preloading is optional. hstspreload.org does not recommend it for every site: every subdomain has to stay on HTTPS and getting off the list can take months.
 - **Next.js** (javascript):
 ```javascript
 // next.config.mjs
 export default {
   async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }] }];
+    return [{ source: "/(.*)", headers: [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }] }];
   },
 };
 ```
 - **Nginx** (nginx):
 ```nginx
-add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 ```
 - **Apache** (apache):
 ```apache
-Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+```
+- **Caddy** (plaintext):
+```plaintext
+header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+```
+- **IIS (web.config)** (xml):
+```xml
+<configuration>
+  <system.webServer>
+    <httpProtocol>
+      <customHeaders>
+        <add name="Strict-Transport-Security" value="max-age=31536000; includeSubDomains" />
+      </customHeaders>
+    </httpProtocol>
+  </system.webServer>
+</configuration>
+```
+- **Cloudflare** (text):
+```text
+# SSL/TLS > Edge Certificates > HTTP Strict Transport Security (HSTS) > Enable HSTS
+Max Age Header: 12 months
+Apply HSTS policy to subdomains (includeSubDomains): On
+Preload: Off unless you want the preload list
 ```
 
 ### `server-header-disclosure` [headers / low / header-missing]
@@ -15185,18 +15535,51 @@ The HTTP Server response header identifies the web server software by name.
 **Fix:**
 - Nginx: add "server_tokens off;" in the http block
 - Apache: set "ServerTokens Prod" and "ServerSignature Off"
-- Next.js: set poweredByHeader: false in next.config.mjs
+- Caddy: add "header -Server" to the site block
+- IIS: set removeServerHeader="true" under requestFiltering
+- If the evidence names X-Powered-By, remove that header too (Next.js: poweredByHeader: false, Express: app.disable("x-powered-by")). These settings do not change Server.
+- If the evidence names X-AspNet-Version, set enableVersionHeader="false" on httpRuntime in web.config.
 - **Nginx** (nginx):
 ```nginx
-# In nginx.conf http block:
+# In the nginx.conf http block. This removes the version number.
 server_tokens off;
-# This removes the version; to hide the server name entirely:
-# server_tokens "VulnRadar";  # or any generic string
+# Open source Nginx cannot drop the name with this directive. The headers-more module can:
+# more_clear_headers Server;
 ```
 - **Apache** (apache):
 ```apache
 ServerTokens Prod
 ServerSignature Off
+```
+- **Caddy** (plaintext):
+```plaintext
+header -Server
+```
+- **IIS (web.config)** (xml):
+```xml
+<!-- IIS 10.0 version 1709 and later -->
+<configuration>
+  <system.webServer>
+    <security>
+      <requestFiltering removeServerHeader="true" />
+    </security>
+  </system.webServer>
+</configuration>
+```
+- **Cloudflare** (text):
+```text
+# Cloudflare sets Server: cloudflare on proxied responses and a Transform Rule cannot change that value.
+# Your origin's own banner never reaches visitors, so there is nothing to change here for proxied traffic.
+# Still set it at the origin, in case anyone reaches the origin directly.
+```
+- **Uvicorn (FastAPI)** (bash):
+```bash
+# Uvicorn sends Server: uvicorn unless told not to
+uvicorn app:app --no-server-header
+```
+- **ASP.NET Core (Kestrel)** (csharp):
+```csharp
+builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
 ```
 
 ### `server-version-detailed` [headers / low / header-missing]
@@ -15220,9 +15603,46 @@ The Server header exposes the exact version of the web server software, enabling
 - Consider removing the header entirely via middleware
 - **Nginx: hide version** (nginx):
 ```nginx
-server_tokens off;  # Shows "nginx" without version
-# To hide name entirely, use a custom token:
-# server_tokens "x";
+# In the nginx.conf http block. This removes the version number.
+server_tokens off;
+# Open source Nginx cannot drop the name with this directive. The headers-more module can:
+# more_clear_headers Server;
+```
+- **Apache** (apache):
+```apache
+# Shows only "Apache", with no version or OS.
+ServerTokens Prod
+ServerSignature Off
+```
+- **Caddy** (plaintext):
+```plaintext
+header -Server
+```
+- **IIS (web.config)** (xml):
+```xml
+<!-- IIS 10.0 version 1709 and later -->
+<configuration>
+  <system.webServer>
+    <security>
+      <requestFiltering removeServerHeader="true" />
+    </security>
+  </system.webServer>
+</configuration>
+```
+- **Cloudflare** (text):
+```text
+# Cloudflare sets Server: cloudflare on proxied responses and a Transform Rule cannot change that value.
+# Your origin's own banner never reaches visitors, so there is nothing to change here for proxied traffic.
+# Still set it at the origin, in case anyone reaches the origin directly.
+```
+- **Uvicorn (FastAPI)** (bash):
+```bash
+# Uvicorn sends Server: uvicorn unless told not to
+uvicorn app:app --no-server-header
+```
+- **ASP.NET Core (Kestrel)** (csharp):
+```csharp
+builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
 ```
 
 ### `x-powered-by-exposed` [headers / low / header-missing]
@@ -15253,6 +15673,45 @@ export default { poweredByHeader: false };
 ```javascript
 app.disable("x-powered-by");
 // Or use helmet: app.use(helmet({ hidePoweredBy: true }));
+```
+- **Nginx** (nginx):
+```nginx
+# Proxying to an app:
+proxy_hide_header X-Powered-By;
+# PHP through FastCGI:
+fastcgi_hide_header X-Powered-By;
+```
+- **Apache** (apache):
+```apache
+# Both lines: "always" and the default table are separate, and a proxied response lands in the default one.
+Header always unset X-Powered-By
+Header unset X-Powered-By
+```
+- **Caddy** (plaintext):
+```plaintext
+header -X-Powered-By
+```
+- **IIS (web.config)** (xml):
+```xml
+<configuration>
+  <system.webServer>
+    <httpProtocol>
+      <customHeaders>
+        <remove name="X-Powered-By" />
+      </customHeaders>
+    </httpProtocol>
+  </system.webServer>
+</configuration>
+```
+- **Cloudflare** (text):
+```text
+# Rules > Overview > Create rule > Response Header Transform Rule
+# Apply it to all incoming requests, then use the Remove operation.
+Header name: X-Powered-By
+```
+- **PHP (php.ini)** (ini):
+```ini
+expose_php = Off
 ```
 
 ### `x-aspnet-version-exposed` [headers / low / header-missing]
@@ -15600,7 +16059,7 @@ An HTML form uses an HTTP (not HTTPS) action URL, transmitting form data in plai
 </form>
 ```
 
-### `sri-missing` [headers / low / header-missing]
+### `sri-missing` [headers / low / body-pattern]
 **External script loaded without Subresource Integrity**
 
 A script or stylesheet is loaded from an external origin without a Subresource Integrity (SRI) hash. Note: SRI is impractical for continuously-updated third-party vendor scripts (analytics, ads, payment SDKs), which is why the overwhelming majority of production sites, including large, security-conscious ones, don't use it for those; it's most actionable for pinned, versioned static library includes.
@@ -15628,7 +16087,7 @@ A script or stylesheet is loaded from an external origin without a Subresource I
 ></script>
 ```
 
-### `sri-stylesheet-missing` [headers / low / header-missing]
+### `sri-stylesheet-missing` [headers / low / body-pattern]
 **External stylesheet without SRI**
 
 A CSS stylesheet loaded from a third-party CDN does not have a Subresource Integrity hash. Note: SRI is impractical for continuously-updated third-party CSS (Google Fonts, Bootstrap CDN, and similar font/framework providers), which is why most production sites, including security-conscious ones, don't use it for those; it's most actionable for pinned, versioned stylesheet includes.
@@ -15711,8 +16170,39 @@ export default {
   },
 };
 ```
+- **Nginx** (nginx):
+```nginx
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+```
+- **Apache** (apache):
+```apache
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+```
+- **Caddy** (plaintext):
+```plaintext
+header Referrer-Policy "strict-origin-when-cross-origin"
+```
+- **IIS (web.config)** (xml):
+```xml
+<configuration>
+  <system.webServer>
+    <httpProtocol>
+      <customHeaders>
+        <add name="Referrer-Policy" value="strict-origin-when-cross-origin" />
+      </customHeaders>
+    </httpProtocol>
+  </system.webServer>
+</configuration>
+```
+- **Cloudflare** (text):
+```text
+# Rules > Overview > Create rule > Response Header Transform Rule
+# Apply it to all incoming requests, then use the Set static operation.
+Header name: Referrer-Policy
+Value: strict-origin-when-cross-origin
+```
 
-### `strict-transport-security-include-subdomains` [headers / medium / header-missing]
+### `strict-transport-security-include-subdomains` [headers / low / header-missing]
 **HSTS header missing includeSubDomains directive**
 
 The Strict-Transport-Security header is present but does not include includeSubDomains, leaving subdomains unprotected.
@@ -15728,23 +16218,46 @@ The Strict-Transport-Security header is present but does not include includeSubD
 **Fix:**
 - Add includeSubDomains to the HSTS header
 - Ensure all subdomains are served over HTTPS before adding includeSubDomains
-- Consider also adding preload for first-visit protection
+- Preload is optional and needs this directive. hstspreload.org does not recommend preloading for every site.
 - **Next.js** (javascript):
 ```javascript
 // next.config.mjs
 export default {
   async headers() {
-    return [{ source: "/(.*)", headers: [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }] }];
+    return [{ source: "/(.*)", headers: [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }] }];
   },
 };
 ```
 - **Nginx** (nginx):
 ```nginx
-add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 ```
 - **Apache** (apache):
 ```apache
-Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+```
+- **Caddy** (plaintext):
+```plaintext
+header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+```
+- **IIS (web.config)** (xml):
+```xml
+<configuration>
+  <system.webServer>
+    <httpProtocol>
+      <customHeaders>
+        <add name="Strict-Transport-Security" value="max-age=31536000; includeSubDomains" />
+      </customHeaders>
+    </httpProtocol>
+  </system.webServer>
+</configuration>
+```
+- **Cloudflare** (text):
+```text
+# SSL/TLS > Edge Certificates > HTTP Strict Transport Security (HSTS) > Enable HSTS
+Max Age Header: 12 months
+Apply HSTS policy to subdomains (includeSubDomains): On
+Preload: Off unless you want the preload list
 ```
 
 ### `meta-redirect-no-url` [headers / low / header-missing]
@@ -15771,7 +16284,7 @@ export function GET() {
 }
 ```
 
-### `autocomplete-username` [headers / info / header-missing]
+### `autocomplete-username` [headers / info / body-pattern]
 **Username field missing autocomplete="username"**
 
 A username or login field does not specify autocomplete="username", hindering password manager autofill.
@@ -15893,20 +16406,20 @@ add_header Content-Security-Policy "style-src 'self'" always;
 ### `target-blank-no-noopener` [headers / low / body-pattern]
 **Reverse Tabnabbing: target=_blank without rel=noopener**
 
-Anchor tags use target="_blank" without rel="noopener". Since Chrome 88 and Firefox 79, browsers implicitly apply noopener behavior to <a target="_blank"> links by default, so the practical risk on modern browsers is low; this is now mainly a defense-in-depth / older-browser recommendation rather than an active vulnerability.
+A link uses target="_blank" without rel="noopener". Plain target="_blank" has implied noopener since Chrome 88, Firefox 79 and Safari 12.1, so on those browsers the opened page gets no window.opener. The link stays exposed only on older browsers, or when rel="opener" or a named target opts back in.
 
-**Risk:** Add rel="noopener noreferrer" to every link with target="_blank". Modern browsers (Chrome 88+, Firefox 79+) default rel="noopener" for target="_blank", but explicit is still recommended for older browsers.
+**Risk:** On a browser older than those versions, the opened page can use window.opener to send this tab to a phishing page. Current browsers give it no opener unless the link asks for one.
 
-**Why it matters:** When a link opens a new tab with target='_blank' and no rel='noopener', the new page receives a reference to window.opener and can navigate the source page to any URL. This is the classic reverse-tabnabbing phishing vector.
+**Why it matters:** Implicit noopener closed the reverse-tabnabbing route for plain target="_blank". What still hands over window.opener is rel="opener", a named target such as target="help", and window.open() without noopener.
 
 **References:**
 - https://owasp.org/www-community/attacks/Reverse_Tabnabbing
 - https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a#attr-target
 
 **Fix:**
-- Add rel="noopener noreferrer" to all <a> tags with target="_blank".
-- In Next.js / React, use <Link target="_blank" rel="noopener noreferrer"> for external links.
-- Audit third-party embed scripts (analytics, support widgets) that open links in new tabs.
+- Remove rel="opener" from links unless the opened page really needs the reference.
+- Add rel="noopener" to links that use a named target instead of _blank.
+- Adding rel="noopener" to a plain target="_blank" link only matters if you support browsers older than Chrome 88, Firefox 79 or Safari 12.1.
 - **Next.js / React** (tsx):
 ```tsx
 <a href="https://github.com/VulnRadar/vulnradar.dev"
@@ -15982,18 +16495,18 @@ add_header X-Permitted-Cross-Domain-Policies "none" always;
 ### `permissions-policy-browsing-topics-blocked` [headers / info / header]
 **Permissions-Policy Browsing-Topics allowed**
 
-Permissions-Policy does not block the browsing-topics directive, leaving Chrome's Privacy Sandbox Topics API available to any script on the page.
+The policy grants browsing-topics to every origin (browsing-topics=*), so any script on the page may use the Topics API where it still exists. Chrome is withdrawing Topics along with other Privacy Sandbox features and MDN marks it as pending removal, so setting this directive is harmless belt and braces.
 
-**Risk:** With browsing-topics left enabled, third-party scripts embedded on the page (ads, widgets) can call document.browsingTopics() and read the browser's inferred interest categories for this visitor, without an explicit opt-in from the site.
+**Risk:** While a browser still ships the API, third-party scripts on the page (ads, widgets) can call document.browsingTopics() and read the interest categories the browser inferred for this visitor.
 
-**Why it matters:** The Topics API replaced FLoC as Chrome's cohort-based interest-tracking mechanism. Sites that don't intend to participate should explicitly disable it via Permissions-Policy, the same way the earlier interest-cohort directive was recommended for FLoC.
+**Why it matters:** The Topics API replaced FLoC as Chrome's interest-tracking mechanism and is now being withdrawn. browsing-topics=() opts the page out for as long as any browser still implements it, and does nothing once none does.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/browsing-topics
 - https://privacysandbox.google.com/private-advertising/topics
 
 **Fix:**
-- Set Permissions-Policy: browsing-topics=()
+- Replace browsing-topics=* with browsing-topics=() in the Permissions-Policy header.
 - **Block the Topics API in Permissions-Policy** (javascript):
 ```javascript
 // next.config.mjs
@@ -16122,17 +16635,17 @@ if (ALLOWED.includes(origin)) {
 ### `permissions-policy-interest-cohort-blocked` [headers / info / header]
 **Permissions-Policy interest-cohort allowed**
 
-Permissions-Policy does not block the legacy interest-cohort directive (FLoC).
+The policy grants the legacy interest-cohort directive to every origin (interest-cohort=*). FLoC was withdrawn after its 2021 Chrome trial and no current browser implements it, so the directive is harmless belt and braces and has no effect today.
 
-**Risk:** On browsers that still recognize the legacy FLoC directive, third-party scripts could read the page's cohort assignment.
+**Risk:** None on a current browser: FLoC was withdrawn, so no script can read a cohort today. The exposure only existed during the 2021 Chrome trial.
 
-**Why it matters:** interest-cohort was the original Permissions-Policy directive for opting out of FLoC before it was renamed to browsing-topics. Some scanners and older browser builds still check for it, so it's worth disabling explicitly alongside browsing-topics.
+**Why it matters:** interest-cohort was the directive for opting out of FLoC. FLoC was then withdrawn and the Topics API, with its own browsing-topics directive, took its place. Current Chrome may log an unrecognized feature warning for it in the console. Drop it or set it to (), it makes no practical difference.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
 
 **Fix:**
-- Set Permissions-Policy: interest-cohort=()
+- Replace interest-cohort=* with interest-cohort=() in the Permissions-Policy header, or remove the entry.
 - **Block legacy FLoC directive** (javascript):
 ```javascript
 // next.config.mjs
@@ -16141,22 +16654,23 @@ export default {
     return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "interest-cohort=(), browsing-topics=()" }] }];
   },
 };
+// FLoC is gone and Topics is being withdrawn, so both entries are harmless
 ```
 
 ### `permissions-policy-attribution-reporting-blocked` [headers / info / header]
 **Permissions-Policy attribution-reporting allowed**
 
-Permissions-Policy does not block the attribution-reporting directive, leaving the Privacy Sandbox Attribution Reporting API available to any script on the page.
+The policy grants attribution-reporting to every origin (attribution-reporting=*), so any script on the page may use the Attribution Reporting API where it still exists. Chrome is withdrawing it along with other Privacy Sandbox features and MDN marks it as pending removal, so setting this directive is harmless belt and braces.
 
-**Risk:** Third-party scripts embedded on the page can register attribution sources/triggers on the visitor's behalf without an explicit site opt-in.
+**Risk:** While a browser still ships the API, third-party scripts on the page can register attribution sources and triggers on the visitor's behalf without the site opting in.
 
-**Why it matters:** Attribution Reporting is part of Chrome's Privacy Sandbox. Sites that don't intend to participate in ad-attribution measurement should explicitly disable it via Permissions-Policy.
+**Why it matters:** Attribution Reporting was Chrome's Privacy Sandbox API for ad conversion measurement and is now being withdrawn. attribution-reporting=() opts the page out for as long as any browser still implements it, and does nothing once none does.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/attribution-reporting
 
 **Fix:**
-- Set Permissions-Policy: attribution-reporting=()
+- Replace attribution-reporting=* with attribution-reporting=() in the Permissions-Policy header.
 - **Block Attribution Reporting API** (javascript):
 ```javascript
 // next.config.mjs
@@ -16170,17 +16684,17 @@ export default {
 ### `permissions-policy-otp-credentials-blocked` [headers / info / header]
 **Permissions-Policy otp-credentials allowed**
 
-Permissions-Policy does not restrict the otp-credentials directive (WebOTP API), leaving SMS OTP auto-fill available to any embedded frame by default.
+The policy grants otp-credentials to every origin (otp-credentials=*), which includes any third party the page embeds in an iframe. The WebOTP API fills a one-time code from an SMS addressed to the site. It is Chrome on Android only, and SMS sign-in flows are the only users.
 
-**Risk:** A third-party iframe embedded on the page could request access to the WebOTP API and intercept one-time-passcode SMS messages intended for the top-level site.
+**Risk:** An iframe embedded with allow="otp-credentials" can request the one-time code from any SMS that names both this site and the origin of the iframe.
 
-**Why it matters:** The WebOTP API lets a page read verification codes from incoming SMS. Restricting it to 'self' (or blocking it entirely on pages that don't use it) prevents embedded third parties from requesting the same access.
+**Why it matters:** otp-credentials=* lifts the limit the header would otherwise put on this feature. otp-credentials=(self) keeps WebOTP with the page and away from embedded frames. If the site never signs in by SMS, otp-credentials=() turns it off completely.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/otp-credentials
 
 **Fix:**
-- Set Permissions-Policy: otp-credentials=(self) or otp-credentials=() if unused.
+- Replace otp-credentials=* with otp-credentials=(self) in the Permissions-Policy header.
 - **Restrict WebOTP access** (javascript):
 ```javascript
 // next.config.mjs
