@@ -101,6 +101,14 @@ describe("the runner stage's code is not writable by the server", () => {
     ]);
   });
 
+  it("leaves the build's webpack cache behind", () => {
+    // The chown below rewrites every file in .next/cache into a new layer, so
+    // anything still in there at that point is stored in the image twice.
+    const builder = instructions.slice(0, runnerStart);
+    const clear = builder.indexOf("RUN rm -rf .next/cache");
+    expect(clear).toBeGreaterThan(builder.indexOf("RUN npm run build"));
+  });
+
   it("creates those directories before handing them over", () => {
     expect(chowns[0]).toMatch(/mkdir -p [^&]*\/app\/\.next\/cache/);
     expect(chowns[0]).toMatch(/mkdir -p [^&]*\/app\/backups/);
