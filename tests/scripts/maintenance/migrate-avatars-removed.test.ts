@@ -17,6 +17,11 @@ const ROOT = process.cwd();
 const SCRIPT_NAME = ["migrate-avatars", "to-files"].join("-");
 const NPM_SCRIPT = ["db", "migrate-avatars"].join(":");
 const SELF = "tests/scripts/maintenance/migrate-avatars-removed.test.ts";
+// Each asserts that a surface does not carry the name, so has to spell it.
+const OTHER_GUARDS = new Set([
+  "tests/app/docs/developers-contributor-guide.test.ts",
+  "tests/repo/package-deps-guard.test.ts",
+]);
 
 const FILES = ["package.json", ".env.example", ".gitignore"];
 const DIRECTORIES = ["scripts", "lib", "tests", "app"];
@@ -46,7 +51,7 @@ function candidates(): string[] {
     ...found
       .map(repoPath)
       .filter((p) => TEXT_FILE.test(p))
-      .filter((p) => p !== SELF)
+      .filter((p) => p !== SELF && !OTHER_GUARDS.has(p))
       .filter((p) => !GENERATED_KNOWLEDGE.test(p))
       .filter((p) => !SKIPPED_PREFIXES.some((prefix) => p.startsWith(prefix))),
   ];
