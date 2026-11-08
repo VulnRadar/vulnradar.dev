@@ -66,7 +66,7 @@ function jsonLd(html: string, type: string): Record<string, unknown> {
 
 function textOf(html: string): string {
   return html
-    .replace(/<script[\s\S]*?<\/script>/g, " ")
+    .replace(/<script\b[\s\S]*?<\/script[^>]*>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ");
 }

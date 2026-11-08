@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AssetsTruncatedNotice } from "@/components/assets/assets-truncated-notice";
 
 function text(html: string): string {
-  return html.replace(/<[^>]+>/g, "");
+  return html.replace(/<[^>]+>/g, " ");
 }
 
 describe("AssetsTruncatedNotice", () => {

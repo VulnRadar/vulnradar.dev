@@ -48,7 +48,9 @@ describe("/host/[hostname] preload", () => {
       );
       expect(imports.filter((i) => i === "@/lib/config/constants")).toEqual([]);
       expect(
-        imports.filter((i) => /^node:|lib\/database|next\/headers/.test(i)),
+        imports.filter(
+          (i) => i.startsWith("node:") || /lib\/database|next\/headers/.test(i),
+        ),
       ).toEqual([]);
     }
   });

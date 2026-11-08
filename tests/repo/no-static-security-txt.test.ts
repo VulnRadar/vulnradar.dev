@@ -27,12 +27,12 @@ describe("security.txt has one source", () => {
   });
 
   it("rewrites both standard paths to the route", () => {
-    const config = readFileSync(path.join(ROOT, "next.config.mjs"), "utf8");
+    const config = readFileSync(path.join(ROOT, "next.config.mjs"), "utf8")
+      .split(/\s+/)
+      .join(" ");
     for (const source of ["/.well-known/security.txt", "/security.txt"]) {
-      expect(config).toMatch(
-        new RegExp(
-          `source: "${source.replace(/\./g, "\\.")}",\\s+destination: "/api/security-txt"`,
-        ),
+      expect(config).toContain(
+        `source: "${source}", destination: "/api/security-txt"`,
       );
     }
   });
