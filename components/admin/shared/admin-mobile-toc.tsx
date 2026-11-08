@@ -48,8 +48,8 @@ function StatusDot({ status }: { status: "warn" | "crit" }) {
 }
 
 /**
- * Floating "Contents" pill, the admin-panel equivalent of the docs section's
- * DocsMobileNavTrigger. Only worth wiring up on pages long enough that a
+ * Floating "Contents" pill, for jumping around a long admin page on a phone.
+ * Only worth wiring up on pages long enough that a
  * reader would otherwise scroll blind to find a section (System Settings,
  * Audit Log, the user detail view), not on the single-card list views.
  *
