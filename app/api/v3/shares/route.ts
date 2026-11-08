@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
+import { RATING_FINDINGS_SQL } from "@/lib/scanner/rating-findings-sql";
+
+/**
+ * Well above what anyone keeps live, because the list is also where a share
+ * gets revoked: the cap is there to bound one request, not to page the list.
+ */
+const SHARES_LIST_MAX = 500;
 
 export async function GET(_request: NextRequest) {
   const session = await getSession();
@@ -22,6 +29,10 @@ export async function GET(_request: NextRequest) {
   // app/api/v3/public-scans/route.ts already uses. The count comes from the
   // findings_count column rather than the array length, so it no longer
   // depends on having loaded the array at all.
+  //
+  // Ordered and filtered to match idx_scan_history_user_shared, so this reads
+  // the account's shares and not every scan it has run. One past the cap, so
+  // `truncated` can tell "exactly the cap" from "more than the cap".
   const result = await pool.query(
     `SELECT
        id,
@@ -32,20 +43,16 @@ export async function GET(_request: NextRequest) {
        share_publicly_listed,
        summary,
        findings_count,
-       (SELECT COALESCE(jsonb_agg(jsonb_build_object(
-                 'title', e->>'title',
-                 'severity', e->>'severity',
-                 'aiVerdict', e->'aiVerdict',
-                 'aiConfidence', e->'aiConfidence')), '[]'::jsonb)
-          FROM jsonb_array_elements(COALESCE(findings, '[]'::jsonb)) e) AS findings
+       ${RATING_FINDINGS_SQL} AS findings
      FROM scan_history
      WHERE user_id = $1 AND share_token IS NOT NULL
        AND (share_expires_at IS NULL OR share_expires_at > NOW())
-     ORDER BY scanned_at DESC`,
-    [session.userId],
+     ORDER BY scanned_at DESC
+     LIMIT $2`,
+    [session.userId, SHARES_LIST_MAX + 1],
   );
 
-  const shares = result.rows.map((row) => {
+  const shares = result.rows.slice(0, SHARES_LIST_MAX).map((row) => {
     const findings =
       typeof row.findings === "string"
         ? JSON.parse(row.findings)
@@ -67,5 +74,9 @@ export async function GET(_request: NextRequest) {
     };
   });
 
-  return NextResponse.json({ shares });
+  return NextResponse.json({
+    shares,
+    limit: SHARES_LIST_MAX,
+    truncated: result.rows.length > SHARES_LIST_MAX,
+  });
 }

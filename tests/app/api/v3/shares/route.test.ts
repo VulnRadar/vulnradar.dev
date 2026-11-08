@@ -50,7 +50,48 @@ describe("GET /api/v3/shares", () => {
     expect(sql).toContain(
       "AND (share_expires_at IS NULL OR share_expires_at > NOW())",
     );
-    expect(params).toEqual([42]);
+    expect(params).toEqual([42, 501]);
+  });
+
+  describe("the cap", () => {
+    const rows = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        id: i,
+        url: `https://s${i}.test`,
+        scanned_at: "2024-01-01T00:00:00.000Z",
+        share_token: `tok_${i}`,
+        summary: {},
+        findings: [],
+      }));
+
+    it("keeps the query on the partial index's filter and order", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+
+      await GET(getRequest());
+
+      const [sql] = mockQuery.mock.calls[0];
+      expect(sql).toContain("user_id = $1 AND share_token IS NOT NULL");
+      expect(sql).toContain("ORDER BY scanned_at DESC\n     LIMIT $2");
+    });
+
+    it("reports no truncation when every share fits, even exactly", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: rows(500) });
+
+      const json = await (await GET(getRequest())).json();
+
+      expect(json.shares).toHaveLength(500);
+      expect(json.limit).toBe(500);
+      expect(json.truncated).toBe(false);
+    });
+
+    it("returns the cap and says so when there are more", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: rows(501) });
+
+      const json = await (await GET(getRequest())).json();
+
+      expect(json.shares).toHaveLength(500);
+      expect(json.truncated).toBe(true);
+    });
   });
 
   it("includes each share's expiresAt", async () => {

@@ -31,16 +31,15 @@ const { GET } = await import("@/app/api/v3/dashboard/route");
 
 function installDefaultQueryMock() {
   mockQuery.mockImplementation(async (sql: string) => {
-    if (sql.includes("SELECT disabled_at FROM users")) {
-      return { rows: [{ disabled_at: null }] };
-    }
     // One query now answers total scans, unique sites and the source split:
     // three whole-table aggregates over the same rows used to take three of
-    // the pool's ten connections on their own.
+    // the pool's ten connections on their own. The suspended-account check is
+    // part of it too.
     if (sql.includes("WITH base AS")) {
       return {
         rows: [
           {
+            disabled_at: null,
             total_scans: 12,
             unique_sites: 3,
             source_breakdown: [
@@ -66,11 +65,23 @@ function installDefaultQueryMock() {
         ],
       };
     }
-    if (sql.includes("COALESCE(SUM((summary->>'critical')")) {
-      return { rows: [{ critical: 1, high: 2, medium: 3, low: 4, info: 5 }] };
-    }
-    if (sql.includes("jsonb_array_elements(findings)")) {
-      return { rows: [{ title: "Missing CSP", severity: "medium", count: 4 }] };
+    if (sql.includes("latest_per_target")) {
+      return {
+        rows: [
+          {
+            severity_breakdown: {
+              critical: 1,
+              high: 2,
+              medium: 3,
+              low: 4,
+              info: 5,
+            },
+            top_vulnerabilities: [
+              { title: "Missing CSP", severity: "medium", count: 4 },
+            ],
+          },
+        ],
+      };
     }
     if (sql.includes("generate_series")) {
       return {
@@ -101,31 +112,37 @@ describe("GET /api/v3/dashboard", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("returns 403 for a disabled account without running the dashboard queries", async () => {
+  it("returns 403 and none of the data for a disabled account", async () => {
     mockQuery.mockImplementation(async (sql: string) => {
-      if (sql.includes("SELECT disabled_at FROM users")) {
-        return { rows: [{ disabled_at: "2024-01-01T00:00:00Z" }] };
+      if (sql.includes("WITH base AS")) {
+        return {
+          rows: [{ disabled_at: "2024-01-01T00:00:00Z", total_scans: 12 }],
+        };
       }
-      throw new Error(
-        "dashboard queries should not run for a disabled account",
-      );
+      return { rows: [] };
     });
 
     const res = await GET();
+    const json = await res.json();
 
     expect(res.status).toBe(403);
+    expect(json.totalScans).toBeUndefined();
   });
 
   it("scopes every query, including the disabled-account check, to the session's own userId", async () => {
     await GET();
 
-    // disabled_at check + 5 dashboard queries run inside Promise.all. It was
-    // 7 before the three whole-table aggregates were folded into one.
-    expect(mockQuery.mock.calls.length).toBe(6);
+    // Four queries, all inside Promise.all. It was seven before the three
+    // whole-table aggregates were folded into one, and a separate disabled_at
+    // read and a second latest-per-target pass came off after that.
+    expect(mockQuery.mock.calls.length).toBe(4);
+    expect(String(mockQuery.mock.calls[0][0])).toContain(
+      "(SELECT disabled_at FROM users WHERE id = $1)",
+    );
     for (const [, params] of mockQuery.mock.calls) {
       // Every query is scoped by the session's userId as the first param;
-      // the Recent Scans and Top Vulnerabilities queries also pass the
-      // configurable row limit as a second param.
+      // the Recent Scans and posture queries also pass the configurable row
+      // limit as a second param.
       expect(params[0]).toBe(42);
     }
   });
@@ -167,26 +184,22 @@ describe("GET /api/v3/dashboard", () => {
     // DISTINCT ON CTEs used to pick the newest row of any status, so a rescan
     // in flight (or one that died) replaced the last real result with zeros.
     // The SQL itself is run against PostgreSQL in
-    // tests/integration/list-reads.test.ts; this pins that both CTEs carry the
-    // filter and that the no-op NOT NULL predicates it replaced are gone.
+    // tests/integration/list-reads.test.ts; this pins that the one CTE both
+    // widgets read carries the filter and that the no-op NOT NULL predicates
+    // it replaced are gone.
     await GET();
 
     const posture = mockQuery.mock.calls
       .map(([sql]) => String(sql))
       .filter((sql) => sql.includes("latest_per_target"));
-    expect(posture).toHaveLength(2);
-    for (const sql of posture) {
-      expect(sql).toContain("status = 'completed'");
-      expect(sql).toContain("DISTINCT ON (url)");
-      expect(sql).not.toContain("IS NOT NULL");
-    }
+    expect(posture).toHaveLength(1);
+    expect(posture[0].match(/DISTINCT ON \(url\)/g)).toHaveLength(1);
+    expect(posture[0]).toContain("status = 'completed'");
+    expect(posture[0]).not.toContain("IS NOT NULL");
   });
 
   it("sanitizes the error_message of a recent scan and projects the incomplete flag", async () => {
     mockQuery.mockImplementation(async (sql: string) => {
-      if (sql.includes("SELECT disabled_at FROM users")) {
-        return { rows: [{ disabled_at: null }] };
-      }
       if (sql.includes("ORDER BY scanned_at DESC LIMIT $2")) {
         // The projection is part of the SELECT that returned these rows.
         expect(sql).toContain("AS incomplete");
@@ -225,12 +238,7 @@ describe("GET /api/v3/dashboard", () => {
   });
 
   it("falls back to 0 for totalScans and uniqueSites when the queries return no rows", async () => {
-    mockQuery.mockImplementation(async (sql: string) => {
-      if (sql.includes("SELECT disabled_at FROM users")) {
-        return { rows: [{ disabled_at: null }] };
-      }
-      return { rows: [] };
-    });
+    mockQuery.mockResolvedValue({ rows: [] });
 
     const res = await GET();
     const json = await res.json();
@@ -238,15 +246,11 @@ describe("GET /api/v3/dashboard", () => {
     expect(res.status).toBe(200);
     expect(json.totalScans).toBe(0);
     expect(json.uniqueSites).toBe(0);
+    expect(json.topVulnerabilities).toEqual([]);
   });
 
   it("returns 500 when a dashboard query throws", async () => {
-    mockQuery.mockImplementation(async (sql: string) => {
-      if (sql.includes("SELECT disabled_at FROM users")) {
-        return { rows: [{ disabled_at: null }] };
-      }
-      throw new Error("db unavailable");
-    });
+    mockQuery.mockRejectedValue(new Error("db unavailable"));
 
     const res = await GET();
 
