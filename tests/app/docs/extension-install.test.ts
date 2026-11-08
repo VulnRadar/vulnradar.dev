@@ -20,6 +20,10 @@ describe("the extension page's install section", () => {
     ]);
   });
 
+  it("still says the store installs update themselves", () => {
+    expect(install).toContain("Both update themselves.");
+  });
+
   it("names the path to the key and the tab the profile page reads", () => {
     expect(install).toContain("Profile > Developer > API Keys");
     expect(install).toContain("?tab=developer&dtab=api-keys");

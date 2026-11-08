@@ -54,6 +54,18 @@ describe("the example run", () => {
     );
   });
 
+  it("says which stream each line uses, as the CLI does without --json", () => {
+    const intro = page
+      .slice(start, page.indexOf("<CodeBlock", start))
+      .replace(/\s+/g, " ");
+    // say() only moves to stderr when stdout carries a result or a report,
+    // which is not this run. The gate's reasons always go there.
+    expect(cli).toContain("say(progress);");
+    expect(cli).toContain("for (const r of reasons) console.error(r);");
+    expect(intro).not.toMatch(/Progress goes to stderr/);
+    expect(intro).toContain("The reason it failed goes to stderr");
+  });
+
   it("fails for the reason, and with the code, the gate gives", () => {
     const summary = block
       .find((l) => l.startsWith("Scan complete:"))!
@@ -80,7 +92,8 @@ describe("the --json section", () => {
 
   it("reads only fields a finding has", () => {
     const types = read("lib/scanner/types.ts");
-    const shape = types.slice(types.indexOf("export interface Vulnerability"));
+    const from = types.indexOf("export interface Vulnerability");
+    const shape = types.slice(from, types.indexOf("\n}", from));
     for (const field of ["id", "title", "severity"]) {
       expect(shape).toMatch(new RegExp(`\\b${field}: `));
     }

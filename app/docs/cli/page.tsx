@@ -120,9 +120,9 @@ npm install -g .`}
         </p>
         <DocsSubSection id="example-run" title="Example run">
           <p className="max-w-[68ch] text-sm text-muted-foreground">
-            A site with two high findings and a limit of zero. Progress goes to
-            stderr, one line each time the scan moves on, and the run ends with
-            the counts, the reason it failed and the exit code:
+            A site with two high findings and a limit of zero. The scan prints
+            one line each time it moves on, then the counts. The reason it
+            failed goes to stderr, and the exit code is what a pipeline reads:
           </p>
           <CodeBlock
             language="text"

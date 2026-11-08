@@ -129,7 +129,7 @@ export default function ExtensionPage() {
               step: 1,
               title: "Install from the store",
               description:
-                "Use the button above for your browser. Chrome, Edge, Brave and other Chromium browsers install from the Chrome Web Store, Firefox from Firefox Add-ons.",
+                "Use the button above for your browser. Chrome, Edge, Brave and other Chromium browsers install from the Chrome Web Store, Firefox from Firefox Add-ons. Both update themselves.",
             },
             {
               step: 2,

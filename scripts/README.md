@@ -65,6 +65,9 @@ scripts/
 │   registry (get_check). Output must be a pure function of the input (no
 │   build timestamps): CI regenerates all of it and fails on any diff.
 │
+├── docs/                          # Generated data for the docs pages
+│   └── generate-repo-dirs.mjs     # The directory list behind /docs/architecture
+│
 ├── assets/
 │   ├── build-brand-kit.mjs        # Draw the favicons, app icons and public/brand/ from public/favicon.svg (run by hand)
 │   └── build-og-image.mjs         # Render the Open Graph image (run by hand)

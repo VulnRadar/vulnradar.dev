@@ -29,7 +29,9 @@ import { WHERE_THINGS_LIVE } from "./where-things-live";
 
 const WHERE_COLUMNS = [
   { key: "dir", header: "Directory", className: "font-mono whitespace-nowrap" },
-  { key: "what", header: "What is in it", className: "w-full" },
+  // The other two columns never wrap, so on a phone this one would otherwise
+  // shrink to its longest word instead of letting the table scroll.
+  { key: "what", header: "What is in it", className: "w-full min-w-56" },
   { key: "doc", header: "Written up in", className: "whitespace-nowrap" },
 ];
 
@@ -78,10 +80,12 @@ export default function ArchitecturePage() {
 
       <DocsSection id="layout" title="Where things live">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-          Every directory in the repository, and the page or file that covers
-          it. At the root, <InlineCode>instrumentation.ts</InlineCode> is the
-          Next.js startup hook that applies the schema,{" "}
-          <InlineCode>middleware.ts</InlineCode> gates every request, and{" "}
+          The top-level directories, then the folders inside{" "}
+          <InlineCode>lib/</InlineCode> and <InlineCode>components/</InlineCode>
+          , each with the page or file that covers it. At the root,{" "}
+          <InlineCode>instrumentation.ts</InlineCode> is the Next.js startup
+          hook that applies the schema, <InlineCode>middleware.ts</InlineCode>{" "}
+          runs in front of every request except static files, and{" "}
           <InlineCode>docker-compose.dev.yml</InlineCode> builds the image from
           your checkout where <InlineCode>docker-compose.yml</InlineCode> pulls
           the published one.
