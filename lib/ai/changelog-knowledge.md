@@ -433,7 +433,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Heart] **[ADDED]** **Footer Credits Who Hosts the Site**
   The footer now names the company whose servers run this site. A self-hosted install names its own host, or removes the line, in its configuration before building.
 - [AlertTriangle] **[API]** **Shared Error Codes for API v4**
-  Errors from the new API carry a stable code from a closed list, the request id, and a Retry-After header on every 429 and 503. This release adds the list and the shared error shape; API v4 itself is not switched on yet. v3 error bodies keep every field they had and only gain the code and, where one is known, the request id.
+  Errors from the new API carry a stable code from a closed list, the request id, and a Retry-After header on every 429 and 503. This release adds the list and the shared error shape; API v4 itself is not switched on yet. v3 errors sent through the shared API helpers keep every field they had and only gain the code and, where one is known, the request id.
 - [CalendarClock] **[API]** **API v3 Retirement Headers Prepared**
   The headers that announce API v3's retirement (Deprecation, Sunset and a link to the migration guide) and the optional switch that makes an instance answer 410 after the Sunset date are built and tested, but stay off until the release date is set. Self-hosted instances are never cut off unless the operator opts in. v3 deprecation groundwork.
 - [Link2] **[IMPROVED]** **One Route Registry and Permanent URLs**
@@ -829,7 +829,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Trash2] **[SELFHOST]** **Usage Counters and Stripe Event Markers Are Pruned**
   AI usage and live-browser usage counters had no retention and grew forever. They now follow the usage retention setting, and the current window and the one before it are always kept. Stripe webhook replay markers are removed after 30 days.
 - [Code] **[API]** **Error Codes on API Errors**
-  API errors now include a machine-readable code, and a request id where one is known, next to the fields they already had. Existing v3 fields are unchanged.
+  Errors sent through the shared API helpers now include a machine-readable code, and a request id where one is known, next to the fields they already had. Existing v3 fields are unchanged.
 - [Shield] **[SECURITY]** **Request Bodies Capped While Reading**
   Bodies read through the shared request parser are now counted as they arrive and refused once they pass the 1 MiB limit, even with no declared length, instead of being read into memory first.
 - [Timer] **[API]** **New Helpers for 429 Answers**

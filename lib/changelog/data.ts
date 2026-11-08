@@ -1459,7 +1459,7 @@ const CHANGELOG: Release[] = [
       {
         icon: AlertTriangle,
         label: "Shared Error Codes for API v4",
-        desc: "Errors from the new API carry a stable code from a closed list, the request id, and a Retry-After header on every 429 and 503. This release adds the list and the shared error shape; API v4 itself is not switched on yet. v3 error bodies keep every field they had and only gain the code and, where one is known, the request id.",
+        desc: "Errors from the new API carry a stable code from a closed list, the request id, and a Retry-After header on every 429 and 503. This release adds the list and the shared error shape; API v4 itself is not switched on yet. v3 errors sent through the shared API helpers keep every field they had and only gain the code and, where one is known, the request id.",
         category: "api",
       },
       {
@@ -2654,7 +2654,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Code,
         label: "Error Codes on API Errors",
-        desc: "API errors now include a machine-readable code, and a request id where one is known, next to the fields they already had. Existing v3 fields are unchanged.",
+        desc: "Errors sent through the shared API helpers now include a machine-readable code, and a request id where one is known, next to the fields they already had. Existing v3 fields are unchanged.",
         category: "api",
       },
       {
