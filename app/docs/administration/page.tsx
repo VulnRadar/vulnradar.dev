@@ -229,11 +229,13 @@ export default function AdministrationPage() {
             immediately while other processes converge within the window.
           </p>
           <p className="text-sm leading-relaxed text-muted-foreground">
-            If the database is unreachable, resolution{" "}
+            If a read of the table fails, the process keeps the values it last
+            loaded and tries again a few seconds later, so a database blip does
+            not switch off a setting an admin turned on. A process that has not
+            managed to read the table at all{" "}
             <strong className="text-foreground">fails open</strong>: every key
             falls back to its environment or shipped value rather than
-            everything reading as off. A database outage should not also flip
-            every feature flag.
+            everything reading as off.
           </p>
         </DocsSubSection>
 
