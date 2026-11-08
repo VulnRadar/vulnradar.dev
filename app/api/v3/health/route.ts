@@ -3,6 +3,7 @@ import pool, { getPoolStats } from "@/lib/database/db";
 import { APP_VERSION, MIN_SCHEMA_VERSION } from "@/lib/config/constants";
 import { CONFIG_DB_HEALTHCHECK_TIMEOUT_MS } from "@/lib/config/config-values";
 import { REQUIRED_TABLES } from "@/lib/database/required-tables";
+import { compareSemver } from "@/lib/updater/semver";
 
 /**
  * Readiness endpoint.
@@ -36,17 +37,6 @@ type DbStatus = {
   missing_tables: string[];
   pool: ReturnType<typeof getPoolStats>;
 };
-
-function compareVersions(a: string, b: string): number {
-  const av = a.split(".").map((s) => Number.parseInt(s, 10) || 0);
-  const bv = b.split(".").map((s) => Number.parseInt(s, 10) || 0);
-  for (let i = 0; i < Math.max(av.length, bv.length); i++) {
-    const x = av[i] ?? 0;
-    const y = bv[i] ?? 0;
-    if (x !== y) return x < y ? -1 : 1;
-  }
-  return 0;
-}
 
 async function probeDatabase(): Promise<DbStatus> {
   const status: DbStatus = {
@@ -98,7 +88,7 @@ async function probeDatabase(): Promise<DbStatus> {
     status.schema_version = res.rows[0]?.schema_version ?? null;
     status.schema_ok =
       status.schema_version !== null &&
-      compareVersions(status.schema_version, MIN_SCHEMA_VERSION) >= 0;
+      compareSemver(status.schema_version, MIN_SCHEMA_VERSION) >= 0;
 
     // instrumentation.ts's own boot-time CREATE TABLE sequence is built to
     // survive a single statement failing (console.error + continue, see its
@@ -122,13 +112,57 @@ async function probeDatabase(): Promise<DbStatus> {
   return status;
 }
 
+// This route is anonymous and exempt from every limiter, because an
+// orchestrator must always be able to reach it. Each probe takes a pool
+// connection and runs two queries, so a loop against it spent connections the
+// rest of the app was waiting for, most of all when the database was already
+// struggling. Callers now share one probe at a time and reuse its answer for
+// PROBE_TTL_MS, which is shorter than any healthcheck interval in use, so an
+// orchestrator still gets a fresh answer on every poll.
+//
+// A failure is shared for the same short window and no longer, so a dead
+// database is not hammered with connection attempts and recovery shows up
+// within two seconds. A probe always settles: the connect is raced against
+// CONFIG_DB_HEALTHCHECK_TIMEOUT_MS and its queries are bound by the pool's
+// query_timeout.
+const PROBE_TTL_MS = 2000;
+
+let sharedProbe: {
+  promise: Promise<DbStatus>;
+  settledAt: number | null;
+} | null = null;
+
+function probeDatabaseShared(): Promise<DbStatus> {
+  if (
+    sharedProbe &&
+    (sharedProbe.settledAt === null ||
+      Date.now() - sharedProbe.settledAt < PROBE_TTL_MS)
+  ) {
+    return sharedProbe.promise;
+  }
+
+  const probe: NonNullable<typeof sharedProbe> = {
+    settledAt: null,
+    promise: probeDatabase()
+      .catch((err) => {
+        // Log the real reason here, once per probe rather than once per
+        // caller that shared it. Callers return only the fact of failure.
+        console.error("[health] database probe failed:", err);
+        throw err;
+      })
+      .finally(() => {
+        probe.settledAt = Date.now();
+      }),
+  };
+  sharedProbe = probe;
+  return probe.promise;
+}
+
 export async function GET() {
   let database: DbStatus;
   try {
-    database = await probeDatabase();
-  } catch (err) {
-    // Log the real reason, return only the fact of failure.
-    console.error("[health] database probe failed:", err);
+    database = await probeDatabaseShared();
+  } catch {
     return NextResponse.json(
       {
         status: "unhealthy",

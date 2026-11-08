@@ -4,7 +4,8 @@
  * (pool.connect -> client.query/release) is mocked; the real schema-version
  * comparison and required-table gap detection run against it.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { MIN_SCHEMA_VERSION } from "@/lib/config/constants";
 import { REQUIRED_TABLES } from "@/lib/database/required-tables";
 
 const mockClientQuery = vi.fn();
@@ -17,7 +18,9 @@ vi.mock("@/lib/database/db", () => ({
   getPoolStats: (...args: unknown[]) => mockGetPoolStats(...args),
 }));
 
-const { GET } = await import("@/app/api/v3/health/route");
+// Re-imported per test: the route holds its shared probe at module scope, and
+// a cached answer from the previous test would otherwise satisfy this one.
+let GET: () => Promise<Response>;
 
 /** REQUIRED_TABLES from lib/database/required-tables.ts, minus none present. */
 function tablesRows(present: string[]) {
@@ -30,7 +33,9 @@ function tablesRows(present: string[]) {
 // means the next addition is covered automatically.
 const ALL_REQUIRED = [...REQUIRED_TABLES];
 
-beforeEach(() => {
+beforeEach(async () => {
+  vi.resetModules();
+  ({ GET } = await import("@/app/api/v3/health/route"));
   mockClientQuery.mockReset();
   mockRelease.mockReset();
   mockConnect.mockReset();
@@ -43,6 +48,93 @@ beforeEach(() => {
 });
 
 describe("GET /api/v3/health", () => {
+  describe("sharing one probe", () => {
+    function healthyAnswers() {
+      mockClientQuery.mockImplementation(async (sql: string) =>
+        sql.includes("vulnradar_schema_meta")
+          ? { rows: [{ schema_version: MIN_SCHEMA_VERSION }] }
+          : tablesRows(ALL_REQUIRED),
+      );
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("gives concurrent callers one connection and one pair of queries", async () => {
+      healthyAnswers();
+
+      const responses = await Promise.all([GET(), GET(), GET(), GET()]);
+
+      expect(responses.map((r) => r.status)).toEqual([200, 200, 200, 200]);
+      expect(mockConnect).toHaveBeenCalledTimes(1);
+      expect(mockClientQuery).toHaveBeenCalledTimes(2);
+      expect(mockRelease).toHaveBeenCalledTimes(1);
+    });
+
+    it("reuses a settled answer inside the window and probes again after it", async () => {
+      healthyAnswers();
+      const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+
+      await GET();
+      now.mockReturnValue(1_001_999);
+      await GET();
+      expect(mockConnect).toHaveBeenCalledTimes(1);
+
+      now.mockReturnValue(1_002_000);
+      await GET();
+      expect(mockConnect).toHaveBeenCalledTimes(2);
+    });
+
+    it("computes uptime per response even when the database answer is shared", async () => {
+      healthyAnswers();
+      const uptime = vi.spyOn(process, "uptime").mockReturnValue(10);
+      const first = await (await GET()).json();
+
+      uptime.mockReturnValue(11);
+      const second = await (await GET()).json();
+
+      expect(first.uptime_s).toBe(10);
+      expect(second.uptime_s).toBe(11);
+    });
+
+    it("shares a failure for the window, logs it once, and recovers after it", async () => {
+      const now = vi.spyOn(Date, "now").mockReturnValue(5_000_000);
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      mockConnect.mockRejectedValueOnce(new Error("connection refused"));
+
+      const failed = await Promise.all([GET(), GET()]);
+      now.mockReturnValue(5_001_000);
+      const stillFailed = await GET();
+
+      expect(failed.map((r) => r.status)).toEqual([503, 503]);
+      expect(stillFailed.status).toBe(503);
+      expect(mockConnect).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledTimes(1);
+
+      healthyAnswers();
+      now.mockReturnValue(5_002_000);
+      const recovered = await GET();
+
+      expect(recovered.status).toBe(200);
+      expect(mockConnect).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("treats a prerelease of the required schema as older than it", async () => {
+    mockClientQuery
+      .mockResolvedValueOnce({
+        rows: [{ schema_version: `${MIN_SCHEMA_VERSION}-rc.1` }],
+      })
+      .mockResolvedValueOnce(tablesRows(ALL_REQUIRED));
+
+    const res = await GET();
+
+    expect(res.status).toBe(503);
+    const json = await res.json();
+    expect(json.database.schema_ok).toBe(false);
+  });
+
   it("returns 200/ok when connected, schema is current, and every required table exists", async () => {
     mockClientQuery
       .mockResolvedValueOnce({ rows: [{ schema_version: "3.0.0" }] })
