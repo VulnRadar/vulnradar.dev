@@ -60,7 +60,8 @@ describe("POST /api/v3/billing/subscription/cancel", () => {
     ["a JSON null", "null"],
     ["a JSON array", "[true]"],
     ["a JSON string", '"immediate"'],
-    ["an immediate flag that is not a boolean", '{"immediate":"false"}'],
+    ["a truthy string that says false", '{"immediate":"false"}'],
+    ["a truthy number", '{"immediate":1}'],
   ])("answers 400 for %s and cancels nothing", async (_label, body) => {
     const update = vi.fn();
     mockGetStripe.mockReturnValue({ subscriptions: { update } });
@@ -71,6 +72,29 @@ describe("POST /api/v3/billing/subscription/cancel", () => {
     expect((await res.json()).error).toEqual(expect.any(String));
     expect(mockQuery).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
+  });
+
+  // What 3.9.1 accepted and did correctly stays accepted: only a value that
+  // would have been misread as "end it now" is refused.
+  it.each([
+    ["an empty object", "{}"],
+    ["a null flag", '{"immediate":null}'],
+    ["a zero flag", '{"immediate":0}'],
+    ["an empty string flag", '{"immediate":""}'],
+  ])("still cancels at the period end for %s", async (_label, body) => {
+    const update = vi.fn().mockResolvedValue({});
+    mockGetStripe.mockReturnValue({ subscriptions: { update } });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ stripe_subscription_id: "sub_1" }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await POST(rawRequest(body));
+
+    expect(res.status).toBe(200);
+    expect(update).toHaveBeenCalledWith("sub_1", {
+      cancel_at_period_end: true,
+    });
   });
 
   it("requires authentication", async () => {

@@ -32,18 +32,21 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  // A truthy string counts as immediate below, so {"immediate":"false"} would
-  // end the subscription on the spot if it were let through.
-  const immediate =
+  const fields =
     body && typeof body === "object" && !Array.isArray(body)
-      ? (body as { immediate?: unknown }).immediate
+      ? (body as { immediate?: unknown })
       : null;
-  if (immediate !== undefined && typeof immediate !== "boolean") {
+  // {"immediate":"false"} is truthy, so the branch below would end the
+  // subscription on the spot. A falsy value has always meant the period end
+  // and still does: refusing one would fix nothing and only break a request
+  // that works today.
+  if (!fields || (fields.immediate && fields.immediate !== true)) {
     return NextResponse.json(
       { error: "Send a JSON body with an immediate boolean." },
       { status: 400 },
     );
   }
+  const { immediate } = fields;
 
   try {
     // Get user's subscription
