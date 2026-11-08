@@ -63,6 +63,9 @@ const TUNABLE_KEYS = [
   "DATABASE_SSL_CA",
 ];
 
+/** Where db.ts keeps the pool, so a fresh import can build a fresh one. */
+const POOL_SLOT = Symbol.for("vulnradar.dbPool");
+
 function resetEnv() {
   process.env = { ...ORIGINAL_ENV };
   for (const key of TUNABLE_KEYS) delete process.env[key];
@@ -73,6 +76,7 @@ beforeEach(() => {
   vi.resetModules();
   poolConstructorCalls = [];
   lastPoolInstance = null;
+  delete (globalThis as unknown as Record<symbol, unknown>)[POOL_SLOT];
   resetEnv();
 });
 
@@ -220,31 +224,59 @@ describe("pool construction", () => {
     expect(poolConstructorCalls[0].application_name).toBe("vulnradar");
   });
 
-  it("logs but does not throw on an unexpected pool error (Error instance)", async () => {
+  it("logs an unexpected pool error with the Error itself, so the stack is kept", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     await loadDb();
-    expect(() =>
-      lastPoolInstance!.emit(
-        "error",
-        new Error("connection terminated unexpectedly"),
-      ),
-    ).not.toThrow();
+    const failure = new Error("connection terminated unexpectedly");
+    expect(() => lastPoolInstance!.emit("error", failure)).not.toThrow();
     expect(errSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Unexpected database pool error"),
-      "connection terminated unexpectedly",
+      "[db] Unexpected database pool error",
+      failure,
     );
     errSpy.mockRestore();
   });
 
-  it("logs a safe fallback message when a non-Error is thrown on the error event", async () => {
+  it("does not throw when something other than an Error reaches the handler", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     await loadDb();
-    lastPoolInstance!.emit("error", "raw string failure");
+    expect(() =>
+      lastPoolInstance!.emit("error", "raw string failure"),
+    ).not.toThrow();
     expect(errSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Unexpected database pool error"),
-      "non-Error thrown",
+      "[db] Unexpected database pool error",
+      "raw string failure",
     );
     errSpy.mockRestore();
+  });
+});
+
+describe("one pool per process", () => {
+  it("shares the pool between separately bundled copies of this module", async () => {
+    // Next bundles db.ts once per runtime layer, so a module-level pool meant
+    // three pools and three times the connections POOL_CONFIG.max allows.
+    const first = await loadDb();
+    vi.resetModules();
+    const second = await loadDb();
+    expect(poolConstructorCalls).toHaveLength(1);
+    expect(second.default).toBe(first.default);
+  });
+
+  it("does not stack a second error listener on the shared pool", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await loadDb();
+    vi.resetModules();
+    await loadDb();
+    lastPoolInstance!.emit("error", new Error("once"));
+    expect(errSpy).toHaveBeenCalledTimes(1);
+    errSpy.mockRestore();
+  });
+
+  it("reports stats from that same pool in every copy", async () => {
+    await loadDb();
+    vi.resetModules();
+    const { getPoolStats } = await loadDb();
+    lastPoolInstance!.totalCount = 4;
+    expect(getPoolStats().total).toBe(4);
   });
 });
 
