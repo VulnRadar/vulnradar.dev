@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { makeHeaderStore } from "../_test-harness";
+import { encryptApiKey } from "@/lib/auth/crypto";
 
 /**
  * Route-level tests for POST /api/v3/auth/reset-password.
@@ -31,6 +32,7 @@ let passwordUpdateCalls: unknown[][] = [];
 let tokenUsedCalls: unknown[][] = [];
 let sessionDeleteCalls: unknown[][] = [];
 let deviceTrustDeleteCalls: unknown[][] = [];
+let discordRow: { access_token: string; refresh_token: string } | null = null;
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
@@ -61,6 +63,9 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   if (s.startsWith("DELETE FROM device_trust WHERE user_id = $1")) {
     deviceTrustDeleteCalls.push(params);
     return { rows: [] };
+  }
+  if (s.startsWith("DELETE FROM discord_connections WHERE user_id = $1")) {
+    return { rows: discordRow ? [discordRow] : [] };
   }
   if (s.includes("FROM notification_preferences WHERE user_id"))
     return { rows: [] };
@@ -147,6 +152,7 @@ beforeEach(async () => {
   tokenUsedCalls = [];
   sessionDeleteCalls = [];
   deviceTrustDeleteCalls = [];
+  discordRow = null;
 });
 
 describe("POST /api/v3/auth/reset-password", () => {
@@ -254,6 +260,40 @@ describe("POST /api/v3/auth/reset-password", () => {
           ),
         ),
       ).toBe(true);
+    });
+
+    it("revokes the evicted Discord tokens at Discord once the reset has committed", async () => {
+      tokenRow = validToken({ auth_provider: "discord" });
+      vi.stubEnv("API_KEY_ENCRYPTION_KEY", "a".repeat(64));
+      vi.stubEnv("DISCORD_CLIENT_ID", "client");
+      vi.stubEnv("DISCORD_CLIENT_SECRET", "secret");
+      discordRow = {
+        access_token: encryptApiKey("evicted-access"),
+        refresh_token: encryptApiKey("evicted-refresh"),
+      };
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockImplementation(async () => {
+          // Revoking has to come after COMMIT: a reset that fails later must
+          // leave the connection working.
+          expect(queries.map((q) => q.sql)).toContain("COMMIT");
+          return new Response(null, { status: 200 });
+        });
+
+      try {
+        const res = await POST(
+          resetRequest({ token: "t", password: STRONG_PASSWORD }),
+        );
+
+        expect(res.status).toBe(200);
+        const sent = fetchSpy.mock.calls.map(([, init]) =>
+          (init?.body as URLSearchParams).get("token"),
+        );
+        expect(sent.sort()).toEqual(["evicted-access", "evicted-refresh"]);
+      } finally {
+        fetchSpy.mockRestore();
+        vi.unstubAllEnvs();
+      }
     });
 
     it("removes the trusted devices in the same transaction", async () => {

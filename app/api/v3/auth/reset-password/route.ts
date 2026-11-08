@@ -9,6 +9,7 @@ import {
   unmetRequirementLabels,
   meetsMinimumPasswordScore,
 } from "@/lib/auth/password-strength";
+import { revokeDiscordTokens } from "@/lib/discord/revoke";
 import { passwordChangedEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
@@ -200,11 +201,25 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         .join(", ")} WHERE id = $1`,
       [resetToken.user_id],
     );
-    await client.query("DELETE FROM discord_connections WHERE user_id = $1", [
-      resetToken.user_id,
-    ]);
+    const evictedDiscord = await client.query<{
+      access_token: string | null;
+      refresh_token: string | null;
+    }>(
+      "DELETE FROM discord_connections WHERE user_id = $1 RETURNING access_token, refresh_token",
+      [resetToken.user_id],
+    );
 
     await client.query("COMMIT");
+
+    // Deleting the row only deletes our copy. After the commit, so a reset
+    // that fails keeps a working connection; cannot throw, and has a deadline.
+    const evicted = evictedDiscord.rows[0];
+    if (evicted) {
+      await revokeDiscordTokens(resetToken.user_id, {
+        accessToken: evicted.access_token,
+        refreshToken: evicted.refresh_token,
+      });
+    }
 
     // Send security notification email in background (only after successful commit)
     const emailContent = passwordChangedEmail(resetToken.totp_enabled, {
