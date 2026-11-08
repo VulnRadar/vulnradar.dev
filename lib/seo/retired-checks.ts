@@ -38,7 +38,7 @@ export const RETIRED_CHECK_REDIRECTS: Readonly<Record<string, string>> = {
   "etag-inode-leak": "/checks/etag-inode",
   "eval-usage": "/checks/eval-in-scripts",
   "excessive-permissions": "/checks/category/headers",
-  "expect-ct-missing": "/checks/category/ssl",
+  "expect-ct-missing": "/checks/category/tls",
   "form-no-action-https": "/checks/form-action-http",
   "frame-busting-header-only": "/checks/category/headers",
   "ga-tracking-id-leaked": "/checks/category/information-disclosure",
