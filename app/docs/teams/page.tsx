@@ -271,10 +271,10 @@ export default function TeamsPage() {
             path on a self-host with no SMTP).
           </li>
           <li>
-            Delivery is by email, and if the invited address already belongs to
-            an account, an in-app bell notification is created too. Invites
-            expire after <InlineCode>TEAM_INVITE_EXPIRY_DAYS</InlineCode> (7 by
-            default).
+            The email is sent either way. If the invited address belongs to an
+            account that has verified it, an in-app bell notification is created
+            too. Invites expire after{" "}
+            <InlineCode>TEAM_INVITE_EXPIRY_DAYS</InlineCode> (7 by default).
           </li>
           <li>
             <strong className="text-foreground">Manage members:</strong>{" "}

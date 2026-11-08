@@ -226,6 +226,20 @@ describe("docs pages read their numbers from the code", () => {
   });
 
   /**
+   * POST /teams/members rings the bell only for an account that has verified
+   * the invited address, because the bell names the team, the inviter and the
+   * role. The page kept saying any account holding the address got one.
+   */
+  it("says the invite bell needs a verified address and the email does not", () => {
+    const flat = prose(TEAMS).replace(/\s+/g, " ");
+    expect(flat).toContain("The email is sent either way.");
+    expect(flat).toContain(
+      "belongs to an account that has verified it, an in-app bell",
+    );
+    expect(flat).not.toContain("already belongs to an account");
+  });
+
+  /**
    * websocket.ts said 8 check IDs when WEBSOCKET_CHECK_IDS had 7.
    */
   it("counts protocol check IDs from the exported arrays", () => {
