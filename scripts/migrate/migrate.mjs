@@ -69,6 +69,7 @@ import { ensureMetaTable, readMeta, writeMeta } from "./_meta.mjs";
 import { fingerprintDetect } from "./_detect.mjs";
 import { buildPlan, renderPlan } from "./_planner.mjs";
 import { runPlan, repairAllSequences } from "./_runner.mjs";
+import { verifyTargetSchema, assessSameVersionRun } from "./_verify.mjs";
 import { runPreMigrationBackup } from "../_lib/_lib.backup.mjs";
 
 // ── Args (--dry-run and --skip-backup; --yes is read by _lib.prompts.mjs) ──
@@ -87,11 +88,12 @@ Usage:
                                   # when the dump itself is what fails)
 
 Behavior:
-  The migration always runs, even if the database is already at the
-  target version. Same-version re-runs are a no-op safety net (idempotent
-  CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS / CREATE INDEX
-  IF NOT EXISTS), and they re-write the meta row with the current app
-  version so the version check in instrumentation.ts stays in sync.
+  A database already at the target version has no DDL to run. The run
+  repairs sequences, compares the live schema with the target and names
+  anything missing, then records the app version in the meta row. Missing
+  items are expected until this release has booted once, since boot creates
+  them, so that case warns. On a database already recorded at this release
+  it exits non-zero.
 
   Runs non-interactively (accepting the current DATABASE_URL's database,
   the recommended target version, and any routine destructive step)
@@ -156,10 +158,10 @@ function showPlanSummary({
   log("");
   if (direction === "same") {
     log(
-      `    ${c.cyan}•${c.reset} Already at target: the plan will be empty (idempotent no-op).`,
+      `    ${c.cyan}•${c.reset} Already at target: the plan will be empty, no DDL runs.`,
     );
     log(
-      `    ${c.cyan}•${c.reset} Re-running anyway as a safety net to catch any missed steps.`,
+      `    ${c.cyan}•${c.reset} Check the live schema against the target and name anything missing.`,
     );
   } else {
     log(
@@ -179,7 +181,7 @@ function showPlanSummary({
     );
   } else if (direction === "same") {
     log(
-      `  ${c.yellow}${c.bold}Heads up:${c.reset} Same version: nothing destructive. This is a safety-net re-run.`,
+      `  ${c.yellow}${c.bold}Heads up:${c.reset} Same version: nothing destructive, and no schema changes.`,
     );
   } else {
     log(
@@ -234,68 +236,48 @@ async function pickTargetVersion(recommended) {
 }
 
 /**
- * AUDIT-013 migrate-09: re-read the live schema after a migration and
- * compare it against what the target version is supposed to contain.
- *
- * The expectation comes from the version files themselves, via
- * buildMigrationSchema(): the v1 baseline with every registered upgrade
- * applied. That is exactly what the plan just promised to produce, so a
- * mismatch means a step silently no-opped (an IF NOT EXISTS matching a
- * pre-existing object of a different shape, for instance) rather than
- * that the expectation is wrong. tests/scripts/migrate/schema-parity.test.ts
- * separately guarantees that same derived set equals instrumentation.ts's.
- *
- * Falls back to the registry fingerprint if the version files cannot be
- * parsed for any reason: a verification that cannot run must not be the
- * thing that fails a migration.
+ * The check a same-version run makes in place of the DDL it does not have.
+ * Returns the app version to record, and exits non-zero on a database that
+ * should already be complete and is not.
  */
-async function verifyTargetSchema(pool, target) {
-  const actual = await getActualSchema(pool);
-  const live = new Map(
-    Object.entries(actual).map(([t, cols]) => [t, new Set(cols)]),
-  );
-
-  let expected;
-  try {
-    if (target !== VERSIONS[VERSIONS.length - 1].name) {
-      // Only the newest version has a derived expectation; an older
-      // target is a downgrade and its shape is the fingerprint.
-      throw new Error("not the newest version");
-    }
-    const { buildMigrationSchema } =
-      await import("../_lib/_lib.schema-parity.mjs");
-    const derived = await buildMigrationSchema();
-    expected = derived.tables;
-  } catch {
-    const fp = getVersion(target).fingerprint;
-    expected = new Map(
-      [...fp.tables].map((t) => [t, new Set(fp.columns?.[t] || [])]),
+async function checkSameVersionSchema(pool, target, meta, projectMeta) {
+  const verified = await verifyTargetSchema(pool, target);
+  const outcome = assessSameVersionRun({
+    missing: verified,
+    recordedAppVersion: meta?.appVersion ?? null,
+    appVersion: projectMeta.version,
+  });
+  if (outcome === "complete") {
+    success(
+      `Verified: every ${target} table and column is present (${verified.checkedTables} tables checked).`,
     );
+    return projectMeta.version;
   }
 
-  const missingTables = [];
-  const missingColumns = [];
-  for (const [table, cols] of expected) {
-    const liveCols = live.get(table);
-    if (!liveCols) {
-      missingTables.push(table);
-      continue;
-    }
-    for (const col of cols) {
-      if (!liveCols.has(col.toLowerCase())) {
-        missingColumns.push(`${table}.${col}`);
-      }
-    }
+  const report = outcome === "incomplete" ? error : warn;
+  report(
+    `${verified.missingTables.length} table(s) and ${verified.missingColumns.length} column(s) of schema ${target} are not in this database:`,
+  );
+  for (const t of verified.missingTables) {
+    log(`    ${c.yellow}missing table${c.reset}  ${t}`);
+  }
+  for (const col of verified.missingColumns) {
+    log(`    ${c.yellow}missing column${c.reset} ${col}`);
   }
 
-  missingTables.sort();
-  missingColumns.sort();
-  return {
-    ok: missingTables.length === 0 && missingColumns.length === 0,
-    missingTables,
-    missingColumns,
-    checkedTables: expected.size,
-  };
+  if (outcome === "incomplete") {
+    warn(
+      `This database is already recorded at app v${meta.appVersion}, so these should exist. Starting the app creates what its boot schema has; run this again afterwards, and if the same items are listed, the boot log says why they could not be created.`,
+    );
+    process.exit(1);
+  }
+
+  info(
+    `The first boot of v${projectMeta.version} creates these, so this is expected before the restart.`,
+  );
+  // Left at the older version on purpose. Recording this release now would
+  // make the next run read the same expected gap as a failure.
+  return meta?.appVersion ?? projectMeta.version;
 }
 
 // ── Big red warning for downgrades ────────────────────────────────────────
@@ -482,9 +464,9 @@ async function main() {
     }
     log("");
 
-    // Determine direction. "same" means current === target: the
-    // migration is still executed (idempotently) as a safety net, to
-    // catch any missed steps or stale meta.
+    // Determine direction. "same" means current === target: there is no
+    // DDL to run, but the live schema is still checked and the meta row
+    // brought up to date.
     const direction = isUpgrade(current, target)
       ? "upgrade"
       : isDowngrade(current, target)
@@ -515,7 +497,7 @@ async function main() {
     if (plan.steps.length === 0) {
       if (direction === "same") {
         info(
-          `No changes needed: already at ${c.bold}${current}${c.reset}. The migration is idempotent, so re-running it is a no-op safety net.`,
+          `No DDL to run: already at ${c.bold}${current}${c.reset}. The live schema is still checked against it below.`,
         );
       } else {
         info("No changes needed.");
@@ -535,6 +517,9 @@ async function main() {
       if (plan.steps.length === 0) {
         log("");
         info(`[DRY-RUN] No SQL to run. Plan is empty.`);
+        if (direction === "same") {
+          await checkSameVersionSchema(livePool, target, meta, projectMeta);
+        }
       } else {
         info(
           `[DRY-RUN] SQL will run inside a transaction that's ROLLED BACK at the end. No persistent changes.`,
@@ -629,6 +614,7 @@ async function main() {
 
     // 12. Execute.
     section("Step 6: Execute");
+    let appVersionToRecord = projectMeta.version;
     if (plan.steps.length === 0) {
       log(
         `  ${c.dim}0.${c.reset}  ${c.dim}SKIP${c.reset}  (no DDL to run; schema is already at the target version)`,
@@ -650,6 +636,14 @@ async function main() {
         warn(`Sequence repair failed (non-fatal): ${seqErr.message}`);
       } finally {
         seqClient.release();
+      }
+      if (direction === "same") {
+        appVersionToRecord = await checkSameVersionSchema(
+          livePool,
+          target,
+          meta,
+          projectMeta,
+        );
       }
     } else {
       // AUDIT-013 migrate-05: the schema-version marker is written as the
@@ -711,7 +705,7 @@ async function main() {
     // with. The upsert is idempotent either way.
     await writeMeta(livePool, {
       schemaVersion: target,
-      appVersion: projectMeta.version,
+      appVersion: appVersionToRecord,
     });
     if (direction === "same") {
       const isAppRecommended = recommended.name === current;

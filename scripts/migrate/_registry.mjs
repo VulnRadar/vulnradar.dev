@@ -211,6 +211,20 @@ export const VERSIONS = [
     // authenticated scanning replaced it), so it never reaches this
     // fingerprint.
     fingerprint: {
+      // Tables the release being built adds to this schema version. Still
+      // part of the version, so verification expects them, but detection
+      // skips them: a database gets them from the first boot of this release,
+      // and the in-app updater runs the migrator before that boot, so
+      // requiring them would mean no database could be recognised until it
+      // had already finished the update.
+      // tests/scripts/migrate/last-release-detection.test.ts compares this
+      // against the schema of the last tag. When a release is cut, refresh
+      // that fixture and empty this.
+      introducedThisRelease: new Set([
+        "ai_chat_events",
+        "ai_message_feedback",
+        "broadcast_templates",
+      ]),
       tables: new Set([
         // AUDIT-013 migrate-01 / migrate-09: this list is no longer
         // maintained by hand. It is the exact set

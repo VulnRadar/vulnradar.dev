@@ -1,5 +1,7 @@
 import { it, expect, beforeAll, afterAll } from "vitest";
+import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { Client, Pool } from "pg";
 import { describeIntegration } from "./_db";
 
@@ -45,6 +47,7 @@ const ssl =
 let adminClient: Client | null = null;
 let scratchName = "";
 let scratch: Pool | null = null;
+let scratchUrl = "";
 let userId = 0;
 let teamId = 0;
 let scanId = 0;
@@ -56,6 +59,39 @@ let result: { executed: number; failed: number };
 function db(): Pool {
   if (!scratch) throw new Error("the scratch database was never created");
   return scratch;
+}
+
+const APP_VERSION = (
+  JSON.parse(readFileSync("package.json", "utf8")) as { version: string }
+).version;
+
+/** The real command, with no terminal attached, as the in-app updater runs it. */
+function runMigrate(): Promise<{ code: number; output: string }> {
+  return new Promise((done) => {
+    execFile(
+      process.execPath,
+      ["scripts/migrate/migrate.mjs", "--yes", "--skip-backup"],
+      {
+        env: {
+          ...process.env,
+          DATABASE_URL: scratchUrl,
+          DATABASE_SSL: ssl ? "true" : "false",
+        },
+        maxBuffer: 16 * 1024 * 1024,
+      },
+      (err, stdout, stderr) => {
+        const code = err ? Number((err as { code?: number }).code ?? 1) : 0;
+        done({ code, output: `${stdout}\n${stderr}` });
+      },
+    );
+  });
+}
+
+async function recordedAppVersion(): Promise<string | undefined> {
+  const res = await db().query<{ app_version: string }>(
+    `SELECT app_version FROM vulnradar_schema_meta WHERE id = 1`,
+  );
+  return res.rows[0]?.app_version;
 }
 
 /**
@@ -95,7 +131,8 @@ describeIntegration(
       await adminClient.query(`CREATE DATABASE "${scratchName}"`);
 
       url.pathname = `/${scratchName}`;
-      scratch = new Pool({ connectionString: url.toString(), ssl, max: 2 });
+      scratchUrl = url.toString();
+      scratch = new Pool({ connectionString: scratchUrl, ssl, max: 2 });
       // pool.end() resolves before its sockets have closed, so the forced drop
       // in afterAll can terminate a connection that is still on its way out.
       // With no listener the pool rethrows that FATAL as an uncaught exception.
@@ -202,5 +239,45 @@ describeIntegration(
       );
       expect(rows).toEqual([{ scan_id: scanId, team_id: teamId }]);
     });
+
+    /**
+     * gap-migration-upgrade-path-8 and -9, through the real command. These run
+     * last and in order: each one changes the database the next one reads.
+     */
+    it("verifies a complete database on a same-version run and records this release", async () => {
+      const { code, output } = await runMigrate();
+      expect(output).toContain("Verified: every 3.0.0 table and column");
+      expect(code).toBe(0);
+      expect(await recordedAppVersion()).toBe(APP_VERSION);
+    }, 120_000);
+
+    it("names a gap from before this release, succeeds, and leaves the record alone", async () => {
+      // The in-app updater's position: an older release's database, files
+      // already replaced, the boot that adds the new tables still to come.
+      await db().query(`DROP TABLE ai_message_feedback`);
+      await db().query(
+        `UPDATE vulnradar_schema_meta SET app_version = '3.9.1'`,
+      );
+      const { code, output } = await runMigrate();
+      expect(output).toContain("ai_message_feedback");
+      expect(code).toBe(0);
+      expect(await recordedAppVersion()).toBe("3.9.1");
+    }, 120_000);
+
+    it("recognises that database with no meta row at all", async () => {
+      await db().query(`DELETE FROM vulnradar_schema_meta`);
+      const { code, output } = await runMigrate();
+      expect(output).toContain("Detected: 3.0.0");
+      expect(code).toBe(0);
+    }, 120_000);
+
+    it("exits non-zero naming the table on a database already at this release", async () => {
+      await db().query(`UPDATE vulnradar_schema_meta SET app_version = $1`, [
+        APP_VERSION,
+      ]);
+      const { code, output } = await runMigrate();
+      expect(output).toContain("ai_message_feedback");
+      expect(code).toBe(1);
+    }, 120_000);
   },
 );

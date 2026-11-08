@@ -23,6 +23,29 @@ import { formatDuration } from "../_lib/_lib.meta.mjs";
 // cannot interleave a read of MAX(id) with each other's setval.
 const SEQUENCE_REPAIR_LOCK_ID = 4_150_921_734;
 
+/**
+ * Print what the server says while a client runs, until the returned function
+ * is called. A RAISE WARNING reaches a client as a `notice` event and nowhere
+ * else, so without a listener the version files' warnings are discarded: the
+ * 2.0.0 -> 3.0.0 upgrade skips idx_users_email_lower that way when two accounts
+ * differ only by case, and the operator was never told.
+ *
+ * The "already exists, skipping" notices are dropped because every idempotent
+ * statement in a plan produces one. The listener has to come off again because
+ * the client goes back to a pool.
+ */
+function surfaceNotices(client) {
+  if (client.listenerCount?.("notice") > 0) return () => {};
+  const onNotice = (notice) => {
+    if (notice.severity === "NOTICE" && notice.message.endsWith(", skipping")) {
+      return;
+    }
+    warn(notice.message);
+  };
+  client.on?.("notice", onNotice);
+  return () => client.off?.("notice", onNotice);
+}
+
 // Moves every SERIAL/BIGSERIAL sequence in the public schema FORWARD to
 // MAX(id) when it has fallen behind. Prevents "duplicate key value
 // violates unique constraint" errors when rows were inserted with explicit
@@ -87,6 +110,7 @@ export async function repairAllSequences(client) {
   // repair running at the same time. It does not (and cannot) stop the
   // app's own inserts, which is why the forward-only guard above is the
   // actual fix and this is only belt and braces.
+  const stopSurfacing = surfaceNotices(client);
   await client.query("SELECT pg_advisory_lock($1)", [SEQUENCE_REPAIR_LOCK_ID]);
   try {
     await client.query(sql);
@@ -94,6 +118,7 @@ export async function repairAllSequences(client) {
     await client
       .query("SELECT pg_advisory_unlock($1)", [SEQUENCE_REPAIR_LOCK_ID])
       .catch(() => {});
+    stopSurfacing();
   }
 }
 
@@ -137,6 +162,7 @@ export async function runPlan(pool, plan, options = {}) {
   }
 
   const client = await pool.connect();
+  const stopSurfacing = surfaceNotices(client);
   try {
     await client.query("BEGIN");
     // AUDIT-013 migrate-13: the whole plan runs as one transaction, and
@@ -217,6 +243,7 @@ export async function runPlan(pool, plan, options = {}) {
     }
     return { executed, failed, totalMs };
   } finally {
+    stopSurfacing();
     client.release();
   }
 }

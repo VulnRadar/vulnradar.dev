@@ -44,8 +44,9 @@ export function fingerprintDetect(actual) {
   const matches = [];
   for (const v of VERSIONS) {
     const fp = v.fingerprint;
-    const fpTables = fp.tables;
-    const missingTables = [...fpTables].filter((t) => !liveTables.has(t));
+    const missingTables = [...fp.tables].filter(
+      (t) => !liveTables.has(t) && !fp.introducedThisRelease?.has(t),
+    );
 
     if (missingTables.length > 0) continue; // v isn't a superset of live
 
