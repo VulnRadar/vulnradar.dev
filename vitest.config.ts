@@ -814,6 +814,20 @@ export default defineConfig({
           functions: 80,
           branches: 86,
         },
+        // The two pure helpers behind the SRI and eval checks. Near 100 on
+        // their own suites, so a floor of 95 only moves when they lose tests.
+        "lib/scanner/checks/_subresource.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 95,
+          branches: 92,
+        },
+        "lib/scanner/checks/_sinks.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 95,
+          branches: 95,
+        },
       },
     },
   },
