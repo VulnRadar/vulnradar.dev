@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -23,6 +23,7 @@ import { mapHistoryDetailResponse } from "@/lib/scanner/history-detail";
 import { formatDateTime } from "@/lib/ui/format-date";
 import type { GithubRepo, GithubScanOutcome } from "./types";
 import { GithubIcon } from "./github-icon";
+import { createLatestRequest } from "./latest-request";
 import {
   aiReviewNotice,
   historyAiReviewNotice,
@@ -110,6 +111,10 @@ export function RepoDetail({
     notice: AiReviewNotice;
   } | null>(null);
 
+  // One scan opens at a time. Without this, opening scan A and then scan B
+  // and having A answer last left B's row showing A's findings.
+  const detailRequest = useRef(createLatestRequest()).current;
+
   const loadScans = async () => {
     setLoadingScans(true);
     setLoadError(null);
@@ -141,6 +146,8 @@ export function RepoDetail({
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-repo-change plus resetting selection state, gated by repo.fullName changing; loadScans' own setState only fires after its request resolves
     loadScans();
+    detailRequest.cancel();
+    setDetailLoading(false);
     setSelectedScanId(null);
     setScanDetail(null);
     setSelectedIssue(null);
@@ -148,33 +155,49 @@ export function RepoDetail({
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [repo.fullName]);
 
+  useEffect(() => detailRequest.cancel, [detailRequest]);
+
   const loadScanDetail = async (id: number) => {
     setSelectedScanId(id);
     setSelectedIssue(null);
     setDetailLoading(true);
     setScanNotice(null);
+    const { signal, isCurrent } = detailRequest.begin();
     try {
-      const res = await fetch(API.HISTORY_ITEM(id));
+      const res = await fetch(API.HISTORY_ITEM(id), { signal });
+      if (!isCurrent()) return;
       if (!res.ok) {
         setScanDetail(null);
         return;
       }
       const data = await res.json();
+      if (!isCurrent()) return;
       setScanDetail(mapHistoryDetailResponse(data));
       const notice = historyAiReviewNotice(data);
       setScanNotice(notice ? { scanId: id, notice } : null);
     } catch {
-      setScanDetail(null);
+      if (isCurrent()) setScanDetail(null);
     } finally {
       // Same defect as loadScans above: the non-ok branch returned past this,
-      // leaving the detail pane loading indefinitely.
-      setDetailLoading(false);
+      // leaving the detail pane loading indefinitely. A superseded request
+      // leaves the flag alone: the request that replaced it owns it now.
+      if (isCurrent()) setDetailLoading(false);
     }
+  };
+
+  const backToTimeline = () => {
+    detailRequest.cancel();
+    setDetailLoading(false);
+    setSelectedScanId(null);
   };
 
   const handleScanClick = async () => {
     const outcome = await onScan(repo.fullName);
     if (!outcome) return;
+    // The fresh result takes the pane; a timeline row still loading must not
+    // land on top of it.
+    detailRequest.cancel();
+    setDetailLoading(false);
     // Only add a timeline row when the scan was actually persisted. A null
     // scanHistoryId used to become id:-1, which collides as a React key on a
     // second unsaved scan and makes an un-openable row (selectedScanId null
@@ -231,9 +254,7 @@ export function RepoDetail({
           size="icon"
           variant="ghost"
           className="h-11 w-11 shrink-0 sm:h-9 sm:w-9"
-          onClick={
-            selectedScanId !== null ? () => setSelectedScanId(null) : onBack
-          }
+          onClick={selectedScanId !== null ? backToTimeline : onBack}
           aria-label={
             selectedScanId !== null ? "Back to timeline" : "Back to repos"
           }
