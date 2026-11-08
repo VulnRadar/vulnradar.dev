@@ -997,6 +997,24 @@ export default function ConfigPage() {
                 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8
               </InlineCode>
             </li>
+            <li>
+              The same list decides who may set{" "}
+              <InlineCode>X-Forwarded-For</InlineCode> at all. A request from a
+              peer outside it has the header replaced with that peer&rsquo;s own
+              address, so an exposed port cannot be told a forged client IP.
+              Left unset the list is <InlineCode>127.0.0.0/8</InlineCode>,{" "}
+              <InlineCode>::1/128</InlineCode>,{" "}
+              <InlineCode>172.16.0.0/12</InlineCode> and{" "}
+              <InlineCode>192.168.0.0/16</InlineCode>. A value you set replaces
+              those ranges, except loopback, which is always believed.
+            </li>
+            <li>
+              Upgrading from 3.x: a proxy that connects from outside those
+              ranges, such as a Kubernetes ingress on{" "}
+              <InlineCode>10.x</InlineCode> or a CDN connecting straight to the
+              app, has to be listed. Until it is, every visitor is recorded as
+              the proxy&rsquo;s own address and shares one rate-limit bucket.
+            </li>
           </ul>
         </DocsSubSection>
 
@@ -1548,7 +1566,9 @@ export default function ConfigPage() {
               <InlineCode>127.0.0.1</InlineCode>): the interface that port binds
               to. The compose file assumes a reverse proxy on the same host; set{" "}
               <InlineCode>0.0.0.0</InlineCode> to publish on every interface and
-              firewall it yourself.
+              firewall it yourself. It is also passed into the container, where
+              the app reads it to decide whether plain HTTP is safe on localhost
+              and whether to warn at boot that the port looks exposed.
             </li>
           </ul>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
