@@ -57,7 +57,11 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     const user = usersById[row.user_id as number];
     return {
       rows: [
-        { expires_at: row.expires_at, role: user?.role ?? "user", locale: null },
+        {
+          expires_at: row.expires_at,
+          role: user?.role ?? "user",
+          locale: null,
+        },
       ],
     };
   }
