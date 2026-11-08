@@ -454,6 +454,12 @@ remediation key = (user_id, finding_id, finding_url)`}
           when the scanner was wrong, not when the fix is not worth doing.
         </p>
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Only a verdict you give yourself does any of this. When AI
+          verification doubts a finding, the buttons stay unpressed with a line
+          saying what it suggested, and the finding stays visible, still counts
+          in the score and still fails the CI gate until you mark it.
+        </p>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           The verdict buttons call <InlineCode>POST /scan/feedback</InlineCode>,
           which takes a signed-in session only, with no API key equivalent.
         </p>

@@ -890,9 +890,10 @@ export async function verifyFindingsBatchWithOutcome(
  * verdict (components/scanner/issue-detail.tsx's FindingFeedback, persisted
  * via app/api/v3/scan/feedback/route.ts's scan_finding_feedback table) so
  * a finding AI already confirmed or flagged as a likely false positive
- * shows up pre-marked instead of requiring the user to also click a button
- * for something the AI already decided. "uncertain" has no entry on
- * purpose: none of the three feedback options (confirmed/false_positive/
+ * carries that suggestion. The row is the AI's, not the user's: the finding
+ * view shows it as a suggestion with no button pressed, it suppresses nothing
+ * (owner decision T2), and only a click makes it a verdict. "uncertain" has
+ * no entry on purpose: none of the three feedback options (confirmed/false_positive/
  * not_applicable) honestly represents "the AI couldn't tell", so that case
  * is left for a human to actually decide rather than guessed at.
  */
@@ -902,7 +903,7 @@ const AI_VERDICT_TO_FEEDBACK: Partial<Record<AiVerdict, string>> = {
 };
 
 /**
- * Pre-fills "Mark this result" from the AI's own verdict, one row per
+ * Records the AI's own verdict as a suggestion on "Mark this result", one row per
  * finding that has a mapped verdict (see AI_VERDICT_TO_FEEDBACK). Uses
  * ON CONFLICT DO NOTHING, not DO UPDATE: this only fills in a gap where
  * nothing has been decided yet. It never overwrites an existing row,

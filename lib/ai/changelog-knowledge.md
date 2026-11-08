@@ -867,7 +867,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Users] **[CHANGED]** **Team List and Owner-Leave Error**
   The team list now returns member_count as a number instead of a numeric string. An owner who tries to leave is told to delete the team or ask support, since ownership cannot be transferred.
 - [Bot] **[FIXED]** **AI Verdicts No Longer Silence Findings**
-  A finding only the AI verifier doubted now still triggers the critical and high alert email, stays in the posture digest, stays visible on your scan and still counts in its score. Only a verdict you gave yourself hides a finding from these.
+  A finding only the AI verifier doubted now still triggers the critical and high alert email, stays in the posture digest, stays visible on your scan and still counts in its score. Only a verdict you gave yourself hides a finding from these, so the verdict buttons now show what the AI suggested with none of them pressed.
 - [Code] **[CLI]** **CI Gate Counts AI-Doubted Findings Again**
   The GitHub Action, the CLI and the GitLab template dropped findings the AI verifier had called false positives, even though the gate only promises to skip findings you marked. Those findings now count, so a build can start failing on one that was being skipped. To keep one out of the gate, mark it a false positive yourself.
 - [ScanSearch] **[ENGINE]** **Refused Pages Are Recognised**

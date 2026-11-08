@@ -221,6 +221,13 @@ describe("/docs/triage", () => {
     expect(page).toContain("POST /scan/feedback");
   });
 
+  it("says an AI suggestion hides nothing until you mark it yourself", () => {
+    expect(page).toContain("Only a verdict you give yourself does any of this");
+    expect(page).toContain(
+      "still counts in the score and still fails the CI gate until you mark it",
+    );
+  });
+
   it("warns that remediation is private to you", () => {
     expect(page).toContain(
       "Remediation is a personal checklist, not a team task board",

@@ -2768,7 +2768,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Bot,
         label: "AI Verdicts No Longer Silence Findings",
-        desc: "A finding only the AI verifier doubted now still triggers the critical and high alert email, stays in the posture digest, stays visible on your scan and still counts in its score. Only a verdict you gave yourself hides a finding from these.",
+        desc: "A finding only the AI verifier doubted now still triggers the critical and high alert email, stays in the posture digest, stays visible on your scan and still counts in its score. Only a verdict you gave yourself hides a finding from these, so the verdict buttons now show what the AI suggested with none of them pressed.",
         category: "fixed",
       },
       {

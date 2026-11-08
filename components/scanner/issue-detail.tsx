@@ -66,6 +66,7 @@ import {
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { useConfirm } from "@/components/shared/use-confirm";
 import { pluralize } from "@/lib/ui/plural";
+import { isAiFeedbackNote } from "@/lib/scanner/feedback-source";
 
 /** Same key results-list.tsx writes when a finding is selected. */
 const FINDING_QUERY_PARAM = "finding";
@@ -137,6 +138,15 @@ const FEEDBACK_OPTIONS: {
   { verdict: "not_applicable", label: "Not applicable", icon: CircleSlash },
 ];
 
+const AI_SUGGESTION_LINE: Record<FeedbackVerdict, string> = {
+  false_positive:
+    "AI verification suggested false positive. Mark it yourself to hide it.",
+  confirmed:
+    "AI verification suggested confirmed. Mark it yourself to record your verdict.",
+  not_applicable:
+    "AI verification suggested not applicable. Mark it yourself to record your verdict.",
+};
+
 /**
  * Per-finding feedback: false_positive / confirmed / not_applicable,
  * persisted via the existing app/api/v3/scan/feedback/route.ts (POST +
@@ -145,13 +155,19 @@ const FEEDBACK_OPTIONS: {
  * regression-alert diff (lib/scanner/regression-alert.ts): a suppressed
  * finding never counts as "new" on a later scan.
  *
+ * A row the AI verifier wrote is shown as its suggestion, never as a pressed
+ * button: only a person's verdict hides a finding (owner decision T2), so a
+ * pressed "False positive" over a finding that still counts claims something
+ * nothing did. A click saves over that row, which is what makes it the
+ * person's.
+ *
  * Only rendered when the caller supplies `findingUrl` (the scanned URL),
  * which is why IssueDetail's other call sites (public host page, shared
  * share-token page, demo, GitHub repo scans) don't get this control --
  * feedback requires a signed-in session AND a real scanned URL, neither of
  * which those views have.
  */
-function FindingFeedback({
+export function FindingFeedback({
   findingId,
   findingUrl,
   scanHistoryId,
@@ -169,6 +185,9 @@ function FindingFeedback({
   onVerdictChanged?: () => void;
 }) {
   const [verdict, setVerdict] = useState<FeedbackVerdict | null>(null);
+  const [aiSuggestion, setAiSuggestion] = useState<FeedbackVerdict | null>(
+    null,
+  );
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState<FeedbackVerdict | null>(null);
   const [error, setError] = useState(false);
@@ -184,6 +203,7 @@ function FindingFeedback({
     // oxlint-disable-next-line react/set-state-in-effect -- resets stale feedback state before the fresh fetch-on-mount below; the actual verdict setState calls happen only after the request resolves
     setLoaded(false);
     setVerdict(null);
+    setAiSuggestion(null);
     setError(false);
     setLoadFailed(false);
     fetch(
@@ -193,10 +213,18 @@ function FindingFeedback({
         if (!res.ok) throw new Error("feedback read failed");
         return res.json();
       })
-      .then((data: { feedback?: { verdict: FeedbackVerdict }[] } | null) => {
-        if (cancelled || !data?.feedback?.length) return;
-        setVerdict(data.feedback[0].verdict);
-      })
+      .then(
+        (
+          data: {
+            feedback?: { verdict: FeedbackVerdict; notes?: string | null }[];
+          } | null,
+        ) => {
+          if (cancelled || !data?.feedback?.length) return;
+          const row = data.feedback[0];
+          if (isAiFeedbackNote(row.notes)) setAiSuggestion(row.verdict);
+          else setVerdict(row.verdict);
+        },
+      )
       .catch(() => {
         if (!cancelled) setLoadFailed(true);
       })
@@ -228,6 +256,7 @@ function FindingFeedback({
       });
       if (!res.ok) throw new Error("Failed to save feedback");
       setVerdict(next);
+      setAiSuggestion(null);
       onVerdictChanged?.();
     } catch {
       setError(true);
@@ -270,6 +299,11 @@ function FindingFeedback({
           </button>
         ))}
       </div>
+      {aiSuggestion && (
+        <p className="w-full text-xs text-muted-foreground">
+          {AI_SUGGESTION_LINE[aiSuggestion]}
+        </p>
+      )}
       {error && (
         <span className="text-xs text-[hsl(var(--severity-high))]">
           Couldn&apos;t save that, try again.

@@ -3296,5 +3296,5 @@ individual URLs instead.
 | `/docs/scheduled-scans` | - | 9 | 7 | 0 | 0 | 0 | 0 | 23 | 0 |
 | `/docs/sharing` | ✓ | 10 | 5 | 0 | 2 | 0 | 0 | 30 | 0 |
 | `/docs/teams` | - | 8 | 1 | 0 | 1 | 0 | 0 | 17 | 0 |
-| `/docs/triage` | - | 4 | 4 | 0 | 2 | 0 | 0 | 23 | 0 |
+| `/docs/triage` | - | 4 | 4 | 0 | 2 | 0 | 0 | 24 | 0 |
 | `/docs/troubleshooting` | ✓ | 10 | 7 | 0 | 0 | 0 | 0 | 27 | 0 |
