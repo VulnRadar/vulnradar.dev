@@ -43,7 +43,7 @@ export default function CliPage() {
       <DocsHero
         id="top"
         badge="CLI"
-        title="Command-Line Interface"
+        title="Command-line interface (CLI)"
         description={`Run a ${APP_NAME} scan from a terminal or a CI job and fail the build when findings cross a threshold you set. Run it with npx, no install required.`}
       />
 
@@ -70,7 +70,7 @@ export default function CliPage() {
         </p>
         <CodeBlock
           language="bash"
-          code={`npx vulnradar scan https://example.com --max-high 0`}
+          code={`VULNRADAR_TOKEN=vr_live_... npx vulnradar scan https://example.com --max-high 0`}
         />
         <p className="text-sm text-muted-foreground">
           For a permanent command on your PATH:
@@ -118,6 +118,24 @@ npm install -g .`}
           not repeat the flag on every invocation. An explicit flag beats the
           variable in both cases.
         </p>
+        <DocsSubSection id="example-run" title="Example run">
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            A site with two high findings and a limit of zero. Progress goes to
+            stderr, one line each time the scan moves on, and the run ends with
+            the counts, the reason it failed and the exit code:
+          </p>
+          <CodeBlock
+            language="text"
+            code={`$ VULNRADAR_TOKEN=vr_live_... npx vulnradar scan https://example.com --max-high 0
+Started scan 4821 for https://example.com
+Scanning: headers (3/18)
+Scanning: dns (11/18)
+Scan complete: critical=0 high=2 medium=1 low=0 total=3
+2 high finding(s) exceed the max of 0
+$ echo $?
+1`}
+          />
+        </DocsSubSection>
       </DocsSection>
 
       <DocsSection id="options" title="Options">
@@ -362,6 +380,19 @@ Page unreachable: <the reason>`}
           <InlineCode>statusCode</InlineCode> are present only when the API
           sends them.
         </p>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          To work with the findings, write the document to a file and keep the
+          exit code, which a pipe into <InlineCode>jq</InlineCode> would lose.
+          The filter drops findings you marked a false positive, which stay in
+          the array with <InlineCode>suppressed: true</InlineCode>:
+        </p>
+        <CodeBlock
+          language="bash"
+          code={`npx vulnradar scan https://example.com --json > result.json
+status=$?
+jq -r '.findings[]? | select(.suppressed != true) | [.severity, .id, .title] | @tsv' result.json
+exit $status`}
+        />
       </DocsSection>
 
       <DocsSection id="limits" title="Rate limits and stopping">
