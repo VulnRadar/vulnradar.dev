@@ -709,7 +709,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Timer] **[CLI]** **CLI No Longer Sends a Doomed Status Check Right Before Its Timeout**
   When the wait before the timeout ended a moment early, the CLI sent a status check with almost no time left, printed a status-check failure that never happened, and then checked a third time. It now waits out those last moments and makes one final check, so a scan that finishes right at the timeout is still reported as complete.
 - [UserCheck] **[FIXED]** **Mixed-Case Email Addresses Found Again**
-  Accounts whose email address was saved with capital letters before addresses were normalised can sign in with their password again, signing up with that address no longer tries to create a second account, and such an account can accept a staff invite without being asked for a password it has no field to enter.
+  Accounts whose email address was saved with capital letters before addresses were normalised can sign in with their password again, request a password reset, sign in with Google, GitHub, Discord or staff SSO, and receive, accept and decline team invites. Signing up with that address no longer tries to create a second account, and such an account can accept a staff invite without being asked for a password it has no field to enter.
 - [UserCog] **[SECURITY]** **Staff Invites See Every Existing Account**
   Inviting staff now recognises an existing account or a pending invite whatever the letter case of the stored address, so the protection for the super admin account and the duplicate-invite check cannot be bypassed by an older mixed-case address.
 - [BookOpen] **[SELFHOST]** **Docs: Repo Review Limits and Staff SSO Upgrade**
@@ -758,6 +758,36 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Starting a support ticket now opens a dialog instead of replacing your ticket list. The Open ticket button stays disabled until the subject and message are filled in and the captcha, when shown, is done. A failure shows inside the dialog with everything you typed still there, and closing a half-written ticket asks before discarding it.
 - [MessagesSquare] **[IMPROVED]** **Choosing Who Can See a Ticket**
   Sharing a ticket with teammates now opens a dialog where you stage who to add and who to remove, then press Save sharing. Before, each click applied immediately, including taking someone's access away. If a change fails part way, the dialog says which ones went through and keeps the rest ready to retry.
+- [UserCheck] **[FIXED]** **Mixed-Case Email Addresses Work Everywhere**
+  Accounts whose email address was saved with capital letters can now request a password reset, sign in with Google, GitHub, Discord or staff SSO without hitting an error or a duplicate account, and be found by team invites. Reset links go to the address on the account.
+- [Users] **[FIXED]** **Team Invitations Are Created Again**
+  Sending a team invitation ended in a server error, because the database refused the statement that writes it. Invitations are created again.
+- [ShieldAlert] **[SECURITY]** **Team Invite Bell Needs a Verified Address**
+  The in-app notification for a team invite names the team, the inviter and the role. It now goes only to an account that has verified the invited address, the rule the invitations list already follows. The invite email still goes to the address.
+- [Trash2] **[SECURITY]** **Erasing an Account Finds All of Its Messages**
+  An account whose address was saved with capital letters kept its contact messages and mail log after it was deleted, and its data export left them out, when they were stored under the lowercase spelling. Both now match the address whatever its letter case.
+- [Webhook] **[FIXED]** **Webhook List Shows the Real Format**
+  A webhook saved as Discord on a Discord /slack or /github URL now shows as Slack or Generic in the webhook list, matching the format it is actually sent.
+- [ScanSearch] **[ENGINE]** **Discord Webhook Check Covers Every Webhook URL Form**
+  The Discord webhook check now recognises versioned API paths, every Discord subdomain, a port and URLs written without a scheme, using the same rules as the rest of the scanner.
+- [KeyRound] **[SECURITY]** **Secrets With Escaped Slashes Are Reported**
+  Webhooks, connection strings and other URL-shaped secrets written with JSON-escaped slashes in a settings blob or script are now reported like the plain form, and one secret spelled both ways counts once. The Slack webhook check reads that spelling too.
+- [Gauge] **[SECURITY]** **Repeated Connection Text Cannot Hold Up a Scan**
+  A scanned page filled with repeated text shaped like the start of a database connection string could hold up the server for minutes. Those patterns now stop at a length no real credential reaches, so the same page is read in a fraction of a second.
+- [Shield] **[SECURITY]** **CI Gate Output Is One Line per Server Message**
+  The GitHub Action, the GitLab template and the CLI no longer let a newline or a percent escape in an API reply add lines to the job log, or to the Action's outputs. The not-checked areas are limited to plain slugs in all three.
+- [Timer] **[CLI]** **Reaching --timeout Is No Longer a Failed Poll**
+  A status poll cut off by the --timeout deadline no longer prints a failure or uses up a retry. The CLI goes straight to its final check of the scan.
+- [RefreshCw] **[CLI]** **Scan Start Retries Need Time to Finish**
+  The CLI no longer retries starting a scan after a rate limit when almost none of --timeout would be left to send the request, which could start and charge a scan the run then reported as never started. If the deadline passes first, the error now says so.
+- [GitMerge] **[FIXED]** **Repo Scan History Shows the Right Findings**
+  Opening one repo scan right after another could leave the second scan showing the first one's findings if the first answered last. Only the scan you opened last now fills the pane.
+- [Bug] **[FIXED]** **AI Verification No Longer Crashes on a Null Body**
+  POST /scan/verify and POST /scan/verify-batch answered a JSON body of the literal null with a 500. Anything that is not a JSON object now gets the same 400 as a malformed body.
+- [ShieldCheck] **[SECURITY]** **AI Verdicts Stay With the Finding They Were Asked About**
+  When a findings array repeated an id, a finding your AI allowance never reached, or one whose own AI call failed, could come back with another finding's verdict. Each finding now gets only its own verdict, and findings after the stop carry none.
+- [Activity] **[API]** **Both AI Verify Endpoints Count the Same Way**
+  In the ai field, POST /scan/verify and POST /scan/verify-batch now both count verdicts per finding, and neither counts a skipped element in attempted.
 
 ---
 
@@ -3066,6 +3096,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1225
+- **Total changes documented:** 1240
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
