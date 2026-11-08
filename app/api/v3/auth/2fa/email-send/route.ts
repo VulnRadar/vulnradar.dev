@@ -76,7 +76,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   );
 
   // Send the email
-  const emailContent = email2FACodeEmail(code);
+  const emailContent = email2FACodeEmail(code, codeExpiryMinutes);
   await sendEmail({
     to: user.email,
     ...emailContent,

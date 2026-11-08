@@ -46,6 +46,7 @@ let trustedDeviceRow: Record<string, unknown> | null = null;
 let rateLimitCount = 0;
 let sessionInsertCalls: unknown[][] = [];
 let email2FAInsertCalls: unknown[][] = [];
+let settingsRows: { key: string; value: string }[] = [];
 // When set, the users-by-email lookup rejects, as it does while the database
 // is down or failing over.
 let usersLookupError: Error | null = null;
@@ -69,7 +70,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     return { rows: [{ count: String(rateLimitCount) }] };
   }
   if (s.startsWith("SELECT key, value FROM system_settings")) {
-    return { rows: [] };
+    return { rows: settingsRows };
   }
   if (s.includes("WHERE LOWER(email) = $1") && s.includes("password_hash")) {
     return { rows: userRow ? [userRow] : [] };
@@ -472,6 +473,28 @@ describe("POST /api/v3/auth/login", () => {
     // Email send is queued via setImmediate; flush the macrotask queue.
     await new Promise((resolve) => setImmediate(resolve));
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("tells the user the lifetime the emailed code was stored with", async () => {
+    settingsRows = [{ key: "EMAIL_2FA_CODE_EXPIRY_MINUTES", value: "3" }];
+    invalidateSettingsCache();
+    userRow = baseUser();
+    userInfoRow = baseUserInfo({
+      totp_enabled: true,
+      two_factor_method: "email",
+    });
+
+    await POST(
+      postLogin({ email: "user@example.com", password: REAL_PASSWORD }),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+
+    settingsRows = [];
+    invalidateSettingsCache();
+    expect(email2FAInsertCalls[0][3]).toBe(3);
+    expect((mockSendEmail.mock.calls[0][0] as { text: string }).text).toContain(
+      "It expires in 3 minutes.",
+    );
   });
 
   it("skips 2FA for a trusted device and creates a session directly", async () => {

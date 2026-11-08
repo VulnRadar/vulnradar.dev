@@ -37,7 +37,7 @@ export async function sendDiscordEmail2FACode(
     );
 
     // Send the email
-    const emailContent = email2FACodeEmail(code);
+    const emailContent = email2FACodeEmail(code, codeExpiryMinutes);
     await sendEmail({
       to: userEmail,
       ...emailContent,

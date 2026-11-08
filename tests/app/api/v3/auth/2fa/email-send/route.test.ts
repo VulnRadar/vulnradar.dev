@@ -17,9 +17,13 @@ let userEmailRow: { email: string } | null = null;
 let recentCodeRow: { created_at: string } | null = null;
 let deleteCodeCalls: unknown[][] = [];
 let insertCodeCalls: unknown[][] = [];
+let settingsRows: { key: string; value: string }[] = [];
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
+  if (s.startsWith("SELECT key, value FROM system_settings")) {
+    return { rows: settingsRows };
+  }
   if (s.startsWith("SELECT email FROM users WHERE id = $1")) {
     return { rows: userEmailRow ? [userEmailRow] : [] };
   }
@@ -61,6 +65,7 @@ vi.mock("@/lib/email/email", async (importOriginal) => {
 
 const { AUTH_2FA_PENDING_COOKIE } = await import("@/lib/config/constants");
 const { signPendingToken } = await import("@/lib/auth/pending-2fa");
+const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { POST } = await import("@/app/api/v3/auth/2fa/email-send/route");
 
 // email-send now derives the userId only from a signed pending cookie.
@@ -143,6 +148,24 @@ describe("POST /api/v3/auth/2fa/email-send", () => {
 
     // sendEmail is awaited directly (not backgrounded) by this route.
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("tells the user the lifetime the code was stored with", async () => {
+    settingsRows = [{ key: "EMAIL_2FA_CODE_EXPIRY_MINUTES", value: "3" }];
+    invalidateSettingsCache();
+    userEmailRow = { email: "user@example.com" };
+
+    const res = await POST(
+      req({ [AUTH_2FA_PENDING_COOKIE]: signedPending(1) }),
+    );
+
+    settingsRows = [];
+    invalidateSettingsCache();
+    expect(res.status).toBe(200);
+    expect(insertCodeCalls[0][3]).toBe(3);
+    expect((mockSendEmail.mock.calls[0][0] as { text: string }).text).toContain(
+      "It expires in 3 minutes.",
+    );
   });
 
   it("resolves the pending user from a fresh Discord pending login cookie", async () => {

@@ -318,7 +318,7 @@ export const POST = withErrorHandling(async (request: Request) => {
       const parts = user.email.split("@");
       maskedEmail = parts[0].substring(0, 2) + "***@" + parts[1];
       // Send email in background - don't block the login response
-      const emailContent = email2FACodeEmail(code);
+      const emailContent = email2FACodeEmail(code, codeExpiryMinutes);
       setImmediate(() => {
         sendEmail({
           to: user.email,

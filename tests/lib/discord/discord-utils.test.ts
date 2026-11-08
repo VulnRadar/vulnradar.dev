@@ -112,6 +112,18 @@ describe("sendDiscordEmail2FACode", () => {
     expect(codeHash).toBe(expectedHash);
   });
 
+  it("tells the user the lifetime the code was stored with", async () => {
+    mockGetSetting.mockResolvedValue(3);
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    await sendDiscordEmail2FACode(42, "user@example.com");
+
+    expect(mockQuery.mock.calls[1][1][3]).toBe(3);
+    expect(mockSendEmail.mock.calls[0][0].text).toContain(
+      "It expires in 3 minutes.",
+    );
+  });
+
   it("swallows errors and logs, without throwing (background operation)", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mockQuery.mockRejectedValueOnce(new Error("db down"));
