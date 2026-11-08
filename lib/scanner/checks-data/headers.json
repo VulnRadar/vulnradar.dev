@@ -1140,14 +1140,16 @@
   {
     "id": "pragma-no-cache-legacy",
     "type": "header-present",
-    "title": "Legacy Pragma Header Used",
+    "title": "Pragma: no-cache Without a Cache-Control Directive",
     "category": "headers",
     "severity": "info",
-    "description": "Pragma: no-cache header present.",
+    "description": "Pragma: no-cache is set and no Cache-Control directive forbids caching. Pragma beside a Cache-Control that already does is a harmless pair for old proxies and is not reported.",
     "evidence": "Header absent or misconfigured for `headers-pragma-no-cache-legacy`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Legacy header, HTTP/1.0 only.",
-    "explanation": "Cache-Control is preferred for HTTP/1.1+.",
-    "fixSteps": ["Use Cache-Control instead of Pragma."],
+    "riskImpact": "The response looks uncacheable to whoever set the header, but HTTP/1.1 caches follow Cache-Control and do not act on Pragma in a response, so it can still be stored.",
+    "explanation": "Pragma comes from HTTP/1.0 and is only defined for requests. Current caches decide from Cache-Control, so a response that relies on Pragma alone has not said what it meant to say.",
+    "fixSteps": [
+      "If the response must not be cached, add Cache-Control: no-store. Pragma can stay beside it for very old proxies, or go."
+    ],
     "codeExamples": [
       {
         "label": "Replace Pragma: no-cache with Cache-Control",
@@ -1164,19 +1166,21 @@
   {
     "id": "expires-past",
     "type": "header-present",
-    "title": "Expires Header Set to Past",
+    "title": "Static Asset Expires in the Past",
     "category": "headers",
     "severity": "info",
-    "description": "Expires header set to date in the past.",
+    "description": "A static asset is sent with an Expires date in the past and no Cache-Control lifetime, so caches treat it as already stale. A past Expires on a page is the standard way to say do not cache and is not reported.",
     "evidence": "Header absent or misconfigured for `headers-expires-past`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Signals no caching to legacy proxies.",
-    "explanation": "Past expiry prevents legacy caching.",
-    "fixSteps": ["Use Cache-Control for modern caching control."],
+    "riskImpact": "Every visit re-requests a file that could have been cached, which costs load time and origin traffic. There is no direct security impact.",
+    "explanation": "Cache-Control overrides Expires, so this only matters when no Cache-Control directive sets a lifetime. A past date on a file usually comes from a server default meant for dynamic pages.",
+    "fixSteps": [
+      "Give static assets a lifetime with Cache-Control, for example public, max-age=31536000, immutable for fingerprinted files."
+    ],
     "codeExamples": [
       {
-        "label": "Remove Expires headers or set Cache-Control instead",
+        "label": "Set a Cache-Control lifetime on static assets",
         "language": "javascript",
-        "code": "// Expires header with a past date is a HTTP/1.0 mechanism, use Cache-Control\n// For no caching:\n// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Cache-Control\", value: \"no-store, max-age=0\" }] }];\n  },\n};\n// For long caching of static assets:\n// Cache-Control: public, max-age=31536000, immutable"
+        "code": "// Cache-Control overrides Expires, so a lifetime here wins over the past date.\n// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/assets/:path*\", headers: [{ key: \"Cache-Control\", value: \"public, max-age=31536000, immutable\" }] }];\n  },\n};"
       }
     ],
     "_idx": 53,
