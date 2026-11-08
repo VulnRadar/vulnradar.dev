@@ -23,7 +23,7 @@
  *   npm run db:create              # interactive (full flow)
  *   npm run db:create:dry-run      # preview only, no DB changes
  *
- * Requires DATABASE_URL in .env.local or as an environment variable.
+ * Requires DATABASE_URL in the environment, .env.local or .env.
  */
 
 import { resolve } from "node:path";
@@ -58,8 +58,10 @@ import {
   bootSchemaStatements,
   moduleStepStatements,
 } from "../_lib/_lib.schema-parity.mjs";
+import { pgPoolOptions } from "../_lib/_lib.db.mjs";
 import { getForeignKeys } from "../_lib/_lib.schema-introspect.mjs";
 import { planTableCopy } from "../_lib/_lib.table-copy.mjs";
+import { copyTableData, verifyCopiedCounts } from "./copy-table-data.mjs";
 import {
   applySchema,
   META_TABLE_SQL,
@@ -113,38 +115,6 @@ function schemaSourceLabel(version) {
 // target also has) by scripts/_lib/_lib.table-copy.mjs, ordered from the
 // target's real foreign keys, and everything skipped is named on screen.
 // The only list left is TRANSIENT_TABLES, in that module.
-
-// Hard-coded defaults for v1 -> v2 columns that are NOT NULL but missing in source.
-const COLUMN_DEFAULTS = {
-  scan_history: {
-    summary: "'{}'::jsonb",
-    findings: "'[]'::jsonb",
-    findings_count: "0",
-    duration: "0",
-    source: "'web'",
-  },
-};
-
-// v1 -> v2 column rename hints (old -> new).
-const COLUMN_RENAMES = {
-  scan_history: {
-    results: "findings",
-    scan_results: "findings",
-    result: "findings",
-  },
-};
-
-// JSON columns that v1 might store as text.
-const JSON_COLUMNS = {
-  scan_history: [
-    "summary",
-    "findings",
-    "metadata",
-    "results",
-    "scan_results",
-    "result",
-  ],
-};
 
 // ── Step 2: apply schema to the new database ────────────────────────────────
 
@@ -273,140 +243,6 @@ async function seedDefaultBadges(newPool) {
   }
 }
 
-// ── Step 3: copy data from source to target ────────────────────────────────
-async function copyTableData(originalPool, newPool, table, rowCount) {
-  // Get source columns
-  const colRes = await originalPool.query(
-    `SELECT column_name FROM information_schema.columns
-     WHERE table_name = $1 AND table_schema = 'public' ORDER BY ordinal_position`,
-    [table],
-  );
-  const sourceCols = colRes.rows.map((r) => r.column_name);
-
-  // Get target columns + nullability + default expression
-  const newColRes = await newPool.query(
-    `SELECT column_name, is_nullable, data_type, column_default FROM information_schema.columns
-     WHERE table_name = $1 AND table_schema = 'public'`,
-    [table],
-  );
-  const targetInfo = new Map(newColRes.rows.map((r) => [r.column_name, r]));
-  const targetCols = new Set(newColRes.rows.map((r) => r.column_name));
-
-  // Build column mapping (source -> target), applying renames.
-  const renames = COLUMN_RENAMES[table] || {};
-  const mapping = new Map();
-  for (const old of sourceCols) {
-    if (targetCols.has(old)) mapping.set(old, old);
-    else if (renames[old] && targetCols.has(renames[old]))
-      mapping.set(old, renames[old]);
-  }
-  const targetNames = [...mapping.values()];
-
-  // Find NOT NULL columns in target that aren't covered by mapping or defaults.
-  const defaults = COLUMN_DEFAULTS[table] || {};
-  const extraCols = [];
-  const extraVals = [];
-  for (const [name, targetColumnInfo] of targetInfo) {
-    if (mapping.has(name)) continue;
-    if (defaults[name] !== undefined) {
-      extraCols.push(name);
-      extraVals.push(defaults[name]);
-    } else if (
-      targetColumnInfo.is_nullable === "NO" &&
-      !targetColumnInfo.column_default
-    ) {
-      warn(
-        `  ${table}.${name} is NOT NULL with no default — skipping data copy.`,
-      );
-      return false;
-    }
-  }
-
-  // Read all rows from source
-  const rows = await originalPool.query(`SELECT * FROM "${table}"`);
-  if (rows.rows.length === 0) return true;
-
-  // Build INSERT
-  const allCols = [...targetNames, ...extraCols];
-  const placeholders = allCols.map((_, i) => `$${i + 1}`).join(", ");
-  const colList = allCols.map((c) => `"${c}"`).join(", ");
-  const jsonCols = new Set(JSON_COLUMNS[table] || []);
-
-  let inserted = 0;
-  let skipped = 0;
-  for (const row of rows.rows) {
-    const values = [
-      ...targetNames.map((t) => {
-        const v = row[mappingReverseGet(mapping, t)];
-        if (v == null) return null;
-        if (jsonCols.has(t)) {
-          // Always normalize to a JSON string so pg can cast to JSONB.
-          // Handles both TEXT source (parse + re-stringify) and JSONB source
-          // (already an object, just stringify). If anything is unserializable
-          // (NaN, circular refs, malformed text), set to null and warn.
-          try {
-            if (typeof v === "string") {
-              return JSON.stringify(JSON.parse(v));
-            }
-            return JSON.stringify(v);
-          } catch (err) {
-            warn(
-              `  Invalid JSON in ${table}.${t}: ${err.message.slice(0, 80)}`,
-            );
-            return null;
-          }
-        }
-        return v;
-      }),
-      ...extraVals,
-    ];
-    try {
-      // ON CONFLICT DO NOTHING handles conflicts on ANY unique constraint
-      // (PK, name, etc.) by silently skipping. The count below reflects
-      // actual inserts, not attempts, so the user sees the real result.
-      await newPool.query(
-        `INSERT INTO "${table}" (${colList}) VALUES (${placeholders})
-         ON CONFLICT DO NOTHING`,
-        values,
-      );
-      inserted++;
-    } catch (err) {
-      // FK violation: source has orphaned references (e.g. user_badges
-      // pointing at a badge_id that no longer exists). Log the row and skip.
-      skipped++;
-      const msg = err.message || "";
-      if (msg.includes("foreign key")) {
-        const fkMatch = msg.match(/"([^"]+)"/g);
-        const fkHint = fkMatch ? ` (${fkMatch.join(", ")})` : "";
-        warn(
-          `  Skipped ${table} row (FK violation${fkHint}): ${JSON.stringify(row).slice(0, 120)}`,
-        );
-      } else {
-        warn(`  Row insert failed in ${table}: ${msg}`);
-      }
-    }
-  }
-  if (skipped > 0) {
-    success(
-      `  ${table}: ${inserted}/${rowCount} rows copied (${skipped} skipped due to source data issues)`,
-    );
-  } else if (inserted < rowCount) {
-    success(
-      `  ${table}: ${inserted}/${rowCount} rows copied (${rowCount - inserted} skipped — target already has rows with conflicting keys)`,
-    );
-  } else {
-    success(`  ${table}: ${inserted}/${rowCount} rows copied`);
-  }
-  return true;
-}
-
-function mappingReverseGet(mapping, targetName) {
-  for (const [src, tgt] of mapping) {
-    if (tgt === targetName) return src;
-  }
-  return targetName;
-}
-
 /**
  * Read the target database's foreign keys so the copy inserts parents
  * before children. The TARGET's constraints are the ones that matter: that
@@ -469,29 +305,6 @@ async function migrateData(originalPool, newPool, plan) {
   log("");
   success("Data migration complete.");
   return { copied, refused };
-}
-
-/**
- * Compare row counts after the copy and shout about any table that lost
- * rows without saying so. copyTableData already reports per-table skips,
- * but only this check can catch a table that was silently short.
- *
- * Returns the list of shortfalls so the caller can set the exit code.
- */
-async function verifyCopiedCounts(newPool, copied) {
-  const shortfalls = [];
-  for (const { table, count } of copied) {
-    try {
-      const res = await newPool.query(
-        `SELECT COUNT(*)::int AS n FROM "${table}"`,
-      );
-      const got = res.rows[0].n;
-      if (got < count) shortfalls.push({ table, expected: count, got });
-    } catch (err) {
-      shortfalls.push({ table, expected: count, got: `error: ${err.message}` });
-    }
-  }
-  return shortfalls;
 }
 
 /**
@@ -814,7 +627,7 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
   // 'postgres' database. CREATE DATABASE works from any existing connection.
   section("Step 1: Creating New Database");
   const adminPool = new pg.Pool({
-    connectionString: buildConnectionString(sourceParsed, chosenSource),
+    ...pgPoolOptions(buildConnectionString(sourceParsed, chosenSource)),
     connectionTimeoutMillis: 10000,
   });
 
@@ -857,12 +670,8 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
   await adminPool.end();
 
   // ── Connect to new database ───────────────────────────────────────────────
-  const newUrl = process.env.DATABASE_URL.replace(
-    `/${chosenSource}`,
-    `/${newDbName}`,
-  );
   const newPool = new pg.Pool({
-    connectionString: newUrl,
+    ...pgPoolOptions(buildConnectionString(sourceParsed, newDbName)),
     connectionTimeoutMillis: 10000,
   });
   try {
@@ -942,13 +751,13 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
     section("Step 3: Data Migration");
     showDataMigrationPlan(plan);
     ({ copied, refused } = await migrateData(sourcePool, newPool, plan));
-    // Count-for-count check. copyTableData reports its own per-table skips,
-    // but only this catches a table that came up short without saying so.
-    shortfalls = await verifyCopiedCounts(newPool, copied);
+    // Count-for-count and type-for-type check. copyTableData reports its own
+    // per-table skips, but only this catches data lost without saying so.
+    shortfalls = await verifyCopiedCounts(sourcePool, newPool, copied);
     if (shortfalls.length > 0) {
       log("");
       error(
-        `${shortfalls.length} table(s) have fewer rows in the new database than in the source:`,
+        `${shortfalls.length} table(s) or JSON column(s) have fewer rows in the new database than in the source:`,
       );
       for (const s of shortfalls) {
         log(
@@ -1013,7 +822,7 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
     }
     if (shortfalls.length > 0) {
       log(
-        `    ${c.cyan}•${c.reset} ${c.red}${shortfalls.length} table(s) came up short -- see above${c.reset}`,
+        `    ${c.cyan}•${c.reset} ${c.red}${shortfalls.length} table(s) or JSON column(s) came up short -- see above${c.reset}`,
       );
     }
   } else if (hasSourceData) {
@@ -1025,7 +834,7 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
   log("");
   log(`  ${c.bold}Next steps:${c.reset}`);
   log(
-    `    1. Update ${c.bold}.env.local${c.reset} DATABASE_URL to point to ${c.bold}${newDbName}${c.reset}`,
+    `    1. Update DATABASE_URL in ${c.bold}.env.local${c.reset} or ${c.bold}.env${c.reset} to point to ${c.bold}${newDbName}${c.reset}`,
   );
   log(
     `    2. Run ${c.bold}npm run db:migrate${c.reset} to verify the migrator recognises the new schema`,
