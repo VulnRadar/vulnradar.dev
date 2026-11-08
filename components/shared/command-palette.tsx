@@ -41,6 +41,10 @@ import {
   ROUTES,
 } from "@/lib/config/client-constants";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
+import {
+  buildDocsSearchRecords,
+  docsRecordLabel,
+} from "@/components/docs/docs-search-records";
 
 interface PaletteEntry {
   id: string;
@@ -55,6 +59,22 @@ interface PaletteGroup {
   heading: string;
   entries: PaletteEntry[];
 }
+
+/**
+ * The docs search index, as palette rows. Sections stay out of the list until
+ * something is typed: every table-of-contents entry on open is a few hundred
+ * rows of noise between the reader and the page names.
+ */
+const DOCS_ENTRIES = buildDocsSearchRecords().map((record) => ({
+  isSection: Boolean(record.heading),
+  entry: {
+    id: `doc:${record.href}`,
+    label: docsRecordLabel(record),
+    href: record.href,
+    icon: BookOpen,
+    keywords: `${record.section} ${record.summary ?? ""} ${record.href}`,
+  } satisfies PaletteEntry,
+}));
 
 /**
  * Cmd/Ctrl-K palette, mounted once in app/layout.tsx through
@@ -78,6 +98,8 @@ export function CommandPalette({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [search, setSearch] = useState("");
+  const searching = search.trim() !== "";
   const router = useRouter();
   const pathname = usePathname();
   const { me, isStaff } = useAuth();
@@ -383,8 +405,16 @@ export function CommandPalette({
       ],
     });
 
+    out.push({
+      heading: "Docs",
+      entries: DOCS_ENTRIES.filter((row) => searching || !row.isSection).map(
+        (row) => row.entry,
+      ),
+    });
+
     return out;
   }, [
+    searching,
     isLoggedIn,
     isStaff,
     featureTeams,
@@ -414,6 +444,8 @@ export function CommandPalette({
         <CommandInput
           aria-label="Search pages and settings"
           placeholder="Jump to..."
+          value={search}
+          onValueChange={setSearch}
         />
         <CommandList>
           <CommandEmpty>Nothing matches that.</CommandEmpty>

@@ -1,7 +1,25 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/ui/utils";
 import type { TocItem } from "./docs-types";
+
+/** The element DocsRelated portals into, above the contents list. */
+export const DOCS_RAIL_SLOT_ID = "docs-rail-slot";
+
+/**
+ * Keeps `item` inside the rail's own viewport. Assigned to scrollTop rather
+ * than using scrollIntoView, which would also scroll the window and undo the
+ * reader's position on every section change.
+ */
+export function scrollRailToItem(rail: HTMLElement, item: HTMLElement) {
+  const top = item.offsetTop;
+  const bottom = top + item.offsetHeight;
+  if (top < rail.scrollTop) rail.scrollTop = top;
+  else if (bottom > rail.scrollTop + rail.clientHeight) {
+    rail.scrollTop = bottom - rail.clientHeight;
+  }
+}
 
 interface DocsTocProps {
   items: TocItem[];
@@ -10,13 +28,25 @@ interface DocsTocProps {
 
 /** The rail on the right, shown only where there is room for a third column. */
 export function DocsToc({ items, activeSection }: DocsTocProps) {
+  const railRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const rail = railRef.current;
+    const active = rail?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (rail && active) scrollRailToItem(rail, active);
+  }, [activeSection]);
+
   if (items.length === 0) return null;
 
   return (
     <aside className="hidden xl:block w-56 shrink-0">
       {/* Same offsets as the sidebar (docs-sidebar.tsx): the nav above moves
           down by the banner heights, so this has to as well. */}
-      <div className="sticky top-[calc(4rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] h-[calc(100vh-4rem-var(--vr-banner-h,0px)-var(--vr-imp-banner-h,0px))] overflow-y-auto py-8 px-4 transition-[top] duration-300">
+      <div
+        ref={railRef}
+        className="sticky top-[calc(4rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] h-[calc(100vh-4rem-var(--vr-banner-h,0px)-var(--vr-imp-banner-h,0px))] overflow-y-auto py-8 px-4 transition-[top] duration-300"
+      >
+        <div id={DOCS_RAIL_SLOT_ID} />
         <h2 className="mb-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           On this page
         </h2>
@@ -41,53 +71,5 @@ export function DocsToc({ items, activeSection }: DocsTocProps) {
         </nav>
       </div>
     </aside>
-  );
-}
-
-/**
- * The same contents inline above the article, for the widths where the right
- * rail is hidden. Without it, a reader on a laptop or a phone has no way to
- * see the shape of a 700-line page except by scrolling it.
- *
- * <details> rather than a custom disclosure: it is keyboard operable and
- * announced correctly with no JavaScript of ours in the path.
- */
-export function DocsInlineToc({ items }: { items: TocItem[] }) {
-  if (items.length === 0) return null;
-
-  return (
-    <details className="xl:hidden mt-8 rounded-lg border border-border/60 bg-muted/30">
-      <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-foreground marker:content-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset rounded-lg">
-        On this page
-        <span className="ml-2 text-xs font-normal text-muted-foreground tabular-nums">
-          {items.length} sections
-        </span>
-      </summary>
-      <nav
-        aria-label="On this page"
-        className="border-t border-border/60 px-2 py-2"
-      >
-        <ul>
-          {items.map((item) => (
-            <li key={item.id}>
-              <a
-                href={`#${item.id}`}
-                className={cn(
-                  // py-2.5 rather than py-1.5: 40px instead of 32px, which
-                  // is the difference between a comfortable and a fiddly tap
-                  // on a phone-sized table of contents.
-                  "block rounded-md px-2 py-2.5 text-sm text-muted-foreground transition-colors",
-                  "hover:bg-muted hover:text-foreground",
-                  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-                  item.level === 2 && "pl-6 text-[13px]",
-                )}
-              >
-                {item.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
-    </details>
   );
 }

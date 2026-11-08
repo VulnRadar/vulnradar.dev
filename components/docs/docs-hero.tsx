@@ -1,13 +1,15 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { cn } from "@/lib/ui/utils";
-import { useDocsContext } from "./docs-shell";
-import { DocsInlineToc } from "./docs-toc";
+import { DOCS_ANCHOR_OFFSET } from "./docs-prose";
+import { docsPageContext } from "./docs-nav";
 import type { QuickStat } from "./docs-types";
 
 interface DocsHeroProps {
   id?: string;
-  badge: string;
+  /** Overrides the kicker the registry supplies. */
+  badge?: string;
   title: string;
   description: string;
   stats?: QuickStat[];
@@ -15,9 +17,8 @@ interface DocsHeroProps {
 }
 
 /**
- * The one <h1> on a docs page, plus the on-page contents for the widths
- * where the right-hand rail is hidden. The contents live here rather than in
- * the shell so they land directly under the title instead of above it.
+ * The one <h1> on a docs page. The kicker above it comes from the registry
+ * during render, like the contents rail, so it is in the server's HTML.
  */
 export function DocsHero({
   id = "overview",
@@ -27,10 +28,16 @@ export function DocsHero({
   stats,
   className,
 }: DocsHeroProps) {
-  const { tocItems } = useDocsContext();
+  const pathname = usePathname();
+  const { section, stepIndex } = docsPageContext(pathname);
+  const kicker =
+    badge ??
+    (section && stepIndex
+      ? `${section.title}: step ${stepIndex} of ${section.items.length}`
+      : section?.title);
 
   return (
-    <section id={id} className={cn("scroll-mt-24", className)}>
+    <section id={id} className={cn(DOCS_ANCHOR_OFFSET, className)}>
       {/* The category was an outline Badge pill, which put a third label
           shape above the title: the breadcrumb reads "Docs / Rate Limits" in
           small muted sans directly above it. A tracked mono kicker is a
@@ -40,9 +47,11 @@ export function DocsHero({
           text-primary/70: the opacity form does not hit the .text-primary
           remap in globals.css, so in light mode it was painting the non-AA
           --primary at 70%. */}
-      <p className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
-        {badge}
-      </p>
+      {kicker && (
+        <p className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+          {kicker}
+        </p>
+      )}
       {/* Tier A from STYLE.md. This was text-2xl sm:text-3xl, a third H1
           size that belonged to neither tier and left only a 4px gap to the
           section headings below it. */}
@@ -72,8 +81,6 @@ export function DocsHero({
           ))}
         </dl>
       )}
-
-      <DocsInlineToc items={tocItems} />
     </section>
   );
 }

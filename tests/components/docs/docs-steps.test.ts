@@ -32,7 +32,10 @@ describe("DocsSteps", () => {
   it("uses nothing that needs one", () => {
     expect(code).not.toMatch(/\buse[A-Z]\w*\(/);
     expect(code).not.toMatch(/\bon[A-Z]\w*=\{/);
-    expect(code).not.toMatch(/from\s+["'](react|next\/navigation)["']/);
+    // A type-only import of ReactNode is erased, so it is not a client boundary.
+    expect(code).not.toMatch(
+      /import\s+\{[^}]*\}\s+from\s+["'](react|next\/navigation)["']/,
+    );
     expect(code).not.toMatch(/\b(window|document|localStorage)\b/);
   });
 

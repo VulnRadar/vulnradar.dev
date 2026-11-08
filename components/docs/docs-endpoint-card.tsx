@@ -1,13 +1,43 @@
 "use client";
 
-import { Card } from "@/components/ui/card";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/shared/callout";
+import { ROUTES } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { CodeBlock } from "./docs-code-block";
+import { DOCS_ANCHOR_OFFSET } from "./docs-prose";
 import { ParamTable } from "./docs-table";
-import { type Endpoint, METHOD_COLORS } from "./docs-types";
-import { LeadingIcon } from "@/components/shared/leading-icon";
+import { DocsTabs } from "./docs-tabs";
+import {
+  type Endpoint,
+  type EndpointNote,
+  METHOD_COLORS,
+  STATUS_TEXT,
+} from "./docs-types";
+
+/** Past five notes a card is an essay; the page's prose is the place for it. */
+export const MAX_ENDPOINT_NOTES = 5;
+
+const blockLabel = "mb-3 text-sm font-semibold text-foreground";
+/** A code block sitting inside the card is a nested panel, so it takes the quiet tone. */
+const nestedCode = "border-border/50 bg-card/50";
+
+/**
+ * The cap is on the new shape only. Cards still using plain strings carry up
+ * to fourteen today, and capping those here would silently delete reference
+ * material before anyone had moved it somewhere else.
+ */
+function normalizeNotes(notes: Endpoint["notes"] = []): EndpointNote[] {
+  const legacy = notes.flatMap((note): EndpointNote[] =>
+    typeof note === "string" ? [{ tone: "info", body: note }] : [],
+  );
+  const structured = notes
+    .filter((note): note is EndpointNote => typeof note !== "string")
+    .slice(0, MAX_ENDPOINT_NOTES);
+  return [...legacy, ...structured];
+}
 
 export function EndpointCard({
   id,
@@ -17,18 +47,36 @@ export function EndpointCard({
   description,
   requestBody,
   responseExample,
+  successStatus = 200,
+  bodyParams,
   queryParams,
   pathParams,
   errors,
   notes,
+  auth,
+  tryIt,
 }: Endpoint) {
+  const status = `${successStatus} ${STATUS_TEXT[successStatus] ?? ""}`.trim();
+  const allNotes = normalizeNotes(notes);
+  const listNotes = allNotes.filter((note) => note.tone !== "warning");
+  const warnings = allNotes.filter((note) => note.tone === "warning");
+
+  const response = responseExample ? (
+    <CodeBlock code={responseExample} title={status} className={nestedCode} />
+  ) : (
+    <p className="text-sm text-muted-foreground">{status}, with no body.</p>
+  );
+
   return (
     // No hover treatment. The card used to lighten its border on hover,
     // which promises a click on a reference block that does not navigate
     // anywhere.
-    <Card
+    <div
       id={id}
-      className="p-4 sm:p-6 border-border/50 bg-card/50 scroll-mt-24"
+      className={cn(
+        "rounded-xl border border-border bg-card p-4 sm:p-6",
+        DOCS_ANCHOR_OFFSET,
+      )}
     >
       {/* The method and path are the endpoint's identity, so they lead and
           they are the largest thing in the card. */}
@@ -44,6 +92,20 @@ export function EndpointCard({
         <code className="rounded bg-primary/5 px-2 py-0.5 font-mono text-[13px] sm:text-sm break-all text-primary">
           {path}
         </code>
+        {tryIt && (
+          <Button
+            asChild
+            size="sm"
+            variant="outline"
+            className="h-11 w-full sm:ml-auto sm:h-8 sm:w-auto"
+          >
+            <Link
+              href={`${ROUTES.API_PLAYGROUND}?op=${encodeURIComponent(tryIt)}`}
+            >
+              Try it
+            </Link>
+          </Button>
+        )}
       </div>
 
       {/* The human name for the endpoint. At text-sm font-medium it was set
@@ -53,25 +115,23 @@ export function EndpointCard({
         {title}
       </h3>
 
-      <p className="mb-5 sm:mb-6 max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+      <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
         {description}
       </p>
 
-      {/* Five uppercase labels stacked with equal air between them read as
-          one list of five things rather than as request, response and
-          errors. A hairline between the blocks says where each one ends. */}
-      <div className="divide-y divide-border/40 [&>div]:py-5 [&>div:first-child]:pt-0 [&>div:last-child]:pb-0">
-        {/* Path and query parameters. These used to be hand-written flex rows
-            here while components/docs/docs-table.tsx exported a purpose-built
-            ParamTable that took this exact EndpointParam[] and no page ever
-            rendered. Two rendering paths for the same data meant a styling or
-            accessibility fix applied to the table never reached /docs/api, and
-            the hand-rolled version dropped the default column entirely. */}
+      {auth && (
+        <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+          Auth: {auth}
+        </p>
+      )}
+
+      {/* Blocks stacked with equal air between them read as one list rather
+          than as request, response and errors. A hairline between the blocks
+          says where each one ends. */}
+      <div className="mt-5 divide-y divide-border/40 [&>div]:py-5 [&>div:first-child]:pt-0 [&>div:last-child]:pb-0 sm:mt-6">
         {pathParams && pathParams.length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              Path Parameters
-            </h4>
+            <h4 className={blockLabel}>Path parameters</h4>
             <ParamTable
               params={pathParams}
               caption={`Path parameters for ${method} ${path}`}
@@ -81,9 +141,7 @@ export function EndpointCard({
 
         {queryParams && queryParams.length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              Query Parameters
-            </h4>
+            <h4 className={blockLabel}>Query parameters</h4>
             <ParamTable
               params={queryParams}
               caption={`Query parameters for ${method} ${path}`}
@@ -91,53 +149,70 @@ export function EndpointCard({
           </div>
         )}
 
-        {/* Request Body */}
-        {requestBody && (
+        {bodyParams && bodyParams.length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              Request Body
-            </h4>
-            <CodeBlock code={requestBody} />
+            <h4 className={blockLabel}>Request body</h4>
+            <ParamTable
+              params={bodyParams}
+              caption={`Request body fields for ${method} ${path}`}
+            />
           </div>
         )}
 
-        {/* Response */}
+        {/* Request and response are tabs so the card is one code block tall
+            instead of two, which on a phone was two screens per endpoint. */}
         <div>
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-            Response{" "}
-            <Badge variant="outline" className="ml-2 text-[10px]">
-              200 OK
-            </Badge>
-          </h4>
-          <CodeBlock code={responseExample} />
+          {requestBody ? (
+            <DocsTabs
+              label={`Examples for ${method} ${path}`}
+              tabs={[
+                {
+                  id: "request",
+                  label: "Request",
+                  content: (
+                    <CodeBlock code={requestBody} className={nestedCode} />
+                  ),
+                },
+                {
+                  id: "response",
+                  label: `Response ${successStatus}`,
+                  content: response,
+                },
+              ]}
+            />
+          ) : (
+            <>
+              <h4 className={blockLabel}>Response</h4>
+              {response}
+            </>
+          )}
         </div>
 
-        {/* Notes */}
-        {notes && notes.length > 0 && (
-          <div className="space-y-2">
-            {notes.map((note, i) => (
-              <div
-                key={i}
-                className="flex items-start gap-2 text-xs text-muted-foreground"
-              >
-                <LeadingIcon
-                  icon={CheckCircle}
-                  line="xs"
-                  size="sm"
-                  className="text-primary"
-                />
-                <span className="min-w-0 wrap-break-word">{note}</span>
-              </div>
+        {warnings.length > 0 && (
+          <div className="space-y-3">
+            {warnings.map((note, i) => (
+              <Callout key={i} variant="warning">
+                {note.body}
+              </Callout>
             ))}
           </div>
         )}
 
-        {/* Errors */}
+        {listNotes.length > 0 && (
+          <div>
+            <ul className="list-disc space-y-1.5 pl-5 text-sm">
+              {listNotes.map((note, i) => (
+                <li key={i} className="min-w-0 wrap-break-word">
+                  {note.body}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {errors && errors.length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              Error Responses
-            </h4>
+            <h4 className={blockLabel}>Error responses</h4>
             <div className="space-y-2">
               {errors.map((error) => (
                 <div
@@ -156,6 +231,6 @@ export function EndpointCard({
           </div>
         )}
       </div>
-    </Card>
+    </div>
   );
 }

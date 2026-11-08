@@ -1,69 +1,112 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/ui/utils";
 import { modalCloseChip } from "@/components/ui/modal-grammar";
 import { useInertBackground } from "@/lib/hooks/use-modal-a11y";
-import { List, X } from "lucide-react";
-import { DOCS_NAV, isNavItemActive } from "./docs-nav";
+import { X } from "lucide-react";
+import { DOCS_NAV, docsPageContext, isNavItemActive } from "./docs-nav";
+import { DocsSearchButton } from "./docs-search";
+import {
+  DocsTabStrip,
+  panelDomId,
+  tabDomId,
+  type DocsTabDef,
+} from "./docs-tab-strip";
 import type { TocItem } from "./docs-types";
 
-interface DocsMobileNavProps {
+export type DocsDrawerTab = "page" | "all";
+
+/** A page with an outline opens on it: that is why the bar got pressed. */
+export function defaultDrawerTab(tocItems: TocItem[]): DocsDrawerTab {
+  return tocItems.length > 0 ? "page" : "all";
+}
+
+/**
+ * The bar under the site nav, in flow and sticky: search on the left, where
+ * you are on the right. It replaced a floating pill that sat over the content,
+ * and it stays until the right rail exists at xl so a laptop-width reader
+ * still has the outline. Search is also in the sidebar from lg.
+ */
+export function DocsMobileBar({
+  tocItems,
+  activeSection,
+  isOpen,
+  onOpen,
+}: {
   tocItems: TocItem[];
   activeSection: string;
   isOpen: boolean;
-  onClose: () => void;
-}
-
-export function DocsMobileNavTrigger({
-  isOpen,
-  onToggle,
-}: {
-  isOpen: boolean;
-  onToggle: () => void;
+  onOpen: () => void;
 }) {
+  const pathname = usePathname();
+  const { current } = docsPageContext(pathname);
+  const section =
+    tocItems.find((item) => item.id === activeSection) ?? tocItems[0];
+
   return (
-    // Below lg this button is the only route to the docs sidebar and the
-    // on-page table of contents, and it sat in the 80-120px band the cookie
-    // notice covers on a phone. Offset above whatever height that bar is
-    // currently reporting (0px when it is dismissed or absent).
-    <div className="lg:hidden fixed right-4 bottom-[calc(5rem+var(--vr-cookie-h,0px))] z-50">
+    <div
+      className={cn(
+        "sticky top-[calc(3.5rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] z-30 h-11 -mx-4 -mt-6 mb-6 flex items-stretch justify-between gap-3 border-b border-border/50 bg-background/95 px-4 backdrop-blur-xs transition-[top] duration-300 sm:-mx-6 sm:-mt-8 sm:px-6 lg:-mx-10 lg:-mt-10 lg:mb-10 lg:px-10",
+        tocItems.length > 0 ? "xl:hidden" : "lg:hidden",
+      )}
+    >
+      <DocsSearchButton compact className="shrink-0 lg:invisible" />
       <button
         type="button"
-        onClick={onToggle}
+        onClick={onOpen}
         aria-expanded={isOpen}
         aria-controls="docs-mobile-nav"
-        className={cn(
-          "flex items-center gap-2 rounded-full bg-primary px-3.5 py-2.5 text-sm font-medium text-primary-foreground shadow-lg",
-          "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-        )}
+        className="min-w-0 truncate text-right text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       >
-        <List className="h-4 w-4" aria-hidden="true" />
-        <span>Contents</span>
+        {section
+          ? `On this page: ${section.label}`
+          : (current?.label ?? "All docs")}
       </button>
     </div>
   );
 }
 
-export function DocsMobileNav({
+interface DocsMobileNavProps {
+  tocItems: TocItem[];
+  activeSection: string;
+  /** Which tab to open on; null while the drawer is closed. */
+  openTab: DocsDrawerTab | null;
+  onClose: () => void;
+}
+
+/** Mounted only while open, so every opening starts on its default tab. */
+export function DocsMobileNav({ openTab, ...rest }: DocsMobileNavProps) {
+  if (openTab === null) return null;
+  return <DocsDrawer initialTab={openTab} {...rest} />;
+}
+
+const DRAWER_TABS: (DocsTabDef & { id: DocsDrawerTab })[] = [
+  { id: "page", label: "This page" },
+  { id: "all", label: "All docs" },
+];
+
+function DocsDrawer({
   tocItems,
   activeSection,
-  isOpen,
+  initialTab,
   onClose,
-}: DocsMobileNavProps) {
+}: Omit<DocsMobileNavProps, "openTab"> & { initialTab: DocsDrawerTab }) {
   const pathname = usePathname();
+  const { section: currentSection } = docsPageContext(pathname);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const [tab, setTab] = useState<DocsDrawerTab>(initialTab);
+  const baseId = useId().replace(/:/g, "");
+  const tabs = tocItems.length > 0 ? DRAWER_TABS : [DRAWER_TABS[1]];
 
-  // The half the hand-rolled trap below never did. This drawer declares
-  // aria-modal="true", which promises the page behind it is inert; the trap
-  // only stopped Tab from walking out, leaving a screen-reader user free to
-  // swipe straight past the drawer into content the attribute says is not
-  // there. Shared with every modal in the product rather than written a
+  // This drawer declares aria-modal="true", which promises the page behind it
+  // is inert. Shared with every modal in the product rather than written a
   // third time.
-  useInertBackground(isOpen, panelRef);
+  useInertBackground(true, panelRef);
 
   // Escape closes the drawer, and focus moves into it on open so a keyboard
   // user is not left tabbing through the page behind it.
@@ -74,7 +117,6 @@ export function DocsMobileNav({
   // The page also scroll-chained at the drawer's ends, so reaching the bottom
   // of the nav started scrolling the article underneath.
   useEffect(() => {
-    if (!isOpen) return;
     // a11y (SC 2.4.3): remember where focus came from. Closing with Escape or
     // the X used to drop focus to <body>, so the next Tab restarted at the
     // top of the document rather than at the trigger the user opened this
@@ -121,9 +163,18 @@ export function DocsMobileNav({
       document.body.style.overflow = previousOverflow;
       previouslyFocused?.focus();
     };
-  }, [isOpen, onClose]);
+  }, [onClose]);
 
-  if (!isOpen) return null;
+  // Centre the current link, in the drawer's own scroller. A long list opened
+  // at its top put the page you are on a full screen below the fold.
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    const link = scroller?.querySelector<HTMLElement>("[aria-current]");
+    if (scroller && link) {
+      scroller.scrollTop =
+        link.offsetTop - scroller.clientHeight / 2 + link.offsetHeight / 2;
+    }
+  }, [tab]);
 
   return (
     <div
@@ -141,13 +192,10 @@ export function DocsMobileNav({
       // variables are the same banner heights the nav adds to its own `top`
       // (site-notifications.tsx and admin/impersonation-banner.tsx), so the
       // drawer follows it down when either banner is up.
-      className="lg:hidden fixed inset-x-0 bottom-0 top-[calc(3.5rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] z-40 bg-background/95 backdrop-blur-xs transition-[top] duration-300"
+      className="xl:hidden fixed inset-x-0 bottom-0 top-[calc(3.5rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] z-40 flex flex-col bg-background/95 backdrop-blur-xs transition-[top] duration-300"
     >
-      {/* The close button used to be absolutely positioned inside the
-          scrolling element itself, so on a drawer holding 20 nav links plus
-          the page TOC (easily 1200px against a 667px phone) it scrolled out of
-          reach on the first swipe. It is a direct child of the fixed shell
-          now, and only the content below it scrolls. */}
+      {/* A direct child of the fixed shell, so it does not scroll away with
+          the links. */}
       <button
         ref={closeRef}
         type="button"
@@ -158,76 +206,90 @@ export function DocsMobileNav({
         <X className="h-5 w-5" aria-hidden="true" />
       </button>
 
-      <div className="h-full overflow-y-auto overscroll-contain px-4 pb-24 pt-16 sm:px-6">
-        <nav aria-label="Documentation" className="space-y-6">
-          {DOCS_NAV.map((section) => (
-            <div key={section.title}>
-              <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                {section.title}
-              </h2>
-              <ul className="space-y-1">
-                {section.items.map((item) => {
-                  const isActive = isNavItemActive(item, pathname);
-                  return (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        onClick={onClose}
-                        aria-current={isActive ? "page" : undefined}
-                        className={cn(
-                          "block rounded-lg px-3 py-2.5 transition-colors",
-                          "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-                          isActive
-                            ? "bg-primary/10 text-primary"
-                            : "text-foreground hover:bg-muted",
-                        )}
-                      >
-                        <span className="block text-sm font-medium">
-                          {item.label}
-                        </span>
-                        {item.summary && (
-                          <span className="mt-0.5 block text-xs text-muted-foreground">
-                            {item.summary}
-                          </span>
-                        )}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
-        </nav>
+      {/* pr-14 keeps the tabs clear of the close chip in the same corner. */}
+      <div className="shrink-0 pl-4 pr-14 pt-2 sm:pl-6">
+        <DocsTabStrip
+          tabs={tabs}
+          active={tab}
+          onSelect={(id) => setTab(id as DocsDrawerTab)}
+          baseId={baseId}
+          label="Documentation navigation"
+        />
+      </div>
 
-        {tocItems.length > 0 && (
-          <div className="mt-8 border-t border-border pt-6">
-            <h2 className="mb-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              On this page
-            </h2>
-            <nav aria-label="On this page" className="space-y-0.5">
-              {tocItems.map((item) => (
-                <a
-                  key={item.id}
-                  href={`#${item.id}`}
-                  onClick={onClose}
-                  aria-current={activeSection === item.id ? "true" : undefined}
-                  className={cn(
-                    // min-h-11 (44px): this is a touch-only surface, so the
-                    // on-this-page links were the one place in the mobile
-                    // nav still under the minimum target size.
-                    "flex min-h-11 items-center rounded-md px-3 py-2 text-sm transition-colors",
-                    "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-                    item.level === 2 && "pl-6",
-                    activeSection === item.id
-                      ? "bg-primary/5 font-medium text-primary"
-                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                  )}
-                >
-                  {item.label}
-                </a>
-              ))}
-            </nav>
-          </div>
+      <div
+        ref={scrollerRef}
+        role="tabpanel"
+        id={panelDomId(baseId, tab)}
+        aria-labelledby={tabDomId(baseId, tab)}
+        // pb reads --vr-cookie-h: the notice is fixed to this same bottom edge
+        // and would otherwise cover the last links.
+        className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-[calc(1.5rem+var(--vr-cookie-h,0px))] sm:px-6"
+      >
+        {tab === "page" ? (
+          <nav aria-label="On this page" className="space-y-0.5">
+            {tocItems.map((item) => (
+              <a
+                key={item.id}
+                href={`#${item.id}`}
+                onClick={onClose}
+                aria-current={activeSection === item.id ? "true" : undefined}
+                className={cn(
+                  // min-h-11 (44px): this is a touch-only surface.
+                  "flex min-h-11 items-center rounded-md px-3 py-2 text-sm transition-colors",
+                  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                  item.level === 2 && "pl-6",
+                  activeSection === item.id
+                    ? "bg-primary/5 font-medium text-primary"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                )}
+              >
+                {item.label}
+              </a>
+            ))}
+          </nav>
+        ) : (
+          <nav aria-label="Documentation" className="space-y-6">
+            {DOCS_NAV.map((section) => (
+              <div key={section.id}>
+                <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {section.title}
+                </h2>
+                <ul className="space-y-1">
+                  {section.items.map((item) => {
+                    const isActive = isNavItemActive(item, pathname);
+                    return (
+                      <li key={item.href}>
+                        <Link
+                          href={item.href}
+                          onClick={onClose}
+                          aria-current={isActive ? "page" : undefined}
+                          className={cn(
+                            "flex min-h-11 flex-col justify-center rounded-lg px-3 py-1.5 transition-colors",
+                            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                            isActive
+                              ? "bg-primary/10 text-primary"
+                              : "text-foreground hover:bg-muted",
+                          )}
+                        >
+                          <span className="block text-sm font-medium">
+                            {item.label}
+                          </span>
+                          {/* Only the group you are in: twenty-four summaries
+                              were most of why the list ran 1,700px. */}
+                          {section.id === currentSection?.id && (
+                            <span className="mt-0.5 block text-xs text-muted-foreground">
+                              {item.summary}
+                            </span>
+                          )}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </nav>
         )}
       </div>
     </div>

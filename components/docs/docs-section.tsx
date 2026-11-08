@@ -2,13 +2,15 @@
 
 import { Link as LinkIcon } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { DOCS_ANCHOR_OFFSET, DOCS_PROSE, slugifyHeading } from "./docs-prose";
 
 /**
  * A permalink beside a heading. Docs get quoted in issues and chat, and a
  * section nobody can link to gets described from memory instead.
  *
  * Hidden until the heading is hovered or the link itself is focused, so it
- * stays reachable by keyboard without adding a hash to every heading.
+ * stays reachable by keyboard without adding a hash to every heading. A touch
+ * screen has no hover, so there it stays faintly visible.
  */
 function AnchorLink({ id, label }: { id: string; label: string }) {
   return (
@@ -17,7 +19,7 @@ function AnchorLink({ id, label }: { id: string; label: string }) {
       aria-label={`Link to ${label}`}
       className={cn(
         // h-6 w-6: the icon alone is 14px, under the 24px target minimum.
-        "ml-1 inline-flex h-6 w-6 items-center justify-center align-middle text-muted-foreground opacity-0 transition-opacity",
+        "ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center align-middle text-muted-foreground opacity-0 transition-opacity [@media(hover:none)]:opacity-40",
         "group-hover:opacity-100 focus-visible:opacity-100",
         "hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded-sm",
       )}
@@ -26,21 +28,6 @@ function AnchorLink({ id, label }: { id: string; label: string }) {
     </a>
   );
 }
-
-/** House reading measure, the same one components/docs/docs-callout.tsx uses. */
-const PROSE_MEASURE = "[&>p]:max-w-[68ch]";
-
-/**
- * The paragraph immediately after the section heading, set one step larger.
- *
- * Every section on a docs page opened with a paragraph that summarised it,
- * drawn at exactly the weight, size and colour of the six paragraphs after
- * it, so the summary was invisible as one and the page read as an unbroken
- * column. `section > h2 + p` picks out the lead and nothing else, and it
- * outranks the `text-sm` on the call site, which is what lets this apply to
- * all twenty-three pages without editing five hundred paragraphs.
- */
-const LEAD_PARAGRAPH = "[&>h2+p]:text-[15px] [&>h2+p]:text-foreground/80";
 
 interface DocsSectionProps {
   id: string;
@@ -59,25 +46,17 @@ export function DocsSection({
     <section
       id={id}
       aria-labelledby={`${id}-heading`}
-      className={cn(
-        "scroll-mt-24 space-y-4 sm:space-y-6",
-        // The 68ch measure lives here rather than on each page's paragraphs,
-        // where eight of the twenty docs pages had forgotten it and ran prose
-        // at ~124 characters per line on a 1440px screen. Scoped to direct
-        // child <p> so tables, code blocks and grids still use the full column.
-        PROSE_MEASURE,
-        LEAD_PARAGRAPH,
-        className,
-      )}
+      className={cn(DOCS_ANCHOR_OFFSET, "space-y-4", DOCS_PROSE, className)}
     >
       {/* text-xl/2xl, not text-lg/xl. The page had four type sizes inside
           6px of each other (h1 24, h2 20, h3 16, body 14), which is not a
           hierarchy you can skim on a 700-line reference page: you had to read
           a heading to know it was one. With the h1 on the documented Tier A
-          (30/36) the ladder is now 36 / 24 / 16 / 14. */}
+          (30/36) the ladder is now 36 / 24 / 17 / 15. No rule under it: the
+          spacing between sections already draws that line. */}
       <h2
         id={`${id}-heading`}
-        className="group flex items-center gap-2 border-b border-border/50 pb-2.5 text-xl sm:text-2xl font-semibold tracking-tight text-foreground"
+        className="group flex items-center gap-2 text-xl sm:text-2xl font-semibold tracking-tight text-foreground"
       >
         <span>{title}</span>
         <AnchorLink id={id} label={title} />
@@ -88,7 +67,7 @@ export function DocsSection({
 }
 
 interface DocsSubSectionProps {
-  /** Set this when the page's table of contents links to the subsection. */
+  /** Defaults to a slug of the title, so every subsection can be linked to. */
   id?: string;
   title: string;
   children: React.ReactNode;
@@ -101,10 +80,17 @@ export function DocsSubSection({
   children,
   className,
 }: DocsSubSectionProps) {
+  const anchor = id ?? slugifyHeading(title);
+
   return (
     <div
-      id={id}
-      className={cn("scroll-mt-24 space-y-3", PROSE_MEASURE, className)}
+      id={anchor}
+      className={cn(
+        DOCS_ANCHOR_OFFSET,
+        "space-y-3 pt-6 first:pt-0",
+        DOCS_PROSE,
+        className,
+      )}
     >
       {/* The tick is the only thing at this level that carries the brand
           colour, and it is what makes an h3 findable when four of them run
@@ -113,13 +99,13 @@ export function DocsSubSection({
           clip against the 16px gutter at 375px; the tick keeps the block's
           left edge and the title sits 12px in, which reads as one level of
           nesting on its own. */}
-      <h3 className="group flex items-center gap-2.5 text-base font-semibold tracking-tight text-foreground">
+      <h3 className="group flex items-center gap-2.5 text-base sm:text-[17px] font-semibold tracking-tight text-foreground">
         <span
           aria-hidden="true"
           className="h-4 w-0.5 shrink-0 rounded-full bg-primary/70"
         />
         <span>{title}</span>
-        {id && <AnchorLink id={id} label={title} />}
+        <AnchorLink id={anchor} label={title} />
       </h3>
       {children}
     </div>

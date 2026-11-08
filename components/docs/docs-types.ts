@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 export type DocsAudience = "use" | "build" | "run" | "shared";
 export type DocsTemplate = "quickstart" | "guide" | "reference" | "concept";
 
@@ -10,14 +12,18 @@ export interface TocItem {
 export interface NavItem {
   href: string;
   label: string;
-  /** One line describing what the page answers. Shown in the mobile nav. */
-  summary?: string;
+  /** One line describing what the page answers. Drawer and search. */
+  summary: string;
   /** Which required sections the page owes: tests/repo/docs-templates.test.ts. */
-  template?: DocsTemplate;
+  template: DocsTemplate;
   /** The page's file, for "Edit this page", last-updated and the repo tests. */
-  source?: string;
-  /** Static table of contents, so the shell needs no effect to know it. */
-  toc?: TocItem[];
+  source: string;
+  /**
+   * Static table of contents, one module per page under components/docs/toc,
+   * so the shell needs no effect to know it and a page that changes its
+   * sections edits that module rather than this table.
+   */
+  toc: TocItem[];
   exact?: boolean;
   /** Pages nested under this one, listed once in DOCS_PAGES after it. */
   children?: NavItem[];
@@ -28,9 +34,9 @@ export interface NavItem {
  * they are in the whole set: guides first, then reference material.
  */
 export interface NavSection {
-  id?: string;
+  id: string;
   title: string;
-  audience?: DocsAudience;
+  audience: DocsAudience;
   /** Numbered and read in order; the pager says "Step n of N". */
   path?: boolean;
   items: NavItem[];
@@ -50,6 +56,12 @@ export interface EndpointError {
   description: string;
 }
 
+export interface EndpointNote {
+  /** A warning renders as a Callout; everything else is a plain list item. */
+  tone: "info" | "warning";
+  body: ReactNode;
+}
+
 export interface Endpoint {
   id: string;
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -58,12 +70,28 @@ export interface Endpoint {
   description: string;
   requestBody?: string;
   responseExample: string;
+  /** Defaults to 200. */
+  successStatus?: number;
+  /** The request body's fields, listed above the example. */
+  bodyParams?: EndpointParam[];
   queryParams?: EndpointParam[];
   pathParams?: EndpointParam[];
   errors?: EndpointError[];
-  notes?: string[];
-  auth?: boolean;
+  /** Plain strings are the old form, accepted for one release. */
+  notes?: (string | EndpointNote)[];
+  /** "API key with `scan:write`, or a session", or "Session only". */
+  auth?: ReactNode;
+  /** Playground operation id; adds a "Try it" link to it. */
+  tryIt?: string;
 }
+
+/** Reason phrases for the success codes an endpoint card can show. */
+export const STATUS_TEXT: Record<number, string> = {
+  200: "OK",
+  201: "Created",
+  202: "Accepted",
+  204: "No Content",
+};
 
 export interface QuickStat {
   value: string;

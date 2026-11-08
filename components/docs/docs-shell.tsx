@@ -1,58 +1,75 @@
 "use client";
 
-import { useState, useEffect, createContext, useContext } from "react";
-import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Footer } from "@/components/scanner/footer";
 import { LandingNav } from "@/components/landing/landing-nav";
+import { resolveMovedAnchor } from "@/lib/docs/moved-anchors";
+import { DocsContext, ignoreTocItems, useDocsContext } from "./docs-context";
 import { DocsSidebar } from "./docs-sidebar";
 import { DocsToc } from "./docs-toc";
-import { DocsMobileNavTrigger, DocsMobileNav } from "./docs-mobile-nav";
+import {
+  DocsMobileBar,
+  DocsMobileNav,
+  defaultDrawerTab,
+  type DocsDrawerTab,
+} from "./docs-mobile-nav";
+import { docsPageContext } from "./docs-nav";
+import { DocsPageFooter } from "./docs-page-footer";
 import { DocsBreadcrumb, DocsPager } from "./docs-pager";
+import { DocsSearch } from "./docs-search";
 import type { TocItem } from "./docs-types";
 
 // This shell used to be app/docs/layout.tsx. It moved here so the layout can
 // be a server component and export per-page metadata, which a "use client"
 // layout cannot do. Docs pages are the pages most worth ranking, so they need
 // titles, descriptions, and canonical URLs.
-//
-// Pages import useDocsContext from this module rather than from the layout
-// file, which is also the right home for a hook.
 
-interface DocsContextType {
-  activeSection: string;
-  setActiveSection: (section: string) => void;
-  tocItems: TocItem[];
-  setTocItems: (items: TocItem[]) => void;
-}
-
-const DocsContext = createContext<DocsContextType>({
-  activeSection: "",
-  setActiveSection: () => {},
-  tocItems: [],
-  setTocItems: () => {},
-});
-
-export function useDocsContext() {
-  return useContext(DocsContext);
-}
-
+export { useDocsContext };
 export type { TocItem };
+
+const NO_TOC: TocItem[] = [];
 
 export function DocsShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  // During render, from the registry: usePathname works in SSR, so the rail is
+  // in the server's HTML and its column is there from the first paint instead
+  // of appearing after hydration and shoving the article sideways.
+  const tocItems = docsPageContext(pathname).current?.toc ?? NO_TOC;
   const [activeSection, setActiveSection] = useState("");
-  const [tocItems, setTocItems] = useState<TocItem[]>([]);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<DocsDrawerTab | null>(null);
+  const openSearch = useCallback(() => setSearchOpen(true), []);
+  const closeDrawer = useCallback(() => setDrawerTab(null), []);
 
   // Close mobile nav on route change
   useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- resets mobileNavOpen when pathname changes (route navigation), gated on the dependency array so it only fires on an actual route change, not every render
-    setMobileNavOpen(false);
+    // oxlint-disable-next-line react/set-state-in-effect -- closes the drawer when pathname changes (route navigation), gated on the dependency array so it only fires on an actual route change, not every render
+    setDrawerTab(null);
   }, [pathname]);
+
+  // The one place a moved section's old link is forwarded, on arrival and when
+  // an in-page link changes the hash.
+  useEffect(() => {
+    function forward() {
+      const target = resolveMovedAnchor(pathname, window.location.hash);
+      if (target) router.replace(target);
+    }
+    forward();
+    window.addEventListener("hashchange", forward);
+    return () => window.removeEventListener("hashchange", forward);
+  }, [pathname, router]);
 
   return (
     <DocsContext.Provider
-      value={{ activeSection, setActiveSection, tocItems, setTocItems }}
+      value={{
+        activeSection,
+        setActiveSection,
+        tocItems,
+        setTocItems: ignoreTocItems,
+        openSearch,
+      }}
     >
       <div className="min-h-screen flex flex-col bg-background">
         {/* Deliberately the plain nav, with no width override. Docs used to
@@ -70,16 +87,11 @@ export function DocsShell({ children }: { children: React.ReactNode }) {
           <div className="flex">
             <DocsSidebar />
 
-            <DocsMobileNavTrigger
-              isOpen={mobileNavOpen}
-              onToggle={() => setMobileNavOpen(!mobileNavOpen)}
-            />
-
             <DocsMobileNav
               tocItems={tocItems}
               activeSection={activeSection}
-              isOpen={mobileNavOpen}
-              onClose={() => setMobileNavOpen(false)}
+              openTab={drawerTab}
+              onClose={closeDrawer}
             />
 
             <main
@@ -89,9 +101,16 @@ export function DocsShell({ children }: { children: React.ReactNode }) {
               tabIndex={-1}
               className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 sm:py-8 lg:py-10"
             >
+              <DocsMobileBar
+                tocItems={tocItems}
+                activeSection={activeSection}
+                isOpen={drawerTab !== null}
+                onOpen={() => setDrawerTab(defaultDrawerTab(tocItems))}
+              />
               <article className="max-w-4xl mx-auto lg:mx-0">
                 <DocsBreadcrumb />
                 {children}
+                <DocsPageFooter />
                 <DocsPager />
               </article>
             </main>
@@ -102,6 +121,7 @@ export function DocsShell({ children }: { children: React.ReactNode }) {
 
         <Footer />
       </div>
+      <DocsSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </DocsContext.Provider>
   );
 }

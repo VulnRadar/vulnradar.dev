@@ -224,9 +224,10 @@
 
        scroll-padding on the scrolling element is the property the browser
        already consults for that scroll, so one declaration covers every page
-       rather than needing scroll-mt-* on each anchor. Six components carry
-       their own scroll-margin today (docs and legal only), and those still
-       win where they are set; this is the floor for everywhere else. The
+       rather than needing scroll-mt-* on each anchor. Docs and legal
+       headings add their own scroll-margin, and a margin is added to this
+       padding rather than replacing it, so those are small on purpose (docs
+       headings use scroll-mt-4 where only the header is above them). The
        calc mirrors the header's own top offset exactly so the two cannot
        drift. --vr-cookie-h is published by components/shared/cookie-notice
        .tsx and is 0px once the notice is dismissed. */
@@ -915,7 +916,7 @@
      help text read as double-spaced, and the same text in a <span> sat
      at 16px, so identical copy had two rhythms depending on its tag. */
   p {
-    line-height: 1.75rem;
+    line-height: 1.625;
   }
 
   /* Focus styles - accessible and minimal.
