@@ -78,6 +78,10 @@ function pngProblem(bytes: Buffer): string | null {
       );
       if (problem) return problem;
       sawHeader = true;
+    } else if (type === "IHDR") {
+      // Only the first one had its dimensions checked, and which of two a
+      // decoder honours is up to the decoder.
+      return NOT_AN_IMAGE;
     } else if (type === "IDAT") {
       sawData = true;
     } else if (type === "IEND") {

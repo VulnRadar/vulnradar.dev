@@ -175,6 +175,21 @@ describe("validateAvatarDataUrl", () => {
       if (!result.valid) expect(result.reason).toMatch(/1024/);
     });
 
+    it("rejects a second PNG header hiding bigger dimensions", () => {
+      const headerEnd = 33; // signature + length + type + 13 bytes + CRC
+      const small = pngDeclaring(16, 16);
+      const huge = pngDeclaring(20000, 20000);
+      const bytes = Buffer.concat([
+        small.subarray(0, headerEnd),
+        huge.subarray(PNG_SIGNATURE.length, headerEnd),
+        small.subarray(headerEnd),
+      ]);
+
+      expect(
+        validateAvatarDataUrl(imageDataUrl("image/png", bytes)).valid,
+      ).toBe(false);
+    });
+
     it("rejects a zero-width PNG header", () => {
       expect(
         validateAvatarDataUrl(imageDataUrl("image/png", pngDeclaring(0, 16)))
