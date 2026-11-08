@@ -2203,7 +2203,7 @@ test("cli: a deadline that passes before the retry is sent says so, not just 'Er
   // fell back to printing the class name.
   let posts = 0;
   const { code, stderr } = await runCliWithHandler(
-    [...SCAN_ARGS, "--timeout", "1.5"],
+    [...SCAN_ARGS, "--timeout", "2"],
     (_req, res) => {
       posts += 1;
       res.writeHead(429, { ...JSON_HEADERS, "Retry-After": "1" });
@@ -2212,7 +2212,7 @@ test("cli: a deadline that passes before the retry is sent says so, not just 'Er
     {
       preload: `const setTimeoutReal = globalThis.setTimeout;
 globalThis.setTimeout = (fn, ms, ...rest) =>
-  setTimeoutReal(fn, ms >= 500 ? ms + 1000 : ms, ...rest);
+  setTimeoutReal(fn, ms >= 500 ? ms + 1500 : ms, ...rest);
 `,
     },
   );
