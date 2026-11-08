@@ -128,7 +128,9 @@ describe("lib/scanner string literals", () => {
       counts,
       `Use a colon, or a full stop and a capitalised sentence. First hits: ${JSON.stringify(firstHit, null, 2)}`,
     ).toEqual(DEBT);
-  });
+    // Parses every file under lib/scanner, which is more than five seconds on
+    // a loaded machine.
+  }, 60_000);
 
   it.each(NO_PAREN_PLURAL)("%s pluralises its counts", (name) => {
     const hits = stringLiterals(

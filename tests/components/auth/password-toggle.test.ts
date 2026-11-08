@@ -91,7 +91,9 @@ describe("toggles that report state through aria-pressed", () => {
   it("never change their aria-label as well", () => {
     const offenders = JSX_DIRS.flatMap(tsxFiles).flatMap(contradictions);
     expect(offenders).toEqual([]);
-  });
+    // Parses every .tsx in app and components, so a loaded machine needs more
+    // than the default five seconds.
+  }, 60_000);
 });
 
 describe("the password fields use the shared toggle", () => {
