@@ -216,6 +216,8 @@ const SHAPES: Record<string, string> = {
   sqlVerbPlain: rep("SELECT * FROM "),
   // hardcoded-secrets: one unbroken alphanumeric run of near-miss key text
   nearMissKeyRun: rep("AKIAIOSFODNN7EXAMPL"),
+  // the secret tier's plain-slash view: every escape is an offset it keeps
+  escapedSlashUrls: rep("https:\\/\\/a.b\\/"),
 };
 
 /**

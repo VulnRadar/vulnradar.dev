@@ -21,6 +21,7 @@ import {
   extractScriptContents,
 } from "../_helpers";
 import { openTags, hasTagWith } from "./_tag-scan";
+import { plainSlashView } from "./_plain-slashes";
 import { leadingHost } from "./_url-hosts";
 import {
   discordWebhookPattern,
@@ -226,6 +227,9 @@ const ELEVATED_RISK_SECRET_PATTERNS: SecretPattern[] = [
   { name: "Replicate Token", pattern: /r8_[A-Za-z0-9]{40}/g },
 ];
 
+/** Regex source for the host in front of a Discord webhook path, port and all. */
+export const DISCORD_HOST_RUN = String.raw`(?<![\w.-])[a-z0-9.-]+(?::\d{1,5})?`;
+
 // Vendor-documented client-exposed-by-design credentials, secured via
 // restrictions (referrer/domain allowlists, write-only scopes, quota
 // limits) rather than secrecy. Presence alone is normal; the risk is
@@ -241,7 +245,7 @@ const CLIENT_EXPOSED_SECRET_PATTERNS: SecretPattern[] = [
   {
     name: "Discord Webhook",
     pattern: discordWebhookPattern(
-      String.raw`(?<![\w.-])[a-z0-9.-]+(?::\d{1,5})?`,
+      DISCORD_HOST_RUN,
       String.raw`\d{17,20}\/[\w-]{60,68}`,
       { global: true },
     ),
@@ -308,21 +312,33 @@ function redactMatch(match: string): string {
     : match.slice(0, 8) + "****" + match.slice(-4);
 }
 
+// A JS regex literal has to escape its slashes too, so a validator for
+// mongodb:// URIs reads as one once they are plain, and the URI patterns are
+// critical. None of these appear unencoded in a connection string or a webhook.
+const READS_AS_REGEX_SOURCE = /[[\]()|^]|\\[dDwWsSbB.+*?]|\.[+*]/;
+
 /**
  * Run one severity tier's patterns against the body, filtering obvious
- * placeholders (docs/example values) the same way for every tier.
+ * placeholders (docs/example values) the same way for every tier. Patterns
+ * see the body with JSON-escaped slashes read as plain ones, so the reported
+ * value is the same however the page spelled it.
  */
 function matchSecretPatterns(
   body: string,
   patterns: SecretPattern[],
 ): string[] {
   const found: string[] = [];
+  const { text, rawOffset } = plainSlashView(body);
   for (const { name, pattern, requireNearby, accept } of patterns) {
-    const occurrences = [...body.matchAll(pattern)].filter((m) => {
+    const occurrences = [...text.matchAll(pattern)].filter((m) => {
       // First: the Firebase pattern's candidates are every https host on the
       // page, and this is the cheap test that discards nearly all of them.
       if (accept && !accept(m[0])) return false;
-      if (isDemonstratedExample(body, m[0])) return false;
+      const servedStart = rawOffset(m.index);
+      const servedEnd = rawOffset(m.index + m[0].length);
+      const served = body.slice(servedStart, servedEnd);
+      if (served !== m[0] && READS_AS_REGEX_SOURCE.test(m[0])) return false;
+      if (isDemonstratedExample(body, served)) return false;
       const lower = m[0].toLowerCase();
       if (
         lower.includes("example") ||
@@ -340,8 +356,8 @@ function matchSecretPatterns(
       if (/localhost|127\.0\.0\.1/.test(m[0])) return false;
       if (requireNearby) {
         const nearby = body.slice(
-          Math.max(0, m.index - 100),
-          m.index + m[0].length + 100,
+          Math.max(0, servedStart - 100),
+          servedEnd + 100,
         );
         if (!requireNearby.test(nearby)) return false;
       }
