@@ -123,6 +123,10 @@ describe("the dialog opens on the saved webhook", () => {
     expect(html).toContain('type="url"');
     expect(html).toContain('value="https://discord.com/api/webhooks/1/abc"');
     expect(html).toContain("Discord and Slack URLs are detected from the");
+    expect(html).toContain('aria-describedby="edit-webhook-url-hint"');
+    expect(html).toContain('id="edit-webhook-url-hint"');
+    // The dialog's fieldset has no gap of its own, so the fields bring one.
+    expect(html).toContain('<div class="grid gap-4">');
     expect(html).toContain(">Cancel<");
     expect(html).toContain(">Save changes<");
   });

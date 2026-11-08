@@ -657,29 +657,37 @@ export function WebhookEditDialog({
       canSave={canSave}
       onSave={() => onSave(webhook.id, { name: name.trim(), url: url.trim() })}
     >
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="edit-webhook-name">Name</Label>
-        <Input
-          id="edit-webhook-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Default"
-          autoFocus
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="edit-webhook-url">URL</Label>
-        <Input
-          id="edit-webhook-url"
-          type="url"
-          required
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://..."
-        />
-        <p className="text-xs text-muted-foreground">
-          Discord and Slack URLs are detected from the address.
-        </p>
+      {/* EditDialog's fieldset adds no spacing of its own, so the two fields
+          carry the gap between them. */}
+      <div className="grid gap-4">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="edit-webhook-name">Name</Label>
+          <Input
+            id="edit-webhook-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Default"
+            autoFocus
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="edit-webhook-url">URL</Label>
+          <Input
+            id="edit-webhook-url"
+            type="url"
+            required
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://..."
+            aria-describedby="edit-webhook-url-hint"
+          />
+          <p
+            id="edit-webhook-url-hint"
+            className="text-xs text-muted-foreground"
+          >
+            Discord and Slack URLs are detected from the address.
+          </p>
+        </div>
       </div>
     </EditDialog>
   );
