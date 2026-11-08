@@ -172,6 +172,12 @@ export default defineConfig({
           functions: 100,
           branches: 80,
         },
+        "components/profile/tabs/social-error-copy.ts": {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
         "lib/uploads/avatar.ts": {
           lines: 80,
           statements: 80,
