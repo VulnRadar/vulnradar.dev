@@ -236,11 +236,12 @@ const CLIENT_EXPOSED_SECRET_PATTERNS: SecretPattern[] = [
   // the target channel) — real abuse, bounded impact. The hosts and the
   // path, versioned or not, are the ones the webhook type detector uses, with
   // its case rule: a URL spelt Discord.com/API/WEBHOOKS/ leaks the same id and
-  // token.
+  // token. The detector parses the URL, so it also takes discord.com:443, and
+  // without the optional port here the scanner missed that spelling.
   {
     name: "Discord Webhook",
     pattern: discordWebhookPattern(
-      String.raw`(?<![\w.-])[a-z0-9.-]+`,
+      String.raw`(?<![\w.-])[a-z0-9.-]+(?::\d{1,5})?`,
       String.raw`\d{17,20}\/[\w-]{60,68}`,
       { global: true },
     ),

@@ -42,6 +42,9 @@ const HOSTS = [
   "Discord.com",
   "DISCORDAPP.COM",
   "Canary.Discord.com",
+  // The detector parses the URL and drops the port; the scanner reads text.
+  "discord.com:443",
+  "user@discord.com",
 ];
 
 const PREFIXES = [
@@ -52,11 +55,16 @@ const PREFIXES = [
   "/Api/V10/Webhooks/",
 ];
 
+// No "example" in these: the scanner drops any match containing it as a
+// placeholder before the host is looked at, so a lookalike spelt that way
+// would pass without testing the host rule at all.
 const LOOKALIKES = [
-  `https://discord.com.evil.example/api/webhooks/${ID}/${TOKEN}`,
+  `https://discord.com.evil.test/api/webhooks/${ID}/${TOKEN}`,
   `https://notdiscord.com/api/v10/webhooks/${ID}/${TOKEN}`,
   `https://evildiscordapp.com/API/WEBHOOKS/${ID}/${TOKEN}`,
-  `https://evil.example/api/webhooks/${ID}/${TOKEN}`,
+  `https://evil.test/api/webhooks/${ID}/${TOKEN}`,
+  `https://discord.com@evil.test/api/webhooks/${ID}/${TOKEN}`,
+  `https://discord.com.evil.test:443/api/webhooks/${ID}/${TOKEN}`,
   `https://discord.com/api/v10x/webhooks/${ID}/${TOKEN}`,
   `https://discord.com/api/channels/${ID}/${TOKEN}`,
 ];

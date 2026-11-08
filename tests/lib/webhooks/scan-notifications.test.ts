@@ -269,6 +269,33 @@ describe("notifyScanComplete: Discord's compatibility endpoints", () => {
     expect(body.text).toContain("1 new critical or high finding");
     expect(body.text).toContain("https://example.com/");
   });
+
+  // Discord posts the /slack endpoint's `text` as message content, where
+  // @everyone and @here ping the whole channel, and a scanned URL's path can
+  // carry either. The blocks are not posted there, so they keep the target
+  // as it is.
+  it("does not let a target in the text fallback ping the channel", async () => {
+    const value = "https://social.test/@everyone/@here";
+    const params = baseParams({ target: { kind: "url", value } });
+    installQueryMock({
+      webhooks: [{ id: 1, url: SLACK_COMPAT, type: "discord", secret: null }],
+    });
+    await notifyScanComplete(params);
+    const completed = JSON.parse(mockDeliverWebhook.mock.calls[0][2] as string);
+    const regressed = JSON.parse(
+      buildScanRegressedBody("slack", params, {
+        hasNewCriticalOrHigh: true,
+        newFindings: [finding()],
+        outstandingFindings: [],
+      } as never),
+    );
+
+    for (const text of [completed.text, regressed.text] as string[]) {
+      expect(text).not.toMatch(/@(?:everyone|here)/);
+      expect(text.split(String.fromCharCode(0x200b)).join("")).toContain(value);
+    }
+    expect(JSON.stringify(completed.blocks)).toContain(value);
+  });
 });
 
 describe("notifyScanComplete: a failed notification never fails the scan", () => {

@@ -115,6 +115,20 @@ function incompleteNote(incomplete: string[]): string {
   return `Incomplete: ${incomplete.join(", ")} did not finish, so findings from those areas are missing rather than absent.`;
 }
 
+const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b);
+
+/**
+ * The target as written into a Slack `text` fallback. Discord's
+ * Slack-compatible endpoint posts `text` as message content, where @everyone
+ * and @here ping the whole channel, and a scanned URL's path can hold either
+ * (profile URLs are commonly /@name). Embeds and Slack blocks never ping, so
+ * only this field needs it. A zero-width space after each @ leaves the URL
+ * readable and stops the mention.
+ */
+function mentionSafeTarget(target: ScanNotificationTarget): string {
+  return target.value.split("@").join(`@${ZERO_WIDTH_SPACE}`);
+}
+
 /**
  * The identity keys for a target. A URL scan keeps `normalizedUrl`, the key
  * the generic payload has always shipped, and gains `url`, the key
@@ -203,7 +217,7 @@ export function buildScanCompletedBody(
       // Slack-compatible endpoint renders only `text` and attachments, so a
       // blocks-only body reached a Discord channel as an empty message.
       text: [
-        `${APP_NAME} Scan Complete for ${target.value}: ${pluralize(summary.total, "issue")} (${summary.critical} critical, ${summary.high} high, ${summary.medium} medium, ${summary.low} low)`,
+        `${APP_NAME} Scan Complete for ${mentionSafeTarget(target)}: ${pluralize(summary.total, "issue")} (${summary.critical} critical, ${summary.high} high, ${summary.medium} medium, ${summary.low} low)`,
         ...(incomplete.length > 0 ? [incompleteNote(incomplete)] : []),
       ].join("\n"),
       blocks: [
@@ -333,7 +347,7 @@ export function buildScanRegressedBody(
 
   if (webhookType === "slack") {
     return JSON.stringify({
-      text: `${APP_NAME} Regression Detected: ${headline} since the previous scan of ${target.value}`,
+      text: `${APP_NAME} Regression Detected: ${headline} since the previous scan of ${mentionSafeTarget(target)}`,
       blocks: [
         {
           type: "header",
