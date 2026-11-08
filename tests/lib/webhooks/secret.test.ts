@@ -57,6 +57,13 @@ describe("encryptWebhookSecret / readWebhookSecret", () => {
     expect(readWebhookSecret(stored)).toBe(PLAINTEXT);
   });
 
+  it("refuses to store plaintext when the key is set but malformed", () => {
+    process.env.API_KEY_ENCRYPTION_KEY = "z".repeat(64);
+    expect(() => encryptWebhookSecret(PLAINTEXT)).toThrow(
+      "API_KEY_ENCRYPTION_KEY",
+    );
+  });
+
   it("reads a legacy 64-hex plaintext row unchanged", () => {
     // 64 hex chars decode as 48 base64 bytes, which is longer than the
     // 29-byte iv+tag floor, so this is precisely the value a shape check

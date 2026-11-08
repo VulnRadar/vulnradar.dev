@@ -50,9 +50,16 @@ function looksLikeCiphertext(value: string): boolean {
  * plaintext when no API_KEY_ENCRYPTION_KEY is configured, matching
  * lib/api/api-keys.ts: a self-hoster who has not set the key keeps a working
  * deployment, and readWebhookSecret below reads either form.
+ *
+ * A key that is set but malformed is not that case. isEncryptionConfigured()
+ * is false for it as well, and treating it the same would write a secret in
+ * the clear on a deployment whose operator believes it is encrypting, so
+ * encryptApiKey is left to refuse it.
  */
 export function encryptWebhookSecret(plaintext: string): string {
-  return isEncryptionConfigured() ? encryptApiKey(plaintext) : plaintext;
+  return process.env.API_KEY_ENCRYPTION_KEY
+    ? encryptApiKey(plaintext)
+    : plaintext;
 }
 
 /**
