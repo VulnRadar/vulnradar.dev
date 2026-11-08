@@ -38,6 +38,9 @@ const MAX_AVATAR_BYTES = CROP_OUTPUT_SIDE * CROP_OUTPUT_SIDE * 4 * 1.25;
 
 const MAX_AVATAR_DIMENSION = 1024;
 
+/** What an upload was held to before the crop dialog existed. */
+export const LEGACY_AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
 
@@ -175,7 +178,16 @@ function jpegProblem(bytes: Buffer): string | null {
   return NOT_AN_IMAGE;
 }
 
-export function validateAvatarDataUrl(input: string): AvatarValidation {
+export function validateAvatarDataUrl(
+  input: string,
+  /** For a value already stored by an older version, which was accepted under
+   *  the rules of its day. The MIME and signature tests still apply; the size
+   *  cap is the old one and the walk of the image structure is skipped, or the
+   *  boot backfill could never convert it and it would stay a data: URL. */
+  options: { legacy?: boolean } = {},
+): AvatarValidation {
+  const maxBytes = options.legacy ? LEGACY_AVATAR_MAX_BYTES : MAX_AVATAR_BYTES;
+
   // Allow clearing the avatar (empty string).
   if (input === "") {
     return { valid: false, reason: "Empty avatar" };
@@ -203,10 +215,10 @@ export function validateAvatarDataUrl(input: string): AvatarValidation {
   if (bytes.length === 0) {
     return { valid: false, reason: "Avatar is empty after decoding." };
   }
-  if (bytes.length > MAX_AVATAR_BYTES) {
+  if (bytes.length > maxBytes) {
     return {
       valid: false,
-      reason: `Avatar is too large (max ${MAX_AVATAR_BYTES / 1024} KiB).`,
+      reason: `Avatar is too large (max ${maxBytes / 1024} KiB).`,
     };
   }
 
@@ -222,9 +234,11 @@ export function validateAvatarDataUrl(input: string): AvatarValidation {
     };
   }
 
-  const problem =
-    declaredMime === "image/png" ? pngProblem(bytes) : jpegProblem(bytes);
-  if (problem) return { valid: false, reason: problem };
+  if (!options.legacy) {
+    const problem =
+      declaredMime === "image/png" ? pngProblem(bytes) : jpegProblem(bytes);
+    if (problem) return { valid: false, reason: problem };
+  }
 
   return { valid: true, mime: declaredMime, bytes };
 }

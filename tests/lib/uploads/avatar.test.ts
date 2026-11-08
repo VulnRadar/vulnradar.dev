@@ -283,6 +283,37 @@ describe("validateAvatarDataUrl", () => {
     });
   });
 
+  describe("a value stored by an older version", () => {
+    const legacy = { legacy: true };
+
+    it("is held to the old 5 MiB limit and not to the upload cap", () => {
+      const padded = Buffer.alloc(400 * 1024, 0);
+      PNG_SIGNATURE.copy(padded);
+      expect(
+        validateAvatarDataUrl(imageDataUrl("image/png", padded), legacy).valid,
+      ).toBe(true);
+
+      const tooBig = Buffer.alloc(5 * 1024 * 1024 + 1, 0);
+      PNG_SIGNATURE.copy(tooBig);
+      expect(
+        validateAvatarDataUrl(imageDataUrl("image/png", tooBig), legacy).valid,
+      ).toBe(false);
+    });
+
+    it("still has to be the type it says it is", () => {
+      expect(
+        validateAvatarDataUrl(
+          imageDataUrl("image/png", Buffer.from("not an image")),
+          legacy,
+        ).valid,
+      ).toBe(false);
+      expect(
+        validateAvatarDataUrl("data:image/svg+xml;base64,PHN2Zz4=", legacy)
+          .valid,
+      ).toBe(false);
+    });
+  });
+
   it("caps at what the crop dialog can produce, under the 1 MiB request cap", () => {
     // A 256x256 RGBA PNG is at most about 263 KB whatever the pixels are. The
     // old 5 MiB limit sat above the request cap, so its message was unreachable

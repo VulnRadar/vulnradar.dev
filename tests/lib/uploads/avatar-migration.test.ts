@@ -1,4 +1,4 @@
-import { jpegDeclaring, realPng } from "./_avatar-fixtures";
+import { jpegDeclaring, pngDeclaring, realPng } from "./_avatar-fixtures";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 /**
@@ -18,6 +18,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 type Avatar = { image_data: Buffer; content_type: string };
 const users = new Map<number, string | null>();
 const avatars = new Map<number, Avatar>();
+const skipped = new Set<number>();
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
@@ -29,6 +30,9 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
           typeof url === "string" &&
           (url.startsWith("data:image/png;base64,") ||
             url.startsWith("data:image/jpeg;base64,")),
+      )
+      .filter(
+        ([id]) => !s.includes("avatar_backfill_skipped_at") || !skipped.has(id),
       )
       .map(([id, avatar_url]) => ({ id, avatar_url }));
     return { rows };
@@ -43,6 +47,10 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     if (!avatars.has(userId)) {
       avatars.set(userId, { image_data: bytes, content_type: mime });
     }
+    return { rows: [] };
+  }
+  if (s.startsWith("UPDATE users SET avatar_backfill_skipped_at")) {
+    skipped.add((params as [number])[0]);
     return { rows: [] };
   }
   if (s.startsWith("UPDATE users SET avatar_url = $1 WHERE id = $2")) {
@@ -76,6 +84,7 @@ const BAD_MAGIC_DATA_URL = `data:image/png;base64,${Buffer.from("not a png").toS
 beforeEach(() => {
   users.clear();
   avatars.clear();
+  skipped.clear();
   mockQuery.mockClear();
 });
 
@@ -140,6 +149,57 @@ describe("migrateBase64AvatarsToDatabase", () => {
     expect(avatars.has(11)).toBe(false);
     // The row is left exactly as it was.
     expect(users.get(11)).toBe(BAD_MAGIC_DATA_URL);
+  });
+
+  // The upload route's limits tightened after these were written. A legacy
+  // value was accepted at up to 5 MiB, and there is no other way left to move it
+  // now that the separate migration script is gone.
+  it.each([
+    ["larger than 1024x1024", pngDeclaring(4000, 4000)],
+    [
+      "with bytes after the end of the image",
+      Buffer.concat([PNG_BYTES, Buffer.from("x")]),
+    ],
+  ])("converts a legacy avatar %s", async (_label, bytes) => {
+    users.set(20, `data:image/png;base64,${bytes.toString("base64")}`);
+
+    expect(await migrateBase64AvatarsToDatabase()).toBe(1);
+    expect(avatars.get(20)?.image_data).toEqual(bytes);
+  });
+
+  it("converts a legacy avatar that only the old 5 MiB limit allowed", async () => {
+    const big = Buffer.concat([PNG_BYTES, Buffer.alloc(2 * 1024 * 1024)]);
+    users.set(21, `data:image/png;base64,${big.toString("base64")}`);
+
+    expect(await migrateBase64AvatarsToDatabase()).toBe(1);
+    expect(avatars.get(21)?.image_data.equals(big)).toBe(true);
+  });
+
+  it("still refuses a value over the old 5 MiB limit", async () => {
+    const huge = Buffer.concat([PNG_BYTES, Buffer.alloc(6 * 1024 * 1024)]);
+    users.set(22, `data:image/png;base64,${huge.toString("base64")}`);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await migrateBase64AvatarsToDatabase()).toBe(0);
+
+    logged.mockRestore();
+    expect(avatars.has(22)).toBe(false);
+  });
+
+  it("logs a row it cannot convert once, not on every boot", async () => {
+    users.set(23, BAD_MAGIC_DATA_URL);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await migrateBase64AvatarsToDatabase();
+    await migrateBase64AvatarsToDatabase();
+    await migrateBase64AvatarsToDatabase();
+
+    const lines = logged.mock.calls.filter((c) =>
+      String(c[0]).includes("user 23:"),
+    );
+    logged.mockRestore();
+    expect(lines).toHaveLength(1);
+    expect(users.get(23)).toBe(BAD_MAGIC_DATA_URL);
   });
 
   it("never touches external OAuth avatar URLs (they are not selected)", async () => {

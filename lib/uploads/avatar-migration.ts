@@ -28,16 +28,16 @@ import { Buffer } from "node:buffer";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import pool from "@/lib/database/db";
-import { validateAvatarDataUrl } from "@/lib/uploads/avatar";
+import {
+  LEGACY_AVATAR_MAX_BYTES,
+  validateAvatarDataUrl,
+} from "@/lib/uploads/avatar";
 
 const MIME_BY_EXT: Record<string, "image/png" | "image/jpeg"> = {
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
 };
-
-/** 5 MiB, what these files were held to when they were uploaded. */
-const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
@@ -145,7 +145,8 @@ export async function migrateAvatarFilesToDatabase(): Promise<number> {
       if (!currentUrl || !currentUrl.startsWith("/api/v3/avatar/")) continue;
 
       const bytes = await readFile(path.join(legacyAvatarDir(), name));
-      if (bytes.length === 0 || bytes.length > MAX_AVATAR_BYTES) continue;
+      if (bytes.length === 0 || bytes.length > LEGACY_AVATAR_MAX_BYTES)
+        continue;
       if (!magicOk(mime, bytes)) continue;
 
       await insertAvatarAndNormalizeUrl(userId, bytes, mime);
@@ -170,16 +171,20 @@ export async function migrateAvatarFilesToDatabase(): Promise<number> {
  * Idempotent: a user that already has a user_avatars row is skipped, and a
  * converted row's avatar_url no longer matches the data:image filter, so a
  * re-run finds it zero times. Best-effort: a single row whose data URL fails
- * validation (wrong magic bytes, over the size cap, undecodable) is logged
- * and skipped -- one bad row never aborts the backfill or blocks boot.
+ * validation (wrong magic bytes, over the 5 MiB these were uploaded under,
+ * undecodable) is logged and skipped -- one bad row never aborts the backfill
+ * or blocks boot. It keeps its data: URL, so avatar_backfill_skipped_at is what
+ * takes it out of the next boot's scan: console.error is persisted to the admin
+ * error log, and one line per row per boot would never stop.
  */
 export async function migrateBase64AvatarsToDatabase(): Promise<number> {
   let rows: { id: number; avatar_url: string | null }[];
   try {
     const res = await pool.query<{ id: number; avatar_url: string | null }>(
       `SELECT id, avatar_url FROM users
-       WHERE avatar_url LIKE 'data:image/png;base64,%'
-          OR avatar_url LIKE 'data:image/jpeg;base64,%'`,
+       WHERE (avatar_url LIKE 'data:image/png;base64,%'
+          OR avatar_url LIKE 'data:image/jpeg;base64,%')
+         AND avatar_backfill_skipped_at IS NULL`,
     );
     rows = res.rows;
   } catch (err) {
@@ -200,13 +205,17 @@ export async function migrateBase64AvatarsToDatabase(): Promise<number> {
       );
       if (existing.rows.length > 0) continue;
 
-      // Reuse the exact upload-time validation (MIME allowlist, magic
-      // bytes, size cap, SVG rejection) so the backfill never stores
-      // anything the app itself would have rejected.
-      const result = validateAvatarDataUrl(row.avatar_url);
+      // The upload validator's MIME allowlist, signature test and SVG
+      // rejection, under the limit this value was uploaded with, so the
+      // backfill and the file importer above agree on what a legacy avatar is.
+      const result = validateAvatarDataUrl(row.avatar_url, { legacy: true });
       if (!result.valid) {
         console.error(
           `[avatar-migration] Skipped base64 avatar for user ${row.id}: ${result.reason}`,
+        );
+        await pool.query(
+          "UPDATE users SET avatar_backfill_skipped_at = NOW() WHERE id = $1",
+          [row.id],
         );
         continue;
       }

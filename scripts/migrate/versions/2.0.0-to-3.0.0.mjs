@@ -1375,6 +1375,13 @@ export const upgrade = {
       column: "free_github_review_used_at",
       definition: "TIMESTAMPTZ",
     },
+    // When the boot backfill gave up on a legacy base64 avatar, so it is
+    // reported once rather than on every boot. Nullable, no default.
+    {
+      table: "users",
+      column: "avatar_backfill_skipped_at",
+      definition: "TIMESTAMPTZ",
+    },
     // ── AUDIT-013 migrate-01: columns that existed only on the boot path.
     // Every definition is copied verbatim from instrumentation.ts.
     // Admin impersonation bookkeeping and the display-only IPv4 captured
@@ -2478,6 +2485,7 @@ export const downgrade = {
     { table: "users", column: "pre_staff_plan" },
     { table: "users", column: "ai_credit_balance" },
     { table: "users", column: "free_github_review_used_at" },
+    { table: "users", column: "avatar_backfill_skipped_at" },
     // AUDIT-013 migrate-01: matching drops for the columns the upgrade
     // now adds. Columns on tables that are themselves dropped above
     // (finding_remediation.due_at, host_reputation.auto_tags, the three
