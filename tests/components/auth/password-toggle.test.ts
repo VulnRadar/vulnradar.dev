@@ -34,14 +34,6 @@ describe("PasswordToggle", () => {
 });
 
 const JSX_DIRS = ["app", "components"];
-// The staff-invite page adopts the shared toggle with the OAuth and identity
-// work; the API playground and the results list still have to be fixed. Each
-// comes off this list when it is, and nothing new goes on it.
-const NOT_YET_ADOPTED = new Set([
-  path.join("app", "staff-invite", "[token]", "page.tsx"),
-  path.join("app", "docs", "api", "playground", "page.tsx"),
-  path.join("components", "scanner", "results-list.tsx"),
-]);
 
 function tsxFiles(dir: string): string[] {
   return fs
@@ -97,9 +89,7 @@ function contradictions(rel: string): string[] {
 
 describe("toggles that report state through aria-pressed", () => {
   it("never change their aria-label as well", () => {
-    const offenders = JSX_DIRS.flatMap(tsxFiles)
-      .filter((rel) => !NOT_YET_ADOPTED.has(rel))
-      .flatMap(contradictions);
+    const offenders = JSX_DIRS.flatMap(tsxFiles).flatMap(contradictions);
     expect(offenders).toEqual([]);
   });
 });
@@ -110,6 +100,8 @@ describe("the password fields use the shared toggle", () => {
     "components/auth/signup-form.tsx",
     "components/auth/reset-password-form.tsx",
     "components/scanner/inline-auth-form.tsx",
+    "app/staff-invite/[token]/page.tsx",
+    "app/docs/api/playground/page.tsx",
   ])("%s", (rel) => {
     const source = fs.readFileSync(path.join(ROOT, rel), "utf8");
     expect(source).toContain("<PasswordToggle");

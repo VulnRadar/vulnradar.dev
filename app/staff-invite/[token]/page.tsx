@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Check, Eye, EyeOff, Loader2, X } from "lucide-react";
+import { Check, Loader2, X } from "lucide-react";
+import { PasswordToggle } from "@/components/auth/password-toggle";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import {
   AuthAlert,
@@ -28,7 +29,7 @@ import {
   ROUTES,
 } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
-import { transitions } from "@/lib/ui/animations";
+
 import { AUTH_HEADING_CLASS } from "@/components/auth/auth-shell";
 
 /**
@@ -300,31 +301,10 @@ export default function StaffInvitePage() {
                   aria-describedby={password ? "password-strength" : undefined}
                   className={cn(authFieldClass, "pr-11")}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPass(!showPass)}
-                  className={cn(
-                    // after: overlay, the same technique inline-auth-form.tsx uses.
-                    // The visible control stays 36px so it still fits inside the
-                    // field, while the hit area grows past the 44px minimum. Raising
-                    // h-9 to h-11 instead would have burst the input.
-                    "absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9 rounded-md",
-                    "after:absolute after:-inset-1.5 sm:after:hidden",
-                    "flex items-center justify-center text-muted-foreground hover:text-foreground",
-                    transitions.colors,
-                    authFocusRing,
-                  )}
-                  // aria-pressed carries the state, so the name stays put:
-                  // "Hide password, pressed" reads as a contradiction.
-                  aria-label="Show password"
-                  aria-pressed={showPass}
-                >
-                  {showPass ? (
-                    <EyeOff className="h-4 w-4" aria-hidden="true" />
-                  ) : (
-                    <Eye className="h-4 w-4" aria-hidden="true" />
-                  )}
-                </button>
+                <PasswordToggle
+                  shown={showPass}
+                  onToggle={() => setShowPass(!showPass)}
+                />
               </div>
               {password && (
                 <PasswordStrengthMeter

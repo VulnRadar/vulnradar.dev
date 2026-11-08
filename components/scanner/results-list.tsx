@@ -641,7 +641,6 @@ export function ResultsList({
           <button
             type="button"
             onClick={() => setGrouped(!grouped)}
-            aria-pressed={grouped}
             aria-label={
               grouped
                 ? "Grouped by severity. Switch to a flat list."
@@ -666,8 +665,10 @@ export function ResultsList({
                 reading "Group by severity" described something already true
                 and read as an option you had to switch on. The pressed tint
                 said otherwise, and the two disagreed. aria-label carries the
-                action, which is what a screen reader needs from a control
-                whose visible text is a state. */}
+                state and the action, which is what a screen reader needs from
+                a control whose visible text is a state, and it replaces
+                aria-pressed: both at once announced "Flat list. Group by
+                severity, not pressed". */}
             {grouped ? "Grouped" : "Flat list"}
           </button>
 

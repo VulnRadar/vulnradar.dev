@@ -2,14 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import {
-  ChevronDown,
-  Send,
-  Loader2,
-  Eye,
-  EyeOff,
-  KeyRound,
-} from "lucide-react";
+import { ChevronDown, Send, Loader2, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/ui/utils";
@@ -22,6 +15,7 @@ import {
   InlineCode,
   METHOD_COLORS,
 } from "@/components/docs";
+import { PasswordToggle } from "@/components/auth/password-toggle";
 import { useDocsContext } from "@/components/docs/docs-shell";
 import { toc } from "@/components/docs/toc/api-playground";
 import {
@@ -213,19 +207,12 @@ export default function ApiPlaygroundPage() {
                 onChange={(e) => setApiKey(e.target.value)}
                 className="px-9 font-mono text-xs"
               />
-              <button
-                type="button"
-                onClick={() => setShowKey((s) => !s)}
-                aria-label={showKey ? "Hide key" : "Show key"}
-                aria-pressed={showKey}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showKey ? (
-                  <EyeOff className="h-4 w-4" aria-hidden />
-                ) : (
-                  <Eye className="h-4 w-4" aria-hidden />
-                )}
-              </button>
+              <PasswordToggle
+                shown={showKey}
+                onToggle={() => setShowKey((s) => !s)}
+                label="key"
+                sizeClassName="right-1 h-7 w-7"
+              />
             </div>
           </div>
         </div>

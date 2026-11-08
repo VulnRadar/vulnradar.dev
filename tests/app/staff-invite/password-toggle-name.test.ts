@@ -13,7 +13,8 @@ describe("the staff invite password toggle", () => {
       join(process.cwd(), "app/staff-invite/[token]/page.tsx"),
       "utf8",
     );
-    expect(source).toContain("aria-pressed={showPass}");
+    expect(source).toContain("<PasswordToggle");
+    expect(source).toContain("shown={showPass}");
     expect(source).not.toMatch(/aria-label=\{showPass/);
   });
 });
