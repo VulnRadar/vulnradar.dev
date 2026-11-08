@@ -669,8 +669,8 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
 
   // ai_usage and browserbase_usage are the same per-user counter as
   // github_review_usage above and had no prune at all, so they share its
-  // setting. The setting can be as low as 1 day and is labelled for GitHub
-  // review, so each prune also holds a floor: nothing still reads a row this
+  // setting. The setting can be as low as 1 day, so each prune also holds a
+  // floor: nothing still reads a row this
   // stale. For browserbase_usage that is the live period and the one before
   // it. For ai_usage it is the admin spend report's history, which reaches
   // back AI_USAGE_WINDOWS_SHOWN windows and is the longest read of the table.
