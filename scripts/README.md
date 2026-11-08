@@ -47,7 +47,6 @@ scripts/
 │   ├── db-diagnose-2fa.mjs        # Report inconsistent 2FA rows (read-only)
 │   ├── db-repair-2fa.mjs          # Fix only the rows db-diagnose-2fa proved corrupt
 │   ├── db-repair-sequences.mjs    # Reset identity sequences after a restore
-│   ├── migrate-avatars-to-files.mjs  # One-off: base64 avatars in the DB -> files on disk
 │   ├── find-duplicate-ids.mjs     # Repo check: duplicate check IDs (run by hand)
 │   ├── snapshot-api-routes.mjs    # Freeze the route inventory the 4.0 move is proved against (refuses to overwrite)
 │   └── snapshot-openapi-v3.mjs    # Freeze the v3 OpenAPI document before the move (run once, by hand)
@@ -142,7 +141,6 @@ With `DATABASE_SSL=true` the scripts connect the way the app does: the certifica
 | `npm run db:diagnose-2fa`     | Report accounts whose 2FA columns are internally inconsistent. Read-only.                                                                                                                                                      |
 | `npm run db:repair-2fa`       | Fix only the rows `db:diagnose-2fa` proved corrupt. It cannot unlock a healthy account.                                                                                                                                        |
 | `npm run db:repair-sequences` | Reset identity sequences, the cause of duplicate-key errors on insert after a restore.                                                                                                                                         |
-| `npm run db:migrate-avatars`  | One-off backfill: base64 avatars stored in the database become files on disk.                                                                                                                                                  |
 | `npm run db:backup`           | Write a full dump. Run this before any upgrade or repair.                                                                                                                                                                      |
 | `npm run db:restore`          | Restore a dump written by `db:backup`.                                                                                                                                                                                         |
 | `npm run build:knowledge`     | Regenerate every AI knowledge file. CI fails the PR if the committed output is stale.                                                                                                                                          |

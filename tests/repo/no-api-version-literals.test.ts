@@ -150,7 +150,6 @@ const DEBT: Record<string, string> = {
   "scripts/_lib/_lib.app-enums.mjs": "report text naming route files",
   "scripts/_lib/_lib.check-cross-column.mjs": "report text naming route files",
   "scripts/_lib/_lib.encrypted-columns.mjs": "report text naming route files",
-  "scripts/maintenance/migrate-avatars-to-files.mjs": "stored avatar paths",
 };
 
 function matchesEntry(file: string, entry: string): boolean {

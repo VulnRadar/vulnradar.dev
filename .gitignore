@@ -28,9 +28,8 @@ graphify-out
 
 # Runtime data directories. Empty in a fresh checkout, so git shows nothing,
 # which is exactly why they are easy to miss: they populate during normal
-# operation and only then become stageable. /data/avatars is where
-# scripts/maintenance/migrate-avatars-to-files.mjs writes user avatars, which
-# is personal data.
+# operation and only then become stageable. /data/avatars is where older
+# builds left user avatars as files, which is personal data.
 /data/
 /engine/data/
 # Per-developer instruction files for whatever editor or tooling someone uses.
