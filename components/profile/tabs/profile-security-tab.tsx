@@ -32,7 +32,7 @@ import {
   clearAuthCache,
 } from "@/components/providers/auth-provider";
 import type { ProfileTabProps } from "@/components/profile/types";
-import { InlineAlert } from "@/components/shared/inline-alert";
+import { EditDialog, KEEP_OPEN } from "@/components/shared/edit-dialog";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useConfirm } from "@/components/shared/use-confirm";
@@ -124,6 +124,613 @@ function StatusPill({
   );
 }
 
+const NETWORK_ERROR =
+  "We could not reach the server. Check your connection and try again.";
+
+type SendResult =
+  { ok: true; data: { backupCodes?: string[] } } | { ok: false; error: string };
+
+// Every password below goes into the body exactly as it was typed. The server
+// compares it with the stored hash as is, so a trimmed copy of a password
+// that starts or ends with a space can never pass the re-auth check, and
+// every refused attempt still counts against the rate limit.
+async function sendJson(
+  url: string,
+  method: "POST" | "PATCH" | "DELETE",
+  body: unknown,
+  fallback: string,
+): Promise<SendResult> {
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (res.ok) return { ok: true, data };
+    return { ok: false, error: data.error || fallback };
+  } catch {
+    return { ok: false, error: NETWORK_ERROR };
+  }
+}
+
+export interface PasswordDraft {
+  current: string;
+  next: string;
+  confirm: string;
+}
+
+export const EMPTY_PASSWORD_DRAFT: PasswordDraft = {
+  current: "",
+  next: "",
+  confirm: "",
+};
+
+/** The sentence that keeps the password dialog open, or null when it can save. */
+export function passwordDraftProblem(
+  draft: PasswordDraft,
+  hasPassword: boolean,
+): string | null {
+  if (hasPassword && !draft.current) {
+    return "Enter your current password to change it.";
+  }
+  if (!draft.next || !draft.confirm) {
+    return hasPassword
+      ? "Fill in all three fields to change your password."
+      : "Fill in both password fields to set one.";
+  }
+  if (draft.next !== draft.confirm) {
+    return "The two new password fields do not match. Retype them and try again.";
+  }
+  // The constant, not an 8 typed here. The server resolves
+  // PASSWORD_MIN_LENGTH, which is 12, so a 9-character password passed this
+  // gate and was then rejected by the API: the user was told the rule, met
+  // it, and was refused anyway. config-values.ts records that this same
+  // 8-versus-12 split was already found and fixed once; this was the third
+  // site it survived in, and the three sibling forms (signup, reset,
+  // staff-invite) all read the constant correctly.
+  if (draft.next.length < PASSWORD_MIN_LENGTH) {
+    return `Your new password needs at least ${PASSWORD_MIN_LENGTH} characters. Add a few more.`;
+  }
+  return null;
+}
+
+export function passwordUpdateBody(draft: PasswordDraft, hasPassword: boolean) {
+  return {
+    currentPassword: hasPassword ? draft.current : undefined,
+    newPassword: draft.next,
+  };
+}
+
+export function isPasswordDraftDirty(draft: PasswordDraft): boolean {
+  return draft.current !== "" || draft.next !== "" || draft.confirm !== "";
+}
+
+/** Resolves to the message that keeps the dialog open, or null once saved. */
+export async function savePassword(
+  draft: PasswordDraft,
+  hasPassword: boolean,
+): Promise<string | null> {
+  const problem = passwordDraftProblem(draft, hasPassword);
+  if (problem) return problem;
+  const result = await sendJson(
+    API.AUTH.UPDATE,
+    "PATCH",
+    passwordUpdateBody(draft, hasPassword),
+    "We could not save your password. Try again.",
+  );
+  return result.ok ? null : result.error;
+}
+
+export async function regenerateBackupCodes(
+  password: string,
+): Promise<{ ok: true; codes: string[] } | { ok: false; error: string }> {
+  const result = await sendJson(
+    API.AUTH.TWO_FA.BACKUP_CODES,
+    "POST",
+    { password },
+    "We could not generate new codes. Check your password and try again.",
+  );
+  if (!result.ok) return result;
+  return { ok: true, codes: result.data.backupCodes ?? [] };
+}
+
+export async function verifyAuthenticator(
+  code: string,
+  password: string,
+): Promise<{ ok: true; codes: string[] } | { ok: false; error: string }> {
+  const result = await sendJson(
+    API.AUTH.TWO_FA.SETUP,
+    "POST",
+    { code, currentPassword: password },
+    "That code did not match. Codes expire every 30 seconds, so try the current one.",
+  );
+  if (!result.ok) return result;
+  return { ok: true, codes: result.data.backupCodes ?? [] };
+}
+
+export async function enableEmailCodes(
+  password: string,
+): Promise<string | null> {
+  const result = await sendJson(
+    API.AUTH.TWO_FA.EMAIL_SETUP,
+    "POST",
+    { password },
+    "That password was not accepted. Try again.",
+  );
+  return result.ok ? null : result.error;
+}
+
+export type TwoFactorMethod = "app" | "email";
+
+export function turnOffTwoFactorRequest(method: TwoFactorMethod): {
+  url: string;
+  method: "POST" | "DELETE";
+} {
+  return method === "app"
+    ? { url: API.AUTH.TWO_FA.DISABLE, method: "POST" }
+    : { url: API.AUTH.TWO_FA.EMAIL_SETUP, method: "DELETE" };
+}
+
+export async function turnOffTwoFactor(
+  method: TwoFactorMethod,
+  password: string,
+): Promise<string | null> {
+  const request = turnOffTwoFactorRequest(method);
+  const result = await sendJson(
+    request.url,
+    request.method,
+    { password },
+    "That password was not accepted. Try again.",
+  );
+  return result.ok ? null : result.error;
+}
+
+function closeOnly(onClose: () => void) {
+  return (open: boolean) => {
+    if (!open) onClose();
+  };
+}
+
+export function PasswordDialog({
+  hasPassword,
+  onClose,
+  onSaved,
+}: {
+  hasPassword: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [draft, setDraft] = useState<PasswordDraft>(EMPTY_PASSWORD_DRAFT);
+  const set =
+    (key: keyof PasswordDraft) => (e: { target: { value: string } }) =>
+      setDraft((d) => ({ ...d, [key]: e.target.value }));
+  return (
+    <EditDialog
+      open
+      onOpenChange={closeOnly(onClose)}
+      size="sm"
+      title={hasPassword ? "Change your password" : "Set a password"}
+      description="Saving signs out every other device, makes trusted devices pass two-step again and revokes your API keys. This device stays signed in."
+      saveLabel={hasPassword ? "Update password" : "Set password"}
+      savingLabel={hasPassword ? "Updating..." : "Saving..."}
+      dirty={isPasswordDraftDirty(draft)}
+      onSave={async () => {
+        const error = await savePassword(draft, hasPassword);
+        if (error) return error;
+        onSaved();
+      }}
+    >
+      <div className="flex flex-col gap-4">
+        {hasPassword && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="sec-current-pw">Current password</Label>
+            <Input
+              id="sec-current-pw"
+              type="password"
+              autoComplete="current-password"
+              autoFocus
+              value={draft.current}
+              onChange={set("current")}
+              className="h-10"
+            />
+          </div>
+        )}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="sec-new-pw">New password</Label>
+          <Input
+            id="sec-new-pw"
+            type="password"
+            autoComplete="new-password"
+            autoFocus={!hasPassword}
+            value={draft.next}
+            onChange={set("next")}
+            className="h-10"
+            aria-describedby="sec-new-pw-hint"
+          />
+          <p id="sec-new-pw-hint" className="text-xs text-muted-foreground">
+            At least {PASSWORD_MIN_LENGTH} characters.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="sec-confirm-new-pw">Confirm new password</Label>
+          <Input
+            id="sec-confirm-new-pw"
+            type="password"
+            autoComplete="new-password"
+            value={draft.confirm}
+            onChange={set("confirm")}
+            className="h-10"
+          />
+        </div>
+      </div>
+    </EditDialog>
+  );
+}
+
+/** One password field, the shape every confirm-with-password dialog shares. */
+function PasswordField({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        type="password"
+        autoComplete="current-password"
+        autoFocus
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-10"
+      />
+    </div>
+  );
+}
+
+export function RegenerateBackupCodesDialog({
+  onClose,
+  onIssued,
+  returnFocusRef,
+}: {
+  onClose: () => void;
+  /** Hands the new set to the tab, whose takeover panel is the one place it shows. */
+  onIssued: (codes: string[]) => void;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
+}) {
+  const [password, setPassword] = useState("");
+  return (
+    <EditDialog
+      open
+      onOpenChange={closeOnly(onClose)}
+      tier="compact"
+      size="sm"
+      destructive
+      title="Generate new backup codes?"
+      description={`Your ${BACKUP_CODE_SET_SIZE} current codes stop working the moment new ones are issued.`}
+      saveLabel="Generate new codes"
+      savingLabel="Generating..."
+      dirty={password !== ""}
+      canSave={password !== ""}
+      returnFocusRef={returnFocusRef}
+      onSave={async () => {
+        const result = await regenerateBackupCodes(password);
+        if (!result.ok) return result.error;
+        onIssued(result.codes);
+      }}
+    >
+      <PasswordField
+        id="regen-backup-password"
+        label="Confirm your password"
+        value={password}
+        onChange={setPassword}
+      />
+    </EditDialog>
+  );
+}
+
+export interface AuthenticatorSetup {
+  uri: string;
+  secret: string;
+}
+
+export function AuthenticatorSetupDialog({
+  setup,
+  onClose,
+  onEnabled,
+  returnFocusRef,
+}: {
+  setup: AuthenticatorSetup;
+  /** resetEnrolment: any way out drops the half-finished secret. */
+  onClose: () => void;
+  onEnabled: (codes: string[]) => void;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
+}) {
+  const [enrolStep, setEnrolStep] = useState<EnrolStep>("scan");
+  const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const codeInputRef = useRef<HTMLInputElement>(null);
+
+  // Move focus to the code field when the verify step appears, so the flow
+  // reads in order and Enter there verifies. The step flips while the save
+  // that flipped it is still settling, and EditDialog holds every field in a
+  // disabled fieldset until it has, so a focus() straight away lands on a
+  // disabled input and is dropped. Wait a few frames for it to enable.
+  useEffect(() => {
+    if (enrolStep !== "verify") return;
+    let frame = 0;
+    let tries = 0;
+    const focusWhenEnabled = () => {
+      const input = codeInputRef.current;
+      if (input && !input.matches(":disabled")) {
+        input.focus();
+        return;
+      }
+      if (++tries < 30) frame = requestAnimationFrame(focusWhenEnabled);
+    };
+    focusWhenEnabled();
+    return () => cancelAnimationFrame(frame);
+  }, [enrolStep]);
+
+  const verifying = enrolStep === "verify";
+  return (
+    <EditDialog
+      open
+      onOpenChange={closeOnly(onClose)}
+      size="md"
+      title="Set up an authenticator app"
+      description="Two steps: add the account to your app, then prove it works with a code."
+      saveLabel={verifying ? "Verify and turn on" : "I have added it"}
+      savingLabel="Verifying..."
+      dirty={code !== "" || password !== ""}
+      canSave={!verifying || (code.length === 6 && password !== "")}
+      returnFocusRef={returnFocusRef}
+      onSave={async () => {
+        if (!verifying) {
+          setEnrolStep("verify");
+          return KEEP_OPEN;
+        }
+        const result = await verifyAuthenticator(code, password);
+        if (!result.ok) return result.error;
+        onEnabled(result.codes);
+      }}
+    >
+      <div className="flex flex-col gap-4">
+        <ol className="flex items-center gap-2 text-xs">
+          {(
+            [
+              ["scan", "Scan"],
+              ["verify", "Verify"],
+            ] as const
+          ).map(([id, label], i) => {
+            const done = verifying && id === "scan";
+            const current = enrolStep === id;
+            return (
+              <li key={id} className="flex items-center gap-2">
+                {i > 0 && (
+                  <ChevronRight
+                    className="h-3.5 w-3.5 text-muted-foreground/50"
+                    aria-hidden="true"
+                  />
+                )}
+                <span
+                  aria-current={current ? "step" : undefined}
+                  className={cn(
+                    "font-medium",
+                    current
+                      ? "text-primary"
+                      : done
+                        ? "text-foreground"
+                        : "text-muted-foreground",
+                  )}
+                >
+                  {i + 1}. {label}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+
+        {!verifying ? (
+          <div className="flex flex-col sm:flex-row gap-5">
+            {/* The QR quiet zone must stay white in both themes for scanners
+                to read it reliably. */}
+            <div className="mx-auto sm:mx-0 shrink-0 rounded-lg border border-border bg-white p-3">
+              <QRCodeSVG
+                value={setup.uri}
+                size={160}
+                level="M"
+                includeMargin={false}
+              />
+            </div>
+            <div className="flex flex-col gap-3 min-w-0">
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Scan this with your authenticator app
+                </p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  Open the app, add an account, and point the camera here. It
+                  will start showing a 6-digit code for {APP_NAME}.
+                </p>
+              </div>
+              <div className="flex flex-col gap-1.5 min-w-0">
+                <span className="text-xs text-muted-foreground">
+                  Cannot scan? Type this key instead:
+                </span>
+                <SecretKey secret={setup.secret} />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Enter the current code from your app, then confirm your password.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="setup-2fa-code">6-digit code</Label>
+                <Input
+                  id="setup-2fa-code"
+                  ref={codeInputRef}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  placeholder="000000"
+                  value={code}
+                  onChange={(e) =>
+                    setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                  }
+                  className="h-10 w-[180px] text-center text-lg tracking-[0.3em] font-mono"
+                />
+              </div>
+              <div className="flex flex-col gap-2 flex-1 min-w-0">
+                <Label htmlFor="setup-2fa-password">Your password</Label>
+                <Input
+                  id="setup-2fa-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="h-10"
+                />
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              className="self-start"
+              onClick={() => setEnrolStep("scan")}
+            >
+              Back to the QR code
+            </Button>
+          </div>
+        )}
+      </div>
+    </EditDialog>
+  );
+}
+
+/** The manual-entry key with its own copy button, for an app that cannot scan. */
+function SecretKey({ secret }: { secret: string }) {
+  const { copied, copy } = useCopyFeedback();
+  return (
+    <div className="flex items-start gap-2 min-w-0">
+      <code className="min-w-0 flex-1 rounded-md border border-border bg-muted/50 px-3 py-2 font-mono text-xs text-primary break-all select-all">
+        {secret}
+      </code>
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className="h-9 w-9 shrink-0"
+        onClick={() => void copy(secret)}
+        aria-label="Copy the setup key"
+      >
+        {copied ? (
+          <Check className="h-4 w-4" aria-hidden="true" />
+        ) : (
+          <Copy className="h-4 w-4" aria-hidden="true" />
+        )}
+      </Button>
+      <CopiedAnnouncement copied={copied} noun="setup key" />
+    </div>
+  );
+}
+
+export function EnableEmailCodesDialog({
+  email,
+  onClose,
+  onEnabled,
+}: {
+  email?: string;
+  onClose: () => void;
+  onEnabled: () => void;
+}) {
+  const [password, setPassword] = useState("");
+  return (
+    <EditDialog
+      open
+      onOpenChange={closeOnly(onClose)}
+      tier="compact"
+      size="sm"
+      title="Turn on email codes?"
+      description={`From your next sign-in, we email a 6-digit code to ${email || "your inbox"} after your password.`}
+      saveLabel="Turn on email codes"
+      savingLabel="Turning on..."
+      dirty={password !== ""}
+      canSave={password !== ""}
+      onSave={async () => {
+        const error = await enableEmailCodes(password);
+        if (error) return error;
+        onEnabled();
+      }}
+    >
+      <PasswordField
+        id="enable-email-2fa-password"
+        label="Confirm your password"
+        value={password}
+        onChange={setPassword}
+      />
+    </EditDialog>
+  );
+}
+
+const TURN_OFF_COPY: Record<TwoFactorMethod, string> = {
+  app: `Your authenticator entry and all ${BACKUP_CODE_SET_SIZE} backup codes are deleted. After this, your password alone signs you in.`,
+  email:
+    "We stop emailing sign-in codes. After this, your password alone signs you in.",
+};
+
+export function TurnOffTwoFactorDialog({
+  method,
+  onClose,
+  onTurnedOff,
+}: {
+  method: TwoFactorMethod;
+  onClose: () => void;
+  onTurnedOff: () => void;
+}) {
+  const [password, setPassword] = useState("");
+  return (
+    <EditDialog
+      open
+      onOpenChange={closeOnly(onClose)}
+      tier="compact"
+      size="sm"
+      destructive
+      title="Turn off two-step verification?"
+      description={TURN_OFF_COPY[method]}
+      saveLabel="Turn off"
+      savingLabel="Turning off..."
+      cancelLabel="Keep it on"
+      dirty={password !== ""}
+      canSave={password !== ""}
+      onSave={async () => {
+        const error = await turnOffTwoFactor(method, password);
+        if (error) return error;
+        onTurnedOff();
+      }}
+    >
+      <PasswordField
+        id={`disable-${method}-2fa-password`}
+        label="Confirm your password"
+        value={password}
+        onChange={setPassword}
+      />
+    </EditDialog>
+  );
+}
+
 interface ProfileSecurityTabProps extends ProfileTabProps {
   /**
    * Fires whenever this tab is showing freshly issued backup codes that have
@@ -145,13 +752,16 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
     onUnsavedBackupCodesChange,
   } = props;
 
-  // Password change state
-  const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmNewPassword, setConfirmNewPassword] = useState("");
-  const [savingPassword, setSavingPassword] = useState(false);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
+  // Which dialog is open. Each one owns its own fields, busy state and error,
+  // and is mounted only while open, so a password typed into one is gone the
+  // moment it closes.
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [regenerateOpen, setRegenerateOpen] = useState(false);
+  const [totpSetup, setTotpSetup] = useState<AuthenticatorSetup | null>(null);
+  const [enableEmailOpen, setEnableEmailOpen] = useState(false);
+  const [turnOffMethod, setTurnOffMethod] = useState<TwoFactorMethod | null>(
+    null,
+  );
 
   // 2FA state
   const [totpEnabled, setTotpEnabled] = useState(user?.totpEnabled || false);
@@ -168,14 +778,7 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
   useEffect(() => {
     onUserPatch?.({ totpEnabled, twoFactorMethod });
   }, [totpEnabled, twoFactorMethod, onUserPatch]);
-  const [setting2FA, setSetting2FA] = useState(false);
-  const [enrolStep, setEnrolStep] = useState<EnrolStep>("scan");
   const [startingSetup, setStartingSetup] = useState(false);
-  const [verifying2FA, setVerifying2FA] = useState(false);
-  const [enrolError, setEnrolError] = useState<string | null>(null);
-  const [totpUri, setTotpUri] = useState("");
-  const [totpSecret, setTotpSecret] = useState("");
-  const [totpVerifyCode, setTotpVerifyCode] = useState("");
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   // null = not confirmed yet (either still loading or the check failed).
   // Defaulting this to 0 would read as "no codes left" before the real
@@ -192,18 +795,6 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
   const [codesCopiedEver, setCodesCopiedEver] = useState(false);
   const { copied: codeCopyFeedback, copy: copyBackupCodes } = useCopyFeedback();
   const [codesDownloaded, setCodesDownloaded] = useState(false);
-  const [showRegenerateBackup, setShowRegenerateBackup] = useState(false);
-  const [regenPassword, setRegenPassword] = useState("");
-  const [regenerating, setRegenerating] = useState(false);
-  const [showDisable2FA, setShowDisable2FA] = useState(false);
-  const [disablePassword, setDisablePassword] = useState("");
-  const [disabling2FA, setDisabling2FA] = useState(false);
-  const [disableError, setDisableError] = useState<string | null>(null);
-  const [showEnableEmail2FA, setShowEnableEmail2FA] = useState(false);
-  const [email2FAPassword, setEmail2FAPassword] = useState("");
-  const [togglingEmail2FA, setTogglingEmail2FA] = useState(false);
-  const [emailEnableError, setEmailEnableError] = useState<string | null>(null);
-  const [setup2FAPassword, setSetup2FAPassword] = useState("");
 
   // Session state
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -223,7 +814,6 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
   const [devicesLoading, setDevicesLoading] = useState(true);
   const [revokingDeviceId, setRevokingDeviceId] = useState<number | null>(null);
 
-  const codeInputRef = useRef<HTMLInputElement>(null);
   const backupPanelRef = useRef<HTMLDivElement>(null);
 
   // Fetch backup codes remaining count on mount when 2FA is enabled
@@ -343,86 +933,17 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
     }
   }
 
-  // Move focus to the code field when the verify step appears, and to the
-  // backup codes when they are issued, so the flow reads in order.
-  useEffect(() => {
-    if (setting2FA && enrolStep === "verify") codeInputRef.current?.focus();
-  }, [setting2FA, enrolStep]);
-
+  // Move focus to the backup codes when they are issued, so the flow reads in
+  // order. The dialog that issued them also hands focus here as it closes.
   useEffect(() => {
     if (backupCodes.length > 0) backupPanelRef.current?.focus();
   }, [backupCodes.length]);
 
   // False only for an OAuth-only account (Google/GitHub/Discord sign-up)
   // that has never set a password. It has no "current password" to enter,
-  // so the form below skips that field and the server-side re-auth gate
+  // so the dialog skips that field and the server-side re-auth gate
   // (app/api/v3/auth/update/route.ts) skips checking one.
   const hasPassword = user?.hasPassword ?? true;
-
-  async function handleChangePassword() {
-    setPasswordError(null);
-    if (hasPassword && !currentPassword) {
-      setPasswordError("Enter your current password to change it.");
-      return;
-    }
-    if (!newPassword || !confirmNewPassword) {
-      setPasswordError(
-        hasPassword
-          ? "Fill in all three fields to change your password."
-          : "Fill in both password fields to set one.",
-      );
-      return;
-    }
-    if (newPassword !== confirmNewPassword) {
-      setPasswordError(
-        "The two new password fields do not match. Retype them and try again.",
-      );
-      return;
-    }
-    // The constant, not an 8 typed here. The server resolves
-    // PASSWORD_MIN_LENGTH, which is 12, so a 9-character password passed this
-    // gate and was then rejected by the API: the user was told the rule, met
-    // it, and was refused anyway. config-values.ts records that this same
-    // 8-versus-12 split was already found and fixed once; this was the third
-    // site it survived in, and the three sibling forms (signup, reset,
-    // staff-invite) all read the constant correctly.
-    if (newPassword.length < PASSWORD_MIN_LENGTH) {
-      setPasswordError(
-        `Your new password needs at least ${PASSWORD_MIN_LENGTH} characters. Add a few more.`,
-      );
-      return;
-    }
-
-    setSavingPassword(true);
-    try {
-      const res = await fetch(API.AUTH.UPDATE, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          currentPassword: hasPassword ? currentPassword : undefined,
-          newPassword,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setSuccess(hasPassword ? "Password updated." : "Password set.");
-        setShowPasswordForm(false);
-        setCurrentPassword("");
-        setNewPassword("");
-        setConfirmNewPassword("");
-      } else {
-        setPasswordError(
-          data.error || "We could not save your password. Try again.",
-        );
-      }
-    } catch {
-      setPasswordError(
-        "We could not reach the server. Check your connection and try again.",
-      );
-    } finally {
-      setSavingPassword(false);
-    }
-  }
 
   async function handleForceLogout() {
     setLogoutError(null);
@@ -451,14 +972,38 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
     }
   }
 
+  // Every way out of the setup dialog lands here, so a half-finished secret
+  // never outlives the dialog that showed it.
   function resetEnrolment() {
-    setSetting2FA(false);
-    setEnrolStep("scan");
-    setEnrolError(null);
-    setTotpUri("");
-    setTotpSecret("");
-    setTotpVerifyCode("");
-    setSetup2FAPassword("");
+    setTotpSetup(null);
+  }
+
+  async function startAuthenticatorSetup() {
+    setStartingSetup(true);
+    try {
+      const res = await fetch(API.AUTH.TWO_FA.SETUP);
+      const data = await res.json();
+      if (res.ok) {
+        setTotpSetup({ uri: data.uri, secret: data.secret });
+      } else {
+        setError(
+          data.error || "We could not start setup. Try again in a moment.",
+        );
+      }
+    } catch {
+      setError(NETWORK_ERROR);
+    } finally {
+      setStartingSetup(false);
+    }
+  }
+
+  // A fresh set from either dialog goes to the takeover below, the one place
+  // backup codes are ever shown, and resets the "saved them" flags with it.
+  function showIssuedCodes(codes: string[]) {
+    setCodesCopiedEver(false);
+    setCodesDownloaded(false);
+    setBackupCodes(codes);
+    setBackupCodesRemaining(codes.length);
   }
 
   function downloadBackupCodes() {
@@ -628,126 +1173,23 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
             : "Not set. You signed up with an outside provider, so add one if you also want to sign in with a password."
         }
       >
-        {!showPasswordForm ? (
-          <Card className="border-border/50 bg-card/50">
-            <CardContent className="flex items-center justify-between gap-4 py-5">
-              <p className="text-sm text-foreground">
-                {hasPassword
-                  ? "Your password is set."
-                  : "No password on file yet."}
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 shrink-0"
-                onClick={() => setShowPasswordForm(true)}
-              >
-                {hasPassword ? "Change password" : "Set a password"}
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <form
-            className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col gap-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleChangePassword();
-            }}
-          >
-            {passwordError && (
-              <div id="sec-password-error">
-                <InlineAlert tone="error">{passwordError}</InlineAlert>
-              </div>
-            )}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {hasPassword && (
-                <div className="flex flex-col gap-2 sm:col-span-2">
-                  <Label htmlFor="sec-current-pw">Current password</Label>
-                  <Input
-                    id="sec-current-pw"
-                    type="password"
-                    autoComplete="current-password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="h-10"
-                    aria-invalid={!!passwordError}
-                    aria-describedby={
-                      passwordError ? "sec-password-error" : undefined
-                    }
-                  />
-                </div>
-              )}
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="sec-new-pw">New password</Label>
-                <Input
-                  id="sec-new-pw"
-                  type="password"
-                  autoComplete="new-password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="h-10"
-                  aria-invalid={!!passwordError}
-                  aria-describedby={
-                    passwordError
-                      ? "sec-new-pw-hint sec-password-error"
-                      : "sec-new-pw-hint"
-                  }
-                />
-                <p
-                  id="sec-new-pw-hint"
-                  className="text-xs text-muted-foreground"
-                >
-                  At least {PASSWORD_MIN_LENGTH} characters.
-                </p>
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="sec-confirm-new-pw">Confirm new password</Label>
-                <Input
-                  id="sec-confirm-new-pw"
-                  type="password"
-                  autoComplete="new-password"
-                  value={confirmNewPassword}
-                  onChange={(e) => setConfirmNewPassword(e.target.value)}
-                  className="h-10"
-                  aria-invalid={!!passwordError}
-                  aria-describedby={
-                    passwordError ? "sec-password-error" : undefined
-                  }
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2 pt-1">
-              <Button type="submit" disabled={savingPassword}>
-                {savingPassword ? (
-                  <>
-                    <Loader2
-                      className="mr-2 h-4 w-4 animate-spin"
-                      aria-hidden="true"
-                    />
-                    {hasPassword ? "Updating..." : "Saving..."}
-                  </>
-                ) : hasPassword ? (
-                  "Update password"
-                ) : (
-                  "Set password"
-                )}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setShowPasswordForm(false);
-                  setPasswordError(null);
-                  setCurrentPassword("");
-                  setNewPassword("");
-                  setConfirmNewPassword("");
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          </form>
-        )}
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="flex items-center justify-between gap-4 py-5">
+            <p className="text-sm text-foreground">
+              {hasPassword
+                ? "Your password is set."
+                : "No password on file yet."}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 shrink-0"
+              onClick={() => setPasswordDialogOpen(true)}
+            >
+              {hasPassword ? "Change password" : "Set a password"}
+            </Button>
+          </CardContent>
+        </Card>
       </Section>
 
       {/* ─────────── Two-step verification ─────────── */}
@@ -791,38 +1233,12 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
               {appActive ? (
                 <StatusPill tone="on">Active</StatusPill>
               ) : (
-                (!totpEnabled || emailActive) &&
-                !setting2FA && (
+                (!totpEnabled || emailActive) && (
                   <Button
                     size="sm"
                     className="h-8 gap-1.5 shrink-0"
                     disabled={emailActive || startingSetup}
-                    aria-expanded={setting2FA}
-                    onClick={async () => {
-                      setStartingSetup(true);
-                      setEnrolError(null);
-                      try {
-                        const res = await fetch(API.AUTH.TWO_FA.SETUP);
-                        const data = await res.json();
-                        if (res.ok) {
-                          setTotpUri(data.uri);
-                          setTotpSecret(data.secret);
-                          setEnrolStep("scan");
-                          setSetting2FA(true);
-                        } else {
-                          setError(
-                            data.error ||
-                              "We could not start setup. Try again in a moment.",
-                          );
-                        }
-                      } catch {
-                        setError(
-                          "We could not reach the server. Check your connection and try again.",
-                        );
-                      } finally {
-                        setStartingSetup(false);
-                      }
-                    }}
+                    onClick={startAuthenticatorSetup}
                   >
                     {startingSetup && (
                       <Loader2
@@ -866,446 +1282,24 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
                       )}
                     </p>
                   </div>
-                  {!showRegenerateBackup && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1.5"
-                      onClick={() => setShowRegenerateBackup(true)}
-                    >
-                      New codes
-                    </Button>
-                  )}
-                </div>
-
-                {showRegenerateBackup && (
-                  <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
-                    <div>
-                      <Label htmlFor="regen-backup-password">
-                        Confirm your password to generate new codes
-                      </Label>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Your {BACKUP_CODE_SET_SIZE} current codes stop working
-                        the moment new ones are issued.
-                      </p>
-                    </div>
-                    <Input
-                      id="regen-backup-password"
-                      type="password"
-                      autoComplete="current-password"
-                      value={regenPassword}
-                      onChange={(e) => setRegenPassword(e.target.value)}
-                      className="h-10 max-w-sm"
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        disabled={!regenPassword || regenerating}
-                        onClick={async () => {
-                          setRegenerating(true);
-                          try {
-                            const res = await fetch(
-                              API.AUTH.TWO_FA.BACKUP_CODES,
-                              {
-                                method: "POST",
-                                headers: {
-                                  "Content-Type": "application/json",
-                                },
-                                body: JSON.stringify({
-                                  password: regenPassword,
-                                }),
-                              },
-                            );
-                            const data = await res.json();
-                            if (res.ok) {
-                              setBackupCodes(data.backupCodes);
-                              setBackupCodesRemaining(data.backupCodes.length);
-                              setShowRegenerateBackup(false);
-                              setRegenPassword("");
-                              setCodesCopiedEver(false);
-                              setCodesDownloaded(false);
-                              setSuccess("New backup codes generated.");
-                            } else {
-                              setError(
-                                data.error ||
-                                  "We could not generate new codes. Check your password and try again.",
-                              );
-                            }
-                          } catch {
-                            setError(
-                              "We could not reach the server. Check your connection and try again.",
-                            );
-                          } finally {
-                            setRegenerating(false);
-                          }
-                        }}
-                      >
-                        {regenerating ? (
-                          <>
-                            <Loader2
-                              className="mr-2 h-4 w-4 animate-spin"
-                              aria-hidden="true"
-                            />
-                            Generating...
-                          </>
-                        ) : (
-                          "Generate new codes"
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          setShowRegenerateBackup(false);
-                          setRegenPassword("");
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {!showDisable2FA ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowDisable2FA(true);
-                      setDisableError(null);
-                    }}
-                    aria-expanded={showDisable2FA}
-                    className="self-start text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5"
+                    onClick={() => setRegenerateOpen(true)}
                   >
-                    Turn off the authenticator app
-                  </button>
-                ) : (
-                  <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">
-                        Turn off two-step verification?
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Your authenticator entry and all {BACKUP_CODE_SET_SIZE}{" "}
-                        backup codes are deleted. After this, your password
-                        alone signs you in.
-                      </p>
-                    </div>
-                    {disableError && (
-                      <InlineAlert tone="error">{disableError}</InlineAlert>
-                    )}
-                    <div className="flex flex-col gap-2">
-                      <Label htmlFor="disable-app-2fa-password">
-                        Confirm your password
-                      </Label>
-                      <Input
-                        id="disable-app-2fa-password"
-                        type="password"
-                        autoComplete="current-password"
-                        value={disablePassword}
-                        onChange={(e) => setDisablePassword(e.target.value)}
-                        className="h-10 max-w-sm"
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="destructive"
-                        disabled={!disablePassword || disabling2FA}
-                        onClick={async () => {
-                          setDisabling2FA(true);
-                          setDisableError(null);
-                          try {
-                            const res = await fetch(API.AUTH.TWO_FA.DISABLE, {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                password: disablePassword,
-                              }),
-                            });
-                            const data = await res.json();
-                            if (res.ok) {
-                              setTotpEnabled(false);
-                              setTwoFactorMethod(null);
-                              setShowDisable2FA(false);
-                              setDisablePassword("");
-                              // totpEnabled/twoFactorMethod are part of
-                              // MeResponse -- see refreshAuthCache's other
-                              // call sites in this file for why this needs
-                              // telling to the app-wide useAuth() cache too.
-                              refreshAuthCache();
-                              setSuccess(
-                                "Authenticator app turned off. Your password is now the only thing protecting this account.",
-                              );
-                            } else {
-                              setDisableError(
-                                data.error ||
-                                  "That password was not accepted. Try again.",
-                              );
-                            }
-                          } catch {
-                            setDisableError(
-                              "We could not reach the server. Check your connection and try again.",
-                            );
-                          } finally {
-                            setDisabling2FA(false);
-                          }
-                        }}
-                      >
-                        {disabling2FA ? (
-                          <>
-                            <Loader2
-                              className="mr-2 h-4 w-4 animate-spin"
-                              aria-hidden="true"
-                            />
-                            Turning off...
-                          </>
-                        ) : (
-                          "Turn off"
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          setShowDisable2FA(false);
-                          setDisablePassword("");
-                          setDisableError(null);
-                        }}
-                      >
-                        Keep it on
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Enrolment: two deliberate steps. The trigger button lives in
-                the box header above; this appears once that starts. */}
-            {(!totpEnabled || emailActive) && setting2FA && (
-              <div className="flex flex-col gap-4">
-                {/* Step rail */}
-                <ol className="flex items-center gap-2 text-xs">
-                  {(
-                    [
-                      ["scan", "Scan"],
-                      ["verify", "Verify"],
-                    ] as const
-                  ).map(([id, label], i) => {
-                    const done = enrolStep === "verify" && id === "scan";
-                    const current = enrolStep === id;
-                    return (
-                      <li key={id} className="flex items-center gap-2">
-                        {i > 0 && (
-                          <ChevronRight
-                            className="h-3.5 w-3.5 text-muted-foreground/50"
-                            aria-hidden="true"
-                          />
-                        )}
-                        <span
-                          aria-current={current ? "step" : undefined}
-                          className={cn(
-                            "font-medium",
-                            current
-                              ? "text-primary"
-                              : done
-                                ? "text-foreground"
-                                : "text-muted-foreground",
-                          )}
-                        >
-                          {i + 1}. {label}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ol>
-
-                {enrolStep === "scan" ? (
-                  <div className="rounded-lg border border-border bg-card p-4 sm:p-5 flex flex-col sm:flex-row gap-5">
-                    {/* The QR quiet zone must stay white in both themes for
-                        scanners to read it reliably. */}
-                    <div className="mx-auto sm:mx-0 shrink-0 rounded-lg border border-border bg-white p-3">
-                      <QRCodeSVG
-                        value={totpUri}
-                        size={160}
-                        level="M"
-                        includeMargin={false}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-3 min-w-0">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">
-                          Scan this with your authenticator app
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                          Open the app, add an account, and point the camera
-                          here. It will start showing a 6-digit code for{" "}
-                          {APP_NAME}.
-                        </p>
-                      </div>
-                      <div className="flex flex-col gap-1.5 min-w-0">
-                        <span className="text-xs text-muted-foreground">
-                          Cannot scan? Type this key instead:
-                        </span>
-                        <code className="rounded border border-border bg-muted/50 px-3 py-2 font-mono text-xs text-primary break-all select-all">
-                          {totpSecret}
-                        </code>
-                      </div>
-                      <Button
-                        className="self-start gap-2 mt-1"
-                        onClick={() => {
-                          setEnrolStep("verify");
-                          setEnrolError(null);
-                        }}
-                      >
-                        I have added it
-                        <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-border bg-card p-4 sm:p-5 flex flex-col gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">
-                        Prove the app is working
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Enter the current code from your app, then confirm your
-                        password.
-                      </p>
-                    </div>
-
-                    {enrolError && (
-                      <div id="setup-2fa-error">
-                        <InlineAlert tone="error">{enrolError}</InlineAlert>
-                      </div>
-                    )}
-
-                    <div className="flex flex-col sm:flex-row gap-4">
-                      <div className="flex flex-col gap-2">
-                        <Label htmlFor="setup-2fa-code">6-digit code</Label>
-                        <Input
-                          id="setup-2fa-code"
-                          ref={codeInputRef}
-                          type="text"
-                          inputMode="numeric"
-                          autoComplete="one-time-code"
-                          pattern="[0-9]{6}"
-                          maxLength={6}
-                          placeholder="000000"
-                          value={totpVerifyCode}
-                          onChange={(e) =>
-                            setTotpVerifyCode(
-                              e.target.value.replace(/\D/g, "").slice(0, 6),
-                            )
-                          }
-                          className="h-10 w-[180px] text-center text-lg tracking-[0.3em] font-mono"
-                          aria-invalid={!!enrolError}
-                          aria-describedby={
-                            enrolError ? "setup-2fa-error" : undefined
-                          }
-                        />
-                      </div>
-                      <div className="flex flex-col gap-2 flex-1 min-w-0">
-                        <Label htmlFor="setup-2fa-password">
-                          Your password
-                        </Label>
-                        <Input
-                          id="setup-2fa-password"
-                          type="password"
-                          autoComplete="current-password"
-                          value={setup2FAPassword}
-                          onChange={(e) => setSetup2FAPassword(e.target.value)}
-                          className="h-10 sm:max-w-[260px]"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        disabled={
-                          totpVerifyCode.length !== 6 ||
-                          !setup2FAPassword ||
-                          verifying2FA
-                        }
-                        onClick={async () => {
-                          setVerifying2FA(true);
-                          setEnrolError(null);
-                          try {
-                            const res = await fetch(API.AUTH.TWO_FA.SETUP, {
-                              method: "POST",
-                              headers: {
-                                "Content-Type": "application/json",
-                              },
-                              body: JSON.stringify({
-                                code: totpVerifyCode,
-                                currentPassword: setup2FAPassword,
-                              }),
-                            });
-                            const data = await res.json();
-                            if (res.ok) {
-                              setTotpEnabled(true);
-                              setTwoFactorMethod("app");
-                              setSetting2FA(false);
-                              setEnrolStep("scan");
-                              setTotpUri("");
-                              setTotpSecret("");
-                              setTotpVerifyCode("");
-                              setSetup2FAPassword("");
-                              setCodesCopiedEver(false);
-                              setCodesDownloaded(false);
-                              setBackupCodes(data.backupCodes || []);
-                              setBackupCodesRemaining(
-                                data.backupCodes?.length || 0,
-                              );
-                              refreshAuthCache();
-                              setSuccess(
-                                "Authenticator app is on. Save your backup codes.",
-                              );
-                            } else {
-                              setEnrolError(
-                                data.error ||
-                                  "That code did not match. Codes expire every 30 seconds, so try the current one.",
-                              );
-                            }
-                          } catch {
-                            setEnrolError(
-                              "We could not reach the server. Check your connection and try again.",
-                            );
-                          } finally {
-                            setVerifying2FA(false);
-                          }
-                        }}
-                      >
-                        {verifying2FA ? (
-                          <>
-                            <Loader2
-                              className="mr-2 h-4 w-4 animate-spin"
-                              aria-hidden="true"
-                            />
-                            Verifying...
-                          </>
-                        ) : (
-                          "Verify and turn on"
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          setEnrolStep("scan");
-                          setEnrolError(null);
-                        }}
-                      >
-                        Back to the QR code
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                    New codes
+                  </Button>
+                </div>
 
                 <button
                   type="button"
-                  onClick={resetEnrolment}
-                  className="self-start text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => setTurnOffMethod("app")}
+                  className="self-start -my-1.5 py-1.5 text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  Cancel setup
+                  Turn off the authenticator app
                 </button>
-              </div>
+              </>
             )}
           </div>
 
@@ -1332,18 +1326,15 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
               {emailActive ? (
                 <StatusPill tone="on">Active</StatusPill>
               ) : (
-                (!totpEnabled || appActive) &&
-                !showEnableEmail2FA && (
+                (!totpEnabled || appActive) && (
                   <Button
                     size="sm"
                     variant="outline"
                     className="h-8 gap-1.5 shrink-0"
                     disabled={appActive}
-                    aria-expanded={showEnableEmail2FA}
                     onClick={() => {
                       if (appActive) return;
-                      setEmailEnableError(null);
-                      setShowEnableEmail2FA(true);
+                      setEnableEmailOpen(true);
                     }}
                   >
                     {appActive
@@ -1355,200 +1346,13 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
             </div>
 
             {emailActive && (
-              <>
-                {!showDisable2FA ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowDisable2FA(true);
-                      setDisableError(null);
-                    }}
-                    aria-expanded={showDisable2FA}
-                    className="self-start text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    Turn off email codes
-                  </button>
-                ) : (
-                  <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">
-                        Turn off two-step verification?
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        We stop emailing sign-in codes. After this, your
-                        password alone signs you in.
-                      </p>
-                    </div>
-                    {disableError && (
-                      <InlineAlert tone="error">{disableError}</InlineAlert>
-                    )}
-                    <div className="flex flex-col gap-2">
-                      <Label htmlFor="disable-email-2fa-password">
-                        Confirm your password
-                      </Label>
-                      <Input
-                        id="disable-email-2fa-password"
-                        type="password"
-                        autoComplete="current-password"
-                        value={disablePassword}
-                        onChange={(e) => setDisablePassword(e.target.value)}
-                        className="h-10 max-w-sm"
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="destructive"
-                        disabled={!disablePassword || disabling2FA}
-                        onClick={async () => {
-                          setDisabling2FA(true);
-                          setDisableError(null);
-                          try {
-                            const res = await fetch(
-                              API.AUTH.TWO_FA.EMAIL_SETUP,
-                              {
-                                method: "DELETE",
-                                headers: {
-                                  "Content-Type": "application/json",
-                                },
-                                body: JSON.stringify({
-                                  password: disablePassword,
-                                }),
-                              },
-                            );
-                            const data = await res.json();
-                            if (res.ok) {
-                              setTotpEnabled(false);
-                              setTwoFactorMethod(null);
-                              setShowDisable2FA(false);
-                              setDisablePassword("");
-                              refreshAuthCache();
-                              setSuccess(
-                                "Email codes turned off. Your password is now the only thing protecting this account.",
-                              );
-                            } else {
-                              setDisableError(
-                                data.error ||
-                                  "That password was not accepted. Try again.",
-                              );
-                            }
-                          } catch {
-                            setDisableError(
-                              "We could not reach the server. Check your connection and try again.",
-                            );
-                          } finally {
-                            setDisabling2FA(false);
-                          }
-                        }}
-                      >
-                        {disabling2FA ? (
-                          <>
-                            <Loader2
-                              className="mr-2 h-4 w-4 animate-spin"
-                              aria-hidden="true"
-                            />
-                            Turning off...
-                          </>
-                        ) : (
-                          "Turn off"
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          setShowDisable2FA(false);
-                          setDisablePassword("");
-                          setDisableError(null);
-                        }}
-                      >
-                        Keep it on
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {(!totpEnabled || appActive) && showEnableEmail2FA && (
-              <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4">
-                {emailEnableError && (
-                  <InlineAlert tone="error">{emailEnableError}</InlineAlert>
-                )}
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="enable-email-2fa-password">
-                    Confirm your password to turn on email codes
-                  </Label>
-                  <Input
-                    id="enable-email-2fa-password"
-                    type="password"
-                    autoComplete="current-password"
-                    value={email2FAPassword}
-                    onChange={(e) => setEmail2FAPassword(e.target.value)}
-                    className="h-10 max-w-sm"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    disabled={!email2FAPassword.trim() || togglingEmail2FA}
-                    onClick={async () => {
-                      setTogglingEmail2FA(true);
-                      setEmailEnableError(null);
-                      try {
-                        const res = await fetch(API.AUTH.TWO_FA.EMAIL_SETUP, {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                          },
-                          body: JSON.stringify({
-                            password: email2FAPassword.trim(),
-                          }),
-                        });
-                        const data = await res.json();
-                        if (res.ok) {
-                          setTotpEnabled(true);
-                          setTwoFactorMethod("email");
-                          setEmail2FAPassword("");
-                          setShowEnableEmail2FA(false);
-                          refreshAuthCache();
-                          setSuccess("Email codes are on.");
-                        } else {
-                          setEmailEnableError(
-                            data.error ||
-                              "That password was not accepted. Try again.",
-                          );
-                        }
-                      } catch {
-                        setEmailEnableError(
-                          "We could not reach the server. Check your connection and try again.",
-                        );
-                      } finally {
-                        setTogglingEmail2FA(false);
-                      }
-                    }}
-                  >
-                    {togglingEmail2FA ? (
-                      <>
-                        <Loader2
-                          className="mr-2 h-4 w-4 animate-spin"
-                          aria-hidden="true"
-                        />
-                        Turning on...
-                      </>
-                    ) : (
-                      "Turn on email codes"
-                    )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setShowEnableEmail2FA(false);
-                      setEmail2FAPassword("");
-                      setEmailEnableError(null);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={() => setTurnOffMethod("email")}
+                className="self-start -my-1.5 py-1.5 text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Turn off email codes
+              </button>
             )}
           </div>
         </div>
@@ -1740,6 +1544,75 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
         </a>
         .
       </p>
+
+      {passwordDialogOpen && (
+        <PasswordDialog
+          hasPassword={hasPassword}
+          onClose={() => setPasswordDialogOpen(false)}
+          onSaved={() =>
+            setSuccess(hasPassword ? "Password updated." : "Password set.")
+          }
+        />
+      )}
+      {regenerateOpen && (
+        <RegenerateBackupCodesDialog
+          onClose={() => setRegenerateOpen(false)}
+          returnFocusRef={backupPanelRef}
+          onIssued={(codes) => {
+            setRegenerateOpen(false);
+            showIssuedCodes(codes);
+            setSuccess("New backup codes generated.");
+          }}
+        />
+      )}
+      {totpSetup && (
+        <AuthenticatorSetupDialog
+          setup={totpSetup}
+          onClose={resetEnrolment}
+          returnFocusRef={backupPanelRef}
+          onEnabled={(codes) => {
+            resetEnrolment();
+            setTotpEnabled(true);
+            setTwoFactorMethod("app");
+            showIssuedCodes(codes);
+            // totpEnabled/twoFactorMethod are part of MeResponse, so the
+            // app-wide useAuth() cache has to hear about the change too.
+            refreshAuthCache();
+            setSuccess("Authenticator app is on. Save your backup codes.");
+          }}
+        />
+      )}
+      {enableEmailOpen && (
+        <EnableEmailCodesDialog
+          email={user?.email}
+          onClose={() => setEnableEmailOpen(false)}
+          onEnabled={() => {
+            setEnableEmailOpen(false);
+            setTotpEnabled(true);
+            setTwoFactorMethod("email");
+            refreshAuthCache();
+            setSuccess("Email codes are on.");
+          }}
+        />
+      )}
+      {turnOffMethod && (
+        <TurnOffTwoFactorDialog
+          method={turnOffMethod}
+          onClose={() => setTurnOffMethod(null)}
+          onTurnedOff={() => {
+            const method = turnOffMethod;
+            setTurnOffMethod(null);
+            setTotpEnabled(false);
+            setTwoFactorMethod(null);
+            refreshAuthCache();
+            setSuccess(
+              method === "app"
+                ? "Authenticator app turned off. Your password is now the only thing protecting this account."
+                : "Email codes turned off. Your password is now the only thing protecting this account.",
+            );
+          }}
+        />
+      )}
 
       {/* Sign out everywhere confirmation */}
       <ConfirmDialog
