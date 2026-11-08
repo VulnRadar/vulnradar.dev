@@ -672,6 +672,7 @@ describe("docs say what the repo review and staff SSO do now", () => {
   it("/docs/github does not claim an oversized repo is rejected", () => {
     expect(github).not.toMatch(/oversized\s+or\s+empty\s+repo\s+is\s+rejected/);
     expect(github).toMatch(/oversized\s+repo\s+is\s+not\s+rejected/);
+    expect(github).not.toMatch(/fully\s+pattern-scanned/);
   });
 
   it("the 413 row of /docs/api no longer uses a repo as its example", () => {

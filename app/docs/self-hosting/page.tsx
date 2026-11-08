@@ -1093,7 +1093,8 @@ docker compose logs -f app`}
             <InlineCode>STAFF_OIDC_ACCEPT_MISSING_EMAIL_VERIFIED</InlineCode> in
             Settings, Advanced. Only the super admin can set it, and a token
             that says <InlineCode>false</InlineCode> is still refused with it
-            on. Until then, sign in with a password. The details are in the{" "}
+            on. Until then, staff sign in another way, such as with a password.
+            The details are in the{" "}
             <Link
               href="/docs/administration#staff-sso"
               className="text-primary underline-offset-2 hover:underline"
