@@ -45,6 +45,7 @@ const {
 } = await import("@/lib/notifications/posture-digest");
 const { CONFIG_POSTURE_DIGEST_POLL_INTERVAL_MS } =
   await import("@/lib/config/config-values");
+const { HUMAN_FEEDBACK_SQL } = await import("@/lib/scanner/feedback-source");
 
 function finding(overrides: Partial<Vulnerability> = {}): Vulnerability {
   return {
@@ -165,6 +166,17 @@ describe("buildDigestForUser", () => {
 
     expect(result!.newFindings).toEqual([]);
     expect(result!.currentOpenCount).toBe(0);
+  });
+
+  it("only lets a verdict a person gave take a finding out of the digest", async () => {
+    installQueryMock({ current: [{ url: "https://a.com", findings: [] }] });
+
+    await buildDigestForUser(1, new Date());
+
+    const sql = mockQuery.mock.calls
+      .map(([query]) => String(query))
+      .find((query) => query.includes("FROM scan_finding_feedback"));
+    expect(sql).toContain(HUMAN_FEEDBACK_SQL);
   });
 
   it("ignores medium/low/info findings entirely", async () => {

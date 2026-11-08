@@ -32,11 +32,16 @@
  * `accepted_risk` or `wont_fix` is treated the same way, for the same reason:
  * the user has made a decision about it, and mailing them about it hourly is
  * the repeat-notification problem this module exists to end.
+ *
+ * Only a verdict a person gave counts (lib/scanner/feedback-source.ts). The AI
+ * verifier also files false_positive rows under the user's id, and a model that
+ * is wrong about a finding must not be able to silence the alert for it.
  */
 
 import pool from "@/lib/database/db";
 import type { Vulnerability } from "./types";
 import { diffFindingsByKey } from "./finding-diff";
+import { HUMAN_FEEDBACK_SQL } from "./feedback-source";
 
 function isCriticalOrHigh(f: Vulnerability): boolean {
   return f.severity === "critical" || f.severity === "high";
@@ -51,7 +56,8 @@ async function getSuppressedFindingIds(
 ): Promise<Set<string>> {
   const result = await pool.query<{ finding_id: string }>(
     `SELECT finding_id FROM scan_finding_feedback
-     WHERE user_id = $1 AND finding_url = $2 AND verdict = 'false_positive'`,
+     WHERE user_id = $1 AND finding_url = $2 AND verdict = 'false_positive'
+       AND ${HUMAN_FEEDBACK_SQL}`,
     [userId, findingUrl],
   );
   return new Set(result.rows.map((r) => r.finding_id));

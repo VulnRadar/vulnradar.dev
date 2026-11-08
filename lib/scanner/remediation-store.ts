@@ -14,6 +14,7 @@
  */
 
 import pool from "@/lib/database/db";
+import { HUMAN_FEEDBACK_SQL } from "./feedback-source";
 import type { FindingRemediation, RemediationStatus } from "./remediation";
 import type { Vulnerability } from "./types";
 
@@ -69,6 +70,11 @@ export async function getRemediationMap(
  * alongside getRemediationMap rather than after it. Same query, same
  * best-effort contract: a failed read returns an empty set, so the caller
  * shows every finding, which is the safe direction.
+ *
+ * Human rows only (lib/scanner/feedback-source.ts). This set is what marks a
+ * finding suppressed, and the CI gate drops suppressed findings from the
+ * report it fails a build on, under text that says "findings you marked". A
+ * finding only the AI verifier doubted has not been marked by anyone.
  */
 export async function getFalsePositiveIds(
   userId: number,
@@ -76,7 +82,8 @@ export async function getFalsePositiveIds(
   try {
     const res = await pool.query<{ finding_id: string }>(
       `SELECT finding_id FROM scan_finding_feedback
-       WHERE user_id = $1 AND verdict = 'false_positive'`,
+       WHERE user_id = $1 AND verdict = 'false_positive'
+         AND ${HUMAN_FEEDBACK_SQL}`,
       [userId],
     );
     return new Set(res.rows.map((row) => row.finding_id));

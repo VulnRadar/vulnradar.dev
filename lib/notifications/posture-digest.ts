@@ -19,7 +19,8 @@
  *   across two arbitrary scans of the same site. A finding the user has
  *   marked false_positive (scan_finding_feedback) is excluded from both
  *   the "new" list and the open counts, same as the per-scan regression
- *   alert.
+ *   alert. A row the AI verifier wrote is not the user marking anything
+ *   (lib/scanner/feedback-source.ts), so it excludes nothing.
  *
  * - `getDueDigestUsers` / `sendWeeklyDigests` is the batch job: find
  *   opted-in, non-disabled users whose last digest (or opt-in) is at
@@ -47,6 +48,7 @@ import {
 } from "@/lib/config/config-values";
 import { APP_NAME } from "@/lib/config/constants";
 import { diffFindingsByKey } from "@/lib/scanner/finding-diff";
+import { HUMAN_FEEDBACK_SQL } from "@/lib/scanner/feedback-source";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { sendNotificationEmail } from "./notifications";
 import { postureDigestEmail, type PostureDigestData } from "@/lib/email/email";
@@ -62,7 +64,8 @@ function isCriticalOrHigh(f: Vulnerability): boolean {
 async function getSuppressedFindingIds(userId: number): Promise<Set<string>> {
   const result = await pool.query<{ finding_id: string }>(
     `SELECT finding_id FROM scan_finding_feedback
-     WHERE user_id = $1 AND verdict = 'false_positive'`,
+     WHERE user_id = $1 AND verdict = 'false_positive'
+       AND ${HUMAN_FEEDBACK_SQL}`,
     [userId],
   );
   return new Set(result.rows.map((r) => r.finding_id));

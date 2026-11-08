@@ -25,6 +25,7 @@ vi.mock("@/lib/database/db", () => ({
 
 const { checkForNewCriticalOrHighFindings } =
   await import("@/lib/scanner/regression-alert");
+const { HUMAN_FEEDBACK_SQL } = await import("@/lib/scanner/feedback-source");
 
 function finding(overrides: Partial<Vulnerability> = {}): Vulnerability {
   return {
@@ -247,6 +248,22 @@ describe("checkForNewCriticalOrHighFindings", () => {
 
     expect(result.hasNewCriticalOrHigh).toBe(false);
     expect(result.newFindings).toEqual([]);
+  });
+
+  it("only lets a verdict a person gave suppress the alert", async () => {
+    installQueryMock();
+
+    await checkForNewCriticalOrHighFindings({
+      userId: 1,
+      url: "https://example.com",
+      scanId: 99,
+      currentFindings: [],
+    });
+
+    const sql = mockQuery.mock.calls
+      .map(([query]) => String(query))
+      .find((query) => query.includes("FROM scan_finding_feedback"));
+    expect(sql).toContain(HUMAN_FEEDBACK_SQL);
   });
 
   it("keeps an escalated finding suppressed when the user marked it a false positive", async () => {

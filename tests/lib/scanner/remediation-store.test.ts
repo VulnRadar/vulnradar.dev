@@ -46,8 +46,9 @@ vi.mock("@/lib/database/db", () => ({
   },
 }));
 
-const { attachOwnerFindingState, getRemediationMap } =
+const { attachOwnerFindingState, getFalsePositiveIds, getRemediationMap } =
   await import("@/lib/scanner/remediation-store");
+const { HUMAN_FEEDBACK_SQL } = await import("@/lib/scanner/feedback-source");
 
 function finding(id: string): Vulnerability {
   return {
@@ -137,6 +138,13 @@ describe("attachRemediation cross-rescan persistence", () => {
     const out = await attachOwnerFindingState(7, URL_A, []);
     expect(out).toEqual([]);
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("reads false-positive verdicts from human rows only", async () => {
+    await getFalsePositiveIds(7);
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain("FROM scan_finding_feedback");
+    expect(sql).toContain(HUMAN_FEEDBACK_SQL);
   });
 
   it("getRemediationMap keys the returned map by finding_id", async () => {
