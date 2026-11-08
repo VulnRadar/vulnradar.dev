@@ -341,6 +341,8 @@ describe("GET /api/v3/auth/oauth/[provider]", () => {
       );
 
       expect(res.status).toBe(429);
+      expect(res.headers.get("retry-after")).toBeTruthy();
+      expect((await res.json()).error).toMatch(/^Too many password attempts/);
       expect(
         mockQuery.mock.calls.some(([sql]) =>
           String(sql).includes("SELECT password_hash"),

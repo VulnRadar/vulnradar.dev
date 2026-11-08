@@ -267,6 +267,8 @@ describe("/api/v3/auth/discord", () => {
     const res = await POST(discordPost({ password: CONNECT_PASSWORD }));
 
     expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBeTruthy();
+    expect((await res.json()).error).toMatch(/^Too many password attempts/);
     expect(queries.some((q) => q.sql.includes("SELECT password_hash"))).toBe(
       false,
     );

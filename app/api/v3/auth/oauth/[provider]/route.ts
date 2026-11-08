@@ -28,6 +28,8 @@ import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 import { verifyReauthPassword } from "@/lib/auth/reauth";
 import { safeRedirect } from "@/lib/auth/safe-redirect";
 import { getClientIp } from "@/lib/api/request-utils";
+import { ApiResponse } from "@/lib/api/api-utils";
+import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 
 const CONFIRM_PASSWORD_FIRST = "Confirm your password first";
@@ -201,10 +203,9 @@ export async function POST(
     ...RATE_LIMITS.login,
   });
   if (!rl.allowed) {
-    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
-    return NextResponse.json(
-      { error: `Too many attempts. Please try again in ${minutes} minute(s).` },
-      { status: 429 },
+    return ApiResponse.tooManyRequests(
+      TOO_MANY_ATTEMPTS("password attempts", rl.retryAfterSeconds),
+      rl.retryAfterSeconds,
     );
   }
 
