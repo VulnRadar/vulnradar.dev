@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { scanHistoryId: number | string };
+  let body: unknown;
   try {
     body = await req.json();
   } catch {
@@ -92,9 +92,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Valid JSON is not necessarily an object. The literal null parses, gets
+  // past the catch above, and threw on the destructuring below as a 500.
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json(
+      { error: "Invalid request body." },
+      { status: 400 },
+    );
+  }
+
   // Accepts the opaque public_id (a string) or a legacy numeric id -- the
   // scan lookup below resolves either shape.
-  const { scanHistoryId } = body;
+  const { scanHistoryId } = body as { scanHistoryId?: number | string | null };
   if (
     scanHistoryId === undefined ||
     scanHistoryId === null ||

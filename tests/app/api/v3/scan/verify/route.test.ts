@@ -220,6 +220,22 @@ describe("POST /api/v3/scan/verify: auth and validation", () => {
     expect(res.status).toBe(400);
   });
 
+  // JSON.parse accepts these, so they get past the catch for invalid JSON.
+  // Destructuring the literal null threw, and the caller got a 500.
+  it.each<[string, unknown]>([
+    ["the literal null", null],
+    ["a number", 7],
+    ["a string", "10"],
+    ["a boolean", true],
+    ["an array", [{ scanHistoryId: 10 }]],
+  ])("answers %s as a malformed body", async (_label, body) => {
+    const res = await POST(postRequest(body));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Invalid request body.");
+    expect(mockRunAiVerification).not.toHaveBeenCalled();
+  });
+
   it("rejects a missing scanHistoryId", async () => {
     const res = await POST(postRequest({}));
     expect(res.status).toBe(400);
