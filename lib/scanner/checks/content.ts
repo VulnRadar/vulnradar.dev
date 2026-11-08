@@ -1891,10 +1891,14 @@ const rawDetectors: Record<string, DetectFn> = {
     // and the generic Prisma/TypeORM/node-postgres "Getting Started"
     // placeholder verbatim.
     const html = stripExampleContent(body);
+    // Bounded, and the user run stops at its first colon, because the body is
+    // the scanned site's own. With both runs free to hold anything, every
+    // start tried every colon with every @ after it: repeated "mongodb://a"
+    // was cubic, 23 seconds at 16 KB. No real credential is near these lengths.
     const patterns = [
-      /(?:postgres|postgresql|mysql|mongodb|redis|mssql):\/\/[^\s"']+:[^\s"']+@[^\s"']+/gi,
+      /(?:postgres|postgresql|mysql|mongodb|redis|mssql):\/\/[^\s"':]{1,256}:[^\s"'@]{1,512}@[^\s"']+/gi,
       /Server=[\w.-]+;Database=[\w.-]+;User\s*Id=[\w.-]+;Password=[\w.-]+/gi,
-      /DATA\s+SOURCE=[^;]+;USER\s+ID=[^;]+;PASSWORD=[^;]+/gi,
+      /DATA\s+SOURCE=[^;]{1,256};USER\s+ID=[^;]{1,256};PASSWORD=[^;]+/gi,
     ];
     const placeholder =
       /myserveraddress|mydatabase|myusername|mypassword|user:pass(?:word)?@/i;

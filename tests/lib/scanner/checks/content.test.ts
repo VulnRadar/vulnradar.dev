@@ -525,6 +525,19 @@ const fixtures: DetectorFixtures = {
       expect: "fire",
       evidenceIncludes: "connection string",
     },
+    {
+      description:
+        "a long percent-encoded password is still inside the bound that keeps this pattern linear",
+      body: `<p>postgres://appuser:${"%41b3".repeat(90)}@db.internal:5432/prod</p>`,
+      expect: "fire",
+      evidenceIncludes: "connection string",
+    },
+    {
+      description: "a password holding an @ is still a connection string",
+      body: "<p>mysql://appuser:S3cr3t@P4ss@db.internal/prod</p>",
+      expect: "fire",
+      evidenceIncludes: "connection string",
+    },
   ],
   "reflected-input": [
     {

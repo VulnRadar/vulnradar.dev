@@ -546,6 +546,9 @@ const LARGE_SHAPES: Record<string, string> = (() => {
     // the CSP family, through getEffectiveCsp
     unterminatedMeta: big('<meta name="viewport" content="'),
     unterminatedPasswordInput: big('<input type="password" '),
+    // the secret tier's URI patterns: every start scanned on for an @
+    credentialUriRun: big("mongodb://a"),
+    credentialUriRunEscaped: big("postgres:\\/\\/a"),
   };
 })();
 
@@ -828,6 +831,7 @@ const GROWTH_SHAPES: Record<string, string> = {
   formOpen: "<form ",
   stackFrameOpen: "at foo.bar (zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
   dotnetType: "System.",
+  credentialUriOpen: "mysql://a",
 };
 
 const GROWTH_CONTEXT: ProbeContext = {

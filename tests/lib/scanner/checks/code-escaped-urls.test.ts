@@ -247,6 +247,17 @@ describe("regular expression source is not a leaked connection string", () => {
     ).toContain("PostgreSQL URI");
   });
 
+  // The user and password runs are bounded so that a page cannot make every
+  // start of a URI rescan the rest of the body. The bound has to clear what a
+  // real one looks like, percent-encoding included.
+  it("still reports a long percent-encoded password inside the bound", () => {
+    const password = "%41b3".repeat(90);
+    expect(password.length).toBeGreaterThan(400);
+    expect(run("hardcoded-secrets", inJson(withPassword(password)))).toContain(
+      "PostgreSQL URI",
+    );
+  });
+
   it("still reports the connection string that same script holds", () => {
     expect(
       run(

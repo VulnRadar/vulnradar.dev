@@ -145,18 +145,27 @@ const CRITICAL_SECRET_PATTERNS: SecretPattern[] = [
   // Same MD5-shaped false-collision risk as the Twilio SID above ("key-" +
   // 32 hex chars matches inside an unrelated hash), same quote-boundary fix.
   { name: "Mailgun Key", pattern: /(?<=["'])key-[0-9a-f]{32}(?=["'])/g },
+  // The user and password runs are bounded because the body is the scanned
+  // site's own. A password run that went to the next blank or quote made
+  // repeated "mongodb://a" quadratic, each start rescanning the rest of the
+  // body for an @: 1.3 seconds at 96 KB, minutes at the 1 MB body cap. No real
+  // credential is near these lengths, even percent-encoded.
   {
     name: "MongoDB URI",
-    pattern: /mongodb(?:\+srv)?:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g,
+    pattern:
+      /mongodb(?:\+srv)?:\/\/[^:]{1,256}:[^\s@"'<>]{1,512}@[^\s"'<>]{5,}/g,
   },
   {
     name: "PostgreSQL URI",
-    pattern: /postgres(?:ql)?:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g,
+    pattern: /postgres(?:ql)?:\/\/[^:]{1,256}:[^\s@"'<>]{1,512}@[^\s"'<>]{5,}/g,
   },
-  { name: "MySQL URI", pattern: /mysql:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g },
+  {
+    name: "MySQL URI",
+    pattern: /mysql:\/\/[^:]{1,256}:[^\s@"'<>]{1,512}@[^\s"'<>]{5,}/g,
+  },
   {
     name: "Redis URI",
-    pattern: /rediss?:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g,
+    pattern: /rediss?:\/\/[^:]{1,256}:[^\s@"'<>]{1,512}@[^\s"'<>]{5,}/g,
   },
   { name: "OAuth Token", pattern: /ya29\.[0-9A-Za-z_-]{68,}/g },
   {
