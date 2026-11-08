@@ -92,7 +92,7 @@
     "jsonwebtoken": "9.0.3",
     "jspdf": "4.2.1",
     "jspdf-autotable": "5.0.9",
-    "lucide-react": "^1.65.0",
+    "lucide-react": "^1.69.0",
     "next": "15.5.29",
     "next-intl": "4.14.9",
     "next-themes": "0.4.6",
@@ -138,7 +138,7 @@
     "oxlint": "1.90.0",
     "postcss": "8.5.32",
     "prettier": "3.9.10",
-    "tailwindcss": "^4.3.3",
+    "tailwindcss": "^4.3.4",
     "typescript": "6.0.3",
     "vitest": "5.0.5"
   },
