@@ -166,6 +166,13 @@ describe("POST /api/v3/scan/github-issue: the report link in the issue", () => {
     expect(body).not.toContain("Full report");
   });
 
+  it("titles a repo scan with the whole repository name", async () => {
+    await filedBody({ url: "octocat/hello-world", scan_type: "github" });
+    expect(mockCreateIssue.mock.calls[0][3].title).toContain(
+      "for octocat/hello-world (",
+    );
+  });
+
   it("only points at the full report when there is one", async () => {
     expect(await filedBody({ findings: manyFindings })).toContain(
       "...and 1 more (see the full report).",

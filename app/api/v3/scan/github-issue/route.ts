@@ -25,8 +25,14 @@ import { SEVERITY_ORDER } from "@/lib/config/client-constants";
 const REPO_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 const MAX_FINDINGS_LISTED = 50;
 
-function hostOf(url: string): string {
-  return normalizeHostForReputation(url) || url;
+function isRepoScan(scan: ScanHistoryRow): boolean {
+  return "scan_type" in scan && scan.scan_type === "github";
+}
+
+/** What the issue title calls the target. A repo scan's url is "owner/name". */
+function targetLabel(scan: ScanHistoryRow): string {
+  if (isRepoScan(scan)) return scan.url;
+  return normalizeHostForReputation(scan.url) || scan.url;
 }
 
 /**
@@ -37,8 +43,7 @@ function hostOf(url: string): string {
  * report, so it gets none even if the row was later marked public.
  */
 function publicReportUrl(scan: ScanHistoryRow): string | null {
-  const isRepoScan = "scan_type" in scan && scan.scan_type === "github";
-  if (isRepoScan || scan.is_public !== true) return null;
+  if (isRepoScan(scan) || scan.is_public !== true) return null;
   const host = normalizeHostForReputation(scan.url);
   return host ? `${APP_URL}/host/${encodeURIComponent(host)}` : null;
 }
@@ -135,8 +140,7 @@ export async function POST(request: NextRequest) {
 
   const findings = (scan.findings || []) as Vulnerability[];
   const [owner, name] = repo.split("/");
-  const host = hostOf(scan.url);
-  const title = `[${APP_NAME}] Security findings for ${host} (${findings.length})`;
+  const title = `[${APP_NAME}] Security findings for ${targetLabel(scan)} (${findings.length})`;
   const issueBody = buildIssueBody(
     scan.url,
     findings,
