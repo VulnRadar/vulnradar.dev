@@ -649,6 +649,33 @@ describe("PATCH /api/v3/webhooks (send a test payload)", () => {
     expect(sentTo).toBe(url);
     check(JSON.parse(init.body as string));
   });
+
+  it("caps the name in a Discord field at the 1024 characters Discord accepts", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 10,
+          url: "https://discord.com/api/webhooks/1/tok",
+          name: "n".repeat(1500),
+          type: "discord",
+          user_id: 7,
+          team_id: null,
+        },
+      ],
+    });
+    const { safeFetch } = await import("@/lib/scanner/safe-fetch");
+    vi.mocked(safeFetch).mockReset();
+    vi.mocked(safeFetch).mockResolvedValue(new Response("ok", { status: 200 }));
+
+    await PATCH(patchRequest({ id: 10 }));
+
+    const [, init] = vi.mocked(safeFetch).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    const field = JSON.parse(init.body as string).embeds[0].fields[1];
+    expect(field.value).toHaveLength(1024);
+  });
 });
 
 describe("DELETE /api/v3/webhooks", () => {

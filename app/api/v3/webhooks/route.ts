@@ -427,7 +427,13 @@ export async function PATCH(request: NextRequest) {
               color: parseInt(BRANDING_PRIMARY_COLOR.slice(1), 16),
               fields: [
                 { name: "Status", value: "Connected", inline: true },
-                { name: "Webhook Name", value: webhook.name, inline: true },
+                // Discord refuses a field over 1024 characters, and a name
+                // saved before the create route capped it can be longer.
+                {
+                  name: "Webhook Name",
+                  value: webhook.name.slice(0, 1024),
+                  inline: true,
+                },
               ],
               footer: { text: `${APP_NAME} Security Scanner` },
               timestamp: new Date().toISOString(),
@@ -457,7 +463,10 @@ export async function PATCH(request: NextRequest) {
                 type: "section",
                 fields: [
                   { type: "mrkdwn", text: "*Status:*\nConnected" },
-                  { type: "mrkdwn", text: `*Webhook Name:*\n${webhook.name}` },
+                  {
+                    type: "mrkdwn",
+                    text: `*Webhook Name:*\n${webhook.name.slice(0, 1024)}`,
+                  },
                 ],
               },
             ],
