@@ -37,7 +37,7 @@ export const CATEGORY_META: Record<Category, { label: string; blurb: string }> =
     },
     dns: {
       label: "DNS",
-      blurb: "SPF, DMARC, DKIM, DNSSEC, CAA records, dangling CNAMEs.",
+      blurb: "DNSSEC, CAA records, dangling CNAMEs, open zone transfers.",
     },
     email: {
       label: "Email",
