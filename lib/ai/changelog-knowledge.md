@@ -690,6 +690,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The browser tab icon, the app icons, the iPhone home screen icon and the logo search engines show are the round VulnRadar logo again, with no navy square behind it.
 - [Trash2] **[REMOVED]** **Unused Logo Files**
   Removed two old social card images and the square app icon variants that are no longer used.
+- [ScanSearch] **[ENGINE]** **A Download Link to a ZIP Is No Longer Called a Backup**
+  The check for a link to a backup, config or version-control file on your own site reported every .zip, .tar.gz and .tgz link, so a download page or a press kit got a medium finding for doing its job. An archive is now reported only when its name or folder says it is a backup or a dump, such as backup.zip, db-dump.tar.gz or anything under /backups/. Links to .env, .sql, .bak, .git and the other file types it covers are reported as before.
 
 ---
 
@@ -2998,6 +3000,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1191
+- **Total changes documented:** 1192
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

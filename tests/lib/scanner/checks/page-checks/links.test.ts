@@ -88,6 +88,31 @@ const fixtures: PageCheckFixtures = {
       expect: "fire",
     },
     {
+      description: "same-origin archive named as a backup",
+      url: "https://example.com/",
+      body: `<a href="/files/site-backup-2024.zip">backup</a>`,
+      expect: "fire",
+    },
+    {
+      description: "same-origin tarball named as a database dump",
+      url: "https://example.com/",
+      body: `<a href="/exports/db_dump.tar.gz">dump</a>`,
+      expect: "fire",
+    },
+    {
+      description:
+        "same-origin archive offered as an ordinary download is not flagged",
+      url: "https://example.com/",
+      body: `<a href="/brand/example-brand-kit.zip" download>Brand kit</a>`,
+      expect: "skip",
+    },
+    {
+      description: "same-origin archive inside a backups directory",
+      url: "https://example.com/",
+      body: `<a href="/backups/2024-11-01.zip">Archive</a>`,
+      expect: "fire",
+    },
+    {
       description: "third-party link ending in .git is not flagged",
       url: "https://example.com/",
       body: `<a href="https://github.com/example/project.git">source</a>`,

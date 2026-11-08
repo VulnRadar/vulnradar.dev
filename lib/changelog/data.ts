@@ -2236,6 +2236,12 @@ const CHANGELOG: Release[] = [
         desc: "Removed two old social card images and the square app icon variants that are no longer used.",
         category: "removed",
       },
+      {
+        icon: ScanSearch,
+        label: "A Download Link to a ZIP Is No Longer Called a Backup",
+        desc: "The check for a link to a backup, config or version-control file on your own site reported every .zip, .tar.gz and .tgz link, so a download page or a press kit got a medium finding for doing its job. An archive is now reported only when its name or folder says it is a backup or a dump, such as backup.zip, db-dump.tar.gz or anything under /backups/. Links to .env, .sql, .bak, .git and the other file types it covers are reported as before.",
+        category: "engine",
+      },
     ],
   },
   {

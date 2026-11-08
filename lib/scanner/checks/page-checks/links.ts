@@ -101,9 +101,21 @@ function findRedirectParams(url: string, pageOrigin: string): string[] {
 }
 
 const SENSITIVE_FILE_EXT =
-  /\.(git|env|sql|bak|backup|old|orig|swp|zip|tar\.gz|tgz|dump|pem|key|sqlite|sqlite3|db)$/i;
+  /\.(git|env|sql|bak|backup|old|orig|swp|dump|pem|key|sqlite|sqlite3|db)$/i;
 const SENSITIVE_FILE_NAME =
   /(?:^|\/)(?:\.env(?:\.\w+)?|\.git|wp-config\.php\.bak|web\.config\.bak|config\.php\.bak|\.htpasswd|id_rsa)$/i;
+// An archive is how a download page, a press kit or a software release is
+// handed out, which is why the sensitive-files detector dropped .zip outright.
+// One is still worth reporting when its name or its directory says it is a
+// backup or a dump of the site, so the extension alone is not enough here.
+const ARCHIVE_EXT = /\.(?:zip|tar\.gz|tgz)$/i;
+const BACKUP_SHAPED_PATH =
+  /(?:^|[^a-z])(?:backups?|bak|dumps?|db|database|sql|www)(?:[^a-z]|$)/i;
+
+function isBackupArchive(pathname: string): boolean {
+  if (!ARCHIVE_EXT.test(pathname)) return false;
+  return BACKUP_SHAPED_PATH.test(pathname.replace(ARCHIVE_EXT, ""));
+}
 
 function pathnameOf(resolved: string | null): string | null {
   if (!resolved) return null;
@@ -224,7 +236,7 @@ export const linkChecks: PageCheck[] = [
     riskImpact:
       "These file types typically contain source code, credentials, or database dumps rather than visitor-facing content. A reachable link to one is a strong signal the file itself may also be directly downloadable.",
     explanation:
-      "Restricted to links resolving to the page's own origin, so a footer link to a project's GitHub repository (which commonly ends in .git) is not flagged; that was a measured false positive in the previous body-wide regex version of this check. Does not fetch the link to confirm the file is actually served: treat this as 'verify this path is not exposed,' not confirmation that it is.",
+      "Restricted to links resolving to the page's own origin, so a footer link to a project's GitHub repository (which commonly ends in .git) is not flagged; that was a measured false positive in the previous body-wide regex version of this check. An archive (.zip, .tar.gz, .tgz) is reported only when its name or directory says it is a backup or a dump, such as backup.zip, db-dump.tar.gz or /backups/2024.zip, because a download page or a press kit links ordinary archives on purpose. Does not fetch the link to confirm the file is actually served: treat this as 'verify this path is not exposed,' not confirmation that it is.",
     fixSteps: [
       "Remove the link if it is a leftover reference to a build artifact.",
       "Confirm the file itself returns 404 or is blocked at the web server level, not just unlinked from the page.",
@@ -238,7 +250,8 @@ export const linkChecks: PageCheck[] = [
         if (!pathname) return false;
         return (
           SENSITIVE_FILE_EXT.test(pathname) ||
-          SENSITIVE_FILE_NAME.test(pathname)
+          SENSITIVE_FILE_NAME.test(pathname) ||
+          isBackupArchive(pathname)
         );
       });
       if (offending.length === 0) return null;
