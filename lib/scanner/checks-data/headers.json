@@ -92,7 +92,7 @@
       {
         "label": "Next.js (nonce in middleware)",
         "language": "typescript",
-        "code": "// middleware.ts\n// next.config.mjs headers() are fixed at build time, so a per-request nonce has to be set here.\n// Next.js puts this nonce on its own scripts. Pages must render dynamically: a cached page would reuse an old nonce.\nimport { NextResponse, type NextRequest } from \"next/server\";\n\nexport function middleware(request: NextRequest) {\n  const bytes = crypto.getRandomValues(new Uint8Array(16));\n  const nonce = btoa(String.fromCharCode(...bytes));\n  const csp = [\n    \"default-src 'self'\",\n    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,\n    \"style-src 'self' 'unsafe-inline'\",\n    \"img-src 'self' data:\",\n    \"font-src 'self'\",\n    \"object-src 'none'\",\n    \"base-uri 'self'\",\n    \"form-action 'self'\",\n    \"frame-ancestors 'none'\",\n  ].join(\"; \");\n\n  const requestHeaders = new Headers(request.headers);\n  requestHeaders.set(\"x-nonce\", nonce);\n  requestHeaders.set(\"Content-Security-Policy\", csp);\n\n  const response = NextResponse.next({ request: { headers: requestHeaders } });\n  response.headers.set(\"Content-Security-Policy\", csp);\n  return response;\n}\n\nexport const config = {\n  matcher: [\"/((?!_next/static|_next/image|favicon.ico).*)\"],\n};"
+        "code": "// middleware.ts\n// next.config.mjs headers() are fixed at build time, so a per-request nonce has to be set here.\n// Next.js puts this nonce on its own scripts. Pages must render dynamically: a cached page would reuse an old nonce.\nimport { NextResponse, type NextRequest } from \"next/server\";\n\nexport function middleware(request: NextRequest) {\n  const bytes = crypto.getRandomValues(new Uint8Array(16));\n  const nonce = btoa(String.fromCharCode(...bytes));\n  // next dev evaluates hot-reloaded modules with eval(). A production build never does.\n  const devEval = process.env.NODE_ENV === \"production\" ? \"\" : \" 'unsafe-eval'\";\n  const csp = [\n    \"default-src 'self'\",\n    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${devEval}`,\n    \"style-src 'self' 'unsafe-inline'\",\n    \"img-src 'self' data:\",\n    \"font-src 'self'\",\n    \"object-src 'none'\",\n    \"base-uri 'self'\",\n    \"form-action 'self'\",\n    \"frame-ancestors 'none'\",\n  ].join(\"; \");\n\n  const requestHeaders = new Headers(request.headers);\n  requestHeaders.set(\"x-nonce\", nonce);\n  requestHeaders.set(\"Content-Security-Policy\", csp);\n\n  const response = NextResponse.next({ request: { headers: requestHeaders } });\n  response.headers.set(\"Content-Security-Policy\", csp);\n  return response;\n}\n\nexport const config = {\n  matcher: [\"/((?!_next/static|_next/image|favicon.ico).*)\"],\n};"
       },
       {
         "label": "Nginx",
@@ -117,12 +117,12 @@
       {
         "label": "Deno (Hono)",
         "language": "typescript",
-        "code": "app.use('*', async (c, next) => {\n  await next();\n  c.header('Content-Security-Policy',\n    \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;\");\n});"
+        "code": "// Static site with no inline scripts. A server-rendered app needs a per-request nonce instead.\napp.use('*', async (c, next) => {\n  await next();\n  c.header('Content-Security-Policy',\n    \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;\");\n});"
       },
       {
         "label": "Bun (Elysia)",
         "language": "typescript",
-        "code": "app.onAfterHandle(({ set }) => {\n  set.headers['Content-Security-Policy'] =\n    \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;\";\n});"
+        "code": "// Static site with no inline scripts. A server-rendered app needs a per-request nonce instead.\napp.onAfterHandle(({ set }) => {\n  set.headers['Content-Security-Policy'] =\n    \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;\";\n});"
       },
       {
         "label": "HTML Meta Tag",
@@ -2507,7 +2507,9 @@
       "Nginx: add \"server_tokens off;\" in the http block",
       "Apache: set \"ServerTokens Prod\" and \"ServerSignature Off\"",
       "Caddy: add \"header -Server\" to the site block",
-      "IIS: set removeServerHeader=\"true\" under requestFiltering"
+      "IIS: set removeServerHeader=\"true\" under requestFiltering",
+      "If the evidence names X-Powered-By, remove that header too (Next.js: poweredByHeader: false, Express: app.disable(\"x-powered-by\")). These settings do not change Server.",
+      "If the evidence names X-AspNet-Version, set enableVersionHeader=\"false\" on httpRuntime in web.config."
     ],
     "codeExamples": [
       {

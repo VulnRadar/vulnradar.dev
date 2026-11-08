@@ -107,10 +107,13 @@ describe("server snippets on the most searched header pages", () => {
     }
   });
 
-  it("does not blame poweredByHeader for the Server header", () => {
-    expect(byId("server-header-disclosure").fixSteps.join(" ")).not.toContain(
-      "poweredByHeader",
-    );
+  it("covers the other headers the finding reports without blaming them for Server", () => {
+    const steps = byId("server-header-disclosure").fixSteps;
+    const poweredBy = steps.filter((s) => s.includes("poweredByHeader"));
+    expect(poweredBy).toHaveLength(1);
+    expect(poweredBy[0]).toContain("X-Powered-By");
+    expect(poweredBy[0]).toMatch(/do not change Server/);
+    expect(steps.join(" ")).toContain("X-AspNet-Version");
   });
 
   it("does not promise a Cloudflare rule can rewrite Server", () => {
@@ -161,6 +164,13 @@ describe("csp-missing fits the stack", () => {
     expect(first.code).toContain("getRandomValues");
   });
 
+  it("lets next dev run without shipping unsafe-eval to production", () => {
+    const { code } = check.codeExamples[0];
+    expect(code).toContain(`process.env.NODE_ENV === "production" ? "" :`);
+    expect(code.match(/'unsafe-eval'/g)).toHaveLength(1);
+    expect(code).toContain("'strict-dynamic'${devEval}");
+  });
+
   it("no longer offers a static script-src to Next.js", () => {
     const nextExamples = check.codeExamples.filter((e) =>
       /Next[.]js/.test(e.label),
@@ -170,7 +180,15 @@ describe("csp-missing fits the stack", () => {
   });
 
   it("keeps 'self' for static stacks and says that is what it is for", () => {
-    for (const pattern of [/Nginx/, /Apache/, /Caddy/]) {
+    for (const pattern of [
+      /Nginx/,
+      /Apache/,
+      /Caddy/,
+      /IIS/,
+      /Cloudflare/,
+      /Hono/,
+      /Elysia/,
+    ]) {
       const { code } = example(check, pattern);
       expect(code).toContain("script-src 'self'");
       expect(code).toMatch(/static site/i);
