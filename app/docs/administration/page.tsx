@@ -594,13 +594,16 @@ export default function AdministrationPage() {
             },
           ]}
         />
-        <DocsCallout variant="warning" title="Keep the sidecar file">
+        <DocsCallout variant="warning" title="Older backups need their sidecar">
           <p>
-            An encrypted backup is written alongside a small{" "}
-            <InlineCode>.json</InlineCode> file holding the values needed to
-            decrypt it. Without that sidecar the backup cannot be restored, so
-            copy it wherever you copy the backup, and check the upload of both
-            if you are sending them offsite.
+            A backup carries the values needed to decrypt it in a header at the
+            start of the file, so that one file is all a restore needs and the
+            only thing an offsite upload sends. A backup written before the
+            header existed, and a dump{" "}
+            <InlineCode>npm run db:migrate</InlineCode> takes before changing
+            the schema, has no header: its values are in a small{" "}
+            <InlineCode>.json</InlineCode> file beside it, and it cannot be
+            restored without that file, so copy the two together.
           </p>
         </DocsCallout>
         <DocsSubSection title="Restoring">

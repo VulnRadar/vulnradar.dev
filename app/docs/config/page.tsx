@@ -387,8 +387,8 @@ export default function ConfigPage() {
             further down, so there is no second copy here to go stale. Each
             shipped default is the key with a <InlineCode>CONFIG_</InlineCode>{" "}
             prefix, such as{" "}
-            <InlineCode>CONFIG_RATE_LIMIT_LOGIN_ATTEMPTS</InlineCode>, and the
-            key name says whether a window is in minutes or hours.
+            <InlineCode>CONFIG_RATE_LIMIT_LOGIN_ATTEMPTS</InlineCode>, and every
+            window is in minutes.
           </p>
         </DocsSubSection>
 
@@ -1521,7 +1521,7 @@ export default function ConfigPage() {
               <InlineCode>BACKUP_OFFSITE_UPLOAD_URL</InlineCode>: presigned PUT
               URL (S3/R2/B2 or any receiver). When set, the finished backup is
               uploaded there after the local write. It receives exactly one
-              object per backup, because a presigned URL authorises only one:
+              object per backup, because a presigned URL authorizes only one:
               the IV and auth tag travel inside the encrypted file.
             </li>
           </ul>

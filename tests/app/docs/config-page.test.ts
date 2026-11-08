@@ -230,6 +230,15 @@ describe("the rate-limit section", () => {
     expect(section).toContain('href={`#${settingsGroupId("Rate Limits")}`}');
   });
 
+  it("is right that every window is in minutes", () => {
+    expect(flat(section)).toContain("every window is in minutes");
+    const windows = Object.keys(SETTINGS_REGISTRY).filter((key) =>
+      /^RATE_LIMIT_.*WINDOW/.test(key),
+    );
+    expect(windows.length).toBeGreaterThan(0);
+    for (const key of windows) expect(key).toMatch(/_WINDOW_MINUTES$/);
+  });
+
   it("links to an anchor the generated tables really produce", () => {
     expect(SETTINGS_TABS).toContain("Rate Limits");
     expect(PAGE).toContain("id={settingsGroupId(group)}");
