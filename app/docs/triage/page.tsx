@@ -279,12 +279,10 @@ export default function TriageDocsPage() {
             variant="warning"
             title="Remediation is a personal checklist, not a team task board"
           >
-            <p>
-              Status, notes and assignees are visible only to you, and whoever
-              you name as assignee is not notified. To hand a finding to
-              someone, share the scan with the team and put their name in the
-              scan&apos;s note, or use a support ticket or a webhook.
-            </p>
+            Status, notes and assignees are visible only to you, and whoever you
+            name as assignee is not notified. To hand a finding to someone,
+            share the scan with the team and put their name in the scan&apos;s
+            note, or use a support ticket or a webhook.
           </DocsCallout>
         </DocsSubSection>
 
