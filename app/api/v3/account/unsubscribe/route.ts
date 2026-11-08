@@ -2,15 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { withErrorHandling } from "@/lib/api/api-utils";
 import {
-  ALL_COLUMNS,
-  ALWAYS_ON_COLUMNS,
   DEFAULT_PREFERENCES,
+  UNSUBSCRIBABLE_COLUMNS,
   isNotificationColumn,
   isSecurityColumn,
   type NotificationPrefs,
 } from "@/lib/notifications/columns";
 
-// ALL_COLUMNS and ALWAYS_ON_COLUMNS are the shared declarations in
+// UNSUBSCRIBABLE_COLUMNS is the shared declaration in
 // lib/notifications/columns.ts. A hand-copied list here had drifted (missing
 // email_posture_digest), so "unsubscribe from all" left the posture digest on,
 // and a user could not turn it off.
@@ -31,6 +30,17 @@ function invalidToken(): NextResponse {
   return NextResponse.json({ error: "Invalid token." }, { status: 404 });
 }
 
+// Enough to recognise your own address and no more: the token travels in mail
+// footers and forwarded messages, and the response used to hand whoever held
+// it the full address. Done here rather than in the page, so the whole address
+// never leaves the server. At most all but one character of the local part
+// shows, so a two-letter mailbox is not printed in full either.
+function redactEmail(email: string): string {
+  const at = email.indexOf("@");
+  if (at < 0) return "***";
+  return `${email.slice(0, Math.min(2, at - 1))}***${email.slice(at)}`;
+}
+
 // GET: return current notification preferences for the unsubscribe token
 export const GET = withErrorHandling(async (req: NextRequest) => {
   const token = getToken(req);
@@ -47,19 +57,21 @@ export const GET = withErrorHandling(async (req: NextRequest) => {
   const { id: userId, email } = userRes.rows[0];
 
   const prefRes = await pool.query(
-    `SELECT ${ALL_COLUMNS.join(", ")} FROM notification_preferences WHERE user_id = $1`,
+    `SELECT ${UNSUBSCRIBABLE_COLUMNS.join(", ")} FROM notification_preferences WHERE user_id = $1`,
     [userId],
   );
 
-  const prefs: NotificationPrefs =
-    prefRes.rows.length > 0
-      ? { ...DEFAULT_PREFERENCES, ...prefRes.rows[0] }
-      : { ...DEFAULT_PREFERENCES };
+  // Only the columns this token can change. Whether the sign-in warnings are
+  // on is not something to tell a stranger holding a forwarded email.
+  const stored: Partial<NotificationPrefs> = prefRes.rows[0] ?? {};
+  const prefs = Object.fromEntries(
+    UNSUBSCRIBABLE_COLUMNS.map((column) => [
+      column,
+      stored[column] ?? DEFAULT_PREFERENCES[column],
+    ]),
+  );
 
-  // Always enforce security alerts on
-  prefs.email_security = true;
-
-  return NextResponse.json({ email, prefs });
+  return NextResponse.json({ email: redactEmail(email), prefs });
 });
 
 // POST: turn off one category, update several, or unsubscribe from all.
@@ -94,16 +106,11 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   const userId = userRes.rows[0].id;
 
   if (type !== null) {
-    // A security column is refused as well as the always-on one. No message
-    // carries a link to one (they have no token at all), so a request naming
-    // one was built by hand, and the warnings that catch a takeover are not
-    // something a bodyless POST should be able to switch off. They stay
-    // editable on the preferences page.
-    if (
-      !isNotificationColumn(type) ||
-      ALWAYS_ON_COLUMNS.has(type) ||
-      isSecurityColumn(type)
-    ) {
+    // No message carries a link to a security column (they have no token at
+    // all), so a request naming one was built by hand, and the warnings that
+    // catch a takeover are not something a bodyless POST should be able to
+    // switch off. They stay editable on Profile > Notifications.
+    if (!isNotificationColumn(type) || isSecurityColumn(type)) {
       return NextResponse.json(
         { error: "That is not an email category you can unsubscribe from." },
         { status: 400 },
@@ -121,23 +128,27 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   }
 
   if (action === "unsubscribe_all") {
-    const allOff = Object.fromEntries(
-      ALL_COLUMNS.map((c) => [c, ALWAYS_ON_COLUMNS.has(c)]),
-    ) as NotificationPrefs;
-
-    const colList = ALL_COLUMNS.join(", ");
-    const vals = ALL_COLUMNS.map((c) => allOff[c]);
-    const placeholders = ALL_COLUMNS.map((_, i) => `$${i + 2}`).join(", ");
-    const setClause = ALL_COLUMNS.map((c, i) => `${c} = $${i + 2}`).join(", ");
+    // The security columns are not named at all, so this neither turns one
+    // off nor flips back on one the owner chose to turn off while signed in.
+    const colList = UNSUBSCRIBABLE_COLUMNS.join(", ");
+    const allFalse = UNSUBSCRIBABLE_COLUMNS.map(() => "false").join(", ");
+    const setClause = UNSUBSCRIBABLE_COLUMNS.map((c) => `${c} = false`).join(
+      ", ",
+    );
 
     await pool.query(
       `INSERT INTO notification_preferences (user_id, ${colList}, updated_at)
-       VALUES ($1, ${placeholders}, NOW())
+       VALUES ($1, ${allFalse}, NOW())
        ON CONFLICT (user_id) DO UPDATE SET ${setClause}, updated_at = NOW()`,
-      [userId, ...vals],
+      [userId],
     );
 
-    return NextResponse.json({ success: true, prefs: allOff });
+    return NextResponse.json({
+      success: true,
+      prefs: Object.fromEntries(
+        UNSUBSCRIBABLE_COLUMNS.map((column) => [column, false]),
+      ),
+    });
   }
 
   // Selective update
@@ -153,8 +164,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
   const incoming = body.prefs || {};
   const updates: Record<string, boolean> = {};
-  for (const col of ALL_COLUMNS) {
-    if (ALWAYS_ON_COLUMNS.has(col)) continue;
+  for (const col of UNSUBSCRIBABLE_COLUMNS) {
     if (col in incoming && typeof incoming[col] === "boolean") {
       updates[col] = incoming[col];
     }

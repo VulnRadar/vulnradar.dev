@@ -18,6 +18,15 @@ const { GET, POST } = await import("@/app/api/v3/account/unsubscribe/route");
 const GOOD = "11111111-2222-4333-8444-555555555555";
 const UNKNOWN = "99999999-8888-4777-8666-555555555555";
 
+const SECURITY_COLUMNS = [
+  "email_security",
+  "email_new_login",
+  "email_password_change",
+  "email_2fa_change",
+  "email_session_revoked",
+  "email_account_deletion",
+];
+
 beforeEach(() => {
   mockQuery.mockReset();
 });
@@ -59,22 +68,49 @@ describe("GET /api/v3/account/unsubscribe", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("returns defaults merged with any stored row, forcing email_security on", async () => {
+  it("returns defaults merged with any stored row", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 5, email: "a@example.com" }],
+      rows: [{ id: 5, email: "someone@example.com" }],
     });
     mockQuery.mockResolvedValueOnce({
-      rows: [{ email_security: false, email_product_updates: false }],
+      rows: [{ email_product_updates: false }],
     });
     const res = await GET(req(`?token=${GOOD}`));
     const json = await res.json();
     expect(res.status).toBe(200);
-    expect(json.email).toBe("a@example.com");
-    // email_security is forced true even though the stored row says false.
-    expect(json.prefs.email_security).toBe(true);
     expect(json.prefs.email_product_updates).toBe(false);
     // Columns never explicitly stored still fall back to the default (true).
     expect(json.prefs.email_webhooks).toBe(true);
+  });
+
+  it.each([
+    ["someone@example.com", "so***@example.com"],
+    ["ab@example.com", "a***@example.com"],
+    ["a@example.com", "***@example.com"],
+  ])("never hands back the whole address: %s", async (stored, shown) => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 5, email: stored }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await GET(req(`?token=${GOOD}`));
+    const body = await res.text();
+
+    expect(JSON.parse(body).email).toBe(shown);
+    expect(body).not.toContain(stored);
+  });
+
+  it("neither reads nor reports the security columns", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 5, email: "someone@example.com" }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await GET(req(`?token=${GOOD}`));
+    const json = await res.json();
+
+    for (const column of SECURITY_COLUMNS) {
+      expect(json.prefs, column).not.toHaveProperty(column);
+      expect(mockQuery.mock.calls[1][0], column).not.toContain(column);
+    }
   });
 
   it("returns all-default prefs when the user has no preferences row yet", async () => {
@@ -193,7 +229,7 @@ describe("POST /api/v3/account/unsubscribe (unsubscribe_all)", () => {
     expect(res.status).toBe(404);
   });
 
-  it("turns every preference off except the always-on security column", async () => {
+  it("turns off every optional preference and leaves the security columns unnamed", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 5 }] }); // token lookup
     mockQuery.mockResolvedValueOnce({ rows: [] }); // upsert
     const res = await POST(
@@ -201,9 +237,18 @@ describe("POST /api/v3/account/unsubscribe (unsubscribe_all)", () => {
     );
     const json = await res.json();
     expect(res.status).toBe(200);
-    expect(json.prefs.email_security).toBe(true);
     expect(json.prefs.email_product_updates).toBe(false);
     expect(json.prefs.email_tips_guides).toBe(false);
+
+    // Not naming a column is what leaves it as the owner set it: an INSERT
+    // gets the schema default and the UPDATE does not touch it.
+    const [sql] = mockQuery.mock.calls[1];
+    expect(sql).toContain("email_product_updates = false");
+    expect(sql).toContain("email_posture_digest = false");
+    for (const column of SECURITY_COLUMNS) {
+      expect(sql, column).not.toContain(column);
+      expect(json.prefs, column).not.toHaveProperty(column);
+    }
   });
 });
 
@@ -250,6 +295,49 @@ describe("POST /api/v3/account/unsubscribe (selective update)", () => {
     // user id and the one legitimate column value are bound.
     expect(query).not.toContain("email_security = $");
     expect(params).toEqual([5, false]);
+  });
+
+  it("refuses a request that names only security columns", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 5 }] });
+    const res = await POST(
+      req(`?token=${GOOD}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prefs: { email_new_login: false } }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops the security columns from a mixed request and writes the rest", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 5 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await POST(
+      req(`?token=${GOOD}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prefs: {
+            email_new_login: false,
+            email_password_change: false,
+            email_2fa_change: false,
+            email_session_revoked: false,
+            email_account_deletion: false,
+            email_scan_complete: false,
+          },
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(params).toEqual([5, false]);
+    expect(sql).toContain("email_scan_complete");
+    for (const column of SECURITY_COLUMNS) {
+      expect(sql, column).not.toContain(column);
+    }
   });
 
   it("updates the requested preferences", async () => {

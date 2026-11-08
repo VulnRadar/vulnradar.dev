@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2 } from "lucide-react";
 import { API } from "@/lib/config/client-constants";
+import { focus } from "@/lib/ui/animations";
+import { cn } from "@/lib/ui/utils";
 import {
   UnsubscribePrefsSkeleton,
   UnsubscribeSkeleton,
@@ -17,16 +19,9 @@ import {
 // rows this renders. See components/auth/unsubscribe-prefs.ts.
 import {
   PREF_GROUPS,
-  ALWAYS_ON_PREFS,
   type EmailPrefs,
   type PrefKey,
 } from "@/components/auth/unsubscribe-prefs";
-
-function redactEmail(email: string): string {
-  const atIdx = email.indexOf("@");
-  if (atIdx < 2) return email;
-  return email.slice(0, 2) + "***" + email.slice(atIdx);
-}
 
 function UnsubscribeContent() {
   const searchParams = useSearchParams();
@@ -183,7 +178,7 @@ function UnsubscribeContent() {
           <p className="text-sm text-muted-foreground mt-1.5">
             You have been unsubscribed from all optional emails for{" "}
             <span className="font-medium text-foreground break-all">
-              {redactEmail(email)}
+              {email}
             </span>
             .
           </p>
@@ -192,7 +187,10 @@ function UnsubscribeContent() {
           You can re-enable notifications anytime from your{" "}
           <Link
             href="/profile?tab=notifications"
-            className="text-primary hover:underline"
+            className={cn(
+              "-my-1.5 inline-block rounded-sm py-1.5 text-primary hover:underline",
+              focus.ring,
+            )}
           >
             profile settings
           </Link>
@@ -221,9 +219,11 @@ function UnsubscribeContent() {
           <p className="text-sm text-muted-foreground mt-1.5">
             Managing preferences for{" "}
             <span className="font-medium text-foreground break-all">
-              {redactEmail(email)}
+              {email}
             </span>
-            .
+            . Sign-in, password, two-step and account deletion warnings are not
+            listed here: they can only be changed from your profile, after
+            signing in.
           </p>
         )}
       </div>
@@ -262,16 +262,10 @@ function UnsubscribeContent() {
                         </p>
                       </div>
                       <Switch
-                        checked={
-                          ALWAYS_ON_PREFS.has(key) || (prefs?.[key] ?? true)
-                        }
+                        checked={prefs?.[key] ?? true}
                         onCheckedChange={(val) => handleToggle(key, val)}
-                        disabled={saving || ALWAYS_ON_PREFS.has(key)}
-                        aria-label={
-                          ALWAYS_ON_PREFS.has(key)
-                            ? `${label} (always on)`
-                            : label
-                        }
+                        disabled={saving}
+                        aria-label={label}
                         className="shrink-0 mt-0.5 pointer-events-none"
                       />
                     </div>
@@ -319,7 +313,7 @@ function UnsubscribeContent() {
 
 export default function UnsubscribePage() {
   return (
-    // 19 preference rows are a list, not a form, and AuthLayout's "wide"
+    // The preference rows are a list, not a form, and AuthLayout's "wide"
     // variant exists for exactly this screen: at max-w-sm the rows were
     // crushed with roughly 1050px empty on either side at 1440px.
     <AuthLayout width="wide">

@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fetchCalls } from "@/tests/components/_fetch-calls";
 import { API } from "@/lib/config/client-constants";
 import { FROZEN } from "@/lib/api/frozen-paths";
@@ -38,5 +40,20 @@ describe("unsubscribe page requests", () => {
 
   it("is the URL the emails carry", () => {
     expect(API.ACCOUNT_UNSUBSCRIBE).toBe(FROZEN.UNSUBSCRIBE);
+  });
+});
+
+describe("unsubscribe page source", () => {
+  const source = readFileSync(
+    join(process.cwd(), "app/unsubscribe/page.tsx"),
+    "utf8",
+  );
+
+  it("shows the address the server redacted instead of redacting it itself", () => {
+    expect(source).not.toContain("redactEmail");
+  });
+
+  it("gives its text link a 24px target without leaving the sentence", () => {
+    expect(source).toContain("-my-1.5 inline-block rounded-sm py-1.5");
   });
 });

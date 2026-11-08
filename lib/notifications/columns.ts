@@ -29,7 +29,7 @@ export const NOTIFICATION_COLUMNS = {
   two_factor_changes: "email_2fa_change",
   session_alerts: "email_session_revoked",
   scan_complete: "email_scan_complete",
-  scan_failures: "email_critical_findings",
+  critical_findings: "email_critical_findings",
   severity_alerts: "email_regression_alert",
   schedules: "email_schedules",
   posture_digest: "email_posture_digest",
@@ -160,6 +160,125 @@ const SECURITY_COLUMNS: ReadonlySet<NotificationColumn> = new Set(
 export function isSecurityColumn(column: NotificationColumn): boolean {
   return SECURITY_COLUMNS.has(column);
 }
+
+/**
+ * What an unsubscribe token can read and change: everything except the
+ * security columns.
+ *
+ * The token sits in the footer of mail and in the List-Unsubscribe header, so
+ * anyone a message was forwarded to holds it, and it never expires. Switching
+ * off the sign-in and password warnings is exactly what someone who has got
+ * into an account wants, so those stay behind a signed-in session on Profile >
+ * Notifications. The one-click branch already refused them; the switches and
+ * "unsubscribe from all" did not.
+ */
+export const UNSUBSCRIBABLE_COLUMNS: readonly NotificationColumn[] =
+  ALL_COLUMNS.filter((column) => !isSecurityColumn(column));
+
+/**
+ * The name and description of every preference, on every screen that lists
+ * them.
+ *
+ * Profile and /unsubscribe each had their own wording, and they described
+ * different products: one called email_regression_alert "Regression Alerts",
+ * for "new issues in a previously clean scan", when it fires on a new critical
+ * or high finding whether or not the last scan was clean. An admin filter may
+ * label its audiences for admins, but a person choosing what to receive reads
+ * this table.
+ */
+export const PREFERENCE_COPY: Readonly<
+  Record<NotificationColumn, { label: string; description: string }>
+> = {
+  email_security: {
+    label: "Security alerts",
+    description:
+      "Unusual activity on your account, and anything that looks like someone else getting in. This one cannot be switched off.",
+  },
+  email_new_login: {
+    label: "New sign-ins",
+    description: "A sign-in from a device or location we have not seen before.",
+  },
+  email_password_change: {
+    label: "Password changes",
+    description: "Your password changed, or a reset was requested for it.",
+  },
+  email_2fa_change: {
+    label: "Two-step verification changes",
+    description:
+      "Two-step verification turned on, turned off, or switched method.",
+  },
+  email_session_revoked: {
+    label: "Revoked sessions",
+    description:
+      "A signed-in session was ended, by you or by a sign-out everywhere.",
+  },
+  email_scan_complete: {
+    label: "Scan finished",
+    description: "Every scan, as soon as it has a result.",
+  },
+  email_critical_findings: {
+    label: "Critical findings",
+    description:
+      "A finished scan found something rated critical. If that scan also sends the new critical or high findings alert, you only get the alert. Scheduled runs send this only for a new finding.",
+  },
+  email_regression_alert: {
+    label: "New critical or high findings",
+    description:
+      "A critical or high finding on a target that did not have it on the last scan, including the first scan of a target.",
+  },
+  email_schedules: {
+    label: "Scheduled scans",
+    description: "Results from the scans you set to run on a schedule.",
+  },
+  email_posture_digest: {
+    label: "Posture digest",
+    description:
+      "A periodic summary across every site you have scanned: new critical and high findings, and whether your open count is going up or down.",
+  },
+  email_api_keys: {
+    label: "API key activity",
+    description:
+      "A key was created or revoked, or one of yours is close to expiring.",
+  },
+  email_api_limit_warning: {
+    label: "Approaching API limits",
+    description: "Your API usage is close to a rate limit or the daily quota.",
+  },
+  email_webhooks: {
+    label: "Webhook changes",
+    description: "A webhook was created, edited, or switched off.",
+  },
+  email_webhook_failure: {
+    label: "Webhook failures",
+    description: "Deliveries to one of your endpoints keep failing.",
+  },
+  email_data_requests: {
+    label: "Data exports",
+    description: "Your export is built and ready to download.",
+  },
+  email_account_deletion: {
+    label: "Account deletion",
+    description:
+      "Deletion was requested on your account, and again when it runs.",
+  },
+  email_team_invite: {
+    label: "Team invitations",
+    description: "Someone invited you to join their team.",
+  },
+  email_team_changes: {
+    label: "Team changes",
+    description:
+      "People joining or leaving a team you are in, and role changes.",
+  },
+  email_product_updates: {
+    label: "Product updates",
+    description: "New features, improvements, and release notes.",
+  },
+  email_tips_guides: {
+    label: "Tips and guides",
+    description: "Occasional tips on getting more out of VulnRadar.",
+  },
+};
 
 /**
  * The column a broadcast with no category of its own is gated on, and the one

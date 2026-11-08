@@ -5,6 +5,7 @@ import { POST } from "@/app/api/v3/account/unsubscribe/route";
 import {
   ALL_COLUMNS,
   DEFAULT_PREFERENCES,
+  isSecurityColumn,
   optedInCondition,
   type NotificationColumn,
 } from "@/lib/notifications/columns";
@@ -115,7 +116,7 @@ describeIntegration("one-click unsubscribe", () => {
     expect(await prefsOf(user.id)).toBeNull();
   });
 
-  it("still lets the explicit page action switch everything off except the security alerts", async () => {
+  it("still lets the explicit page action switch off everything but the security warnings", async () => {
     const user = await createUser();
     const token = await tokenOf(user.id);
 
@@ -124,8 +125,39 @@ describeIntegration("one-click unsubscribe", () => {
 
     const prefs = await prefsOf(user.id);
     for (const column of ALL_COLUMNS) {
-      expect(prefs![column], column).toBe(column === "email_security");
+      expect(prefs![column], column).toBe(isSecurityColumn(column));
     }
+  });
+
+  it("does not switch back on a security warning the owner turned off", async () => {
+    const user = await createUser();
+    const token = await tokenOf(user.id);
+    await pool.query(
+      "INSERT INTO notification_preferences (user_id, email_new_login) VALUES ($1, false)",
+      [user.id],
+    );
+
+    const res = await unsubscribe(`token=${token}&action=unsubscribe_all`);
+    expect(res.status).toBe(200);
+
+    const prefs = await prefsOf(user.id);
+    expect(prefs!.email_new_login).toBe(false);
+    expect(prefs!.email_password_change).toBe(true);
+    expect(prefs!.email_scan_complete).toBe(false);
+  });
+
+  it("cannot switch off a sign-in warning from the preferences page", async () => {
+    const user = await createUser();
+    const token = await tokenOf(user.id);
+
+    const res = await unsubscribe(`token=${token}`, {
+      prefs: { email_new_login: false, email_schedules: false },
+    });
+    expect(res.status).toBe(200);
+
+    const prefs = await prefsOf(user.id);
+    expect(prefs!.email_new_login).toBe(true);
+    expect(prefs!.email_schedules).toBe(false);
   });
 
   it("applies a selective update from the preferences page", async () => {

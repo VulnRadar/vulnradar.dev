@@ -13,7 +13,7 @@
  */
 
 import {
-  ALWAYS_ON_COLUMNS,
+  PREFERENCE_COPY,
   type NotificationPrefs,
   type PrefKey,
 } from "@/lib/notifications/columns";
@@ -22,7 +22,9 @@ import {
 // so this page and the routes it talks to cannot disagree about what exists.
 // Re-exported under the names the page already uses.
 export type { PrefKey } from "@/lib/notifications/columns";
-export type EmailPrefs = NotificationPrefs;
+
+/** Only the columns the token can reach, which is not all of them. */
+export type EmailPrefs = Partial<NotificationPrefs>;
 
 export type PrefRow = {
   key: PrefKey;
@@ -35,148 +37,49 @@ export type PrefGroup = {
   rows: PrefRow[];
 };
 
-/**
- * Preference columns the server refuses to switch off.
- *
- * Both writers force email_security true whatever they are sent, and both
- * still answer 200 because the other columns write fine. So the switch moved,
- * the page said it had saved, and the mail kept arriving until a reload put
- * the switch back: a control that reported success and did nothing. On the
- * unsubscribe page that is the worse of the two places for it, because that
- * page is the one a recipient reaches from the footer of an email.
- *
- * The same set the routes read (lib/notifications/columns.ts), so the screen
- * and the server cannot disagree about it.
- */
-export const ALWAYS_ON_PREFS = ALWAYS_ON_COLUMNS;
+function rows(...keys: PrefKey[]): PrefRow[] {
+  return keys.map((key) => ({ key, ...PREFERENCE_COPY[key] }));
+}
 
+/**
+ * Every preference a recipient can change from a link in an email, which is
+ * UNSUBSCRIBABLE_COLUMNS and no more. The security warnings are not listed
+ * because the token cannot change them, and a switch the server ignores is a
+ * control that reports "Saved." and does nothing. That includes account
+ * deletion, which is a security column even though it reads like an account
+ * setting. tests/components/auth/unsubscribe-prefs.test.ts holds the two lists
+ * together.
+ */
 export const PREF_GROUPS: PrefGroup[] = [
   {
-    label: "Security",
-    rows: [
-      {
-        key: "email_security",
-        label: "Security Alerts",
-        description:
-          "Critical account security events and compromise warnings. This one cannot be switched off.",
-      },
-      {
-        key: "email_new_login",
-        label: "Login Alerts",
-        description: "When someone signs in from a new device or location.",
-      },
-      {
-        key: "email_password_change",
-        label: "Password Changes",
-        description: "When your password is changed or a reset is requested.",
-      },
-      {
-        key: "email_2fa_change",
-        label: "2FA Changes",
-        description: "When two-factor authentication is enabled or disabled.",
-      },
-      {
-        key: "email_session_revoked",
-        label: "Session Alerts",
-        description: "When active sessions are revoked.",
-      },
-    ],
-  },
-  {
     label: "Scanning",
-    rows: [
-      {
-        key: "email_scan_complete",
-        label: "Scan Completed",
-        description: "When a vulnerability scan finishes.",
-      },
-      {
-        key: "email_critical_findings",
-        label: "Critical Issues Found",
-        description:
-          "Immediate alert when critical vulnerabilities are detected.",
-      },
-      {
-        key: "email_regression_alert",
-        label: "Regression Alerts",
-        description: "When new issues appear in a previously clean scan.",
-      },
-      {
-        key: "email_schedules",
-        label: "Scheduled Scans",
-        description: "When your scheduled scans finish.",
-      },
-      {
-        key: "email_posture_digest",
-        label: "Posture Digest",
-        description:
-          "A weekly roll-up of what changed across every site you scan.",
-      },
-    ],
+    rows: rows(
+      "email_scan_complete",
+      "email_critical_findings",
+      "email_regression_alert",
+      "email_schedules",
+      "email_posture_digest",
+    ),
   },
   {
     label: "API & Integrations",
-    rows: [
-      {
-        key: "email_api_keys",
-        label: "API Key Activity",
-        description: "When API keys are created or revoked.",
-      },
-      {
-        key: "email_api_limit_warning",
-        label: "API Limit Warnings",
-        description: "When your API usage nears rate limits or quotas.",
-      },
-      {
-        key: "email_webhooks",
-        label: "Webhook Events",
-        description: "When webhooks are created, modified, or disabled.",
-      },
-      {
-        key: "email_webhook_failure",
-        label: "Webhook Failures",
-        description: "When webhook deliveries fail repeatedly.",
-      },
-    ],
+    rows: rows(
+      "email_api_keys",
+      "email_api_limit_warning",
+      "email_webhooks",
+      "email_webhook_failure",
+    ),
   },
   {
     label: "Account",
-    rows: [
-      {
-        key: "email_data_requests",
-        label: "Data Export Updates",
-        description: "When your data export is ready for download.",
-      },
-      {
-        key: "email_account_deletion",
-        label: "Account Deletion",
-        description: "Confirmations when account deletion is requested.",
-      },
-      {
-        key: "email_team_invite",
-        label: "Team Invites",
-        description: "When you are invited to join a team.",
-      },
-      {
-        key: "email_team_changes",
-        label: "Team Changes",
-        description: "Membership changes and role updates in your teams.",
-      },
-    ],
+    rows: rows(
+      "email_data_requests",
+      "email_team_invite",
+      "email_team_changes",
+    ),
   },
   {
     label: "Product",
-    rows: [
-      {
-        key: "email_product_updates",
-        label: "Product Updates",
-        description: "New features, improvements, and release notes.",
-      },
-      {
-        key: "email_tips_guides",
-        label: "Tips & Guides",
-        description: "Tips on getting the most out of VulnRadar.",
-      },
-    ],
+    rows: rows("email_product_updates", "email_tips_guides"),
   },
 ];

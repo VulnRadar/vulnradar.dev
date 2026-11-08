@@ -7,6 +7,8 @@ import {
   BROADCAST_FALLBACK_COLUMN,
   DEFAULT_PREFERENCES,
   NOTIFICATION_COLUMNS,
+  PREFERENCE_COPY,
+  UNSUBSCRIBABLE_COLUMNS,
   isNotificationColumn,
   isSecurityColumn,
   isSecurityNotification,
@@ -135,6 +137,70 @@ describe("isSecurityColumn", () => {
     expect(isSecurityColumn("email_security")).toBe(true);
     expect(isSecurityColumn("email_scan_complete")).toBe(false);
     expect(isSecurityColumn("email_product_updates")).toBe(false);
+  });
+});
+
+describe("UNSUBSCRIBABLE_COLUMNS", () => {
+  it("is every column except the security ones", () => {
+    expect([...UNSUBSCRIBABLE_COLUMNS]).toEqual(
+      ALL_COLUMNS.filter((column) => !isSecurityColumn(column)),
+    );
+    for (const column of [
+      "email_security",
+      "email_new_login",
+      "email_password_change",
+      "email_2fa_change",
+      "email_session_revoked",
+      "email_account_deletion",
+    ] as const) {
+      expect(UNSUBSCRIBABLE_COLUMNS, column).not.toContain(column);
+    }
+  });
+
+  it("never holds an always-on column", () => {
+    for (const column of ALWAYS_ON_COLUMNS) {
+      expect(UNSUBSCRIBABLE_COLUMNS).not.toContain(column);
+    }
+  });
+});
+
+describe("PREFERENCE_COPY", () => {
+  it("names and describes every column, and no others", () => {
+    expect(Object.keys(PREFERENCE_COPY).sort()).toEqual(
+      [...ALL_COLUMNS].sort(),
+    );
+    for (const column of ALL_COLUMNS) {
+      expect(PREFERENCE_COPY[column].label, column).not.toBe("");
+      expect(PREFERENCE_COPY[column].description, column).not.toBe("");
+    }
+  });
+
+  it("describes the regression alert as what it is", () => {
+    const { label, description } = PREFERENCE_COPY.email_regression_alert;
+    expect(label).toBe("New critical or high findings");
+    // "A previously clean scan" was the old claim, and it is not the rule: the
+    // alert compares findings, whatever else the last scan held.
+    expect(description).not.toMatch(/clean/i);
+    expect(description).toMatch(/critical or high/i);
+  });
+
+  it("keeps the Critical findings switch", () => {
+    expect(PREFERENCE_COPY.email_critical_findings.label).toBe(
+      "Critical findings",
+    );
+    expect(NOTIFICATION_COLUMNS.critical_findings).toBe(
+      "email_critical_findings",
+    );
+  });
+
+  it("keeps long dashes and middle dots out of the copy", () => {
+    const forbidden = new RegExp(
+      `[${[0x2014, 0x2013, 0xb7].map((c) => String.fromCharCode(c)).join("")}]`,
+    );
+    for (const column of ALL_COLUMNS) {
+      const { label, description } = PREFERENCE_COPY[column];
+      expect(label + description, column).not.toMatch(forbidden);
+    }
   });
 });
 

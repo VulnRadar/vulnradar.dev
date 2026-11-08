@@ -31,6 +31,8 @@ import { LeadingIcon } from "@/components/shared/leading-icon";
 import {
   ALWAYS_ON_COLUMNS,
   DEFAULT_PREFERENCES,
+  PREFERENCE_COPY,
+  type NotificationColumn,
 } from "@/lib/notifications/columns";
 
 // Which columns the server refuses to turn off (ALWAYS_ON_COLUMNS), and what an
@@ -43,6 +45,17 @@ import {
 // was sent, and answers 200 because the other columns wrote fine. The switch
 // for an always-on column is therefore disabled and the row says so, rather
 // than moving and reporting "Saved" for a choice the account does not have.
+
+// The words on each row come from the table /unsubscribe reads as well.
+function withCopy<Row extends { readonly key: NotificationColumn }>(
+  rows: readonly Row[],
+) {
+  return rows.map((row) => ({
+    ...row,
+    label: PREFERENCE_COPY[row.key].label,
+    desc: PREFERENCE_COPY[row.key].description,
+  }));
+}
 
 export function ProfileNotificationsTab({
   user: _user,
@@ -219,7 +232,7 @@ export function ProfileNotificationsTab({
   return (
     <div className="flex flex-col gap-8">
       <p className="text-sm text-muted-foreground leading-relaxed max-w-prose">
-        We only send what is checked below. Security alerts marked Recommended
+        We only send what is checked below. Security alerts marked Always on
         stay on regardless, since they are how you find out about access you did
         not grant.
       </p>
@@ -236,45 +249,33 @@ export function ProfileNotificationsTab({
         </div>
         <Card className="border-border/50 bg-card/50">
           <CardContent className="p-0 divide-y divide-border/60">
-            {(
-              [
-                {
-                  key: "email_security" as const,
-                  icon: Shield,
-                  label: "Security alerts",
-                  desc: "Unusual activity on your account, and anything that looks like someone else getting in. This one cannot be switched off.",
-                  badge: "Always on",
-                },
-                {
-                  key: "email_new_login" as const,
-                  icon: LogIn,
-                  label: "New sign-ins",
-                  desc: "A sign-in from a device or location we have not seen before.",
-                  badge: "" as const,
-                },
-                {
-                  key: "email_password_change" as const,
-                  icon: Lock,
-                  label: "Password changes",
-                  desc: "Your password changed, or a reset was requested for it.",
-                  badge: "" as const,
-                },
-                {
-                  key: "email_2fa_change" as const,
-                  icon: Fingerprint,
-                  label: "Two-step verification changes",
-                  desc: "Two-step verification turned on, turned off, or switched method.",
-                  badge: "" as const,
-                },
-                {
-                  key: "email_session_revoked" as const,
-                  icon: MonitorSmartphone,
-                  label: "Revoked sessions",
-                  desc: "A signed-in session was ended, by you or by a sign-out everywhere.",
-                  badge: "" as const,
-                },
-              ] as const
-            ).map(({ key, icon: Icon, label, desc, badge }) => (
+            {withCopy([
+              {
+                key: "email_security" as const,
+                icon: Shield,
+                badge: "Always on",
+              },
+              {
+                key: "email_new_login" as const,
+                icon: LogIn,
+                badge: "" as const,
+              },
+              {
+                key: "email_password_change" as const,
+                icon: Lock,
+                badge: "" as const,
+              },
+              {
+                key: "email_2fa_change" as const,
+                icon: Fingerprint,
+                badge: "" as const,
+              },
+              {
+                key: "email_session_revoked" as const,
+                icon: MonitorSmartphone,
+                badge: "" as const,
+              },
+            ] as const).map(({ key, icon: Icon, label, desc, badge }) => (
               <div
                 key={key}
                 className="flex items-center justify-between gap-4 px-5 py-4"
@@ -325,34 +326,24 @@ export function ProfileNotificationsTab({
         </div>
         <Card className="border-border/50 bg-card/50">
           <CardContent className="p-0 divide-y divide-border/60">
-            {(
-              [
-                {
-                  key: "email_scan_complete" as const,
-                  icon: CheckCircle2,
-                  label: "Scan finished",
-                  desc: "Every scan, as soon as it has a result.",
-                },
-                {
-                  key: "email_critical_findings" as const,
-                  icon: ShieldAlert,
-                  label: "Critical findings",
-                  desc: "The moment a scan turns up something rated critical, without waiting for the rest of the run.",
-                },
-                {
-                  key: "email_regression_alert" as const,
-                  icon: AlertCircle,
-                  label: "New issues since last scan",
-                  desc: "A critical or high finding on a target that did not have it last time.",
-                },
-                {
-                  key: "email_schedules" as const,
-                  icon: CalendarClock,
-                  label: "Scheduled scans",
-                  desc: "Results from the scans you set to run on a schedule.",
-                },
-              ] as const
-            ).map(({ key, icon: Icon, label, desc }) => (
+            {withCopy([
+              {
+                key: "email_scan_complete" as const,
+                icon: CheckCircle2,
+              },
+              {
+                key: "email_critical_findings" as const,
+                icon: ShieldAlert,
+              },
+              {
+                key: "email_regression_alert" as const,
+                icon: AlertCircle,
+              },
+              {
+                key: "email_schedules" as const,
+                icon: CalendarClock,
+              },
+            ] as const).map(({ key, icon: Icon, label, desc }) => (
               <div
                 key={key}
                 className="flex items-center justify-between gap-4 px-5 py-4"
@@ -384,13 +375,11 @@ export function ProfileNotificationsTab({
                     aria-hidden="true"
                   />
                   <p className="text-sm font-medium text-foreground">
-                    Posture Digest
+                    {PREFERENCE_COPY.email_posture_digest.label}
                   </p>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  A periodic summary across every site you've scanned: new
-                  critical/high findings and whether your open count is trending
-                  up or down.{" "}
+                  {PREFERENCE_COPY.email_posture_digest.description}{" "}
                   {digestEmailEnabled === null
                     ? "We could not check whether you are subscribed to it, so no switch is shown. Reload the page to check again."
                     : "Off by default."}
@@ -408,7 +397,7 @@ export function ProfileNotificationsTab({
                 <Switch
                   checked={postureDigestOn}
                   onCheckedChange={handleTogglePostureDigest}
-                  aria-label="Posture Digest"
+                  aria-label={PREFERENCE_COPY.email_posture_digest.label}
                 />
               )}
             </div>
@@ -428,34 +417,24 @@ export function ProfileNotificationsTab({
         </div>
         <Card className="border-border/50 bg-card/50">
           <CardContent className="p-0 divide-y divide-border/60">
-            {(
-              [
-                {
-                  key: "email_api_keys" as const,
-                  icon: Key,
-                  label: "API key activity",
-                  desc: "A key was created or revoked, or one of yours is close to expiring.",
-                },
-                {
-                  key: "email_api_limit_warning" as const,
-                  icon: Gauge,
-                  label: "Approaching API limits",
-                  desc: "Your API usage is close to a rate limit or the daily quota.",
-                },
-                {
-                  key: "email_webhooks" as const,
-                  icon: Webhook,
-                  label: "Webhook changes",
-                  desc: "A webhook was created, edited, or switched off.",
-                },
-                {
-                  key: "email_webhook_failure" as const,
-                  icon: XCircle,
-                  label: "Webhook failures",
-                  desc: "Deliveries to one of your endpoints keep failing.",
-                },
-              ] as const
-            ).map(({ key, icon: Icon, label, desc }) => (
+            {withCopy([
+              {
+                key: "email_api_keys" as const,
+                icon: Key,
+              },
+              {
+                key: "email_api_limit_warning" as const,
+                icon: Gauge,
+              },
+              {
+                key: "email_webhooks" as const,
+                icon: Webhook,
+              },
+              {
+                key: "email_webhook_failure" as const,
+                icon: XCircle,
+              },
+            ] as const).map(({ key, icon: Icon, label, desc }) => (
               <div
                 key={key}
                 className="flex items-center justify-between gap-4 px-5 py-4"
@@ -495,34 +474,24 @@ export function ProfileNotificationsTab({
         </div>
         <Card className="border-border/50 bg-card/50">
           <CardContent className="p-0 divide-y divide-border/60">
-            {(
-              [
-                {
-                  key: "email_data_requests" as const,
-                  icon: Download,
-                  label: "Data exports",
-                  desc: "Your export is built and ready to download.",
-                },
-                {
-                  key: "email_account_deletion" as const,
-                  icon: UserCog,
-                  label: "Account deletion",
-                  desc: "Deletion was requested on your account, and again when it runs.",
-                },
-                {
-                  key: "email_team_invite" as const,
-                  icon: Users,
-                  label: "Team invitations",
-                  desc: "Someone invited you to join their team.",
-                },
-                {
-                  key: "email_team_changes" as const,
-                  icon: Users,
-                  label: "Team changes",
-                  desc: "People joining or leaving a team you are in, and role changes.",
-                },
-              ] as const
-            ).map(({ key, icon: Icon, label, desc }) => (
+            {withCopy([
+              {
+                key: "email_data_requests" as const,
+                icon: Download,
+              },
+              {
+                key: "email_account_deletion" as const,
+                icon: UserCog,
+              },
+              {
+                key: "email_team_invite" as const,
+                icon: Users,
+              },
+              {
+                key: "email_team_changes" as const,
+                icon: Users,
+              },
+            ] as const).map(({ key, icon: Icon, label, desc }) => (
               <div
                 key={key}
                 className="flex items-center justify-between gap-4 px-5 py-4"
@@ -569,22 +538,16 @@ export function ProfileNotificationsTab({
         </div>
         <Card className="border-border/50 bg-card/50">
           <CardContent className="p-0 divide-y divide-border/60">
-            {(
-              [
-                {
-                  key: "email_product_updates" as const,
-                  icon: Sparkles,
-                  label: "Product updates",
-                  desc: "New features, improvements, and release notes.",
-                },
-                {
-                  key: "email_tips_guides" as const,
-                  icon: GraduationCap,
-                  label: "Tips and guides",
-                  desc: "Occasional tips on getting more out of VulnRadar.",
-                },
-              ] as const
-            ).map(({ key, icon: Icon, label, desc }) => (
+            {withCopy([
+              {
+                key: "email_product_updates" as const,
+                icon: Sparkles,
+              },
+              {
+                key: "email_tips_guides" as const,
+                icon: GraduationCap,
+              },
+            ] as const).map(({ key, icon: Icon, label, desc }) => (
               <div
                 key={key}
                 className="flex items-center justify-between gap-4 px-5 py-4"
