@@ -181,7 +181,7 @@ that still has tables in the `public` schema, because `db:backup` writes a
 plain dump with no `DROP` statements and restoring it over an existing schema
 fails on every statement. Restore into a fresh database, or pass `--force` when
 you know the dump and the target are compatible. psql runs with
-`ON_ERROR_STOP=1 --single-transaction`, so the first error aborts and rolls the
+`ON_ERROR_STOP=1` inside one transaction, so the first error aborts and rolls the
 whole restore back, and the run finishes by printing the row counts of a few
 core tables as positive evidence. An encrypted `.enc` backup is decrypted and
 authenticated in full before a single byte reaches psql.

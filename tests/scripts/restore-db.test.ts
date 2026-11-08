@@ -34,8 +34,11 @@ describe("restorePsqlArgs", () => {
     expect(args[args.indexOf("ON_ERROR_STOP=1") - 1]).toBe("-v");
   });
 
-  it("wraps the whole dump in one transaction so a failure rolls back", () => {
-    expect(restorePsqlArgs("postgresql://u@h:5432/db")).toContain(
+  it("does not ask psql for a transaction that commits at end of input", () => {
+    // --single-transaction sends COMMIT when stdin ends, and a killed process
+    // ends stdin too. The transaction is in the input instead: see
+    // psqlRestoreInput.
+    expect(restorePsqlArgs("postgresql://u@h:5432/db")).not.toContain(
       "--single-transaction",
     );
   });
@@ -336,9 +339,8 @@ describe("--replace", () => {
   });
 
   it("sends the reset to psql ahead of the dump, inside its one transaction", async () => {
-    // restorePsqlArgs has --single-transaction, which covers everything on
-    // stdin, so the reset has to be on stdin too: a separate psql -c would
-    // commit the DROP before the restore had a chance to fail.
+    // The transaction is opened on stdin, so the reset has to be on stdin too:
+    // a separate psql -c would commit the DROP before the restore could fail.
     async function* dump() {
       yield Buffer.from("CREATE TABLE a ();\n");
       yield Buffer.from("COPY a FROM stdin;\n");
@@ -347,8 +349,28 @@ describe("--replace", () => {
     for await (const chunk of psqlRestoreInput(dump(), { replace: true })) {
       parts.push(chunk.toString());
     }
-    expect(parts[0]).toBe(REPLACE_SCHEMA_SQL);
-    expect(parts.slice(1).join("")).toContain("CREATE TABLE a");
+    expect(parts[0]).toBe("BEGIN;\n");
+    expect(parts[1]).toBe(REPLACE_SCHEMA_SQL);
+    expect(parts.slice(2).join("")).toContain("CREATE TABLE a");
+    expect(parts.at(-1)).toBe("\nCOMMIT;\n");
+  });
+
+  it("never reaches COMMIT when the dump stops part way", async () => {
+    // A killed process or a failed read looks like this from psql's side:
+    // the input simply ends. Without a COMMIT in it, nothing is kept.
+    async function* dump() {
+      yield Buffer.from("CREATE TABLE a ();\n");
+      throw new Error("the read failed here");
+    }
+    const parts: string[] = [];
+    const reading = (async () => {
+      for await (const chunk of psqlRestoreInput(dump(), { replace: true })) {
+        parts.push(chunk.toString());
+      }
+    })();
+    await expect(reading).rejects.toThrow("the read failed here");
+    expect(parts).toContain(REPLACE_SCHEMA_SQL);
+    expect(parts.join("")).not.toContain("COMMIT");
   });
 
   it("composes with gunzip in a real stream pipeline", async () => {
@@ -368,11 +390,11 @@ describe("--replace", () => {
       }),
     );
     expect(Buffer.concat(chunks).toString()).toBe(
-      `${REPLACE_SCHEMA_SQL}CREATE TABLE a ();\n`,
+      `BEGIN;\n${REPLACE_SCHEMA_SQL}CREATE TABLE a ();\n\nCOMMIT;\n`,
     );
   });
 
-  it("sends only the dump without the flag", async () => {
+  it("sends no reset without the flag", async () => {
     async function* dump() {
       yield Buffer.from("CREATE TABLE a ();\n");
     }
@@ -380,7 +402,7 @@ describe("--replace", () => {
     for await (const chunk of psqlRestoreInput(dump(), { replace: false })) {
       parts.push(chunk.toString());
     }
-    expect(parts.join("")).toBe("CREATE TABLE a ();\n");
+    expect(parts.join("")).toBe("BEGIN;\nCREATE TABLE a ();\n\nCOMMIT;\n");
   });
 
   it("refuses a populated target with neither flag", () => {
@@ -425,9 +447,8 @@ describe("--replace", () => {
   });
 
   it("proves the file is whole before psql can drop anything", async () => {
-    // With --single-transaction psql COMMITs at end of input. A gunzip failure
-    // part way through ends its stdin, so a corrupt file would otherwise commit
-    // the reset and whatever had been read by then.
+    // A damaged copy would roll back without this, but only after psql had
+    // held every table exclusively for as long as it took to reach the damage.
     const dir = await mkdtemp(join(tmpdir(), "vulnradar-gzip-check-"));
     try {
       const whole = join(dir, "whole.sql.gz");

@@ -1,11 +1,12 @@
 import { it, expect, beforeAll, afterAll } from "vitest";
-import { execFile } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { randomBytes } from "node:crypto";
 import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pipeline } from "node:stream/promises";
 import { gzipSync } from "node:zlib";
 import { Client, Pool } from "pg";
 import { describeIntegration } from "./_db";
@@ -30,6 +31,12 @@ const { moduleStepStatements } =
   await import("@/scripts/_lib/_lib.schema-parity.mjs");
 const { marker, DUMP_FORMAT, DUMP_FORMAT_VERSION } =
   await import("@/scripts/_lib/_lib.sql-backup.mjs");
+const { psqlRestoreInput, restorePsqlArgs } =
+  await import("@/scripts/restore-db.mjs");
+
+// The path a pg_dump backup takes, which is every install that has pg_dump.
+// Conditional for a contributor without the client; CI fails on any skip.
+const hasPsql = spawnSync("psql", ["--version"]).status === 0;
 
 const ssl =
   process.env.INTEGRATION_DATABASE_SSL === "true"
@@ -93,6 +100,14 @@ async function emails(): Promise<string[]> {
     `SELECT email FROM users ORDER BY email`,
   );
   return res.rows.map((r) => r.email);
+}
+
+async function tableExists(name: string): Promise<boolean> {
+  const res = await db().query<{ found: string | null }>(
+    `SELECT to_regclass($1) AS found`,
+    [`public.${name}`],
+  );
+  return res.rows[0].found !== null;
 }
 
 describeIntegration("db:backup then db:restore --replace", () => {
@@ -244,6 +259,63 @@ describeIntegration("db:backup then db:restore --replace", () => {
     ]);
   }, 120_000);
 
+  it.skipIf(!hasPsql)(
+    "rolls the reset back on the psql path when a statement fails",
+    async () => {
+      const broken = join(workDir, "broken-plain.sql.gz");
+      await writeFile(
+        broken,
+        gzipSync(
+          "CREATE TABLE half_restored (id int);\nSELECT nonsense FROM nowhere;\n",
+        ),
+      );
+      const { code, output } = await runScript("scripts/restore-db.mjs", [
+        `--file=${broken}`,
+        "--yes",
+        "--replace",
+      ]);
+      expect(output).toContain("psql exited with code");
+      expect(code).toBe(1);
+      expect(await emails()).toEqual([
+        "added-after-backup@example.test",
+        "kept@example.test",
+      ]);
+      expect(await tableExists("half_restored")).toBe(false);
+    },
+    120_000,
+  );
+
+  it.skipIf(!hasPsql)(
+    "keeps nothing when psql's input stops before the end of the dump",
+    async () => {
+      // What a killed process or a failed read looks like from psql's side.
+      // With --single-transaction this is a COMMIT: the schema is gone and
+      // half a backup is in its place.
+      const psql = spawn("psql", restorePsqlArgs(scratchUrl), {
+        stdio: ["pipe", "ignore", "ignore"],
+      });
+      const closed = new Promise((done) => psql.on("close", done));
+      async function* dumpThatStops() {
+        yield Buffer.from("CREATE TABLE half_restored (id int);\n");
+        throw new Error("the read failed here");
+      }
+      await expect(
+        pipeline(
+          () => psqlRestoreInput(dumpThatStops(), { replace: true }),
+          psql.stdin,
+        ),
+      ).rejects.toThrow("the read failed here");
+      await closed;
+
+      expect(await emails()).toEqual([
+        "added-after-backup@example.test",
+        "kept@example.test",
+      ]);
+      expect(await tableExists("half_restored")).toBe(false);
+    },
+    120_000,
+  );
+
   it("replaces the contents with --replace", async () => {
     const { code, output } = await runScript("scripts/restore-db.mjs", [
       `--file=${uploadedCopy}`,
@@ -266,4 +338,34 @@ describeIntegration("db:backup then db:restore --replace", () => {
     );
     expect(grant.rows[0].usable).toBe(true);
   });
+
+  it.skipIf(!hasPsql)(
+    "replaces the contents from a pg_dump-format file through psql",
+    async () => {
+      // Last, because this leaves a one-table database behind.
+      const plain = join(workDir, "plain.sql.gz");
+      await writeFile(
+        plain,
+        gzipSync(
+          [
+            "CREATE TABLE users (id integer PRIMARY KEY, email text NOT NULL, password_hash text NOT NULL);",
+            "COPY users (id, email, password_hash) FROM stdin;",
+            ["1", "from-psql@example.test", "not-a-real-hash"].join("\t"),
+            "\\.",
+            "",
+          ].join("\n"),
+        ),
+      );
+      const { code, output } = await runScript("scripts/restore-db.mjs", [
+        `--file=${plain}`,
+        "--yes",
+        "--replace",
+      ]);
+      expect(output).toContain("Restore complete.");
+      expect(code).toBe(0);
+      expect(await emails()).toEqual(["from-psql@example.test"]);
+      expect(await tableExists("api_keys")).toBe(false);
+    },
+    120_000,
+  );
 });

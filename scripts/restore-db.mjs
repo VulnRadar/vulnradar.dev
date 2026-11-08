@@ -92,23 +92,32 @@ export const REPLACE_SCHEMA_SQL =
   "DROP SCHEMA public CASCADE;\nCREATE SCHEMA public;\nGRANT USAGE ON SCHEMA public TO PUBLIC;\n";
 
 /**
- * What psql reads. The reset goes down the same stdin as the dump because
- * --single-transaction covers exactly what arrives on stdin; a separate
- * `psql -c` would commit the DROP before the restore had a chance to fail.
+ * What psql reads: the dump, in a transaction that commits only once the last
+ * byte of it has gone through.
+ *
+ * The framing is written here rather than asked for with psql's
+ * --single-transaction, because that flag sends COMMIT when stdin ends, and
+ * stdin ends the same way when this process is killed or a read fails part way
+ * through. Under --replace that commits a dropped schema and half a backup.
+ * With the COMMIT in the stream, input that stops early leaves psql to
+ * disconnect with the transaction still open, and the server rolls it back.
+ *
+ * The reset goes down the same stdin as the dump for the same reason: a
+ * separate `psql -c` would commit the DROP before the restore could fail.
  */
 export async function* psqlRestoreInput(dump, { replace }) {
+  yield "BEGIN;\n";
   if (replace) yield REPLACE_SCHEMA_SQL;
   yield* dump;
+  yield "\nCOMMIT;\n";
 }
 
 /**
- * Read a whole gzip file and throw if it is damaged.
- *
- * psql commits a --single-transaction run when its stdin ends, and a gunzip
- * error part way through ends it just as a clean finish does. An interrupted
- * copy would therefore commit whatever had been read so far, which under
- * --replace means a dropped schema and half a backup. Encrypted files already
- * passed GCM by this point; a plain .sql.gz has nothing else protecting it.
+ * Read a whole gzip file and throw if it is damaged, so a bad copy is refused
+ * before psql has locked anything. It would roll back without this, but only
+ * after holding every table exclusively for as long as it took to reach the
+ * damage. Encrypted files already passed GCM by this point; a plain .sql.gz
+ * has nothing else protecting it.
  */
 export async function assertGzipIntact(gzPath) {
   await pipeline(
@@ -170,15 +179,15 @@ export function preflightTarget(existingTables, { force, replace }) {
  * every SQL error to stderr, carried on with the next statement and exited 0
  * as long as it consumed its input. The only failure check here was on that
  * exit code, so a restore in which every single statement failed still printed
- * "Restore complete." --single-transaction then makes the first error roll the
- * whole thing back instead of leaving the database half-applied.
+ * "Restore complete." Stopping at the first error also leaves the transaction
+ * psqlRestoreInput opened unfinished, which is what rolls the restore back.
  *
- * Exported so a test can assert both flags are present: they are the
- * difference between a disaster-recovery rehearsal that proves something and
- * one that proves nothing.
+ * Exported so a test can assert the flag is present: it is the difference
+ * between a disaster-recovery rehearsal that proves something and one that
+ * proves nothing.
  */
 export function restorePsqlArgs(connArg) {
-  return ["-X", "-q", "-v", "ON_ERROR_STOP=1", "--single-transaction", connArg];
+  return ["-X", "-q", "-v", "ON_ERROR_STOP=1", connArg];
 }
 
 /**
@@ -204,7 +213,9 @@ export async function decryptBackupToFile({ sourcePath, key, meta, destPath }) {
 /**
  * Where to find the IV and auth tag: the file's own header, or for a backup
  * written before the header existed (and for db:migrate's pre-migration dumps,
- * which still use only the sidecar) `<file>.json`.
+ * which still use only the sidecar) `<file>.json`. A new-format file whose
+ * header was damaged lands on the sidecar too, and its payload still starts
+ * after the header, so the sidecar's offset is honoured.
  * Exported for tests.
  *
  * @param {string} filePath
@@ -237,8 +248,8 @@ export async function readBackupEncryption(filePath) {
         "existed need that file beside them.",
     );
   }
-  const { iv, authTag } = JSON.parse(text);
-  return { iv, authTag };
+  const { iv, authTag, payloadOffset } = JSON.parse(text);
+  return { iv, authTag, payloadOffset };
 }
 
 /**
@@ -604,7 +615,7 @@ async function runRestore() {
     const exitCode = await exitCodePromise;
     if (exitCode !== 0) {
       throw new Error(
-        `psql exited with code ${exitCode}. The restore was rolled back (--single-transaction); the database is unchanged.`,
+        `psql exited with code ${exitCode}. The restore was rolled back; the database is unchanged.`,
       );
     }
 

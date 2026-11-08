@@ -262,7 +262,11 @@ export function pgDumpAvailable() {
 export function createBackupDecipher(hexKey, ivHex, authTagHex) {
   const key = Buffer.from(hexKey, "hex");
   const iv = Buffer.from(ivHex, "hex");
-  const decipher = createDecipheriv(ENCRYPTION_ALGORITHM, key, iv);
+  // The length is pinned because a sidecar is unauthenticated and GCM would
+  // otherwise accept a tag cut down to 4 bytes from whoever edited it.
+  const decipher = createDecipheriv(ENCRYPTION_ALGORITHM, key, iv, {
+    authTagLength: AUTH_TAG_LENGTH,
+  });
   decipher.setAuthTag(Buffer.from(authTagHex, "hex"));
   return decipher;
 }

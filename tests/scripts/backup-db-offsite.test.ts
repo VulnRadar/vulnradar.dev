@@ -10,6 +10,7 @@ import { pipeline } from "node:stream/promises";
 import {
   BACKUP_HEADER_BYTES,
   createBackupCipher,
+  createBackupDecipher,
   finishEncryptedBackup,
   uploadOffsite,
 } from "../../scripts/backup-db.mjs";
@@ -180,6 +181,33 @@ describe("the offsite copy", () => {
       destPath: out,
     });
     expect((await readFile(out)).equals(PLAINTEXT)).toBe(true);
+  });
+
+  it("still finds the payload through the sidecar when the header is damaged", async () => {
+    const path = await encryptedBackup();
+    const bytes = await readFile(path);
+    bytes.fill(0, 0, 8);
+    await writeFile(path, bytes);
+
+    const meta = await readBackupEncryption(path);
+    expect(meta.payloadOffset).toBe(BACKUP_HEADER_BYTES);
+    const out = join(dir, "out");
+    await decryptBackupToFile({
+      sourcePath: path,
+      key: KEY,
+      meta,
+      destPath: out,
+    });
+    expect((await readFile(out)).equals(PLAINTEXT)).toBe(true);
+  });
+
+  it("refuses an auth tag cut down to fewer bytes than the writer produces", () => {
+    // A sidecar is not authenticated, and GCM on its own accepts a 4-byte tag.
+    const iv = "00".repeat(12);
+    expect(() => createBackupDecipher(KEY, iv, "ab".repeat(16))).not.toThrow();
+    expect(() => createBackupDecipher(KEY, iv, "ab".repeat(4))).toThrow(
+      /tag length/i,
+    );
   });
 
   it("names the missing sidecar when a header-less file has none", async () => {
