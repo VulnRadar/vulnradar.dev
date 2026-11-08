@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Footer } from "@/components/scanner/footer";
 import { LandingNav } from "@/components/landing/landing-nav";
 import { resolveMovedAnchor } from "@/lib/docs/moved-anchors";
-import { DocsContext, ignoreTocItems, useDocsContext } from "./docs-context";
+import { DocsContext, useDocsContext } from "./docs-context";
 import { DocsSidebar } from "./docs-sidebar";
 import { DocsToc } from "./docs-toc";
 import {
@@ -67,7 +67,6 @@ export function DocsShell({ children }: { children: React.ReactNode }) {
         activeSection,
         setActiveSection,
         tocItems,
-        setTocItems: ignoreTocItems,
         openSearch,
       }}
     >

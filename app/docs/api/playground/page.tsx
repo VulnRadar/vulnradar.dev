@@ -23,6 +23,7 @@ import {
   METHOD_COLORS,
 } from "@/components/docs";
 import { useDocsContext } from "@/components/docs/docs-shell";
+import { toc } from "@/components/docs/toc/api-playground";
 import {
   buildRequestUrl,
   pathParamNames,
@@ -108,13 +109,8 @@ function flattenOperations(spec: Spec): { baseUrl: string; ops: Operation[] } {
   return { baseUrl, ops };
 }
 
-const TOC = [
-  { id: "setup", label: "Setup", level: 1 },
-  { id: "endpoints", label: "Endpoints", level: 1 },
-];
-
 export default function ApiPlaygroundPage() {
-  const { setActiveSection, setTocItems } = useDocsContext();
+  const { setActiveSection } = useDocsContext();
   const [spec, setSpec] = useState<Spec | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
@@ -123,11 +119,6 @@ export default function ApiPlaygroundPage() {
   // picking "Python" once shows Python everywhere.
   const [lang, setLang] = useState<string>(CODE_LANGUAGES[0].id);
   const observerRef = useRef<IntersectionObserver | null>(null);
-
-  useEffect(() => {
-    setTocItems(TOC);
-    return () => setTocItems([]);
-  }, [setTocItems]);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,7 +149,7 @@ export default function ApiPlaygroundPage() {
       },
       { rootMargin: "-20% 0px -70% 0px", threshold: 0 },
     );
-    for (const { id } of TOC) {
+    for (const { id } of toc) {
       const el = document.getElementById(id);
       if (el) observerRef.current.observe(el);
     }

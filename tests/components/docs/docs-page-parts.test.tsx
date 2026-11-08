@@ -239,7 +239,6 @@ describe("DocsRelated", () => {
         activeSection: "",
         setActiveSection: () => {},
         tocItems: toc,
-        setTocItems: () => {},
         openSearch: () => {},
       }}
     >
