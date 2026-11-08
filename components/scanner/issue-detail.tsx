@@ -24,6 +24,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { EditDialog } from "@/components/shared/edit-dialog";
+import { formatDate } from "@/lib/ui/format-date";
 import { SEVERITY_TONE } from "@/components/scanner/severity-badge";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { cn } from "@/lib/ui/utils";
@@ -51,7 +56,7 @@ import {
   owaspRef,
   type TaxonomyRef,
 } from "@/lib/scanner/finding-display";
-import { useTeammates } from "./use-teammates";
+import { useTeammates, type Teammate } from "./use-teammates";
 import { noteFindingClosed } from "./finding-focus";
 import {
   getQueryParam,
@@ -304,6 +309,86 @@ function isOverdue(
   return d.getTime() < today.getTime();
 }
 
+/** The three free-text details a status other than Open can carry, as the
+ *  dialog's fields hold them (dueAt is a `YYYY-MM-DD` date input value). */
+export interface RemediationDetailsDraft {
+  note: string;
+  assignee: string;
+  dueAt: string;
+}
+
+export const DETAILS_SAVE_FAILED = "Couldn't save that. Try again.";
+
+/** The POST body for a status plus its details. One builder for the status
+ *  chips and the details dialog, so the two can never send different shapes. */
+export function remediationDetailsBody(
+  findingId: string,
+  findingUrl: string,
+  status: RemediationStatus,
+  draft: RemediationDetailsDraft,
+) {
+  return {
+    findingId,
+    findingUrl,
+    status,
+    note: draft.note.trim() || undefined,
+    assignee: draft.assignee.trim() || undefined,
+    dueAt: draft.dueAt || null,
+  };
+}
+
+/** What the row holds once that body has saved. */
+export function savedRemediation(
+  status: RemediationStatus,
+  draft: RemediationDetailsDraft,
+): FindingRemediation {
+  return {
+    status,
+    note: draft.note.trim() || null,
+    assignee: draft.assignee.trim() || null,
+    dueAt: draft.dueAt || null,
+  };
+}
+
+export function remediationDraftDirty(
+  draft: RemediationDetailsDraft,
+  saved: RemediationDetailsDraft,
+): boolean {
+  return (
+    draft.note !== saved.note ||
+    draft.assignee !== saved.assignee ||
+    draft.dueAt !== saved.dueAt
+  );
+}
+
+/** Saves the details under the finding's current status. Resolves to the
+ *  saved row, or null when the request failed or did not reach the server. */
+export async function postRemediationDetails(
+  findingId: string,
+  findingUrl: string,
+  status: RemediationStatus,
+  draft: RemediationDetailsDraft,
+): Promise<FindingRemediation | null> {
+  try {
+    const res = await fetch(API.SCAN_REMEDIATION, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        remediationDetailsBody(findingId, findingUrl, status, draft),
+      ),
+    });
+    return res.ok ? savedRemediation(status, draft) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A `YYYY-MM-DD` value read as a local calendar day. `new Date("2026-11-08")`
+ *  is midnight UTC, which is the evening before anywhere west of Greenwich. */
+function formatDueDate(value: string): string {
+  return formatDate(new Date(`${value}T00:00:00`));
+}
+
 /**
  * The owner's per-finding remediation lifecycle: Open / In progress / Fixed
  * / Accepted risk / Won't fix, plus an optional note and free-text assignee,
@@ -316,8 +401,12 @@ function isOverdue(
  * Same gating as FindingFeedback: only rendered when the caller supplies
  * `findingUrl` (the owner's own authenticated scan), so the public host
  * page and shared share-token page never show it.
+ *
+ * The status chips stay one click: picking one of five is a choice, not a
+ * form. The details are an edit of something saved, so the card shows them
+ * read-only and they change in RemediationDetailsDialog.
  */
-function RemediationControl({
+export function RemediationControl({
   findingId,
   findingUrl,
   initial,
@@ -341,14 +430,15 @@ function RemediationControl({
   const [note, setNote] = useState(initial?.note ?? "");
   const [assignee, setAssignee] = useState(initial?.assignee ?? "");
   const [dueAt, setDueAt] = useState(toDateInputValue(initial?.dueAt));
+  // False until the mount-time GET below settles. The details dialog seeds
+  // its draft when it opens, and opening it before the fresher values arrive
+  // would seed it from the stale server-attached ones and then save those
+  // over whatever another tab had written.
+  const [loaded, setLoaded] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [savedDetails, setSavedDetails] = useState(false);
   const { confirm, confirmDialog } = useConfirm();
   const [error, setError] = useState(false);
-  const noteFieldId = useId();
-  const assigneeFieldId = useId();
-  const dueFieldId = useId();
-  const assigneeListId = useId();
   const teammates = useTeammates();
 
   // Freshest value wins: seed from the server-attached status, then confirm
@@ -380,6 +470,9 @@ function RemediationControl({
       )
       .catch(() => {
         /* best-effort preload; the control still works without it */
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -388,11 +481,10 @@ function RemediationControl({
 
   async function save(
     nextStatus: RemediationStatus,
-    opts: { note: string; assignee: string; dueAt: string },
+    opts: RemediationDetailsDraft,
   ) {
     setSaving(true);
     setError(false);
-    setSavedDetails(false);
     try {
       if (nextStatus === "open") {
         const res = await fetch(
@@ -405,22 +497,12 @@ function RemediationControl({
         const res = await fetch(API.SCAN_REMEDIATION, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            findingId,
-            findingUrl,
-            status: nextStatus,
-            note: opts.note.trim() || undefined,
-            assignee: opts.assignee.trim() || undefined,
-            dueAt: opts.dueAt || null,
-          }),
+          body: JSON.stringify(
+            remediationDetailsBody(findingId, findingUrl, nextStatus, opts),
+          ),
         });
         if (!res.ok) throw new Error("Failed to save remediation status");
-        onChanged?.(findingId, {
-          status: nextStatus,
-          note: opts.note.trim() || null,
-          assignee: opts.assignee.trim() || null,
-          dueAt: opts.dueAt || null,
-        });
+        onChanged?.(findingId, savedRemediation(nextStatus, opts));
       }
       return true;
     } catch {
@@ -455,13 +537,25 @@ function RemediationControl({
     await save(next, { note, assignee, dueAt });
   }
 
-  async function saveDetails() {
-    const ok = await save(status, { note, assignee, dueAt });
-    if (ok) {
-      setSavedDetails(true);
-      setTimeout(() => setSavedDetails(false), 2000);
-    }
+  async function saveDetails(
+    draft: RemediationDetailsDraft,
+  ): Promise<string | null> {
+    const saved = await postRemediationDetails(
+      findingId,
+      findingUrl,
+      status,
+      draft,
+    );
+    if (!saved) return DETAILS_SAVE_FAILED;
+    setNote(saved.note ?? "");
+    setAssignee(saved.assignee ?? "");
+    setDueAt(saved.dueAt ?? "");
+    setError(false);
+    onChanged?.(findingId, saved);
+    return null;
   }
+
+  const hasDetails = Boolean(note || assignee || dueAt);
 
   // rounded-xl, matching the FindingFeedback card directly above it: both are
   // panels on the radius ladder, and the two now render as a pair.
@@ -517,96 +611,47 @@ function RemediationControl({
       </p>
 
       {status !== "open" && (
-        <div className="flex flex-col gap-2 border-t border-primary/15 pt-3">
-          <div className="flex flex-col gap-1.5 sm:flex-row">
-            <div className="flex flex-1 flex-col gap-1">
-              <label
-                htmlFor={noteFieldId}
-                className="text-[11px] font-medium text-muted-foreground"
-              >
-                Note (optional)
-              </label>
-              <input
-                id={noteFieldId}
-                type="text"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                maxLength={2000}
-                placeholder="e.g. patched in release 4.2, ticket VR-118"
-                className={cn(
-                  "h-8 rounded-md border border-border bg-card px-2.5 text-xs text-foreground placeholder:text-muted-foreground",
-                  FOCUS_RING,
-                )}
-              />
-            </div>
-            <div className="flex flex-col gap-1 sm:w-44">
-              <label
-                htmlFor={assigneeFieldId}
-                className="text-[11px] font-medium text-muted-foreground"
-              >
-                Assignee (optional)
-              </label>
-              <input
-                id={assigneeFieldId}
-                type="text"
-                // A teammate picker with a free-text fallback: the datalist
-                // suggests people you share a team with, but you can still type
-                // any name. Solo users (no teammates) just get the free field.
-                list={teammates.length > 0 ? assigneeListId : undefined}
-                value={assignee}
-                onChange={(e) => setAssignee(e.target.value)}
-                maxLength={120}
-                placeholder={
-                  teammates.length > 0
-                    ? "Pick a teammate or type"
-                    : "name or handle"
-                }
-                className={cn(
-                  "h-8 rounded-md border border-border bg-card px-2.5 text-xs text-foreground placeholder:text-muted-foreground",
-                  FOCUS_RING,
-                )}
-              />
-              {teammates.length > 0 && (
-                <datalist id={assigneeListId}>
-                  {teammates.map((t) => (
-                    // A datalist option's value is the text it shows.
-                    // oxlint-disable-next-line jsx-a11y/control-has-associated-label
-                    <option key={t.id} value={t.name || t.email} />
-                  ))}
-                </datalist>
+        <div className="flex flex-col gap-2 border-t border-primary/15 pt-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          {hasDetails ? (
+            <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+              {note && (
+                <>
+                  <dt className="text-muted-foreground">Note</dt>
+                  <dd className="min-w-0 whitespace-pre-wrap break-words text-foreground">
+                    {note}
+                  </dd>
+                </>
               )}
-            </div>
-            <div className="flex flex-col gap-1 sm:w-40">
-              <label
-                htmlFor={dueFieldId}
-                className="text-[11px] font-medium text-muted-foreground"
-              >
-                Due date (optional)
-              </label>
-              <input
-                id={dueFieldId}
-                type="date"
-                value={dueAt}
-                onChange={(e) => setDueAt(e.target.value)}
-                className={cn(
-                  "h-8 rounded-md border border-border bg-card px-2.5 text-xs text-foreground",
-                  FOCUS_RING,
-                )}
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={saveDetails}
-              disabled={saving}
-              className={cn("h-7 px-2.5 text-xs", FOCUS_RING)}
-            >
-              {saving ? "Saving..." : savedDetails ? "Saved" : "Save details"}
-            </Button>
-          </div>
+              {assignee && (
+                <>
+                  <dt className="text-muted-foreground">Assignee</dt>
+                  <dd className="min-w-0 break-words text-foreground">
+                    {assignee}
+                  </dd>
+                </>
+              )}
+              {dueAt && (
+                <>
+                  <dt className="text-muted-foreground">Due</dt>
+                  <dd className="min-w-0 text-foreground">
+                    {formatDueDate(dueAt)}
+                  </dd>
+                </>
+              )}
+            </dl>
+          ) : (
+            <p className="text-xs text-muted-foreground">No details yet</p>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setEditingDetails(true)}
+            disabled={!loaded || saving}
+            className={cn("h-7 shrink-0 self-start px-2.5 text-xs", FOCUS_RING)}
+          >
+            {hasDetails ? "Edit details" : "Add details"}
+          </Button>
         </div>
       )}
 
@@ -615,8 +660,114 @@ function RemediationControl({
           Couldn&apos;t save that, try again.
         </span>
       )}
+      {editingDetails && (
+        <RemediationDetailsDialog
+          status={status}
+          initial={{ note, assignee, dueAt }}
+          teammates={teammates}
+          onSave={saveDetails}
+          onClose={() => setEditingDetails(false)}
+        />
+      )}
       {confirmDialog}
     </div>
+  );
+}
+
+/**
+ * The note, assignee and due date of one finding's tracking, saved under its
+ * current status. Mounted only while open and seeded from the control's
+ * state, which the mount-time GET has already refreshed.
+ */
+export function RemediationDetailsDialog({
+  status,
+  initial,
+  teammates,
+  onSave,
+  onClose,
+}: {
+  status: RemediationStatus;
+  initial: RemediationDetailsDraft;
+  teammates: Teammate[];
+  onSave: (draft: RemediationDetailsDraft) => Promise<string | null>;
+  onClose: () => void;
+}) {
+  const [note, setNote] = useState(initial.note);
+  const [assignee, setAssignee] = useState(initial.assignee);
+  const [dueAt, setDueAt] = useState(initial.dueAt);
+  const noteFieldId = useId();
+  const assigneeFieldId = useId();
+  const dueFieldId = useId();
+  const assigneeListId = useId();
+  const draft = { note, assignee, dueAt };
+
+  return (
+    <EditDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title="Tracking details"
+      description={`Saved with the status ${REMEDIATION_LABELS[status]}.`}
+      saveLabel="Save details"
+      size="md"
+      dirty={remediationDraftDirty(draft, initial)}
+      onSave={() => onSave(draft)}
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={noteFieldId}>Note (optional)</Label>
+          <Textarea
+            id={noteFieldId}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={2000}
+            placeholder="e.g. patched in release 4.2, ticket VR-118"
+            autoFocus
+            className="resize-y"
+          />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={assigneeFieldId}>Assignee (optional)</Label>
+            <Input
+              id={assigneeFieldId}
+              // A teammate picker with a free-text fallback: the datalist
+              // suggests people you share a team with, but you can still type
+              // any name. Solo users (no teammates) just get the free field.
+              list={teammates.length > 0 ? assigneeListId : undefined}
+              value={assignee}
+              onChange={(e) => setAssignee(e.target.value)}
+              maxLength={120}
+              autoComplete="off"
+              placeholder={
+                teammates.length > 0
+                  ? "Pick a teammate or type"
+                  : "name or handle"
+              }
+            />
+            {teammates.length > 0 && (
+              <datalist id={assigneeListId}>
+                {teammates.map((t) => (
+                  // A datalist option's value is the text it shows.
+                  // oxlint-disable-next-line jsx-a11y/control-has-associated-label
+                  <option key={t.id} value={t.name || t.email} />
+                ))}
+              </datalist>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={dueFieldId}>Due date (optional)</Label>
+            <Input
+              id={dueFieldId}
+              type="date"
+              value={dueAt}
+              onChange={(e) => setDueAt(e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+    </EditDialog>
   );
 }
 
