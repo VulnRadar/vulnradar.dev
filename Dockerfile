@@ -241,7 +241,9 @@ ENV UV_THREADPOOL_SIZE=16
 ENV VULNRADAR_UPDATER_DISABLED=true
 
 # infra: run under tini so SIGTERM is forwarded to the Node worker
-# and in-flight requests drain cleanly on container shutdown.
+# and in-flight requests drain cleanly on container shutdown. Node directly
+# rather than `npm start`, which is the same server.mjs behind npm and a shell:
+# tini signals its one child, and the drain only runs if that child is node.
 # (schema auto-creates via instrumentation.ts on startup)
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["npm", "start"]
+CMD ["node", "server.mjs"]

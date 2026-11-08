@@ -19,6 +19,9 @@ const read = (rel: string) =>
   readFileSync(path.join(ROOT, rel), "utf8").replace(/\r\n/g, "\n");
 
 const dockerfile = read("Dockerfile");
+const packageJson = JSON.parse(read("package.json")) as {
+  scripts: Record<string, string>;
+};
 
 /** Instructions with comments dropped and `\` continuations joined. */
 const instructions = dockerfile
@@ -123,8 +126,9 @@ describe("the runner stage's code is not writable by the server", () => {
     ]);
   });
 
-  it("starts through npm, so package.json decides what runs", () => {
-    expect(runner).toContain('CMD ["npm", "start"]');
+  it("starts node itself, so tini's SIGTERM reaches the process that drains", () => {
+    expect(runner).toContain('CMD ["node", "server.mjs"]');
+    expect(packageJson.scripts.start).toBe("node server.mjs");
   });
 });
 
@@ -197,7 +201,7 @@ describe("the self-host job proves all of it against the real image", () => {
     expect(all).toMatch(/command -v cosign/);
   });
 
-  it("checks for the server npm start runs", () => {
+  it("checks for the server the image starts", () => {
     expect(
       stepNamed(
         steps,
