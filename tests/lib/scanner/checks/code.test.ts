@@ -372,7 +372,7 @@ const fixtures: DetectorFixtures = {
   // scan of walmart.com matched Google API keys via this check's old flat
   // "critical" severity, which alone was enough to mark the whole scan
   // "unsafe" even though Google API keys are designed to be client-visible
-  // and are already covered at "medium" by google-api-key-exposed
+  // and are already covered by google-api-key-exposed
   // (content.json) and secret-google-maps-api-key (secrets-extended.json).
   "hardcoded-secrets": [
     {

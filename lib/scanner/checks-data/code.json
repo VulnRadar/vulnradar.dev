@@ -1585,7 +1585,7 @@
     "description": "yaml.load(input) uses the unsafe Loader by default and instantiates arbitrary Python objects via !!python/object tags. yaml.safe_load rejects those tags.",
     "evidence": "Source-code pattern matched for `code-deser-yaml-load`.",
     "riskImpact": "Crafted YAML can execute arbitrary Python during parsing, leading to full RCE on the host.",
-    "explanation": "YAML tags can ask the parser to construct objects, and PyYAML's full loader honors tags such as !!python/object/apply:os.system, which calls the function while the document is being parsed. Validating the result afterwards is too late, because the code already ran. PyYAML 6 made the Loader argument mandatory to force this choice, but yaml.load(data, Loader=yaml.Loader) and older installs are still dangerous.",
+    "explanation": "YAML tags can ask the parser to construct objects, and PyYAML's unsafe loaders, yaml.Loader and yaml.UnsafeLoader, honor tags such as !!python/object/apply:os.system, which calls the function while the document is being parsed. Validating the result afterwards is too late, because the code already ran. PyYAML 6 made the Loader argument mandatory to force this choice, but yaml.load(data, Loader=yaml.Loader) and older installs are still dangerous.",
     "fixSteps": [
       "Use yaml.safe_load(input) for any untrusted YAML.",
       "Or pin a safe Loader: yaml.load(input, Loader=yaml.SafeLoader).",
@@ -1692,10 +1692,10 @@
     "title": "node-serialize deserialize()",
     "category": "code",
     "severity": "critical",
-    "description": "node-serializes serialize/deserialize supports an IIFE payload (rce: _$ND_FUNC$$ = function(){...}()). The deserialize() call evaluates that payload and executes attacker JavaScript on the server.",
+    "description": "node-serializes serialize/deserialize supports an IIFE payload (rce: _$$ND_FUNC$$_function(){...}()). The deserialize() call evaluates that payload and executes attacker JavaScript on the server.",
     "evidence": "Source-code pattern matched for `code-deser-node-serialize`.",
     "riskImpact": "Untrusted serialized input is evaluated, leading directly to remote code execution.",
-    "explanation": "node-serialize writes functions as strings with a _$ND_FUNC$$_ prefix and restores them with eval. Adding () to the end of such a string makes it run during deserialize. This is CVE-2017-5941, public exploits exist, and all they need is a cookie or body field that the app passes to the library. No patched release exists to upgrade to, so the package has to go.",
+    "explanation": "node-serialize writes functions as strings with a _$$ND_FUNC$$_ prefix and restores them with eval. Adding () to the end of such a string makes it run during deserialize. This is CVE-2017-5941, public exploits exist, and all they need is a cookie or body field that the app passes to the library. No patched release exists to upgrade to, so the package has to go.",
     "fixSteps": [
       "Replace node-serialize with JSON.parse; node-serialize is unmaintained and unsafe.",
       "Validate any unserialized data with a strict schema (Zod, Joi).",
@@ -2251,7 +2251,7 @@
     "description": "Cookies set with SameSite=None but without the Secure flag are rejected by browsers, but client-side code can still emit them on HTTP origins. The cookie then flows cross-site over insecure transports.",
     "evidence": "Source-code pattern matched for `code-cookie-samesite-none-http`.",
     "riskImpact": "Cross-site requests over HTTP can carry the cookie, enabling CSRF and session hijacking on downgrade.",
-    "explanation": "Browsers require Secure on SameSite=None cookies and drop those that lack it, so the first symptom is usually a broken cross-site login or embed rather than a breach. Older browsers that predate the rule accept the cookie, and then it travels cross-site and over plain HTTP too. A SameSite=None attribute with no Secure anywhere in the response is what triggered this finding.",
+    "explanation": "Browsers require Secure on SameSite=None cookies and drop those that lack it, so the first symptom is usually a broken cross-site login or embed rather than a breach. Older browsers that predate the rule accept the cookie, and then it travels cross-site and over plain HTTP too. This finding means a SameSite=None cookie, in a Set-Cookie header or in code on the page, has no Secure attribute.",
     "fixSteps": [
       "Pair SameSite=None with Secure; on the same origin.",
       "Use SameSite=Lax or Strict for any cookie that does not need cross-site delivery.",

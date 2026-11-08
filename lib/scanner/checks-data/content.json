@@ -2130,7 +2130,7 @@
     "title": "Private Key Detected in Source",
     "category": "content",
     "severity": "critical",
-    "description": "The response contains a PEM block that starts with -----BEGIN PRIVATE KEY-----, or the RSA, EC, DSA, OPENSSH or PGP form of it. Public keys and certificates do not match.",
+    "description": "The response contains a PEM block whose header reads BEGIN PRIVATE KEY, or the RSA, EC, DSA or OPENSSH form of it. Public keys and certificates do not match.",
     "evidence": "Private key pattern.",
     "riskImpact": "A private key cannot be changed the way a password can: everything that trusted it has to be replaced. Depending on what it belongs to, the holder can impersonate your server in a TLS handshake, sign JWTs your API accepts, log in over SSH, or decrypt files and traffic encrypted to it.",
     "explanation": "The first question is what the key is for, because the cleanup differs. Compare its public half with your certificate (openssl pkey -pubout against openssl x509 -noout -pubkey), your JWKS or your authorized_keys files. If old TLS traffic was recorded on connections without forward secrecy, it can be decrypted as well. These blocks usually reach a page from a config file under the web root, a debug dump, or a bundle that inlined a signing key. A sample key from a tutorial matches too, so check whether this one is yours.",

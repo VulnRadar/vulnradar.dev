@@ -87,6 +87,12 @@ describe("secret and dotfile instructions", () => {
     expect(onCommandLine).toEqual([]);
   });
 
+  it("describes a PEM header without printing one", () => {
+    // The detector has no example stripping, so a literal header in this
+    // page's prose reports a critical on the page that explains it.
+    expect(prose(page("private-key-exposed"))).not.toMatch(/-----BEGIN/);
+  });
+
   it.each(["git-directory-exposed", "env-file-reference"])(
     "%s denies the path on Nginx, Apache and Caddy and covers static hosts",
     (id) => {
@@ -172,9 +178,9 @@ describe("wording matches what the detector can see", () => {
 });
 
 describe("copy rules", () => {
-  it("has no en dash or middle dot in the rewritten files", () => {
+  it("has no em dash, en dash or middle dot in the rewritten files", () => {
     const hits = owned
-      .filter((p) => /[–·]/.test(JSON.stringify(p)))
+      .filter((p) => /[—–·]/.test(JSON.stringify(p)))
       .map((p) => p.id);
     expect(hits).toEqual([]);
   });
