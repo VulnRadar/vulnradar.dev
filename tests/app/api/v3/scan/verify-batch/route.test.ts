@@ -1,8 +1,10 @@
 /**
  * Route-level tests for POST /api/v3/scan/verify-batch (AI verification of
  * client-supplied findings, not a stored scan). Auth (session or API key) is
- * mocked at the boundary; verifyFindingsBatch (lib/ai/verify-findings.ts) is
- * mocked outright since it is itself an LLM network boundary.
+ * mocked at the boundary; the pass (verifyFindingsBatchWithOutcome in
+ * lib/ai/verify-findings.ts) and its estimate are mocked since the pass is
+ * itself an LLM network boundary. isAcceptedBatchElement runs for real: it is
+ * the rule for which elements the route refuses.
  *
  * Unlike verify/route.ts, this route never reads scan_history: the caller
  * supplies url + findings[] directly in the body, so there is no scan
@@ -36,11 +38,20 @@ vi.mock("@/lib/api/api-keys", () => ({
 
 const mockVerifyFindingsBatch = vi.fn();
 const mockEstimateVerifyTokens = vi.fn();
-vi.mock("@/lib/ai/verify-findings", () => ({
-  verifyFindingsBatch: (...args: unknown[]) => mockVerifyFindingsBatch(...args),
-  estimateVerifyTokens: (...args: unknown[]) =>
-    mockEstimateVerifyTokens(...args),
-}));
+vi.mock("@/lib/ai/verify-findings", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/ai/verify-findings")>();
+  return {
+    ...actual,
+    verifyFindingsBatchWithOutcome: (...args: unknown[]) =>
+      mockVerifyFindingsBatch(...args),
+    // The findings-only form, for a route that still calls it.
+    verifyFindingsBatch: async (...args: unknown[]) =>
+      (await mockVerifyFindingsBatch(...args)).findings,
+    estimateVerifyTokens: (...args: unknown[]) =>
+      mockEstimateVerifyTokens(...args),
+  };
+});
 
 const mockCheckRateLimit = vi.fn();
 vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
@@ -98,12 +109,26 @@ function postRequest(body: unknown, headers: Record<string, string> = {}) {
 
 const findings = [{ id: "f1", title: "Missing CSP" }];
 
+/** What the pass hands back: the findings, and whether it got through them. */
+function passed(
+  out: unknown[],
+  outcome: Record<string, unknown> = {
+    configured: true,
+    verdicts: out.filter((f) => f !== null).length,
+    attempted: out.filter((f) => f !== null).length,
+  },
+) {
+  return { findings: out, outcome };
+}
+
 beforeEach(() => {
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue({ userId: 42 });
   mockValidateApiKey.mockReset();
   mockVerifyFindingsBatch.mockReset();
-  mockVerifyFindingsBatch.mockResolvedValue(findings);
+  mockVerifyFindingsBatch.mockImplementation(async (_url, sent: unknown[]) =>
+    passed(sent),
+  );
   mockQuery.mockReset();
   mockQuery.mockResolvedValue({ rows: [] }); // no ai_disabled row = AI enabled by default
   mockCheckRateLimit.mockReset();
@@ -316,50 +341,107 @@ describe("POST /api/v3/scan/verify-batch: request validation", () => {
       );
     },
   );
+});
 
-  // A finding whose id was not a string reached buildVerifyPrompt and threw
-  // there, which surfaced as a 500 after the reservation was taken.
-  it.each([
-    ["missing-csp"],
-    [7],
-    [{ title: "no id" }],
-    [{ id: 7 }],
-    [{ id: { toString: 1 } }],
-  ])(
-    "rejects a non-null finding without a string id (%j) before reserving anything",
-    async (bad) => {
+describe("POST /api/v3/scan/verify-batch: which findings[] elements are taken", () => {
+  // An object whose toString is not a function, as JSON can send it. The
+  // prompt builder throws converting it to text, and that answered 500.
+  const unconvertible = { toString: 1 };
+
+  it.each(["id", "title", "category", "severity", "evidence"])(
+    "refuses a finding whose %s cannot be converted to text, before reserving anything",
+    async (field) => {
       const res = await POST(
         postRequest({
           url: "https://example.com",
-          findings: [findings[0], bad],
+          findings: [findings[0], { id: "x", [field]: unconvertible }],
         }),
       );
       expect(res.status).toBe(400);
       expect((await res.json()).error).toBe(
-        "Every finding other than null needs a string id.",
+        "findings[1] has an id, title, category, severity, evidence or evidenceExcerpts that cannot be converted to text.",
       );
+      expect(mockEstimateVerifyTokens).not.toHaveBeenCalled();
       expect(mockReserveAiTokens).not.toHaveBeenCalled();
       expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
     },
   );
 
-  // v3 changes only by addition: these were accepted before the id check
-  // existed and stay accepted here. The stricter rule is part of the v4
-  // contract.
-  it.each([[null], [{ id: "" }], [{ id: "x".repeat(201) }]])(
-    "still accepts %j",
-    async (element) => {
-      const body = [findings[0], element];
+  it.each<[string, unknown]>([
+    ["an array holding one", { id: "x", evidence: [unconvertible] }],
+    [
+      "evidenceExcerpts",
+      { id: "x", evidenceExcerpts: { length: unconvertible } },
+    ],
+  ])("refuses a field the prompt builder cannot read: %s", async (_l, bad) => {
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings: [bad] }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/^findings\[0\] /);
+    expect(mockReserveAiTokens).not.toHaveBeenCalled();
+  });
+
+  // Everything 3.9.1 answered 200 for stays accepted, and a null element,
+  // which 3.9.1 answered with a 500, is carried through as sent.
+  it.each<[string, unknown]>([
+    ["a numeric id", { id: 7, title: "Missing CSP" }],
+    ["a missing id", { title: "no id" }],
+    ["an empty id", { id: "" }],
+    ["a long id", { id: "x".repeat(201) }],
+    ["a string element", "missing-csp"],
+    ["a number element", 7],
+    ["a boolean element", true],
+    ["an array element", ["a"]],
+    ["an object field that converts", { id: "x", title: { a: 1 } }],
+    ["a null element", null],
+  ])("still accepts %s", async (_label, element) => {
+    const body = [findings[0], element];
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings: body }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockEstimateVerifyTokens).toHaveBeenCalledWith(body);
+    expect(mockVerifyFindingsBatch).toHaveBeenCalledWith(
+      "https://example.com",
+      body,
+      42,
+      RESERVATION,
+    );
+  });
+
+  it("still accepts a batch whose only element is a primitive", async () => {
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings: [7] }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockReserveAiTokens).toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v3/scan/verify-batch: nothing but null elements", () => {
+  // Nothing to ask about: no reservation, so no 429 from the gate, and no
+  // pass, so no probe of the target.
+  it.each([[[null]], [[null, null]], [[]]])(
+    "answers %j as sent without reserving, probing or refusing",
+    async (body) => {
+      mockReserveAiTokens.mockResolvedValue({
+        allowed: false,
+        busy: true,
+        message: "Another AI verification is still running on your account.",
+      });
+
       const res = await POST(
         postRequest({ url: "https://example.com", findings: body }),
       );
+
       expect(res.status).toBe(200);
-      expect(mockVerifyFindingsBatch).toHaveBeenCalledWith(
-        "https://example.com",
-        body,
-        42,
-        RESERVATION,
-      );
+      expect(await res.json()).toStrictEqual({
+        findings: body,
+        ai: { configured: true, verdicts: 0, attempted: 0 },
+      });
+      expect(mockReserveAiTokens).not.toHaveBeenCalled();
+      expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
     },
   );
 });
@@ -402,7 +484,7 @@ describe("POST /api/v3/scan/verify-batch: findings cap", () => {
 describe("POST /api/v3/scan/verify-batch: happy path", () => {
   it("returns the AI-enriched findings for a session-authenticated caller", async () => {
     const enriched = [{ ...findings[0], aiVerdict: "confirmed" }];
-    mockVerifyFindingsBatch.mockResolvedValue(enriched);
+    mockVerifyFindingsBatch.mockResolvedValue(passed(enriched));
 
     const res = await POST(
       postRequest({ url: "https://example.com", findings }),
@@ -410,6 +492,11 @@ describe("POST /api/v3/scan/verify-batch: happy path", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.findings).toEqual(enriched);
+    expect(json.ai).toStrictEqual({
+      configured: true,
+      verdicts: 1,
+      attempted: 1,
+    });
     expect(mockVerifyFindingsBatch).toHaveBeenCalledWith(
       "https://example.com",
       findings,
@@ -419,7 +506,6 @@ describe("POST /api/v3/scan/verify-batch: happy path", () => {
   });
 
   it("accepts an empty findings array and passes it straight through", async () => {
-    mockVerifyFindingsBatch.mockResolvedValue([]);
     const res = await POST(
       postRequest({ url: "https://example.com", findings: [] }),
     );
@@ -428,12 +514,128 @@ describe("POST /api/v3/scan/verify-batch: happy path", () => {
     expect(json.findings).toEqual([]);
   });
 
+  it("says when no AI endpoint is configured, with the findings as sent", async () => {
+    mockVerifyFindingsBatch.mockResolvedValue(
+      passed(findings, { configured: false, verdicts: 0, attempted: 1 }),
+    );
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings }),
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).ai).toStrictEqual({
+      configured: false,
+      verdicts: 0,
+      attempted: 1,
+    });
+  });
+
   it("does not catch a failure from the AI verification call: it propagates uncontrolled", async () => {
     mockVerifyFindingsBatch.mockRejectedValue(new Error("AI provider down"));
 
     await expect(
       POST(postRequest({ url: "https://example.com", findings })),
     ).rejects.toThrow("AI provider down");
+  });
+});
+
+describe("POST /api/v3/scan/verify-batch: when the allowance stops the pass", () => {
+  const twoFindings = [
+    { id: "f1", title: "Missing CSP" },
+    { id: "f2", title: "Missing HSTS" },
+  ];
+
+  // The gate prices the first finding against an empty page; the probe can
+  // make it cost more than the account has. 3.9.1 answered an account out of
+  // allowance with a 429, and a 200 with nothing verified left the caller
+  // unable to tell why.
+  it("answers 429 as 3.9.1 did when the allowance stopped the pass before anything was verified", async () => {
+    mockVerifyFindingsBatch.mockResolvedValue(
+      passed(twoFindings, {
+        configured: true,
+        verdicts: 0,
+        attempted: 2,
+        budgetExhausted: true,
+      }),
+    );
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings: twoFindings }),
+    );
+
+    expect(res.status).toBe(429);
+    // The 3.9.1 body: the error and nothing else, and no Retry-After.
+    expect(await res.json()).toStrictEqual({
+      error:
+        "Your AI allowance ran out before any finding on this page could be verified. Upgrade your plan, wait for the window to reset, connect your own AI provider key in Profile > AI settings, or buy AI credits in Profile > Billing.",
+    });
+    expect(res.headers.get("Retry-After")).toBeNull();
+  });
+
+  it("answers the gate's own refusal with a 429 and no Retry-After, as 3.9.1 did", async () => {
+    mockReserveAiTokens.mockResolvedValue({
+      allowed: false,
+      busy: false,
+      message: "This needs up to 15,000 AI tokens and your account has 1 left.",
+    });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings: twoFindings }),
+    );
+
+    expect(res.status).toBe(429);
+    expect(await res.json()).toStrictEqual({
+      error: "This needs up to 15,000 AI tokens and your account has 1 left.",
+    });
+    expect(res.headers.get("Retry-After")).toBeNull();
+    expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
+  });
+
+  it("answers 200 with an ai field saying what was left when the pass stopped partway", async () => {
+    const out = [{ ...twoFindings[0], aiVerdict: "confirmed" }, twoFindings[1]];
+    mockVerifyFindingsBatch.mockResolvedValue(
+      passed(out, {
+        configured: true,
+        verdicts: 1,
+        attempted: 2,
+        budgetExhausted: true,
+      }),
+    );
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings: twoFindings }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({
+      findings: out,
+      ai: {
+        configured: true,
+        verdicts: 1,
+        attempted: 2,
+        budgetExhausted: true,
+      },
+    });
+  });
+
+  // Only the allowance answers 429. A provider that was down or rate limited
+  // the pass is not the account's allowance, and 3.9.1 answered 200 for it.
+  it.each<[string, Record<string, unknown>]>([
+    ["the provider failed every call", { verdicts: 0, attempted: 2 }],
+    [
+      "the provider rate-limited the pass",
+      { verdicts: 0, attempted: 2, rateLimited: true },
+    ],
+  ])("answers 200 with the ai field when %s", async (_label, counts) => {
+    const outcome = { configured: true, ...counts };
+    mockVerifyFindingsBatch.mockResolvedValue(passed(twoFindings, outcome));
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings: twoFindings }),
+    );
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).ai).toStrictEqual(outcome);
   });
 });
 

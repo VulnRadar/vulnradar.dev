@@ -9,7 +9,8 @@ import {
 } from "@/lib/api/api-key-scopes";
 import {
   estimateVerifyTokens,
-  verifyFindingsBatch,
+  isAcceptedBatchElement,
+  verifyFindingsBatchWithOutcome,
 } from "@/lib/ai/verify-findings";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { reserveAiTokens } from "@/lib/billing/ai-usage";
@@ -22,6 +23,9 @@ export const runtime = "nodejs";
 // CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS -- verifyFindingsBatch shares the same
 // deadline/chunk settings as runAiVerification.
 export const maxDuration = 1140;
+
+const ALLOWANCE_RAN_OUT_MESSAGE =
+  "Your AI allowance ran out before any finding on this page could be verified. Upgrade your plan, wait for the window to reset, connect your own AI provider key in Profile > AI settings, or buy AI credits in Profile > Billing.";
 
 export async function POST(req: NextRequest) {
   // Accept session auth OR API key auth
@@ -114,10 +118,8 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  // Both reach the probe and the prompt as they are. A url that was only
-  // truthy got coerced into a probe of "https://123" or "https://[object
-  // Object]", and a finding id that was not a string could throw inside the
-  // prompt builder, which answered 500.
+  // The url reaches the probe as it is. One that was only truthy got coerced
+  // into a probe of "https://123" or "https://[object Object]".
   if (!isWebTarget(url)) {
     return NextResponse.json(
       { error: "url must be an http or https address." },
@@ -141,15 +143,32 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  if (!findings.every(hasStringIdOrIsNull)) {
+  // v3 changes only by addition, so this refuses only what used to answer
+  // 500: an element the prompt builder cannot turn into text. A numeric,
+  // missing, empty or long id, a primitive element and a null element are
+  // all still taken (see isAcceptedBatchElement).
+  const unreadable = findings.findIndex((f) => !isAcceptedBatchElement(f));
+  if (unreadable !== -1) {
     return NextResponse.json(
-      { error: "Every finding other than null needs a string id." },
+      {
+        error: `findings[${unreadable}] has an id, title, category, severity, evidence or evidenceExcerpts that cannot be converted to text.`,
+      },
       { status: 400 },
     );
   }
 
+  // Nothing but null elements: there is nothing to ask about, so nothing is
+  // reserved and the target is not probed. Going through the gate could
+  // answer 429 for a request that would not have spent a token.
+  if (findings.every((f) => f === null)) {
+    return NextResponse.json({
+      findings,
+      ai: { configured: true, verdicts: 0, attempted: 0 },
+    });
+  }
+
   // Pre-call gate: reserves the batch's worst case before any provider call,
-  // and verifyFindingsBatch holds the pass to it and settles it. See
+  // and the pass is held to it and settles it. See
   // app/api/v3/scan/verify/route.ts, which gates the same way.
   const { estimate, minimum } = await estimateVerifyTokens(findings);
   const gate = await reserveAiTokens(userId, estimate, minimum);
@@ -157,14 +176,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: gate.message }, { status: 429 });
   }
 
-  const enriched = await verifyFindingsBatch(
+  const { findings: enriched, outcome } = await verifyFindingsBatchWithOutcome(
     url,
     findings,
     userId,
     gate.reservation,
   );
 
-  return NextResponse.json({ findings: enriched });
+  // The gate admits a pass on its first finding priced against an empty
+  // page, and the probe can make that finding cost more than the account
+  // has. A pass the allowance stopped before anything was verified answers
+  // the way 3.9.1 answered an account out of allowance: a 429 whose body is
+  // the error alone, with no Retry-After, as 3.9.1 sent none. The pass has
+  // settled the reservation by now, so nothing stays held.
+  if (outcome.budgetExhausted && outcome.verdicts === 0) {
+    return NextResponse.json(
+      { error: ALLOWANCE_RAN_OUT_MESSAGE },
+      { status: 429 },
+    );
+  }
+
+  // `ai` is additive and has the shape POST /scan/verify returns. It is how
+  // a caller tells a pass the allowance stopped partway (budgetExhausted,
+  // with verdicts against attempted) from one that judged everything.
+  return NextResponse.json({ findings: enriched, ai: outcome });
 }
 
 // Mirrors the probe, which prefixes https:// to a bare host, so a bare host
@@ -179,13 +214,4 @@ function isWebTarget(value: unknown): value is string {
   } catch {
     return false;
   }
-}
-
-// v3 changes only by addition. An id that could not be turned into text took
-// the pass down with a 500, so a non-null finding whose id is not a string is
-// refused; a null element, an empty id and a long id were always accepted and
-// still are, and lib/ai/verify-findings.ts carries a null through untouched.
-function hasStringIdOrIsNull(finding: unknown): boolean {
-  if (finding === null) return true;
-  return typeof (finding as { id?: unknown } | undefined)?.id === "string";
 }

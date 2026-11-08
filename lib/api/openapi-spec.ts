@@ -584,7 +584,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           tags: ["Scans"],
           summary: "AI-verify a findings array",
           description:
-            "Run the per-finding AI verification pipeline over an array you supply, without it having to belong to a stored scan. Nothing is persisted: the response is your array enriched in place. Shares one rate-limit bucket with POST /scan/verify, so calling both does not double your effective quota. Long-running, so set a generous client timeout.",
+            "Run the per-finding AI verification pipeline over an array you supply, without it having to belong to a stored scan. Nothing is persisted: the response is your array enriched in place, with an `ai` outcome in the shape POST /scan/verify returns. A pass your AI allowance stopped partway is a 200 with `ai.budgetExhausted`; one it stopped before any finding was verified is a 429. Shares one rate-limit bucket with POST /scan/verify, so calling both does not double your effective quota. Long-running, so set a generous client timeout.",
           security: [{ apiKey: ["scan:write"] }],
           requestBody: {
             required: true,
@@ -597,16 +597,16 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           responses: {
             "200": {
               description:
-                "The same findings with aiVerdict / aiConfidence / aiReason applied",
+                "The same findings with aiVerdict / aiConfidence / aiReason applied, and whether the pass got through them",
               content: {
                 "application/json": {
-                  schema: { $ref: "#/components/schemas/VerifyResult" },
+                  schema: { $ref: "#/components/schemas/VerifyBatchResult" },
                 },
               },
             },
             "400": {
               description:
-                "Missing url or findings[], a url that is not an http or https address, a finding other than null without a string id, or more findings than the deployment's batch cap",
+                "Missing url or findings[], a url that is not an http or https address, a finding whose id, title, category, severity, evidence or evidenceExcerpts cannot be converted to text, or more findings than the deployment's batch cap",
             },
             "401": { $ref: "#/components/responses/Unauthorized" },
             "403": {
@@ -2057,6 +2057,53 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
               description:
                 "The scan's findings with aiVerdict / aiConfidence / aiReason applied.",
             },
+            ai: { $ref: "#/components/schemas/AiVerificationOutcome" },
+          },
+        },
+        AiVerificationOutcome: {
+          type: "object",
+          description:
+            "Whether the verification pass actually ran, so a pass that judged nothing does not read like one that cleared everything.",
+          required: ["configured", "verdicts", "attempted"],
+          properties: {
+            configured: {
+              type: "boolean",
+              description:
+                "An AI endpoint resolved: the deployment's own, or your AI provider key.",
+            },
+            verdicts: {
+              type: "integer",
+              description:
+                "Findings that came back with a verdict. Zero means nothing was judged.",
+            },
+            attempted: {
+              type: "integer",
+              description:
+                "Findings there were to judge. On /scan/verify-batch a null element is handed back as sent and not counted.",
+            },
+            rateLimited: {
+              type: "boolean",
+              description:
+                "Present and true when the AI provider rate-limited the pass, which stopped there.",
+            },
+            budgetExhausted: {
+              type: "boolean",
+              description:
+                "Present and true when your AI allowance and credits covered only part of the pass. It stopped at the first finding they could not pay for, and that finding and the ones after it carry no verdict.",
+            },
+          },
+        },
+        VerifyBatchResult: {
+          type: "object",
+          required: ["findings", "ai"],
+          properties: {
+            findings: {
+              type: "array",
+              items: {},
+              description:
+                "Your findings in the order sent, each with aiVerdict / aiConfidence / aiReason applied where the AI judged it.",
+            },
+            ai: { $ref: "#/components/schemas/AiVerificationOutcome" },
           },
         },
         RemediationRequest: {
@@ -2477,7 +2524,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
               type: "array",
               items: { type: "object" },
               description:
-                "The findings to verify. Capped by the deployment's AI verify batch setting, which ships at 50; over it is a 400 naming the limit.",
+                "The findings to verify. Capped by the deployment's AI verify batch setting, which ships at 50; over it is a 400 naming the limit. An element may be null, and an id may be any value; an element whose id, title, category, severity, evidence or evidenceExcerpts cannot be converted to text is a 400.",
             },
           },
         },
