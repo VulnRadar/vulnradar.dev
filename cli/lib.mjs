@@ -783,6 +783,19 @@ export function incompleteOutcome(
 }
 
 /**
+ * Text the server wrote, made fit for one line of a job log. On a GitHub
+ * runner each line of output can be a workflow command, so a newline in a reply
+ * started a ::set-output or ::add-mask of its choosing, and a step that wraps
+ * this output in ::error:: has the runner decode %0A back into a line break.
+ * Control characters and the percent sign go, the same rule as log_safe in the
+ * Action and the GitLab template.
+ */
+export function logSafe(text) {
+  // oxlint-disable-next-line no-control-regex -- removing them is the point
+  return String(text).replace(/[\x00-\x1f\x7f%]/g, "");
+}
+
+/**
  * The lines that tell a reader what was not checked. Empty when nothing was
  * skipped. Printed whether or not the run fails on it: a passing gate that
  * skipped DNS should say so.
@@ -794,9 +807,11 @@ export function describeNotChecked(outcome) {
   ];
   const unreachable = outcome.pageUnreachable;
   if (unreachable?.message)
-    lines.push(`Page unreachable: ${unreachable.message}`);
+    lines.push(`Page unreachable: ${logSafe(unreachable.message)}`);
   if (unreachable?.redirectHost) {
-    lines.push(`It redirects to another host: ${unreachable.redirectHost}`);
+    lines.push(
+      `It redirects to another host: ${logSafe(unreachable.redirectHost)}`,
+    );
   }
   return lines;
 }
@@ -808,7 +823,9 @@ export function describeNotChecked(outcome) {
  */
 export function describeProgress(body) {
   const category =
-    typeof body?.currentCategory === "string" ? body.currentCategory : "";
+    typeof body?.currentCategory === "string"
+      ? logSafe(body.currentCategory)
+      : "";
   if (!category) return null;
   const done = Number.isFinite(body.categoriesCompleted)
     ? body.categoriesCompleted

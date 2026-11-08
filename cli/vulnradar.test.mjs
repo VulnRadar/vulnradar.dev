@@ -23,6 +23,7 @@ import {
   incompleteOutcome,
   describeNotChecked,
   describeProgress,
+  logSafe,
   classifyRateLimit,
   createRetryPlan,
   cancelScan,
@@ -1602,6 +1603,21 @@ test("cli: a failed scan names its kind in the message and the --json document",
   assert.equal(doc.scanId, "s1");
 });
 
+test("cli: a newline in a failed scan's error or kind stays on the one line", async () => {
+  const { stderr } = await runCli([...SCAN_ARGS], {
+    routes: routesFor({
+      status: "failed",
+      error: "boom\n::add-mask::secret %0A",
+      failureKind: "kind\n::set-output name=x::y",
+    }),
+  });
+  assert.doesNotMatch(stderr, /^::/m);
+  assert.match(
+    stderr,
+    /Scan failed: boom::add-mask::secret 0A \[kind::set-output name=x::y\]/,
+  );
+});
+
 test("cli: a failed scan from a server that sends no kind prints none", async () => {
   const { stderr, stdout } = await runCli([...SCAN_ARGS, "--json"], {
     routes: routesFor({ status: "failed", error: "DNS lookup failed" }),
@@ -1934,6 +1950,35 @@ test("cli: an --out folder that cannot be created is refused before the scan is 
 });
 
 // ── Polling ─────────────────────────────────────────────────────────────
+
+test("logSafe: removes control characters and the percent sign, and nothing else", () => {
+  assert.equal(logSafe("a\nb\r\tc\u0007\u007f%0Ad"), "abc0Ad");
+  assert.equal(
+    logSafe("Could not reach the target (HTTP 502): try again."),
+    "Could not reach the target (HTTP 502): try again.",
+  );
+});
+
+test("describeNotChecked: a newline in the page message or the host cannot start a line", () => {
+  const lines = describeNotChecked({
+    areas: [{ slug: "page", label: "the page" }],
+    pageUnreachable: {
+      message: "down\n::add-mask::secret",
+      redirectHost: "evil.example%0A::set-output name=x::y",
+    },
+  });
+  assert.equal(lines.length, 3);
+  for (const line of lines) assert.doesNotMatch(line, /[\n%]/);
+  assert.equal(lines[1], "Page unreachable: down::add-mask::secret");
+});
+
+test("describeProgress: a newline in the category cannot start a line", () => {
+  assert.equal(
+    describeProgress({ currentCategory: "ssl\n::add-mask::secret" }),
+    "Scanning: ssl::add-mask::secret",
+  );
+  assert.equal(describeProgress({ currentCategory: "\n" }), null);
+});
 
 test("describeProgress: names the category and the count, and nothing when there is none", () => {
   assert.equal(

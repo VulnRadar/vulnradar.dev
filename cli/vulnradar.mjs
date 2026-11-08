@@ -18,6 +18,7 @@ import {
   incompleteOutcome,
   describeNotChecked,
   describeProgress,
+  logSafe,
   buildScanBody,
   classifyRateLimit,
   createRetryPlan,
@@ -521,7 +522,7 @@ async function main() {
           ? body.failureKind
           : null;
       fail(
-        `Scan failed: ${body.error || "unknown error"}${kind ? ` [${kind}]` : ""}`,
+        `Scan failed: ${logSafe(body.error || "unknown error")}${kind ? ` [${logSafe(kind)}]` : ""}`,
         kind ? { failureKind: kind } : {},
       );
     }
