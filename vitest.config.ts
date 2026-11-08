@@ -682,6 +682,22 @@ export default defineConfig({
           functions: 80,
           branches: 75,
         },
+        // Reads JSON-escaped slashes as plain ones and maps offsets back to
+        // the body as served. 100% on every metric, all of it from the suites
+        // of the checks that use it.
+        "lib/scanner/checks/_plain-slashes.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 95,
+          branches: 95,
+        },
+        // The guard behind the repo-detail race fix. 100% on every metric.
+        "components/repos/latest-request.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 95,
+          branches: 95,
+        },
         // The one domain-or-subdomain check the scanner's vendor patterns and
         // webhook auto-detection share. 100% on every metric.
         "lib/net/host-match.ts": {
