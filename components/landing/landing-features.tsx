@@ -13,7 +13,7 @@ const SUPPORTING = [
   },
   {
     title: "The UI has no special API",
-    desc: "The dashboard calls /api/v3/scan the same way your pipeline does. If you can see it in the interface, you can get it as JSON.",
+    desc: "The scan form calls the same scan endpoint your pipeline does, and the report it shows is the JSON that endpoint returns. Webhooks and scheduled scans are set up in the app.",
   },
 ];
 
