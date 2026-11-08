@@ -885,7 +885,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [CheckCheck] **[ENGINE]** **Fewer Findings for Correct or Irrelevant Headers**
   A CSP that only sets frame-ancestors no longer gets frame-src and object-src findings, document-only headers are no longer demanded of JSON responses, the standard Pragma and Expires no-cache idioms are left alone, login pages are no longer told to add no-store, and duplicate CSP and clickjacking findings now merge into one.
 - [Package] **[ENGINE]** **SRI Findings Know Whose File It Is**
-  The page and third-party Subresource Integrity checks now compare a resource with the page. A site's own assets, its own subdomains and vendors that change their files on purpose (Tag Manager, Maps, reCAPTCHA, Google Fonts) are no longer reported by them.
+  The page and third-party Subresource Integrity checks now compare a resource with the page. A site's own assets, its own subdomains and vendors that change their files on purpose (Tag Manager, Maps, reCAPTCHA, Google Fonts) are no longer reported by them. A third-party stylesheet with no integrity attribute is now one finding instead of two.
 - [Package] **[ENGINE]** **Medium SRI Finding Means a Hash Would Hold**
   The medium SRI findings now fire only for a library loaded from a public CDN at an exact version. A host with cdn in its name no longer counts, and other third-party scripts are reported at low.
 - [FileSearch] **[IMPROVED]** **SRI Evidence Names the URLs**

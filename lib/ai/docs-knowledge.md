@@ -2831,7 +2831,7 @@ report says exactly this in a disclaimer at the top of its output.
 ```yaml
 - name: Scan with <value>
   id: vulnradar
-  uses: <value>/.github/actions/scan-gate@v<value>
+  uses: <value>/.github/actions/scan-gate@v<value> # pinned to this release
   with:
     url: https://your-staging-url.com
     api-key: \<value>}
@@ -3121,10 +3121,10 @@ made in another tab or session shows up rather than being silently
 overwritten.
 
 > **WARNING: Remediation is a personal checklist, not a team task board**
-> Status, notes and assignees are visible only to you, and whoever
-you name as assignee is not notified. To hand a finding to
-someone, share the scan with the team and put their name in the
-scan's note, or use a support ticket or a webhook.
+> Status, notes and assignees are visible only to you, and whoever you
+name as assignee is not notified. To hand a finding to someone,
+share the scan with the team and put their name in the scan's
+note, or use a support ticket or a webhook.
 
 > **WARNING: Bulk is deliberately conservative**
 > Status is always applied. Assignee and due date are applied only
@@ -3149,9 +3149,9 @@ bounded separately by the 20-open-tickets cap.
 - Five states, in the order they appear in the control. Open is the default and is never stored as a row; the other four persist.
 - Once a finding is anything other than Open, the control offers Add details, or Edit details once something is saved. It opens a dialog with three optional fields:
 - The control seeds from the status the server attached to the finding, then re-confirms against the API on open, so a change made in another tab or session shows up rather than being silently overwritten.
-- Status, notes and assignees are visible only to you, and whoever you name as assignee is not notified. To hand a finding to someone, share the scan with the team and put their name in the scan's note, or use a support ticket or a webhook.
 - This is the part that makes tracking worth doing. A remediation row is keyed on the finding, not on the scan that surfaced it. The finding id is deterministic: the same check firing against the same URL always produces the same id, which is the same identity the compare, diff, and regression-alert features already rely on.
 - So a finding you marked fixed on Monday still reads fixed when you rescan the same host on Friday, even though that is a brand new scan row. The status is attached only on the owner's own result-load paths (scan status and history); the public /shared/[token] and /host/[hostname] views never read it, so your private tracking never leaks onto a link you share. If the underlying table has not been migrated yet, the read fails soft to an empty map and the result page still loads.
+- Setting one finding at a time is fine for a couple of them, but a fresh scan can surface dozens. The findings list on your own scan has an opt-in Select mode: the list stays clean (no checkboxes) until you turn it on, and only then do row checkboxes and a sticky bulk bar appear. The bar holds the count, Set status and Cancel. Set status opens a dialog: pick a status, optionally an assignee and a due date, and apply it to everything you selected, up to 200 findings per request.
 
 ### Code examples
 ```json
@@ -3186,12 +3186,12 @@ A scan that failed, timed out, was refused, or came back with nothing. What each
 - **Failure messages, and what to do** (`#errors`)
 - **Timeouts** (`#timeouts`)
 - **Targets we refuse to scan** (`#blocked`)
+- **Recognising scanner traffic** (`#recognising-traffic`)
 - **A scan with no findings** (`#zero-findings`)
 - **Partial results** (`#incomplete`)
 - **robots.txt and crawling** (`#robots`)
 - **Does a failed scan cost quota** (`#quota`)
 - **Still stuck** (`#still-stuck`)
-- **Recognising ${APP_NAME} traffic** (`#recognising-traffic`)
 
 ### Callouts
 > **INFO: A scan interrupted by a restart**
@@ -3296,5 +3296,5 @@ individual URLs instead.
 | `/docs/scheduled-scans` | - | 9 | 7 | 0 | 0 | 0 | 0 | 23 | 0 |
 | `/docs/sharing` | ✓ | 10 | 5 | 0 | 2 | 0 | 0 | 30 | 0 |
 | `/docs/teams` | - | 8 | 1 | 0 | 1 | 0 | 0 | 17 | 0 |
-| `/docs/triage` | - | 4 | 4 | 0 | 2 | 0 | 0 | 24 | 0 |
+| `/docs/triage` | - | 4 | 4 | 0 | 2 | 0 | 0 | 23 | 0 |
 | `/docs/troubleshooting` | ✓ | 10 | 7 | 0 | 0 | 0 | 0 | 27 | 0 |

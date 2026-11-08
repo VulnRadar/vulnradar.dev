@@ -2822,7 +2822,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Package,
         label: "SRI Findings Know Whose File It Is",
-        desc: "The page and third-party Subresource Integrity checks now compare a resource with the page. A site's own assets, its own subdomains and vendors that change their files on purpose (Tag Manager, Maps, reCAPTCHA, Google Fonts) are no longer reported by them.",
+        desc: "The page and third-party Subresource Integrity checks now compare a resource with the page. A site's own assets, its own subdomains and vendors that change their files on purpose (Tag Manager, Maps, reCAPTCHA, Google Fonts) are no longer reported by them. A third-party stylesheet with no integrity attribute is now one finding instead of two.",
         category: "engine",
       },
       {
