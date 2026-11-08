@@ -429,6 +429,12 @@ describeIntegration("every account lookup by address folds case", () => {
     expect(res.status).toBe(200);
     expect(
       await count(
+        "SELECT COUNT(*)::int AS n FROM team_invites WHERE team_id = $1 AND email = $2",
+        [teamId, legacy.email.toLowerCase()],
+      ),
+    ).toBe(1);
+    expect(
+      await count(
         `SELECT COUNT(*)::int AS n FROM user_notifications
           WHERE user_id = $1 AND type = 'team_invite'`,
         [legacy.id],

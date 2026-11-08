@@ -295,12 +295,18 @@ export const POST = withErrorHandling(async (request: Request) => {
   // same address raced the same way and produced two live tokens for one
   // person. Reading them inside the INSERT is what makes the answer the
   // count gave still true at the moment the row is written.
+  //
+  // $2 is cast in both places because it is used two ways: the SELECT list
+  // assigns it to a varchar column, and the NOT EXISTS compares it, where a
+  // bare parameter resolves to text. Postgres refuses that disagreement when
+  // it parses the statement (42P08, inconsistent types deduced), so without
+  // the casts no invite could be written at all.
   const inviteInsert = await pool.query(
     `INSERT INTO team_invites (team_id, email, role, invited_by, token, expires_at)
-     SELECT $1, $2, $3, $4, $5, $6
+     SELECT $1, $2::varchar, $3, $4, $5, $6
      WHERE NOT EXISTS (
              SELECT 1 FROM team_invites
-              WHERE team_id = $1 AND email = $2
+              WHERE team_id = $1 AND email = $2::varchar
                 AND accepted_at IS NULL AND expires_at > NOW())
        AND ($7::int IS NULL
             OR (SELECT COUNT(*) FROM team_members WHERE team_id = $1)

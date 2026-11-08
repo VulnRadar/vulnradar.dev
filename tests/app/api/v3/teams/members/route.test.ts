@@ -326,6 +326,12 @@ describe("POST /api/v3/teams/members", () => {
     expect(sql).toContain("INSERT INTO team_invites");
     expect(sql).toContain("NOT EXISTS");
     expect(sql).toContain("FROM team_members WHERE team_id = $1");
+    // Assigned to a varchar column and compared in the NOT EXISTS: a bare $2
+    // resolves to varchar for one and text for the other, and Postgres refuses
+    // the statement at parse time (42P08), which a faked pool cannot show. The
+    // real statement runs in tests/integration/email-lower-lookups.test.ts.
+    expect(sql).toContain("SELECT $1, $2::varchar, $3, $4, $5, $6");
+    expect(sql).toContain("WHERE team_id = $1 AND email = $2::varchar");
     // The owner's cap, bound last.
     expect(params[6]).toBe(5);
   });
