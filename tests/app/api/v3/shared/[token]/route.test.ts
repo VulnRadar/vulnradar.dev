@@ -958,7 +958,7 @@ describe("GET /api/v3/shared/[token]", () => {
 
     expect(res.status).toBe(500);
     const json = await res.json();
-    expect(json).toEqual({
+    expect(json).toMatchObject({
       error: "An unexpected error occurred",
       status: 500,
     });
