@@ -34,6 +34,7 @@
  * being pulled into the edge bundle middleware.ts compiles to.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
+import type { ApiVersion } from "@/lib/api/versions";
 
 /**
  * Shapes accepted from the header. Deliberately narrow: the value is
@@ -44,15 +45,28 @@ import { AsyncLocalStorage } from "node:async_hooks";
  */
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{8,64}$/;
 
+/**
+ * What a first-party client may call itself ("extension/0.3.0", "cli/2.1.0").
+ * The value comes straight from a request header and ends up on an API key's
+ * row and in the admin panel, so anything outside this set is dropped, never
+ * trimmed or truncated into something it did not say.
+ */
+const API_CLIENT_PATTERN = /^[A-Za-z0-9._/-]{1,64}$/;
+
 interface CorrelationStore {
   requestId?: string;
   scanId?: number;
+  apiVersion?: ApiVersion;
+  client?: string;
 }
 
 const storage = new AsyncLocalStorage<CorrelationStore>();
 
 /** The header middleware.ts sets on the request and echoes on the response. */
 export const REQUEST_ID_HEADER = "x-request-id";
+
+/** The header a first-party client names itself with. */
+export const API_CLIENT_HEADER = "x-vulnradar-client";
 
 /** The header value if it is a usable id, otherwise null. */
 export function normalizeRequestId(
@@ -61,6 +75,13 @@ export function normalizeRequestId(
   if (!value) return null;
   const trimmed = value.trim();
   return REQUEST_ID_PATTERN.test(trimmed) ? trimmed : null;
+}
+
+/** The header value if it is a usable client name, otherwise null. */
+export function normalizeApiClient(
+  value: string | null | undefined,
+): string | null {
+  return value && API_CLIENT_PATTERN.test(value) ? value : null;
 }
 
 /** Run `fn` with `requestId` as the ambient id for everything it awaits. */
@@ -78,6 +99,24 @@ export function runWithScanId<T>(scanId: number, fn: () => T): T {
   return storage.run({ ...storage.getStore(), scanId }, fn);
 }
 
+/**
+ * Run `fn` knowing which API version answers this request and which client
+ * asked, keeping any ids already in scope.
+ */
+export function runWithApiContext<T>(
+  context: { apiVersion: ApiVersion; client: string | null },
+  fn: () => T,
+): T {
+  return storage.run(
+    {
+      ...storage.getStore(),
+      apiVersion: context.apiVersion,
+      client: context.client ?? undefined,
+    },
+    fn,
+  );
+}
+
 /** The ambient id, or null outside a request (boot, cron, worker tick). */
 export function currentRequestId(): string | null {
   return storage.getStore()?.requestId ?? null;
@@ -86,4 +125,14 @@ export function currentRequestId(): string | null {
 /** The ambient scan id, or null outside runWithScanId. */
 export function currentScanId(): number | null {
   return storage.getStore()?.scanId ?? null;
+}
+
+/** The answering API version, or null outside versioned(). */
+export function currentApiVersion(): ApiVersion | null {
+  return storage.getStore()?.apiVersion ?? null;
+}
+
+/** The validated client name, or null when the request named none. */
+export function currentApiClient(): string | null {
+  return storage.getStore()?.client ?? null;
 }

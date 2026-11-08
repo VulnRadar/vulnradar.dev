@@ -49,9 +49,15 @@ const {
   parseBody,
   safeQuery,
   withErrorHandling,
+  readJsonObject,
+  isValidEmailAddress,
+  isLookupEmailAddress,
 } = await import("@/lib/api/api-utils");
-const { currentRequestId } = await import("@/lib/database/request-context");
+const { currentRequestId, runWithApiContext, runWithRequestId } =
+  await import("@/lib/database/request-context");
 const { ERROR_MESSAGES } = await import("@/lib/config/constants");
+const { MAX_REQUEST_BODY_BYTES: MAX_BODY } =
+  await import("@/lib/api/request-limits");
 
 beforeEach(() => {
   mockQuery.mockClear();
@@ -75,7 +81,11 @@ describe("ApiResponse", () => {
   it("error defaults to 400 with a custom message", async () => {
     const res = ApiResponse.error("custom message");
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "custom message", status: 400 });
+    expect(await res.json()).toEqual({
+      error: "custom message",
+      status: 400,
+      code: "INVALID_REQUEST",
+    });
   });
 
   it("error accepts a custom status", () => {
@@ -131,6 +141,151 @@ describe("ApiResponse", () => {
     const res = ApiResponse.serverError();
     expect(res.status).toBe(500);
     expect((await res.json()).error).toBe(ERROR_MESSAGES.SERVER_ERROR);
+  });
+});
+
+describe("ApiResponse default codes", () => {
+  it.each([
+    ["badRequest", () => ApiResponse.badRequest(), 400, "INVALID_REQUEST"],
+    ["unauthorized", () => ApiResponse.unauthorized(), 401, "UNAUTHENTICATED"],
+    ["forbidden", () => ApiResponse.forbidden(), 403, "FORBIDDEN"],
+    ["notFound", () => ApiResponse.notFound(), 404, "NOT_FOUND"],
+    [
+      "methodNotAllowed",
+      () => ApiResponse.methodNotAllowed(),
+      405,
+      "METHOD_NOT_ALLOWED",
+    ],
+    ["conflict", () => ApiResponse.conflict(), 409, "CONFLICT"],
+    [
+      "tooManyRequests",
+      () => ApiResponse.tooManyRequests(),
+      429,
+      "RATE_LIMITED",
+    ],
+    ["serverError", () => ApiResponse.serverError(), 500, "INTERNAL_ERROR"],
+  ])(
+    "%s keeps its status key and adds a code",
+    async (_n, build, status, code) => {
+      const body = await build().json();
+      expect(body.status).toBe(status);
+      expect(body.code).toBe(code);
+    },
+  );
+
+  it("names the ambient request id", async () => {
+    const body = await runWithRequestId("req-abcdef12", () =>
+      ApiResponse.notFound(),
+    ).json();
+    expect(body.requestId).toBe("req-abcdef12");
+  });
+
+  it("leaves requestId out rather than invent one", async () => {
+    expect(await ApiResponse.notFound().json()).not.toHaveProperty("requestId");
+  });
+
+  // /admin branches on code === "2fa_required".
+  it("lets a route's own code replace the default", async () => {
+    const body = await ApiResponse.forbidden("Need 2FA", {
+      code: "2fa_required",
+    }).json();
+    expect(body.code).toBe("2fa_required");
+    expect(body.status).toBe(403);
+  });
+});
+
+describe("ApiResponse.fail", () => {
+  const request = (id: string | null) =>
+    new Request("https://x.test/api/v3/scan", {
+      headers: id ? { "x-request-id": id } : {},
+    });
+
+  it("keeps the v3 status key outside v4", async () => {
+    const res = ApiResponse.fail({
+      code: "SCOPE_MISSING",
+      message: "No scope.",
+      status: 403,
+      request: request("req-abcdef12"),
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error: "No scope.",
+      code: "SCOPE_MISSING",
+      requestId: "req-abcdef12",
+      status: 403,
+    });
+  });
+
+  it("is the closed v4 envelope on a v4 request", async () => {
+    const res = runWithApiContext({ apiVersion: "v4", client: null }, () =>
+      ApiResponse.fail({
+        code: "INVALID_API_KEY",
+        message: "No.",
+        status: 401,
+        request: request("req-abcdef12"),
+        legacy: { success: false },
+      }),
+    );
+    expect(await res.json()).toEqual({
+      error: "No.",
+      code: "INVALID_API_KEY",
+      requestId: "req-abcdef12",
+    });
+    expect(res.headers.get("WWW-Authenticate")).toContain("Bearer");
+  });
+
+  it("sends legacy keys on v3 only", async () => {
+    const body = await ApiResponse.fail({
+      message: "Busy.",
+      status: 429,
+      legacy: { statusCode: "BUSY", success: false },
+    }).json();
+    expect(body).toMatchObject({ statusCode: "BUSY", success: false });
+  });
+
+  it("prefers the ambient id to the header", async () => {
+    const body = await runWithRequestId("ambient-id-1", () =>
+      ApiResponse.fail({
+        message: "x",
+        status: 400,
+        request: request("header-id-1"),
+      }),
+    ).json();
+    expect(body.requestId).toBe("ambient-id-1");
+  });
+
+  it("falls back to the x-request-id header when the route is unwrapped", async () => {
+    const body = await ApiResponse.fail({
+      message: "x",
+      status: 400,
+      request: request("header-id-1"),
+    }).json();
+    expect(body.requestId).toBe("header-id-1");
+  });
+
+  it("does not trust a malformed header, and still answers with an id", async () => {
+    const body = await ApiResponse.fail({
+      message: "x",
+      status: 400,
+      request: request("bad id"),
+    }).json();
+    expect(body.requestId).not.toBe("bad id");
+    expect(body.requestId).toEqual(expect.any(String));
+  });
+
+  it("uses the status's generic code and carries details", async () => {
+    const body = await ApiResponse.fail({
+      message: "x",
+      status: 422,
+      details: { field: "url" },
+    }).json();
+    expect(body.code).toBe("INVALID_REQUEST");
+    expect(body.details).toEqual({ field: "url" });
+  });
+
+  it("always sends Retry-After on a 429", () => {
+    const res = ApiResponse.fail({ message: "x", status: 429 });
+    expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
   });
 });
 
@@ -739,5 +894,154 @@ describe("withErrorHandling: request correlation id", () => {
     );
     spy.mockRestore();
     expect(logged).toBe("33333333-3333-4333-8333-333333333333");
+  });
+});
+
+describe("readJsonObject", () => {
+  const post = (body: BodyInit | null) =>
+    new Request("https://x.test/api/v3/scan", { method: "POST", body });
+
+  it("returns an object body", async () => {
+    const result = await readJsonObject(post('{"url":"https://a.test"}'));
+    expect(result).toEqual({ ok: true, data: { url: "https://a.test" } });
+  });
+
+  it.each([
+    ["invalid JSON", "{nope"],
+    ["null", "null"],
+    ["an array", "[1,2]"],
+    ["a string", '"x"'],
+    ["a number", "7"],
+    ["true", "true"],
+    ["an empty body", ""],
+    ["only whitespace", "  \n"],
+  ])("refuses %s with a 400 and no log", async (_label, text) => {
+    const spy = vi.spyOn(console, "error");
+    const result = await readJsonObject(post(text));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.response.status).toBe(400);
+    expect(await result.response.json()).toMatchObject({
+      error: "Invalid request body.",
+      code: "INVALID_REQUEST",
+    });
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("refuses a request with no body at all", async () => {
+    expect((await readJsonObject(post(null))).ok).toBe(false);
+  });
+
+  it("accepts an empty body only when the route opts in", async () => {
+    const result = await readJsonObject(post(""), { allowEmpty: true });
+    expect(result).toEqual({ ok: true, data: {} });
+  });
+
+  it("still refuses invalid JSON when empty is allowed", async () => {
+    const result = await readJsonObject(post("nope"), { allowEmpty: true });
+    expect(result.ok).toBe(false);
+  });
+
+  it("refuses a chunked body over the cap with a 413", async () => {
+    const big = new Uint8Array(MAX_BODY + 1).fill(32);
+    const request = new Request("https://x.test/a", {
+      method: "POST",
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(big);
+          controller.close();
+        },
+      }),
+      duplex: "half",
+    } as RequestInit);
+    const result = await readJsonObject(request);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.response.status).toBe(413);
+    expect((await result.response.json()).code).toBe("PAYLOAD_TOO_LARGE");
+  });
+
+  it("answers 400 for a body that was already read", async () => {
+    const request = post('{"a":1}');
+    await request.text();
+    const result = await readJsonObject(request);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(400);
+  });
+});
+
+describe("parseBody log noise and the streaming cap", () => {
+  const jsonPost = (body: BodyInit) =>
+    new Request("https://x.test/a", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+
+  it("does not log a client's bad JSON", async () => {
+    const spy = vi.spyOn(console, "error");
+    const result = await parseBody(jsonPost("{nope"));
+    expect(result).toEqual({
+      success: false,
+      error: "Failed to parse request body",
+    });
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("caps a chunked body that declares no length", async () => {
+    const request = new Request("https://x.test/a", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array(MAX_BODY + 1).fill(32));
+          controller.close();
+        },
+      }),
+      duplex: "half",
+    } as RequestInit);
+    expect(request.headers.get("content-length")).toBeNull();
+    const result = await parseBody(request);
+    expect(result).toEqual({
+      success: false,
+      error: `Request body exceeds ${MAX_BODY} bytes`,
+    });
+  });
+
+  it("still logs a failure that is not the client's JSON", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const request = new Request("https://x.test/a", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: new ReadableStream({
+        pull(controller) {
+          controller.error(new Error("socket reset"));
+        },
+      }),
+      duplex: "half",
+    } as RequestInit);
+    const result = await parseBody(request);
+    expect(result.success).toBe(false);
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
+describe("email predicates", () => {
+  it("isValidEmailAddress is the rule behind Validate.email", () => {
+    expect(isValidEmailAddress("user@example.com")).toBe(true);
+    expect(isValidEmailAddress("user@localhost")).toBe(false);
+    expect(isValidEmailAddress("a@b@c.d")).toBe(false);
+    expect(isValidEmailAddress(7)).toBe(false);
+    expect(isValidEmailAddress("a".repeat(250) + "@b.co")).toBe(false);
+  });
+
+  it("isLookupEmailAddress lets an old-rule address through to the lookup", () => {
+    expect(isLookupEmailAddress("admin@localhost")).toBe(true);
+    expect(isLookupEmailAddress("a b@c")).toBe(true);
+    expect(isLookupEmailAddress("nope")).toBe(false);
+    expect(isLookupEmailAddress(null)).toBe(false);
   });
 });

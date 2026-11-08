@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
+  currentApiClient,
+  currentApiVersion,
   currentRequestId,
   currentScanId,
+  normalizeApiClient,
+  runWithApiContext,
   runWithRequestId,
   runWithScanId,
 } from "@/lib/database/request-context";
@@ -70,5 +74,55 @@ describe("request context", () => {
   it("returns what the wrapped function returns", () => {
     expect(runWithScanId(3, () => "done")).toBe("done");
     expect(runWithRequestId("req-12345678", () => 42)).toBe(42);
+  });
+});
+
+describe("API context", () => {
+  it("is empty outside versioned()", () => {
+    expect(currentApiVersion()).toBeNull();
+    expect(currentApiClient()).toBeNull();
+  });
+
+  it("carries the version and client across awaits and keeps the ids in scope", async () => {
+    await runWithRequestId("req-abcdef12", async () => {
+      await runWithApiContext(
+        { apiVersion: "v4", client: "cli/2.1.0" },
+        async () => {
+          await Promise.resolve();
+          expect(currentApiVersion()).toBe("v4");
+          expect(currentApiClient()).toBe("cli/2.1.0");
+          expect(currentRequestId()).toBe("req-abcdef12");
+        },
+      );
+    });
+  });
+
+  it("survives a request id entered inside it, the order versioned() and withErrorHandling nest in", async () => {
+    await runWithApiContext({ apiVersion: "v3", client: null }, async () => {
+      await runWithRequestId("req-abcdef12", async () => {
+        expect(currentApiVersion()).toBe("v3");
+        expect(currentApiClient()).toBeNull();
+      });
+    });
+  });
+
+  it.each(["extension/0.3.0", "cli/2.1.0", "action/1", "a", "a".repeat(64)])(
+    "keeps the client name %s",
+    (name) => {
+      expect(normalizeApiClient(name)).toBe(name);
+    },
+  );
+
+  it.each([
+    ["nothing", null],
+    ["empty", ""],
+    ["a space", "cli 2.1.0"],
+    ["a newline", "cli\n2"],
+    ["a quote", 'cli"2'],
+    ["markup", "<script>"],
+    ["over 64 characters", "a".repeat(65)],
+    ["non-ASCII", "cl\u00ef/2"],
+  ])("drops %s rather than repair it", (_label, value) => {
+    expect(normalizeApiClient(value)).toBeNull();
   });
 });
