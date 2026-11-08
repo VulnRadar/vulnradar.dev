@@ -43,11 +43,12 @@ export const INCOMPLETE_LABELS: Record<string, string> = {
   // A page check threw instead of reaching a verdict (engine.ts records which
   // in result_meta.erroredChecks for operators).
   "page-checks": "Some page checks",
-  // The site answered with a bot challenge instead of its page
-  // (lib/scanner/bot-challenge.ts), so everything read from the page, its
-  // headers and the files beside it was skipped.
+  // The site refused the scanner or answered with a bot challenge instead of
+  // its page (lib/scanner/response-classifier.ts), so everything read from the
+  // page, its headers and the files beside it was skipped. The key says only
+  // "challenge" because it is stored in old scans.
   "bot-challenge":
-    "The page, its headers and its files: the site showed the scanner a bot challenge instead",
+    "The page, its headers and its files: the site refused the scanner or showed it a bot challenge instead",
   // The page fetch failed for a reason that says something about the target
   // (lib/scanner/target-failure.ts), so the scan ran without a page. Without
   // this entry the report showed the raw slug as the area that was not checked.

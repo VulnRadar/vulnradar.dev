@@ -51,6 +51,13 @@ describe("incomplete area labels", () => {
     );
   });
 
+  it("says a refusal as well as a challenge under the persisted key", () => {
+    // The key is stored in old scans, so the wording moved and the key did not.
+    expect(INCOMPLETE_LABELS["bot-challenge"]).toBe(
+      "The page, its headers and its files: the site refused the scanner or showed it a bot challenge instead",
+    );
+  });
+
   it("keeps an unknown area visible rather than dropping it", () => {
     expect(describeIncompleteAreas(["dns", "brand-new-branch"])).toEqual([
       INCOMPLETE_LABELS.dns,
