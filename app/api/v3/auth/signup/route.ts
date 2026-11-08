@@ -143,7 +143,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (!rl.allowed) {
     const minutes = Math.ceil(rl.retryAfterSeconds / 60);
     return ApiResponse.tooManyRequests(
-      ERROR_MESSAGES.TOO_MANY_ATTEMPTS("signup attempts", minutes),
+      ERROR_MESSAGES.TOO_MANY_ATTEMPTS_MINUTES("signup attempts", minutes),
       rl.retryAfterSeconds,
     );
   }
@@ -162,7 +162,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (!emailRl.allowed) {
     const minutes = Math.ceil(emailRl.retryAfterSeconds / 60);
     return ApiResponse.tooManyRequests(
-      ERROR_MESSAGES.TOO_MANY_ATTEMPTS(
+      ERROR_MESSAGES.TOO_MANY_ATTEMPTS_MINUTES(
         "signup attempts for this email",
         minutes,
       ),

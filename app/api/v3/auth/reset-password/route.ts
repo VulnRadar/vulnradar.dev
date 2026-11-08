@@ -55,7 +55,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (!rl.allowed) {
     const minutes = Math.ceil(rl.retryAfterSeconds / 60);
     return ApiResponse.tooManyRequests(
-      ERROR_MESSAGES.TOO_MANY_ATTEMPTS("reset attempts", minutes),
+      ERROR_MESSAGES.TOO_MANY_ATTEMPTS_MINUTES("reset attempts", minutes),
       rl.retryAfterSeconds,
     );
   }

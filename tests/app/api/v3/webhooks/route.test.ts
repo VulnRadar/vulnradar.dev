@@ -326,7 +326,8 @@ describe("PATCH /api/v3/webhooks (test send): limits and failure answers", () =>
   });
 
   it.each([
-    [30, "1 minute"],
+    [30, "under a minute"],
+    [60, "a minute"],
     [120, "2 minutes"],
     [3599, "60 minutes"],
   ])("after %i seconds of refusal says %s", async (retryAfter, wait) => {
@@ -335,9 +336,11 @@ describe("PATCH /api/v3/webhooks (test send): limits and failure answers", () =>
     const res = await PATCH(patchRequest({ id: 10 }));
 
     expect(res.headers.get("Retry-After")).toBe(String(retryAfter));
-    expect((await res.json()).error).toBe(
-      `Too many test deliveries. Try again in ${wait}.`,
-    );
+    expect(await res.json()).toEqual({
+      success: false,
+      error: `Too many test deliveries. Try again in ${wait}.`,
+      code: "RATE_LIMITED",
+    });
   });
 
   it("answers 502, not a refusal, for a name that no longer resolves", async () => {

@@ -17,7 +17,7 @@ import { PUBLIC_PATHS } from "@/lib/config/public-paths";
  * the same way: a message that states a number, written next to the constant
  * that holds the real number, and nothing comparing the two. WEAK_PASSWORD
  * said "at least 8 characters" four lines below the export that sets the
- * minimum to 12. TOO_MANY_ATTEMPTS is the correct version of a sentence that
+ * minimum to 12. TOO_MANY_ATTEMPTS_MINUTES is the correct version of a sentence that
  * thirty-one routes still reimplement inline, every one of them printing the
  * literal "1 minute(s)". Values cannot drift like that on their own; the
  * functions can, so the functions get the tests.
@@ -45,19 +45,23 @@ describe("ERROR_MESSAGES.WEAK_PASSWORD", () => {
   });
 });
 
-describe("ERROR_MESSAGES.TOO_MANY_ATTEMPTS", () => {
+describe("ERROR_MESSAGES.TOO_MANY_ATTEMPTS_MINUTES", () => {
+  it("cannot be mistaken for the helper that takes seconds", () => {
+    expect(ERROR_MESSAGES).not.toHaveProperty("TOO_MANY_ATTEMPTS");
+  });
+
   it("says 'minute' for one and 'minutes' for more than one", () => {
     // This is the whole reason the shared helper exists. The inline copies
     // scattered through the routes print "Please try again in 1 minute(s)."
-    expect(ERROR_MESSAGES.TOO_MANY_ATTEMPTS("login attempts", 1)).toBe(
+    expect(ERROR_MESSAGES.TOO_MANY_ATTEMPTS_MINUTES("login attempts", 1)).toBe(
       "Too many login attempts. Please wait 1 minute before trying again.",
     );
-    expect(ERROR_MESSAGES.TOO_MANY_ATTEMPTS("login attempts", 5)).toBe(
+    expect(ERROR_MESSAGES.TOO_MANY_ATTEMPTS_MINUTES("login attempts", 5)).toBe(
       "Too many login attempts. Please wait 5 minutes before trying again.",
     );
-    expect(ERROR_MESSAGES.TOO_MANY_ATTEMPTS("login attempts", 1)).not.toContain(
-      "minute(s)",
-    );
+    expect(
+      ERROR_MESSAGES.TOO_MANY_ATTEMPTS_MINUTES("login attempts", 1),
+    ).not.toContain("minute(s)");
   });
 
   it("takes the whole noun phrase and does not append a word of its own", () => {
@@ -66,13 +70,13 @@ describe("ERROR_MESSAGES.TOO_MANY_ATTEMPTS", () => {
     // ending in it, so users on the forgot-password and signup limits read
     // "Too many reset attempts attempts." It also has to work for the
     // rate limits that are not attempts at anything.
-    expect(ERROR_MESSAGES.TOO_MANY_ATTEMPTS("reset attempts", 5)).toBe(
+    expect(ERROR_MESSAGES.TOO_MANY_ATTEMPTS_MINUTES("reset attempts", 5)).toBe(
       "Too many reset attempts. Please wait 5 minutes before trying again.",
     );
-    expect(ERROR_MESSAGES.TOO_MANY_ATTEMPTS("reset attempts", 5)).not.toContain(
-      "attempts attempts",
-    );
-    expect(ERROR_MESSAGES.TOO_MANY_ATTEMPTS("AI requests", 2)).toBe(
+    expect(
+      ERROR_MESSAGES.TOO_MANY_ATTEMPTS_MINUTES("reset attempts", 5),
+    ).not.toContain("attempts attempts");
+    expect(ERROR_MESSAGES.TOO_MANY_ATTEMPTS_MINUTES("AI requests", 2)).toBe(
       "Too many AI requests. Please wait 2 minutes before trying again.",
     );
   });

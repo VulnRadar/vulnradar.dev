@@ -307,7 +307,11 @@ export const ERROR_MESSAGES = {
   // Appending it also made the helper unusable for most of the routes that
   // still hand-roll this sentence, since theirs are "Too many AI requests"
   // and "Too many domains added recently", not attempts at anything.
-  TOO_MANY_ATTEMPTS: (resource: string, minutes: number) =>
+  //
+  // Named for its unit: TOO_MANY_ATTEMPTS in lib/api/retry-in.ts is the same
+  // shape and takes seconds, so a caller that swapped one for the other under
+  // one name would pass 5 and be told "under a minute".
+  TOO_MANY_ATTEMPTS_MINUTES: (resource: string, minutes: number) =>
     `Too many ${resource}. Please wait ${minutes} minute${minutes > 1 ? "s" : ""} before trying again.`,
 
   // Database - User-friendly errors

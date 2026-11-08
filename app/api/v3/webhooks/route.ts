@@ -14,9 +14,10 @@ import { getSetting } from "@/lib/config/runtime-config";
 import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { extractRootDomain } from "@/lib/scanner/root-domain";
 import { isDiscordHost } from "@/lib/net/discord-webhook";
-import { pluralize } from "@/lib/ui/plural";
 import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp } from "@/lib/api/request-utils";
+import { burstLimitedResponse } from "@/lib/api/rate-limit-response";
+import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
 import {
   getUserPlanLimits,
   withinPlanLimit,
@@ -57,17 +58,11 @@ function parseStoredUrl(url: string): URL | null {
   }
 }
 
-function testRateLimited(retryAfterSeconds: number) {
-  // Worked out from the limiter's answer: the per-target window is an hour, so
-  // a fixed "a few minutes" sent people back into a refusal that had most of
-  // that hour left to run.
-  const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60));
-  return NextResponse.json(
-    {
-      success: false,
-      error: `Too many test deliveries. Try again in ${pluralize(minutes, "minute")}.`,
-    },
-    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
+function testRateLimited(rl: { retryAfterSeconds: number }) {
+  return burstLimitedResponse(
+    rl,
+    TOO_MANY_ATTEMPTS("test deliveries", rl.retryAfterSeconds),
+    { success: false },
   );
 }
 
@@ -356,7 +351,7 @@ export async function PATCH(request: NextRequest) {
     key: `webhook-test:${session.userId}`,
     ...TEST_SEND_USER_LIMIT,
   });
-  if (!userLimit.allowed) return testRateLimited(userLimit.retryAfterSeconds);
+  if (!userLimit.allowed) return testRateLimited(userLimit);
 
   const { id } = await request.json();
   if (!id) {
@@ -398,9 +393,7 @@ export async function PATCH(request: NextRequest) {
     key: testTargetLimitKey(webhook.id, webhook.url),
     ...TEST_SEND_TARGET_LIMIT,
   });
-  if (!targetLimit.allowed) {
-    return testRateLimited(targetLimit.retryAfterSeconds);
-  }
+  if (!targetLimit.allowed) return testRateLimited(targetLimit);
 
   // ssrf: re-run validation on the stored URL — it may have been
   // written via DB migration, admin path, or any code path that
