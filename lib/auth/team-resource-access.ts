@@ -17,9 +17,9 @@ export interface TeamResourceAccess {
  * - `resourceTeamId` null: only the owner has access -- personal
  *   resources are unaffected by any of this.
  * - `resourceTeamId` set: any co-member of that team can read
- *   ("view_reports", granted to all 4 team roles including viewer);
- *   owner/admin/member-role co-members (everyone except viewer, via
- *   "manage_scans") can also write.
+ *   ("view_reports", granted to every team role); co-members whose role
+ *   also has "manage_scans" (owner, admin, operator, member, so not manager
+ *   or viewer) can also write.
  * - GOD_MODE exception: if the resource's owner is a super_admin, no
  *   team role grants write access to anyone but the owner -- team
  *   sharing must never become a side-channel for altering a

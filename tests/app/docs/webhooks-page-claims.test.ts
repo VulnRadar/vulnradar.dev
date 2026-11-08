@@ -18,6 +18,9 @@ const {
   TIMESTAMP_HEADER,
 } = await import("@/lib/webhooks/delivery-contract");
 
+const { TEAM_ROLES, hasTeamPermission } =
+  await import("@/lib/config/client-constants");
+
 const PAGE = fs.readFileSync(
   path.resolve(__dirname, "../../../app/docs/webhooks/page.tsx"),
   "utf8",
@@ -90,6 +93,22 @@ describe("/docs/webhooks", () => {
     expect(PROSE).toContain("old signatures stop matching at once");
     expect(PROSE).toContain("url_host");
     expect(PROSE).toContain("Only this webhook's creator can change its URL");
+  });
+
+  it("names the roles the code gives the address, a manager included", () => {
+    const roles = Object.values(TEAM_ROLES);
+    const canWrite = roles.filter((r) => hasTeamPermission(r, "manage_scans"));
+    const readOnly = roles.filter((r) => !hasTeamPermission(r, "manage_scans"));
+
+    expect(canWrite).toEqual(["owner", "admin", "operator", "member"]);
+    expect(readOnly).toEqual(["manager", "viewer"]);
+    expect(PROSE).toContain(
+      "Teammates whose role manages scans (owner, admin, operator, member)",
+    );
+    expect(PROSE).toContain("A manager or viewer sees the name and the host");
+    expect(PROSE).toContain(
+      "cannot write to that webhook: a manager or viewer, or anyone",
+    );
   });
 
   it("gives receivers something to deduplicate and date a delivery by", () => {

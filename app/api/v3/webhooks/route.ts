@@ -141,9 +141,9 @@ export async function GET() {
       { status: 401 },
     );
 
-  // Team co-membership alone is enough to see that a webhook exists -- all 4
-  // team roles (owner/admin/member/viewer) grant "view_reports" (see
-  // TEAM_ROLE_PERMISSIONS in lib/config/constants.ts). The URL itself is
+  // Team co-membership alone is enough to see that a webhook exists -- every
+  // team role grants "view_reports" (see TEAM_ROLE_PERMISSIONS in
+  // lib/config/client-constants.ts). The URL itself is
   // redacted per row below.
   // user_id is selected because the list mixes the caller's own webhooks with
   // teammates', and only the creator may change a webhook's team (PATCH

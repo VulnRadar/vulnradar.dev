@@ -139,12 +139,12 @@ export default function WebhooksPage() {
           A webhook can also be assigned to a team. It then fires on any scan
           shared with that team, for as long as the person who created it is
           still a member; once they leave, it goes back to firing on their own
-          scans only. Teammates whose role manages scans (team owner, admin,
-          member) can see the full address, pause, rename, test and delete it. A
-          viewer sees the name and the host only, because the URL of a Discord
-          or Slack webhook is the credential for posting there. Only the creator
-          can change the address, the type or the team, or rotate the signing
-          secret.
+          scans only. Teammates whose role manages scans (owner, admin,
+          operator, member) can see the full address, pause, rename, test and
+          delete it. A manager or viewer sees the name and the host only,
+          because the URL of a Discord or Slack webhook is the credential for
+          posting there. Only the creator can change the address, the type or
+          the team, or rotate the signing secret.
         </p>
       </DocsSection>
 
@@ -348,7 +348,7 @@ export default function WebhooksPage() {
   ]
 }`}
             notes={[
-              "url is null, with only url_host to go on, for a teammate who cannot write to that webhook: a viewer, or anyone on a webhook whose creator is a super admin.",
+              "url is null, with only url_host to go on, for a teammate who cannot write to that webhook: a manager or viewer, or anyone on a webhook whose creator is a super admin.",
             ]}
             errors={[{ code: 401, description: "Unauthorized" }]}
           />
