@@ -138,7 +138,7 @@ export async function run(ctx, report) {
         ok: true,
         detail: ctx.target.bind
           ? `${setting}: middleware origin host is ${hostname}, the -H value`
-          : `${setting}: middleware origin host is ${hostname}. next start does not read HOSTNAME (spec 4.5 allows that it might), so the image's HOSTNAME=0.0.0.0 does not move the origin; only -H does`,
+          : `${setting}: middleware origin host is ${hostname}. ${ctx.target.label} does not read HOSTNAME (spec 4.5 allows that it might), so the image's HOSTNAME=0.0.0.0 does not move the origin; only -H does`,
       };
     },
   );

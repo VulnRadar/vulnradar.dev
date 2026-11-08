@@ -12,7 +12,12 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { buildSummary } from "./summarise.mjs";
-import { REPO_ROOT, pinnedVersions } from "./lib/fixture.mjs";
+import {
+  REPO_ROOT,
+  SERVER_FILES,
+  fixturePackageJson,
+  pinnedVersions,
+} from "./lib/fixture.mjs";
 import { parseLinkHeader, profileStream } from "./lib/http.mjs";
 import { itemVerdict } from "./lib/report.mjs";
 import { MUTATIONS } from "./mutations.mjs";
@@ -108,6 +113,8 @@ test("buildSummary reports a failing item with its fallback and exits non-zero u
       dev: allPass(),
       start: allPass(),
       "start-h": allPass(),
+      server: allPass(),
+      "server-h": allPass(),
       image: allPass(),
     },
     {
@@ -228,7 +235,9 @@ test("every mutation edits text that exists exactly once and expects real, requi
   for (const [name, mutation] of Object.entries(MUTATIONS)) {
     for (const edit of mutation.edits) {
       const source = readFileSync(
-        path.join(REPO_ROOT, "tests/spike/fixture", edit.file),
+        SERVER_FILES.includes(edit.file)
+          ? path.join(REPO_ROOT, edit.file)
+          : path.join(REPO_ROOT, "tests/spike/fixture", edit.file),
         "utf8",
       ).replace(/\r\n/g, "\n");
       assert.equal(
@@ -266,7 +275,6 @@ test("the spike image mirrors the production Dockerfile where the spike depends 
     'ENV HOSTNAME="0.0.0.0"',
     "ENV NODE_ENV=production",
     'ENTRYPOINT ["/sbin/tini", "--"]',
-    'CMD ["npm", "start"]',
     "USER nextjs",
   ]) {
     assert.ok(
@@ -281,9 +289,24 @@ test("the spike image mirrors the production Dockerfile where the spike depends 
     froms(root).filter((l) => /AS (builder|runner)$/.test(l)),
     "the builder and runner base images differ from the production Dockerfile",
   );
+  // Read from the production file rather than listed here: a list is how this
+  // kept checking a start command the image had already stopped using.
+  const startCommands = (lines) => lines.filter((l) => l.startsWith("CMD ["));
+  assert.equal(
+    startCommands(root).length,
+    1,
+    "expected one exec-form CMD in the production Dockerfile",
+  );
+  assert.deepEqual(
+    startCommands(spike),
+    startCommands(root),
+    "the spike image starts differently from the production image",
+  );
   for (const copy of [
     "COPY --from=builder /app/.next ./.next",
     "COPY --from=builder /app/node_modules ./node_modules",
+    "COPY --from=builder /app/server.mjs ./server.mjs",
+    "COPY --from=builder /app/lib ./lib",
   ]) {
     assert.ok(
       root.includes(copy) && spike.includes(copy),
@@ -292,7 +315,27 @@ test("the spike image mirrors the production Dockerfile where the spike depends 
   }
 });
 
-test("the app is not a standalone build, which is why the image runs next start", () => {
+test("the fixture's start command is the app's, and every local file it loads is copied in", () => {
+  const app = JSON.parse(
+    readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),
+  );
+  assert.equal(fixturePackageJson().scripts.start, app.scripts.start);
+  for (const file of SERVER_FILES) {
+    const source = readFileSync(path.join(REPO_ROOT, file), "utf8");
+    const dir = path.posix.dirname(file);
+    for (const m of source.matchAll(
+      /from\s+"(\.[^"]+)"|import\("(\.[^"]+)"\)/g,
+    )) {
+      const imported = path.posix.join(dir, m[1] ?? m[2]);
+      assert.ok(
+        SERVER_FILES.includes(imported),
+        `${file} imports ${imported}, which SERVER_FILES does not copy into the fixture`,
+      );
+    }
+  }
+});
+
+test("the app is not a standalone build, which is why the image runs its own server around .next", () => {
   const config = readFileSync(path.join(REPO_ROOT, "next.config.mjs"), "utf8");
   const code = config.replace(/\/\/.*$/gm, "");
   assert.ok(

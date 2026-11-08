@@ -15,20 +15,29 @@ binary and error responses, and export the same `maxDuration` as the real
 verify route.
 
 `scripts/spike/run.mjs` builds that app in a scratch directory outside the
-repository and serves it three ways, because the claims are about Next's own
-router and each mode builds it differently:
+repository and serves it every way a request reaches Next's router, because the
+claims are about that router and each mode builds it differently:
 
-| Target    | Command                                                                 |
-| --------- | ----------------------------------------------------------------------- |
-| `dev`     | `next dev`                                                              |
-| `start`   | `next start`, with the image's `PORT` and `HOSTNAME` in the environment |
-| `start-h` | `next start -H 0.0.0.0` (bare metal, Pterodactyl)                       |
-| `image`   | a container built like the production image (`tests/spike/Dockerfile`)  |
+| Target     | Command                                                                 |
+| ---------- | ----------------------------------------------------------------------- |
+| `dev`      | `next dev`                                                              |
+| `start`    | `next start`, with the image's `PORT` and `HOSTNAME` in the environment |
+| `start-h`  | `next start -H 0.0.0.0`                                                 |
+| `server`   | `node server.mjs`, what `npm start` runs, with the same environment     |
+| `server-h` | `node server.mjs -H 0.0.0.0`                                            |
+| `image`    | a container built like the production image (`tests/spike/Dockerfile`)  |
+
+`server` and `image` are how the product runs. `start` and `start-h` are a start
+command written by hand, which still works and has no front server. The server
+targets run the repository's own `server.mjs` and `lib/server/http-front.mjs`,
+copied into the scratch directory on every run, so the spike measures the code
+that ships rather than a model of it.
 
 The image is not a standalone build, and neither is the real one: it copies
-`.next` and `node_modules` and runs `npm start`. `scripts/spike/selftest.mjs`
-fails if this Dockerfile drifts from the production one on the lines the spike
-depends on.
+`.next`, `node_modules`, `server.mjs` and `lib` and runs `node server.mjs`.
+`scripts/spike/selftest.mjs` fails if this Dockerfile drifts from the production
+one on the lines the spike depends on, its start command included, and
+`tests/scripts/spike/` runs that self-test on every CI run.
 
 ## The checks
 
@@ -62,12 +71,14 @@ before it sends the real control.
 ## Proving the harness can fail
 
 A table that has only ever said PASS has not shown it can say anything else.
-`scripts/spike/mutations.mjs` lists ten deliberate breakages of the fixture:
+`scripts/spike/mutations.mjs` lists eleven deliberate breakages of the fixture:
 the rewrite built without the forwarded headers, a client marker that survives
 on a page path, a destination built from the Host header, a path encoded twice,
 a handler that is not given the query string, a truncated body, a buffered
 stream, a lost `Deprecation` header, an origin that reflects the Host, a
-different `maxDuration`. SPIKE 1 to 6 each have at least one. `node scripts/spike/run.mjs --mutate all` applies each to the
+`server.mjs` that hands Next the wrong hostname (which also proves the server
+targets really run that file), a different `maxDuration`. SPIKE 1 to 6 each have
+at least one. `node scripts/spike/run.mjs --mutate all` applies each to the
 scratch copy, runs the checks that should notice, and exits non-zero if one of
 them still passes. `summarise.mjs` prints the result under the table, and
 `selftest.mjs` fails when a mutation's target text no longer exists in the
@@ -84,7 +95,8 @@ node --expose-gc scripts/spike/bench-serialise.mjs --out spike-results
 node scripts/spike/summarise.mjs spike-results
 ```
 
-`--target` takes `dev`, `start`, `start-h`, `image` or `all`. The image target
+`--target` takes `dev`, `start`, `start-h`, `server`, `server-h`, `image` or
+`all`. The image target
 needs Docker. In CI the workflow `.github/workflows/spike-api-rewrite.yml`
 runs everything with `--install`, which installs the three pinned packages
 once instead of linking `node_modules`, and writes the table to the job

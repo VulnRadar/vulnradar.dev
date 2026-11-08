@@ -16,11 +16,13 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { FALLBACKS, SPIKE_TITLES, itemVerdict } from "./lib/report.mjs";
 
-const TARGET_ORDER = ["dev", "start", "start-h", "image"];
+const TARGET_ORDER = ["dev", "start", "start-h", "server", "server-h", "image"];
 const TARGET_LABEL = {
   dev: "next dev",
   start: "next start",
   "start-h": "next start -H",
+  server: "node server.mjs",
+  "server-h": "node server.mjs -H",
   image: "image",
 };
 const ITEMS = [1, 2, 3, 4, 5, 6];

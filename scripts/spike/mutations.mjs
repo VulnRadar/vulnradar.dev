@@ -14,7 +14,8 @@ import path from "node:path";
  * `edits` are exact, single-occurrence text replacements (selftest.mjs checks
  * that each `from` still occurs exactly once in the fixture). `expectFail`
  * lists the check ids that must report `fail` under the mutation. `target` is
- * `start` only where the claim lives in the build output.
+ * `start` only where the claim lives in the build output, and `server` where
+ * the file being edited is one only that target runs.
  */
 export const MUTATIONS = {
   "no-forwarded-headers": {
@@ -127,6 +128,19 @@ export const MUTATIONS = {
         file: "middleware.js",
         from: 'requestHeaders.set("x-spike-mw-url", request.url);',
         to: 'requestHeaders.set("x-spike-mw-url", `https://${request.headers.get("host")}${pathname}`);',
+      },
+    ],
+    expectFail: ["5b"],
+  },
+  "front-server-wrong-hostname": {
+    describes:
+      "SPIKE 5: server.mjs hands Next a hostname that is not its bind address",
+    target: "server",
+    edits: [
+      {
+        file: "server.mjs",
+        from: "const app = next({ dev: false, hostname, port, httpServer: server });",
+        to: 'const app = next({ dev: false, hostname: "evil.example", port, httpServer: server });',
       },
     ],
     expectFail: ["5b"],

@@ -7,9 +7,11 @@ name: API rewrite spike
 # and streams, response headers, request.url, maxDuration, and the cost of
 # versioned()'s parse and stringify.
 #
-# It runs a small fixture app (tests/spike/fixture) three ways: `next dev`,
-# `next start` (plain and with -H 0.0.0.0) and a container built like the
-# production image. Nothing here touches the product code, and nothing here
+# It runs a small fixture app (tests/spike/fixture) every way a request reaches
+# Next: `next dev`, `next start` and `node server.mjs` (each plain and with
+# -H 0.0.0.0) and a container built like the production image. `node server.mjs`
+# and the image are how the product runs; `next start` is a start command
+# written by hand. Nothing here touches the product code, and nothing here
 # runs on a pull request: it is started by hand, or by a push to the spike
 # branch, because a workflow_dispatch workflow can only be run from a branch
 # once the file exists on the default branch.
@@ -29,6 +31,8 @@ on:
           - dev
           - start
           - start-h
+          - server
+          - server-h
           - image
         default: all
   push:
@@ -86,7 +90,7 @@ jobs:
             --out spike-results
 
       - name: Prove the harness can fail
-        # Breaks the scratch copy of the fixture in ten ways, covering SPIKE
+        # Breaks the scratch copy of the fixture in eleven ways, covering SPIKE
         # 1 to 6, and requires the checks to notice each. A table that has only
         # ever said PASS has not shown it can say anything else.
         if: ${{ always() && (inputs.targets == '' || inputs.targets == 'all') }}

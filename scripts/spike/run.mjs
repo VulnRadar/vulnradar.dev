@@ -2,17 +2,20 @@
 /**
  * SPIKE harness for the Next.js routing claims the API v4 Move rests on
  * (spec 14.1). It builds the fixture app in tests/spike/fixture, serves it the
- * three ways the product runs (`next dev`, `next start`, the production image)
- * and runs the checks of SPIKE 1 to 6 against each, writing one JSON file per
- * target. scripts/spike/summarise.mjs turns those files into the pass or fail
- * table. SPIKE 7 is a pure node benchmark in scripts/spike/bench-serialise.mjs.
+ * ways the product runs (`next dev`, `node server.mjs` behind `npm start`, the
+ * production image) and the way a hand-written start command does (`next
+ * start`), and runs the checks of SPIKE 1 to 6 against each, writing one JSON
+ * file per target. scripts/spike/summarise.mjs turns those files into the pass
+ * or fail table. SPIKE 7 is a pure node benchmark in
+ * scripts/spike/bench-serialise.mjs.
  *
  *   node scripts/spike/run.mjs --target start
  *   node scripts/spike/run.mjs --target all --install --require-docker
  *   node scripts/spike/run.mjs --mutate all --out spike-results/mutations
  *
  * Options
- *   --target     dev | start | start-h | image | all   (default all)
+ *   --target     dev | start | start-h | server | server-h | image | all
+ *                (default all)
  *   --mutate     a mutation name from mutations.mjs, or all: break the scratch
  *                copy of the fixture on purpose and require the checks to
  *                notice. Proves the harness can fail. Replaces --target.
@@ -26,7 +29,9 @@
  *                repository's node_modules (what CI does)
  *   --require-docker  fail instead of skipping the image when Docker is absent
  *
- * `start-h` is `next start -H 0.0.0.0`, the bare-metal and Pterodactyl shape.
+ * `server` is what `npm start` and the image run. `start` and `start-h` are
+ * `next start` without and with -H 0.0.0.0, the shape of a start command written
+ * by hand, which still works but has no front server.
  */
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -78,6 +83,13 @@ const TARGETS = {
     mode: "start",
     bind: "0.0.0.0",
     label: "next start -H 0.0.0.0",
+  },
+  server: { name: "server", mode: "server", label: "node server.mjs" },
+  "server-h": {
+    name: "server-h",
+    mode: "server",
+    bind: "0.0.0.0",
+    label: "node server.mjs -H 0.0.0.0",
   },
   image: { name: "image", mode: "image", label: "production image" },
 };
@@ -143,7 +155,7 @@ async function runTarget(target, opts, mutation = null) {
     } else {
       prepareWorkdir({ workdir, nodeModulesFrom: modulesFor(opts) });
       if (mutation) applyMutation(workdir, mutation);
-      if (target.mode === "start") runNextBuild({ workdir });
+      if (target.mode !== "dev") runNextBuild({ workdir });
       server = await startNext({
         mode: target.mode,
         workdir,
@@ -166,8 +178,8 @@ async function runTarget(target, opts, mutation = null) {
       target: {
         ...target,
         internalPort: target.mode === "image" ? IMAGE_PORT : opts.port,
-        // The image sets HOSTNAME in its Dockerfile, `next start` gets it from
-        // startNext, and `next dev` is started without it.
+        // The image sets HOSTNAME in its Dockerfile, the other production
+        // starts get it from startNext, and `next dev` is started without it.
         hostnameEnv: target.mode === "dev" ? undefined : "0.0.0.0",
       },
       port: opts.port,
@@ -321,10 +333,7 @@ async function runAll(opts) {
     await runMutations(opts);
     return;
   }
-  const names =
-    opts.target === "all"
-      ? ["dev", "start", "start-h", "image"]
-      : [opts.target];
+  const names = opts.target === "all" ? Object.keys(TARGETS) : [opts.target];
   for (const name of names) {
     if (!TARGETS[name]) throw new Error(`unknown target ${name}`);
   }

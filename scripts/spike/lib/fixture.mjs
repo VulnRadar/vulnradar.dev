@@ -22,6 +22,14 @@ export const FIXTURE_SRC = path.join(REPO_ROOT, "tests/spike/fixture");
 export const IMAGE_DOCKERFILE = path.join(REPO_ROOT, "tests/spike/Dockerfile");
 
 /**
+ * What `npm start` and the image run that the fixture does not model: the real
+ * server.mjs and the one local module it imports. Copied from the repository on
+ * every run rather than restated under tests/spike/fixture, so what gets
+ * measured is the server the product ships.
+ */
+export const SERVER_FILES = ["server.mjs", "lib/server/http-front.mjs"];
+
+/**
  * The versions the fixture runs on are read from the root package.json, not
  * restated, so the spike cannot drift from the app it is a model of.
  */
@@ -50,7 +58,9 @@ export function fixturePackageJson() {
   return {
     name: "vulnradar-spike-fixture",
     private: true,
-    scripts: { dev: "next dev", build: "next build", start: "next start" },
+    // The app's own start command. The `start` targets are hand-written starts
+    // and spawn `next start` themselves, so they do not read this.
+    scripts: { dev: "next dev", build: "next build", start: "node server.mjs" },
     dependencies: { next: v.next, react: v.react, "react-dom": v.reactDom },
   };
 }
@@ -127,6 +137,11 @@ export function prepareWorkdir({ workdir, nodeModulesFrom }) {
   rmSync(workdir, { recursive: true, force: true });
   mkdirSync(workdir, { recursive: true });
   cpSync(FIXTURE_SRC, workdir, { recursive: true });
+  for (const file of SERVER_FILES) {
+    const copy = path.join(workdir, file);
+    mkdirSync(path.dirname(copy), { recursive: true });
+    cpSync(path.join(REPO_ROOT, file), copy);
+  }
   writeFileSync(
     path.join(workdir, "package.json"),
     `${JSON.stringify(fixturePackageJson(), null, 2)}\n`,

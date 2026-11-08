@@ -43,17 +43,30 @@ async function waitReady(port, isAlive, timeoutMs) {
 }
 
 /**
- * Spawn `next dev` or `next start` on the prepared fixture.
+ * The node arguments for a target. `server` is the app's own start command,
+ * with the port in the environment the way the image gives it; the other two
+ * are Next's CLI.
+ */
+function serverArgs({ mode, workdir, port, bind }) {
+  const args =
+    mode === "server"
+      ? ["server.mjs"]
+      : [nextBin(workdir), mode, "-p", String(port)];
+  if (bind) args.push("-H", bind);
+  return args;
+}
+
+/**
+ * Spawn `next dev`, `next start` or `node server.mjs` on the prepared fixture.
  *
- * `next start` is given the environment the image sets (PORT, HOSTNAME) and no
- * -H flag unless `bind` is passed, because that is how the image runs it:
- * `npm start` with HOSTNAME=0.0.0.0 in the environment. Whether Next reads
+ * The two production modes are given the environment the image sets (PORT,
+ * HOSTNAME) and no -H flag unless `bind` is passed, because that is how the
+ * image runs: HOSTNAME=0.0.0.0 in the environment. Whether either one reads
  * HOSTNAME at all is one of the things the run reveals; `bind` adds the -H
- * variant that a bare-metal or Pterodactyl install uses.
+ * variant of a start command someone wrote by hand.
  */
 export async function startNext({ mode, workdir, port, bind, controlToken }) {
-  const args = [nextBin(workdir), mode, "-p", String(port)];
-  if (bind) args.push("-H", bind);
+  const args = serverArgs({ mode, workdir, port, bind });
 
   const env = {
     ...process.env,
@@ -62,7 +75,7 @@ export async function startNext({ mode, workdir, port, bind, controlToken }) {
     PORT: String(port),
     SPIKE_CONTROL_TOKEN: controlToken,
   };
-  if (mode === "start") env.HOSTNAME = "0.0.0.0";
+  if (mode !== "dev") env.HOSTNAME = "0.0.0.0";
 
   const child = spawn(process.execPath, args, {
     cwd: workdir,
