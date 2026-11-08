@@ -165,7 +165,7 @@ const fixtures: DetectorFixtures = {
           "max-age=1, max-age=63072000; includeSubDomains; preload",
       },
       expect: "fire",
-      evidenceIncludes: "max-age is 1 seconds",
+      evidenceIncludes: "max-age=1 is under one year",
     },
     {
       // hsts-missing already says the whole header is ignored.
@@ -201,7 +201,7 @@ const fixtures: DetectorFixtures = {
       url: "https://example.com/",
       headers: { "strict-transport-security": "max-age=0" },
       expect: "fire",
-      evidenceIncludes: "max-age is 0",
+      evidenceIncludes: "max-age=0 is under one year",
     },
   ],
 
@@ -1589,7 +1589,10 @@ const fixtures: DetectorFixtures = {
     {
       description: "CSP without frame-ancestors or X-Frame-Options",
       url: "https://example.com/",
-      headers: { "content-security-policy": "default-src 'self'" },
+      headers: {
+        "content-type": "text/html",
+        "content-security-policy": "default-src 'self'",
+      },
       expect: "fire",
       evidenceIncludes: "frame-ancestors",
     },
@@ -1598,6 +1601,7 @@ const fixtures: DetectorFixtures = {
       description: "a report path naming frame-ancestors is not the directive",
       url: "https://example.com/",
       headers: {
+        "content-type": "text/html",
         "content-security-policy":
           "default-src 'self'; report-uri /x/frame-ancestors-report",
       },
@@ -1607,7 +1611,21 @@ const fixtures: DetectorFixtures = {
     {
       description: "the directive itself",
       url: "https://example.com/",
-      headers: { "content-security-policy": "frame-ancestors 'self'" },
+      headers: {
+        "content-type": "text/html",
+        "content-security-policy": "frame-ancestors 'self'",
+      },
+      expect: "skip",
+    },
+    {
+      // clickjack-missing is gated the same way, so this was the one framing
+      // finding a JSON API with a CSP still got.
+      description: "a JSON response is not a document anyone can frame",
+      url: "https://api.example.com/",
+      headers: {
+        "content-type": "application/json",
+        "content-security-policy": "default-src 'none'",
+      },
       expect: "skip",
     },
   ],

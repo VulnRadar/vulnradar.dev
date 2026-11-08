@@ -550,7 +550,7 @@ export const detectors: Record<string, DetectFn> = {
     const issues: string[] = [];
     if (maxAge < HSTS_MIN_MAX_AGE) {
       issues.push(
-        `max-age is ${maxAge} seconds, under one year (${HSTS_MIN_MAX_AGE})`,
+        `max-age=${maxAge} is under one year (${HSTS_MIN_MAX_AGE} seconds)`,
       );
     }
     // Leaving the token out is not reported: hstspreload.org does not
@@ -888,6 +888,10 @@ export const detectors: Record<string, DetectFn> = {
   // ── CSP coverage (additional directives) ─────────────────────────────────
 
   "csp-frame-ancestors-missing": (_url, headers) => {
+    // Same gate as clickjack-missing, which this restates for a response that
+    // happens to carry a CSP: an API answering with default-src 'none' is not
+    // a document anyone can frame.
+    if (!isHtmlDocument(headers)) return null;
     const csp = h(headers, "content-security-policy");
     if (!csp) return null;
     if (cspHasDirective(csp, "frame-ancestors")) return null;
