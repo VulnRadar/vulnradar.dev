@@ -26,13 +26,13 @@ function responseSample(checksRun: number) {
   "duration": 2841,
   "checksRun": ${checksRun},
   "summary": {
-    "high": 1, "medium": 3, "low": 2, "info": 4, "total": 10
+    "high": 0, "medium": 4, "low": 2, "info": 4, "total": 10
   },
   "findings": [
     {
       "id": "hsts-missing",
       "title": "Missing HTTP Strict Transport Security",
-      "severity": "high",
+      "severity": "medium",
       "category": "headers",
       "evidence": "Header 'Strict-Transport-Security' not present.",
       "fixSteps": [

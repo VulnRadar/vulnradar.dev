@@ -29,7 +29,7 @@ const HERO_READOUT_ROWS: ResponseReadoutRow[] = [
     header: "content-security-policy",
     state: "fail",
     detail: "missing",
-    severity: "high",
+    severity: "medium",
   },
   { header: "x-frame-options", state: "pass", detail: "present" },
   {

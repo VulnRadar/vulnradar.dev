@@ -110,12 +110,12 @@ export default function DocsPage() {
   "status": "completed",
   "result": {
     "url": "https://example.com",
-    "summary": { "critical": 0, "high": 1, "medium": 0, "low": 0, "info": 0, "total": 1 },
+    "summary": { "critical": 0, "high": 0, "medium": 1, "low": 0, "info": 0, "total": 1 },
     "findings": [
       {
         "id": "hsts-missing--9f2c1a",
         "title": "Missing HTTP Strict Transport Security (HSTS)",
-        "severity": "high",
+        "severity": "medium",
         "category": "headers",
         "evidence": "Header 'Strict-Transport-Security' is not present in the response.",
         "fixSteps": ["..."]

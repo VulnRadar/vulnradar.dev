@@ -22,7 +22,7 @@ res.setHeader('Strict-Transport-Security',
 const META: [string, string][] = [
   ["Category", "headers"],
   ["Check ID", "hsts-missing"],
-  ["Severity", "high"],
+  ["Severity", "medium"],
 ];
 
 export function LandingSampleFinding() {
@@ -62,7 +62,7 @@ export function LandingSampleFinding() {
               <LeadingIcon
                 icon={ShieldAlert}
                 line="base"
-                className="text-[hsl(var(--severity-high))]"
+                className="text-[hsl(var(--severity-medium))]"
               />
               <div className="min-w-0 flex-1">
                 <h3 className="text-base font-semibold tracking-tight text-balance">
