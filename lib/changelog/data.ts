@@ -2306,7 +2306,7 @@ const CHANGELOG: Release[] = [
       {
         icon: BookOpen,
         label: "Docs: Repo Review Limits and Staff SSO Upgrade",
-        desc: "The GitHub scanning docs now say an oversized repo is fully pattern-scanned and partly AI-reviewed, not rejected. The self-hosting docs gain an upgrade note for staff single sign-on on Microsoft Entra ID, naming the super-admin setting that accepts a token without an email_verified claim.",
+        desc: "The GitHub scanning docs now say what happens to an oversized repo: every file within the file caps is pattern-scanned, and the AI review covers what the per-run ceiling and the allowance admit. The self-hosting docs gain an upgrade note for staff single sign-on on Microsoft Entra ID, naming the super-admin setting that accepts a token without an email_verified claim.",
         category: "selfhost",
       },
     ],

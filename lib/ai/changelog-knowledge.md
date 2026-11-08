@@ -713,7 +713,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [UserCog] **[SECURITY]** **Staff Invites See Every Existing Account**
   Inviting staff now recognises an existing account or a pending invite whatever the letter case of the stored address, so the protection for the super admin account and the duplicate-invite check cannot be bypassed by an older mixed-case address.
 - [BookOpen] **[SELFHOST]** **Docs: Repo Review Limits and Staff SSO Upgrade**
-  The GitHub scanning docs now say an oversized repo is fully pattern-scanned and partly AI-reviewed, not rejected. The self-hosting docs gain an upgrade note for staff single sign-on on Microsoft Entra ID, naming the super-admin setting that accepts a token without an email_verified claim.
+  The GitHub scanning docs now say what happens to an oversized repo: every file within the file caps is pattern-scanned, and the AI review covers what the per-run ceiling and the allowance admit. The self-hosting docs gain an upgrade note for staff single sign-on on Microsoft Entra ID, naming the super-admin setting that accepts a token without an email_verified claim.
 
 ---
 
