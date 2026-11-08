@@ -283,6 +283,25 @@ describe("reserveConcurrentScanBatch", () => {
     expect(client.query).not.toHaveBeenCalledWith("COMMIT");
   });
 
+  it("treats a NULL public_id the same as a missing row", async () => {
+    mockGetUserPlanLimits.mockResolvedValue(planLimits(2));
+    const client = fakeClient([0]);
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql.includes("COUNT(*)")) return { rows: [{ count: 0 }] };
+      if (sql.includes("public_id")) {
+        return { rows: [{ id: 1, public_id: null as unknown as string }] };
+      }
+      return { rows: [] };
+    });
+    mockConnect.mockResolvedValue(client);
+
+    await expect(
+      reserveConcurrentScanBatch(7, async () => [1]),
+    ).rejects.toThrow(/no public id/);
+    expect(client.query).toHaveBeenCalledWith("ROLLBACK");
+    expect(client.query).not.toHaveBeenCalledWith("COMMIT");
+  });
+
   it("takes the per-user advisory lock BEFORE counting, then inserts every row and commits", async () => {
     mockGetUserPlanLimits.mockResolvedValue(planLimits(2));
     const client = fakeClient([1]);

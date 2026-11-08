@@ -167,14 +167,16 @@ async function publicIdsOf(
   client: PoolClient,
   scanIds: number[],
 ): Promise<string[]> {
-  const { rows } = await client.query<{ id: number; public_id: string }>(
+  const { rows } = await client.query<{ id: number; public_id: string | null }>(
     "SELECT id, public_id FROM scan_history WHERE id = ANY($1)",
     [scanIds],
   );
   const byId = new Map(rows.map((row) => [row.id, row.public_id]));
   return scanIds.map((id) => {
     const publicId = byId.get(id);
-    if (publicId === undefined) {
+    // Falsy, not undefined: the column is nullable, and node-postgres hands a
+    // NULL back as null.
+    if (!publicId) {
       throw new Error(`Inserted scan ${id} has no public id`);
     }
     return publicId;
