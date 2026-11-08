@@ -25,6 +25,18 @@ const dependabot = readWorkflow("dependabot-auto-merge.yml");
 
 const REPO = "VulnRadar/vulnradar.dev";
 
+/** The steps of one job: the shared reader walks the whole file. */
+function jobSteps(workflow: string, job: string) {
+  const lines = workflow.split("\n");
+  const jobs = lines.indexOf("jobs:");
+  const start = lines.findIndex((l, n) => n > jobs && l === `  ${job}:`);
+  expect(start, `job ${job} exists`).toBeGreaterThan(-1);
+  const end = lines.findIndex((l, n) => n > start && /^ {2}\S/.test(l));
+  return workflowSteps(
+    lines.slice(start + 1, end === -1 ? undefined : end).join("\n"),
+  );
+}
+
 /** The job-level `if:` of `job`, folded onto one line. */
 function jobCondition(workflow: string, job: string): string {
   const lines = workflow.split("\n");
@@ -228,35 +240,40 @@ describe("the expression evaluator these tests rely on", () => {
   });
 });
 
-describe("release.yml runs only for this repository's own tag pushes", () => {
-  const cond = jobCondition(release, "release");
+const RELEASE_JOBS = ["build", "release", "publish-npm"];
 
-  it("runs when a release is published by hand", () => {
-    expect(
-      evaluate(cond, { github: { event_name: "release", repository: REPO } }),
-    ).toBe(true);
-  });
+describe.each(RELEASE_JOBS)(
+  "release.yml job %s runs only for this repository's own tag pushes",
+  (job) => {
+    const cond = jobCondition(release, job);
 
-  it("runs after a successful Docker publish of a tag pushed here", () => {
-    expect(evaluate(cond, TAG_PUSH)).toBe(true);
-  });
+    it("runs when a release is published by hand", () => {
+      expect(
+        evaluate(cond, { github: { event_name: "release", repository: REPO } }),
+      ).toBe(true);
+    });
 
-  it("does not run for a fork's pull request whose workflow shares the name", () => {
-    expect(evaluate(cond, FORK_PR)).toBe(false);
-  });
+    it("runs after a successful Docker publish of a tag pushed here", () => {
+      expect(evaluate(cond, TAG_PUSH)).toBe(true);
+    });
 
-  it("does not run for a pull request from a branch of this repository", () => {
-    expect(evaluate(cond, SAME_REPO_PR)).toBe(false);
-  });
+    it("does not run for a fork's pull request whose workflow shares the name", () => {
+      expect(evaluate(cond, FORK_PR)).toBe(false);
+    });
 
-  it("does not run for a push to another repository", () => {
-    expect(evaluate(cond, FORK_PUSH)).toBe(false);
-  });
+    it("does not run for a pull request from a branch of this repository", () => {
+      expect(evaluate(cond, SAME_REPO_PR)).toBe(false);
+    });
 
-  it("does not run when the Docker publish failed", () => {
-    expect(evaluate(cond, FAILED_PUSH)).toBe(false);
-  });
-});
+    it("does not run for a push to another repository", () => {
+      expect(evaluate(cond, FORK_PUSH)).toBe(false);
+    });
+
+    it("does not run when the Docker publish failed", () => {
+      expect(evaluate(cond, FAILED_PUSH)).toBe(false);
+    });
+  },
+);
 
 describe("a fork's run cannot cancel a release through the concurrency group", () => {
   const PUBLISHED = {
@@ -356,61 +373,72 @@ function firstWrite(code: string): number {
   return code.search(/>>\s*"?\$\{?GITHUB_(ENV|OUTPUT)\b/);
 }
 
-describe("release.yml verifies the tag before anything uses it", () => {
-  const steps = workflowSteps(release);
-  const resolve = stepNamed(steps, "Resolve tag");
+describe.each(RELEASE_JOBS)(
+  "release.yml job %s verifies the tag before anything uses it",
+  (job) => {
+    const steps = jobSteps(release, job);
+    const resolve = stepNamed(steps, "Resolve tag");
 
-  it("accepts only a strict, anchored version tag", () => {
-    expectStrict(tagPattern(resolve.code));
-    expect(resolve.code).toMatch(/\[\[ ! "\$TAG" =~ \$TAG_PATTERN \]\]/);
-  });
+    it("accepts only a strict, anchored version tag", () => {
+      expectStrict(tagPattern(resolve.code));
+      expect(resolve.code).toMatch(/\[\[ ! "\$TAG" =~ \$TAG_PATTERN \]\]/);
+    });
 
-  it("requires the tag to exist in this repository", () => {
-    expect(resolve.code).toMatch(
-      /git rev-parse --verify --quiet "refs\/tags\/\$\{TAG\}"/,
-    );
-  });
-
-  it("stops the job when either check fails", () => {
-    const checks = resolve.code.slice(resolve.code.indexOf("TAG_PATTERN"));
-    expect(checks.match(/exit 1/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
-    expect(resolve.code).toContain("set -euo pipefail");
-  });
-
-  it("writes TAG to the env and outputs only after both checks", () => {
-    const write = firstWrite(resolve.code);
-    const pattern = resolve.code.indexOf("=~ $TAG_PATTERN");
-    const exists = resolve.code.indexOf("git rev-parse");
-    expect(pattern).toBeGreaterThan(-1);
-    expect(exists).toBeGreaterThan(-1);
-    expect(write).toBeGreaterThan(pattern);
-    expect(write).toBeGreaterThan(exists);
-  });
-
-  it("has the repository checked out before it looks the tag up", () => {
-    const checkout = steps.find((s) => /actions\/checkout@/.test(s.code));
-    expect(checkout).toBeDefined();
-    expect(checkout!.index).toBeLessThan(resolve.index);
-    expect(checkout!.code).toMatch(/fetch-depth:\s*0/);
-  });
-
-  it("is the first step that reads the tag", () => {
-    for (const s of steps) {
-      if (/steps\.vars\.outputs\.tag|\$\{?TAG\b/.test(s.code)) {
-        expect(s.index, s.name ?? "").toBeGreaterThanOrEqual(resolve.index);
-      }
-    }
-  });
-
-  it("never interpolates the event's tag or branch into a script", () => {
-    for (const s of steps) {
-      const run = s.code.split(/^\s+run:\s*\|?\s*$/m)[1] ?? "";
-      expect(run, s.name ?? "").not.toMatch(
-        /\$\{\{\s*github\.event\.(workflow_run\.head_branch|release\.tag_name)/,
+    it("requires the tag to exist in this repository", () => {
+      expect(resolve.code).toMatch(
+        /git rev-parse --verify --quiet "refs\/tags\/\$\{TAG\}"/,
       );
-    }
-  });
-});
+    });
+
+    it("stops the job when either check fails", () => {
+      const checks = resolve.code.slice(resolve.code.indexOf("TAG_PATTERN"));
+      expect(checks.match(/exit 1/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+      expect(resolve.code).toContain("set -euo pipefail");
+    });
+
+    it("writes TAG to the env and outputs only after both checks", () => {
+      const write = firstWrite(resolve.code);
+      const pattern = resolve.code.indexOf("=~ $TAG_PATTERN");
+      const exists = resolve.code.indexOf("git rev-parse");
+      expect(pattern).toBeGreaterThan(-1);
+      expect(exists).toBeGreaterThan(-1);
+      expect(write).toBeGreaterThan(pattern);
+      expect(write).toBeGreaterThan(exists);
+    });
+
+    it("has the repository checked out before it looks the tag up", () => {
+      const checkout = steps.find((s) => /actions\/checkout@/.test(s.code));
+      expect(checkout).toBeDefined();
+      expect(checkout!.index).toBeLessThan(resolve.index);
+      expect(checkout!.code).toMatch(/fetch-depth:\s*0/);
+    });
+
+    it("is the first step that reads the tag", () => {
+      for (const s of steps) {
+        if (/steps\.vars\.outputs\.tag|\$\{?TAG\b/.test(s.code)) {
+          expect(s.index, s.name ?? "").toBeGreaterThanOrEqual(resolve.index);
+        }
+      }
+    });
+
+    it("never interpolates the event's tag or branch into a script", () => {
+      for (const s of steps) {
+        const run = s.code.split(/^\s+run:\s*\|?\s*$/m)[1] ?? "";
+        expect(run, s.name ?? "").not.toMatch(
+          /\$\{\{\s*github\.event\.(workflow_run\.head_branch|release\.tag_name)/,
+        );
+      }
+    });
+
+    it("runs the same check as every other job", () => {
+      const first = stepNamed(
+        jobSteps(release, RELEASE_JOBS[0]),
+        "Resolve tag",
+      );
+      expect(resolve.code).toBe(first.code);
+    });
+  },
+);
 
 describe("docker-publish-arm64.yml anchors its tag check", () => {
   const steps = workflowSteps(arm64);

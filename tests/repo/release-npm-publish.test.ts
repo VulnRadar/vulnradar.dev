@@ -31,7 +31,7 @@ describe("release.yml npm publishing", () => {
   const publish = stepNamed(steps, PUBLISH);
 
   it("grants the job id-token: write, the permission trusted publishing needs", () => {
-    const job = release.slice(release.search(/^ {2}release:$/m));
+    const job = release.slice(release.search(/^ {2}publish-npm:$/m));
     expect(job).toMatch(/^ {6}id-token:\s*write\s*$/m);
   });
 
@@ -42,7 +42,12 @@ describe("release.yml npm publishing", () => {
   });
 
   it("points setup-node at the public registry", () => {
-    const setup = steps.find((s) => /actions\/setup-node@/.test(s.code));
+    // The publish job's own step, not the build job's, which has no use for it.
+    const setup = steps
+      .filter(
+        (s) => /actions\/setup-node@/.test(s.code) && s.index < publish.index,
+      )
+      .pop();
     expect(setup?.code).toMatch(
       /^\s+registry-url:\s*"?https:\/\/registry\.npmjs\.org\/?"?\s*$/m,
     );
