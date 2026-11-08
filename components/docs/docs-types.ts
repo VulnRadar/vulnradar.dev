@@ -1,3 +1,6 @@
+export type DocsAudience = "use" | "build" | "run" | "shared";
+export type DocsTemplate = "quickstart" | "guide" | "reference" | "concept";
+
 export interface TocItem {
   id: string;
   label: string;
@@ -9,7 +12,15 @@ export interface NavItem {
   label: string;
   /** One line describing what the page answers. Shown in the mobile nav. */
   summary?: string;
+  /** Which required sections the page owes: tests/repo/docs-templates.test.ts. */
+  template?: DocsTemplate;
+  /** The page's file, for "Edit this page", last-updated and the repo tests. */
+  source?: string;
+  /** Static table of contents, so the shell needs no effect to know it. */
+  toc?: TocItem[];
   exact?: boolean;
+  /** Pages nested under this one, listed once in DOCS_PAGES after it. */
+  children?: NavItem[];
 }
 
 /**
@@ -17,7 +28,11 @@ export interface NavItem {
  * they are in the whole set: guides first, then reference material.
  */
 export interface NavSection {
+  id?: string;
   title: string;
+  audience?: DocsAudience;
+  /** Numbered and read in order; the pager says "Step n of N". */
+  path?: boolean;
   items: NavItem[];
 }
 
