@@ -1,7 +1,8 @@
 /**
  * The finalisation tail every scan path runs once its result is persisted:
  * the scan-complete email, the critical/high regression alert, the critical
- * findings email, and every webhook the scan's owner (or the team the scan belongs to) has registered.
+ * findings email, and every webhook the scan's owner (or the team the scan
+ * belongs to) has registered.
  *
  * This used to live inline at the bottom of lib/scanner/execute-scan.ts and
  * nowhere else, which meant exactly one of the five ways a scan can be

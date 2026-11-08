@@ -9,6 +9,7 @@ import {
   optedInCondition,
   type NotificationColumn,
 } from "@/lib/notifications/columns";
+import { getDueDigestUsers } from "@/lib/notifications/posture-digest";
 import { describeIntegration, createUser } from "./_db";
 
 /**
@@ -253,5 +254,27 @@ describeIntegration("the broadcast audience filter", () => {
     expect(await audience("email_product_updates", [wantsNothing.id])).toEqual(
       [],
     );
+  });
+});
+
+describeIntegration("posture digest candidates", () => {
+  // The claim below stamps last_digest_sent_at, so an address nobody has
+  // confirmed must drop out here rather than in the sender.
+  it("leaves out an account whose address is not confirmed", async () => {
+    const confirmed = await createUser();
+    const unconfirmed = await createUser();
+    await pool.query(
+      "UPDATE users SET digest_email_enabled = true, email_verified_at = NOW() WHERE id = $1",
+      [confirmed.id],
+    );
+    await pool.query(
+      "UPDATE users SET digest_email_enabled = true, email_verified_at = NULL WHERE id = $1",
+      [unconfirmed.id],
+    );
+
+    const due = (await getDueDigestUsers(7)).map((user) => user.id);
+
+    expect(due).toContain(confirmed.id);
+    expect(due).not.toContain(unconfirmed.id);
   });
 });

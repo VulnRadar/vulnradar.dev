@@ -37,7 +37,7 @@ function invalidToken(): NextResponse {
 // shows, so a two-letter mailbox is not printed in full either.
 function redactEmail(email: string): string {
   const at = email.indexOf("@");
-  if (at < 0) return "***";
+  if (at < 1) return "***";
   return `${email.slice(0, Math.min(2, at - 1))}***${email.slice(at)}`;
 }
 

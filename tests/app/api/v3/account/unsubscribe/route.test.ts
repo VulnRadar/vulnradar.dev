@@ -87,6 +87,7 @@ describe("GET /api/v3/account/unsubscribe", () => {
     ["someone@example.com", "so***@example.com"],
     ["ab@example.com", "a***@example.com"],
     ["a@example.com", "***@example.com"],
+    ["@example.com", "***"],
   ])("never hands back the whole address: %s", async (stored, shown) => {
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 5, email: stored }] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
