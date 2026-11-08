@@ -333,11 +333,17 @@ describe("saveProfileDetails", () => {
       ),
       currentPassword: "pw",
     };
-    await saveProfileDetails(draft, u, () => {});
+    const out = await saveProfileDetails(draft, u, () => {});
     expect(calls.map((c) => c.body)).toEqual([
       { name: "Ada King" },
       { email: "ada@new.example", currentPassword: "pw" },
     ]);
+    // Both went through, so the confirmation names both rather than only
+    // the last one saved.
+    expect(out).toEqual({
+      ok: true,
+      message: "Your name and email address were updated.",
+    });
   });
 
   it("a refused email after a saved name says the name went through", async () => {

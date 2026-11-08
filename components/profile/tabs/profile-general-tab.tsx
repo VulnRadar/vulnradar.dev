@@ -186,9 +186,12 @@ export async function saveProfileDetails(
   refreshAuthCache();
   return {
     ok: true,
-    message: emailSaved
-      ? "Your email address was updated."
-      : "Your name was updated.",
+    message:
+      nameSaved && emailSaved
+        ? "Your name and email address were updated."
+        : emailSaved
+          ? "Your email address was updated."
+          : "Your name was updated.",
   };
 }
 
