@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useId, useMemo } from "react";
+import { useState, useId, useMemo } from "react";
 import {
   Key,
   ShieldCheck,
@@ -20,7 +20,6 @@ import {
   FileText,
   RefreshCw,
   Shield,
-  X,
   UserCog,
   Globe,
   Award,
@@ -35,12 +34,10 @@ import {
   CalendarOff,
   ImageOff,
   UserX,
-  Gift,
   StickyNote,
   Send,
   Webhook,
   Activity,
-  Save,
   Bell,
   Gauge,
   Smartphone,
@@ -64,13 +61,12 @@ import {
 import { cn } from "@/lib/ui/utils";
 import { pluralize } from "@/lib/ui/plural";
 import {
-  STAFF_ROLES,
   STAFF_ROLE_LABELS,
   ROLE_BADGE_STYLES,
   STAFF_ROLE_HIERARCHY,
   ROUTES,
 } from "@/lib/config/client-constants";
-import { PLANS, getPlanById } from "@/lib/billing/catalog";
+import { getPlanById } from "@/lib/billing/catalog";
 import {
   hasStaffPermission,
   canPerformAction,
@@ -79,7 +75,6 @@ import {
 } from "@/lib/auth/permissions-client";
 import {
   SaveConfirmationModal,
-  type ChangeItem,
   type AffectedUser,
 } from "@/components/shared/save-confirmation-modal";
 import type { UserDetail, BadgeDef } from "@/components/admin/types";
@@ -111,14 +106,16 @@ import { UsageReadout } from "./usage-readout";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { Textarea } from "@/components/ui/textarea";
 import { useNow } from "@/lib/ui/clock";
-
-/**
- * The panel had three native selects styled three ways (h-8 text-xs, h-9
- * text-xs, h-10 rounded-lg), so Plan, Staff Role and credit Type looked like
- * three kinds of control. One recipe, sized like the inputs beside them.
- */
-const NATIVE_SELECT_CLASS =
-  "h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
+import {
+  ChangeStaffRoleDialog,
+  EditAccountDialog,
+  EditBadgesDialog,
+  EditNoteDialog,
+  NATIVE_SELECT_CLASS,
+  type AccountChanges,
+  type AccountSaveOptions,
+  type SaveResult,
+} from "./user-edit-dialogs";
 
 interface UserDetailPanelProps {
   detail: UserDetail;
@@ -208,7 +205,6 @@ export function UserDetailPanel({
     [callerRole],
   );
   const isLoading = (action: string) => actionLoading === `${u.id}-${action}`;
-  const [showBadgePicker, setShowBadgePicker] = useState(false);
   const [showCreateBadge, setShowCreateBadge] = useState(false);
   const [showManageBadges, setShowManageBadges] = useState(false);
   const [newNote, setNewNote] = useState("");
@@ -271,39 +267,26 @@ export function UserDetailPanel({
     text: string;
   } | null>(null);
 
-  const awardedIds = new Set(detail.badges.map((b) => b.id));
-  const unawardedBadges = allBadges.filter((b) => !awardedIds.has(b.id));
-
-  // Pending changes state - batch all changes and save together
-  interface PendingAdminChanges {
-    name?: string;
-    email?: string;
-    plan?: string;
-    role?: string;
-  }
-  const [pendingChanges, setPendingChanges] = useState<PendingAdminChanges>({});
-  const [pendingBadgeAwards, setPendingBadgeAwards] = useState<number[]>([]);
-  const [pendingBadgeRevokes, setPendingBadgeRevokes] = useState<number[]>([]);
-  const [accountEditMode, setAccountEditMode] = useState(false);
-  const [editName, setEditName] = useState(u.name || "");
-  const [editEmail, setEditEmail] = useState(u.email);
-  const [editPlan, setEditPlan] = useState(u.plan || "free");
-  const [editRole, setEditRole] = useState(u.role || "user");
-  const [isSaving, setIsSaving] = useState(false);
+  // Which edit dialog is open, and for whom. The panel is not remounted when
+  // the admin moves to another user, so a dialog keyed to nothing would
+  // carry one person's draft onto the next record.
+  const [editing, setEditing] = useState<{
+    kind: "account" | "role" | "badges";
+    userId: number;
+  } | null>(null);
+  const isEditing = (kind: "account" | "role" | "badges") =>
+    editing?.kind === kind && editing.userId === u.id;
+  const closeEditing = () => setEditing(null);
   const [showGiftModal, setShowGiftModal] = useState(false);
-  const [showSaveModal, setShowSaveModal] = useState(false);
-  const [notifyUserOnSave, setNotifyUserOnSave] = useState(true);
   const [showNotifDialog, setShowNotifDialog] = useState(false);
   const [notifTitle, setNotifTitle] = useState("");
   const [notifMessage, setNotifMessage] = useState("");
   const [tocOpen, setTocOpen] = useState(false);
 
-  // Password re-auth state. update_email/set_role (saveAllChanges) and
-  // disable/reset_password/delete (support actions) are all in
+  // Password re-auth state. update_email/set_role (the account and role
+  // dialogs) and disable/reset_password/delete (support actions) are all in
   // PASSWORD_GATED_ACTIONS, so the backend rejects them with 403 unless
-  // currentAdminPassword is sent. These gate the existing confirmation
-  // modals with one more step instead of replacing them.
-  const [showSavePasswordDialog, setShowSavePasswordDialog] = useState(false);
+  // currentAdminPassword is sent.
   const [showSupportPasswordDialog, setShowSupportPasswordDialog] =
     useState(false);
   const [supportNotify, setSupportNotify] = useState(true);
@@ -329,115 +312,10 @@ export function UserDetailPanel({
     extraPayload?: Record<string, unknown>;
   } | null>(null);
 
-  // Track if there are unsaved changes
-  const hasChanges =
-    Object.keys(pendingChanges).length > 0 ||
-    pendingBadgeAwards.length > 0 ||
-    pendingBadgeRevokes.length > 0;
-
-  // Validation: email cannot be empty if it's being changed
-  const hasEmailError =
-    pendingChanges.email !== undefined &&
-    (pendingChanges.email as string).trim() === "";
-  const canSave = hasChanges && !hasEmailError;
-
-  // Build changes array for the modal
-  const modalChanges: ChangeItem[] = [
-    ...(pendingChanges.name !== undefined
-      ? [
-          {
-            field: "name",
-            label: "Display Name",
-            oldValue: u.name || "",
-            newValue: pendingChanges.name as string,
-          },
-        ]
-      : []),
-    ...(pendingChanges.email !== undefined
-      ? [
-          {
-            field: "email",
-            label: "Email Address",
-            oldValue: u.email,
-            newValue: pendingChanges.email as string,
-          },
-        ]
-      : []),
-    ...(pendingChanges.plan !== undefined
-      ? [
-          {
-            field: "plan",
-            label: "Subscription Plan",
-            oldValue: u.plan || "free",
-            newValue: pendingChanges.plan as string,
-          },
-        ]
-      : []),
-    ...(pendingChanges.role !== undefined
-      ? [
-          {
-            field: "role",
-            label: "Staff Role",
-            oldValue: u.role || "user",
-            newValue: pendingChanges.role as string,
-          },
-        ]
-      : []),
-    ...(pendingBadgeAwards.length > 0
-      ? [
-          {
-            field: "badges",
-            label: "Badges to Award",
-            oldValue: "",
-            newValue: `+${pendingBadgeAwards.length} badge${pendingBadgeAwards.length !== 1 ? "s" : ""}`,
-          },
-        ]
-      : []),
-    ...(pendingBadgeRevokes.length > 0
-      ? [
-          {
-            field: "badges",
-            label: "Badges to Remove",
-            oldValue: `${pendingBadgeRevokes.length} badge${pendingBadgeRevokes.length !== 1 ? "s" : ""}`,
-            newValue: "",
-          },
-        ]
-      : []),
-  ];
-
   const affectedUser: AffectedUser = {
     id: u.id,
     email: u.email,
     name: u.name || undefined,
-  };
-
-  // Reset pending changes when user changes
-  useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- resets local edit-buffer state to match a new u.id identity (switching which user is being viewed), gated on the dependency array so it only fires on an actual prop change, not every render
-    setPendingChanges({});
-    setPendingBadgeAwards([]);
-    setPendingBadgeRevokes([]);
-    setEditName(u.name || "");
-    setEditEmail(u.email);
-    setEditPlan(u.plan || "free");
-    setEditRole(u.role || "user");
-  }, [u.id, u.name, u.email, u.plan, u.role]);
-
-  // Add a change to pending
-  const addPendingChange = (
-    key: keyof PendingAdminChanges,
-    value: string,
-    originalValue: unknown,
-  ) => {
-    if (value === originalValue) {
-      setPendingChanges((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
-    } else {
-      setPendingChanges((prev) => ({ ...prev, [key]: value }));
-    }
   };
 
   // Queue a support action for confirmation. Decides which dialog to show
@@ -530,156 +408,108 @@ export function UserDetailPanel({
     return result;
   };
 
-  // Save all pending changes. `password` is only sent when the batch
-  // includes a gated field (email/role) - see the Save Changes modal below.
+  type ChangeForEmail = { field: string; oldValue: string; newValue: string };
+
+  // One account save, from the account dialog or the role dialog.
   //
-  // name/plan/role/badge changes are individually notifyUser:false here --
-  // each still applies its own DB write and audit log entry, but the
-  // per-field email is suppressed. Their `change` descriptors are collected
-  // into changesForEmail and sent as ONE consolidated email at the end via
-  // "notify_account_changes", instead of the user getting a separate email
-  // for every field touched in a single Save (e.g. 4 emails for a save that
-  // changed role + 3 badges). update_email is deliberately excluded from
-  // batching: it always sends its own immediate dual notification (old +
-  // new address) for account-security reasons.
-  const saveAllChanges = async (
-    password?: string,
-  ): Promise<{ ok: boolean; error?: string }> => {
-    setIsSaving(true);
-    const pw = password ? { currentAdminPassword: password } : {};
-    const changesForEmail: {
-      field: string;
-      oldValue: string;
-      newValue: string;
-    }[] = [];
-    try {
-      for (const [key, value] of Object.entries(pendingChanges)) {
-        let result:
-          | {
-              ok: boolean;
-              error?: string;
-              change?: (typeof changesForEmail)[number];
-            }
-          | undefined;
-        if (key === "name")
-          result = await onAction(u.id, "update_name", {
-            name: value as string,
-            notifyUser: false,
-          });
-        else if (key === "email")
-          result = await onAction(u.id, "update_email", {
-            email: value as string,
-            notifyUser: notifyUserOnSave,
-            ...pw,
-          });
-        else if (key === "plan")
-          result = await onAction(u.id, "update_plan", {
-            plan: value as string,
-            notifyUser: false,
-          });
-        else if (key === "role")
-          result = await onAction(u.id, "set_role", {
-            role: value as string,
-            notifyUser: false,
-            ...pw,
-          });
-        if (result && !result.ok) return result;
-        if (result?.change && key !== "email")
-          changesForEmail.push(result.change);
-      }
-      const awardedThisSave = [...pendingBadgeAwards];
-      const revokedThisSave = [...pendingBadgeRevokes];
-      if (awardedThisSave.length > 0 || revokedThisSave.length > 0) {
-        // One summary toast for the whole batch, not one per badge. Each
-        // PATCH used to raise its own "Badge awarded." / "Badge removed.",
-        // so saving a five-badge diff stacked five toasts that between them
-        // never said what the batch did. The first call carries the summary
-        // and the rest stay silent.
-        //
-        // The badge writes below are N independent PATCHes, not one
-        // transaction, so a partial failure leaves a partial diff applied.
-        // That is accepted deliberately rather than overlooked: badges are
-        // cosmetic profile decoration, the panel refetches the real awarded
-        // list from the server after the save, and the alternative (a
-        // batch endpoint plus a rollback path) is more machinery than a
-        // cosmetic field is worth.
-        const parts: string[] = [];
-        if (awardedThisSave.length > 0)
-          parts.push(`${awardedThisSave.length} awarded`);
-        if (revokedThisSave.length > 0)
-          parts.push(`${revokedThisSave.length} removed`);
-        const badgeSummary = `Badges updated: ${parts.join(", ")}.`;
-        let isFirstBadgeCall = true;
-        const badgeToast = (): { toast: string | false } => {
-          if (isFirstBadgeCall) {
-            isFirstBadgeCall = false;
-            return { toast: badgeSummary };
-          }
-          return { toast: false };
-        };
-        const badgeResults = await Promise.all([
-          ...awardedThisSave.map((id) =>
-            onAction(
-              u.id,
-              "award_badge",
-              { badgeId: String(id), notifyUser: false },
-              badgeToast(),
-            ),
-          ),
-          ...revokedThisSave.map((id) =>
-            onAction(
-              u.id,
-              "revoke_badge",
-              { badgeId: String(id), notifyUser: false },
-              badgeToast(),
-            ),
-          ),
-        ]);
-        for (const r of badgeResults)
-          if (r.change) changesForEmail.push(r.change);
-        onBadgesChanged(awardedThisSave, revokedThisSave);
-      }
-      if (notifyUserOnSave && changesForEmail.length > 0) {
-        await onAction(u.id, "notify_account_changes", {
-          changes: changesForEmail,
-          notifyUser: true,
-        });
-      }
-      setPendingChanges({});
-      setPendingBadgeAwards([]);
-      setPendingBadgeRevokes([]);
-      return { ok: true };
-    } finally {
-      setIsSaving(false);
+  // The password-gated writes go first (update_email, set_role), so a
+  // mistyped password is refused before anything else in the save has been
+  // written. name, plan and role are each sent with notifyUser:false: every
+  // one still writes its own row and audit entry, but their `change`
+  // descriptors are collected and sent as ONE notify_account_changes email at
+  // the end instead of an email per field. update_email is not folded in: it
+  // sends its own notice to the old and the new address, and the server sends
+  // the old-address one whatever notifyUser says.
+  const saveAccountChanges = async (
+    changes: AccountChanges,
+    opts: AccountSaveOptions,
+  ): Promise<SaveResult> => {
+    const pw = opts.password ? { currentAdminPassword: opts.password } : {};
+    const changesForEmail: ChangeForEmail[] = [];
+    const steps: [string, Record<string, unknown>][] = [];
+    if (changes.email !== undefined)
+      steps.push([
+        "update_email",
+        { email: changes.email, notifyUser: opts.notifyUser, ...pw },
+      ]);
+    if (changes.role !== undefined)
+      steps.push([
+        "set_role",
+        { role: changes.role, notifyUser: false, ...pw },
+      ]);
+    if (changes.name !== undefined)
+      steps.push(["update_name", { name: changes.name, notifyUser: false }]);
+    if (changes.plan !== undefined)
+      steps.push(["update_plan", { plan: changes.plan, notifyUser: false }]);
+    for (const [action, extra] of steps) {
+      const result = await onAction(u.id, action, extra);
+      if (!result.ok) return { ok: false, error: result.error };
+      if (result.change && action !== "update_email")
+        changesForEmail.push(result.change);
     }
+    if (opts.notifyUser && changesForEmail.length > 0) {
+      await onAction(u.id, "notify_account_changes", {
+        changes: changesForEmail,
+        notifyUser: true,
+      });
+    }
+    return { ok: true };
   };
 
-  // Discard all changes
-  const discardChanges = () => {
-    setPendingChanges({});
-    setPendingBadgeAwards([]);
-    setPendingBadgeRevokes([]);
-    setEditName(u.name || "");
-    setEditEmail(u.email);
-    setEditPlan(u.plan || "free");
-    setEditRole(u.role || "user");
-  };
-
-  // Handle save button click - open confirmation modal. Decided up front
-  // (same reasoning as queueSupportAction above) rather than switching
-  // dialogs mid-flow inside SaveConfirmationModal's onConfirm: a batch
-  // touching email or role is password-gated server-side, so it skips the
-  // plain "confirm changes" step and goes straight to the password
-  // dialog.
-  const handleSaveClick = () => {
-    if (
-      pendingChanges.email !== undefined ||
-      pendingChanges.role !== undefined
-    ) {
-      setShowSavePasswordDialog(true);
-    } else {
-      setShowSaveModal(true);
+  // One summary toast for the whole batch, not one per badge: the first call
+  // carries it and the rest stay silent.
+  //
+  // The badge writes are N independent PATCHes, not one transaction, so a
+  // partial failure leaves a partial diff applied. That is accepted on
+  // purpose: badges are cosmetic profile decoration. What the panel does
+  // owe the admin is the truth about it, so only the writes that went
+  // through are shown as applied, and a refused one keeps the dialog open
+  // with the server's reason.
+  const saveBadgeChanges = async (
+    awards: number[],
+    revokes: number[],
+    notifyUser: boolean,
+  ): Promise<SaveResult> => {
+    const parts: string[] = [];
+    if (awards.length > 0) parts.push(`${awards.length} awarded`);
+    if (revokes.length > 0) parts.push(`${revokes.length} removed`);
+    const badgeSummary = `Badges updated: ${parts.join(", ")}.`;
+    let isFirstBadgeCall = true;
+    const badgeToast = (): { toast: string | false } => {
+      if (isFirstBadgeCall) {
+        isFirstBadgeCall = false;
+        return { toast: badgeSummary };
+      }
+      return { toast: false };
+    };
+    const send = (action: "award_badge" | "revoke_badge", id: number) =>
+      onAction(
+        u.id,
+        action,
+        { badgeId: String(id), notifyUser: false },
+        badgeToast(),
+      ).then((result) => ({ id, result }));
+    const [awarded, revoked] = await Promise.all([
+      Promise.all(awards.map((id) => send("award_badge", id))),
+      Promise.all(revokes.map((id) => send("revoke_badge", id))),
+    ]);
+    const done = (list: typeof awarded) =>
+      list.filter((r) => r.result.ok).map((r) => r.id);
+    const awardedIds = done(awarded);
+    const revokedIds = done(revoked);
+    if (awardedIds.length > 0 || revokedIds.length > 0)
+      onBadgesChanged(awardedIds, revokedIds);
+    const changesForEmail = [...awarded, ...revoked].flatMap((r) =>
+      r.result.ok && r.result.change ? [r.result.change] : [],
+    );
+    if (notifyUser && changesForEmail.length > 0) {
+      await onAction(u.id, "notify_account_changes", {
+        changes: changesForEmail,
+        notifyUser: true,
+      });
     }
+    const failed = [...awarded, ...revoked].find((r) => !r.result.ok);
+    return failed ? { ok: false, error: failed.result.error } : { ok: true };
   };
 
   // "On this page" jump list: only offer entries whose section actually
@@ -1061,320 +891,94 @@ export function UserDetailPanel({
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs gap-1.5"
-                onClick={() => {
-                  if (accountEditMode) {
-                    setEditName(u.name || "");
-                    setEditEmail(u.email || "");
-                    setEditPlan(u.plan || "free");
-                    setPendingChanges((prev) => {
-                      const next = { ...prev };
-                      delete next.name;
-                      delete next.email;
-                      delete next.plan;
-                      return next;
-                    });
-                  }
-                  setAccountEditMode((m) => !m);
-                }}
+                onClick={() => setEditing({ kind: "account", userId: u.id })}
+                aria-label="Edit account"
               >
-                {accountEditMode ? (
-                  <>
-                    <X className="h-3 w-3" aria-hidden="true" />
-                    Cancel
-                  </>
-                ) : (
-                  <>
-                    <Pencil className="h-3 w-3" aria-hidden="true" />
-                    Edit
-                  </>
-                )}
+                <Pencil className="h-3 w-3" aria-hidden="true" />
+                Edit
               </Button>
             </div>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            {!accountEditMode ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
+                <div className="flex items-center gap-2 mb-1">
+                  <User
+                    className="h-3.5 w-3.5 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Display Name
+                  </span>
+                </div>
+                <span className="text-sm font-medium truncate">
+                  {/* Not italic. It was the only italic string anywhere in
+                        the panel, an orphan idiom for "this value is empty"
+                        that nothing else uses. */}
+                  {u.name || (
+                    <span className="text-muted-foreground">Not set</span>
+                  )}
+                </span>
+              </div>
+              {perms.canManageStaff && (
                 <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
                   <div className="flex items-center gap-2 mb-1">
-                    <User
+                    <Mail
                       className="h-3.5 w-3.5 text-muted-foreground"
                       aria-hidden="true"
                     />
                     <span className="text-xs text-muted-foreground uppercase tracking-wide">
-                      Display Name
+                      Email Address
                     </span>
                   </div>
-                  <span className="text-sm font-medium truncate">
-                    {/* Not italic. It was the only italic string anywhere in
-                        the panel, an orphan idiom for "this value is empty"
-                        that nothing else uses. */}
-                    {u.name || (
-                      <span className="text-muted-foreground">Not set</span>
-                    )}
+                  <span className="text-sm font-medium truncate font-mono">
+                    {u.email}
                   </span>
                 </div>
-                {perms.canManageStaff && (
-                  <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Mail
-                        className="h-3.5 w-3.5 text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                      <span className="text-xs text-muted-foreground uppercase tracking-wide">
-                        Email Address
-                      </span>
-                    </div>
-                    <span className="text-sm font-medium truncate font-mono">
-                      {u.email}
+              )}
+              {perms.canManageStaff && (
+                <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CreditCard
+                      className="h-3.5 w-3.5 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                      Subscription Plan
                     </span>
                   </div>
-                )}
-                {perms.canManageStaff && (
-                  <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
-                    <div className="flex items-center gap-2 mb-1">
-                      <CreditCard
-                        className="h-3.5 w-3.5 text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                      <span className="text-xs text-muted-foreground uppercase tracking-wide">
-                        Subscription Plan
-                      </span>
-                    </div>
-                    {/* text-sm, matching Display Name and Email either side of
+                  {/* text-sm, matching Display Name and Email either side of
                         it. The plan used to render a size smaller than its two
                         neighbours in the same three-up grid, so the one paid
                         fact on the row read as the least important. */}
-                    <span className="text-sm font-medium text-foreground flex items-center gap-2">
-                      {(() => {
-                        const effectivePlan = u.gifted_plan || u.plan;
-                        const label = effectivePlan
-                          ? getPlanById(effectivePlan)?.name || effectivePlan
-                          : "Free";
-                        return (
-                          <>
-                            {label}
-                            {u.gifted_plan && (
-                              <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border border-[hsl(var(--warning))]/25">
-                                Gifted
-                              </span>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </span>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {/* Edit Name */}
-                  <div
-                    className={cn(
-                      "flex flex-col gap-2 p-3 rounded-lg border transition-colors",
-                      pendingChanges.name
-                        ? "bg-primary/5 border-primary/30"
-                        : "bg-card/30 border-border/40",
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <User
-                        className="h-3.5 w-3.5 text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                      <span className="text-xs text-muted-foreground uppercase tracking-wide">
-                        Display Name
-                      </span>
-                      {pendingChanges.name && (
-                        <span className="text-[11px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
-                          Modified
-                        </span>
-                      )}
-                    </div>
-                    <Input
-                      value={editName}
-                      onChange={(e) => {
-                        setEditName(e.target.value);
-                        addPendingChange(
-                          "name",
-                          e.target.value.trim(),
-                          u.name || "",
-                        );
-                      }}
-                      placeholder="Enter name"
-                      // a11y (SC 1.3.1): the visible caption above each of these
-                      // fields is a plain <span>, so none of them was
-                      // programmatically labelled. aria-label rather than a
-                      // Label/htmlFor pair, which would need an id per field
-                      // and a change to the caption markup.
-                      aria-label="Display name"
-                      className="h-8 text-xs"
-                    />
-                  </div>
-
-                  {/* Edit Email - admin only */}
-                  {perms.canManageStaff && (
-                    <div
-                      className={cn(
-                        "flex flex-col gap-2 p-3 rounded-lg border transition-colors",
-                        pendingChanges.email
-                          ? "bg-primary/5 border-primary/30"
-                          : "bg-card/30 border-border/40",
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Mail
-                          className="h-3.5 w-3.5 text-muted-foreground"
-                          aria-hidden="true"
-                        />
-                        <span className="text-xs text-muted-foreground uppercase tracking-wide">
-                          Email Address
-                        </span>
-                        {pendingChanges.email && (
-                          <span className="text-[11px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
-                            Modified
-                          </span>
-                        )}
-                      </div>
-                      <Input
-                        type="email"
-                        value={editEmail}
-                        onChange={(e) => {
-                          setEditEmail(e.target.value);
-                          addPendingChange(
-                            "email",
-                            e.target.value.trim().toLowerCase(),
-                            u.email,
-                          );
-                        }}
-                        placeholder="Email address"
-                        aria-label="Email address"
-                        aria-invalid={hasEmailError}
-                        aria-describedby={
-                          hasEmailError ? "admin-user-email-error" : undefined
-                        }
-                        className={cn(
-                          "h-8 text-xs",
-                          hasEmailError &&
-                            "border-destructive focus-visible:ring-destructive",
-                        )}
-                        required
-                      />
-                      {/* a11y (SC 1.3.1 / 3.3.1): the field above carries
-                          aria-invalid now; this is the message it points at,
-                          announced when it appears. */}
-                      {hasEmailError && (
-                        <p
-                          id="admin-user-email-error"
-                          role="alert"
-                          className="text-[11px] text-destructive"
-                        >
-                          Email is required
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Edit Plan - admin only */}
-                  {perms.canManageStaff && (
-                    <div
-                      className={cn(
-                        "flex flex-col gap-2 p-3 rounded-lg border transition-colors",
-                        u.gifted_plan
-                          ? "bg-[hsl(var(--warning))]/10 border-[hsl(var(--warning))]/30"
-                          : pendingChanges.plan
-                            ? "bg-primary/5 border-primary/30"
-                            : "bg-card/30 border-border/40",
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        <CreditCard
-                          className="h-3.5 w-3.5 text-muted-foreground"
-                          aria-hidden="true"
-                        />
-                        <span className="text-xs text-muted-foreground uppercase tracking-wide">
-                          Subscription Plan
-                        </span>
-                        {u.gifted_plan && (
-                          <span className="text-[11px] text-[hsl(var(--warning))] font-medium px-1.5 py-0.5 rounded-full bg-[hsl(var(--warning))]/10">
-                            Gifted
-                          </span>
-                        )}
-                        {pendingChanges.plan && !u.gifted_plan && (
-                          <span className="text-[11px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
-                            Modified
-                          </span>
-                        )}
-                      </div>
-                      {u.gifted_plan ? (
-                        <div className="flex flex-col gap-1.5">
-                          <div className="h-8 text-xs rounded-md border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 px-2 flex items-center gap-2 text-[hsl(var(--warning))]">
-                            <Gift className="h-3.5 w-3.5" aria-hidden="true" />
-                            {getPlanById(u.gifted_plan)?.name || u.gifted_plan}
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Gifted until{" "}
-                            {u.gift_end_date
-                              ? new Date(u.gift_end_date).toLocaleDateString(
-                                  "en-US",
-                                  {
-                                    month: "short",
-                                    day: "numeric",
-                                    year: "numeric",
-                                  },
-                                )
-                              : "N/A"}
-                            . Use the Gift button above to modify.
-                          </p>
-                        </div>
-                      ) : (
-                        <select
-                          aria-label="Plan"
-                          value={editPlan}
-                          onChange={(e) => {
-                            setEditPlan(e.target.value);
-                            addPendingChange(
-                              "plan",
-                              e.target.value,
-                              u.plan || "free",
-                            );
-                          }}
-                          className={NATIVE_SELECT_CLASS}
-                        >
-                          {PLANS.map((plan) => (
-                            <option key={plan.id} value={plan.id}>
-                              {plan.name}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-                  )}
+                  <span className="text-sm font-medium text-foreground flex items-center gap-2">
+                    {(() => {
+                      const effectivePlan = u.gifted_plan || u.plan;
+                      const label = effectivePlan
+                        ? getPlanById(effectivePlan)?.name || effectivePlan
+                        : "Free";
+                      return (
+                        <>
+                          {label}
+                          {u.gifted_plan && (
+                            <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border border-[hsl(var(--warning))]/25">
+                              Gifted
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </span>
                 </div>
-
-                {/* Safety note */}
-                <div className="flex items-start gap-2 mt-3 p-3 rounded-lg bg-muted/30 border border-border/40">
-                  <LeadingIcon
-                    icon={AlertTriangle}
-                    line="xs-relaxed"
-                    size="sm"
-                    className="text-muted-foreground"
-                  />
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Changes are logged in the audit log. Email changes require
-                    confirmation input to prevent accidents. Plan changes take
-                    effect immediately.
-                  </p>
-                </div>
-              </>
-            )}
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
 
       {/* Role + Badge management. Gated on the permissions these controls
-          actually exercise (EDIT_USER_ROLE for the role dropdown,
-          CREATE_BADGE for the badge picker), not on DELETE_USER, which is
+          actually exercise (EDIT_USER_ROLE for the role change,
+          CREATE_BADGE for the badge editor), not on DELETE_USER, which is
           what it used to check: a permission label that does not describe
           what the control does hides it from roles that hold the right and
           shows it to roles that do not. */}
@@ -1383,61 +987,39 @@ export function UserDetailPanel({
           id="roles-badges"
           className="grid grid-cols-1 lg:grid-cols-2 gap-4"
         >
-          {/* Staff Role - dropdown */}
+          {/* Staff Role */}
           {perms.canManageStaff && (
-            <Card
-              className={cn(
-                "border-border/50 bg-card/50 transition-colors",
-                pendingChanges.role && "border-primary/30",
-              )}
-            >
+            <Card className="border-border/50 bg-card/50">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
                   <p className="text-sm font-medium">Staff Role</p>
-                  {pendingChanges.role && (
-                    <span className="text-[11px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
-                      Modified
-                    </span>
-                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {hasGodMode(u.role)
                     ? "The super admin's role can't be changed."
-                    : "Select a permission level for this user."}
+                    : "Sets what this person can see and do in the admin panel."}
                 </p>
               </CardHeader>
-              <CardContent className="p-4 pt-0">
-                <select
-                  aria-label="Staff role"
-                  value={editRole}
+              <CardContent className="p-4 pt-0 flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-foreground">
+                  {STAFF_ROLE_LABELS[u.role || "user"] || u.role}
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5"
                   disabled={hasGodMode(u.role)}
-                  onChange={(e) => {
-                    setEditRole(e.target.value);
-                    addPendingChange("role", e.target.value, u.role || "user");
-                  }}
-                  className={cn(NATIVE_SELECT_CLASS, "w-full")}
+                  onClick={() => setEditing({ kind: "role", userId: u.id })}
                 >
-                  {Object.values(STAFF_ROLES)
-                    .filter(
-                      (role) =>
-                        role !== STAFF_ROLES.SUPER_ADMIN || hasGodMode(u.role),
-                    )
-                    .map((role) => {
-                      const isOriginal = (u.role || "user") === role;
-                      return (
-                        <option key={role} value={role}>
-                          {STAFF_ROLE_LABELS[role] || role}
-                          {isOriginal ? " (current)" : ""}
-                        </option>
-                      );
-                    })}
-                </select>
+                  <Pencil className="h-3 w-3" aria-hidden="true" />
+                  Change role
+                </Button>
               </CardContent>
             </Card>
           )}
 
-          {/* Badges - multi select */}
+          {/* Badges */}
           {perms.canManageBadges && (
             <Card className="border-border/50 bg-card/50">
               <CardHeader className="pb-3">
@@ -1456,84 +1038,44 @@ export function UserDetailPanel({
                 </p>
               </CardHeader>
               <CardContent className="p-4 pt-0 flex flex-col gap-3">
-                {/* Awarded badges */}
                 {detail.badges.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {detail.badges.map((badge) => {
-                      const isPendingRevoke = pendingBadgeRevokes.includes(
-                        badge.id,
-                      );
-                      return (
-                        <button
-                          key={badge.id}
-                          type="button"
-                          // Staged removal was conveyed by opacity, a
-                          // line-through and a title attribute only, none of
-                          // which a screen reader reports as a toggle state.
-                          aria-pressed={isPendingRevoke}
-                          aria-label={`${isPendingRevoke ? "Queued to remove" : "Remove"} badge ${badge.display_name}`}
-                          onClick={() => {
-                            if (isPendingRevoke) {
-                              setPendingBadgeRevokes((p) =>
-                                p.filter((id) => id !== badge.id),
-                              );
-                            } else {
-                              setPendingBadgeRevokes((p) => [...p, badge.id]);
-                            }
-                          }}
-                          title={
-                            isPendingRevoke
-                              ? "Click to undo remove"
-                              : "Click to remove badge"
-                          }
-                          className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-opacity cursor-pointer hover:opacity-80",
-                            isPendingRevoke && "opacity-50 line-through",
-                          )}
-                          style={{
-                            borderColor: `${badge.color}40`,
-                            backgroundColor: `${badge.color}15`,
-                            color: badge.color || undefined,
-                          }}
-                        >
-                          <Tag
-                            className="h-3 w-3 shrink-0"
-                            aria-hidden="true"
-                          />
-                          {badge.display_name}
-                          {isPendingRevoke && (
-                            <RefreshCw
-                              className="h-3 w-3 ml-0.5"
-                              aria-hidden="true"
-                            />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <ul
+                    aria-label="Awarded badges"
+                    className="flex flex-wrap gap-1.5"
+                  >
+                    {detail.badges.map((badge) => (
+                      <li
+                        key={badge.id}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium"
+                        style={{
+                          borderColor: `${badge.color}40`,
+                          backgroundColor: `${badge.color}15`,
+                          color: badge.color || undefined,
+                        }}
+                      >
+                        <Tag className="h-3 w-3 shrink-0" aria-hidden="true" />
+                        {badge.display_name}
+                      </li>
+                    ))}
+                  </ul>
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     No badges awarded yet.
                   </p>
                 )}
-                {pendingBadgeRevokes.length > 0 && (
-                  <p className="text-[11px] text-destructive">
-                    {pluralize(pendingBadgeRevokes.length, "badge")} will be
-                    removed on save
-                  </p>
-                )}
 
-                {/* Action buttons */}
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  {unawardedBadges.length > 0 && (
+                  {allBadges.length > 0 && (
                     <Button
                       size="sm"
                       variant="outline"
                       className="h-7 text-xs gap-1 bg-transparent flex-1"
-                      onClick={() => setShowBadgePicker(true)}
+                      onClick={() =>
+                        setEditing({ kind: "badges", userId: u.id })
+                      }
                     >
-                      <Award className="h-3.5 w-3.5" aria-hidden="true" /> Award
-                      Badge
+                      <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                      Edit badges
                     </Button>
                   )}
                   <Button
@@ -1561,106 +1103,6 @@ export function UserDetailPanel({
                       </Button>
                     )}
                 </div>
-
-                {/* Award Badge Modal */}
-                <Dialog
-                  open={showBadgePicker}
-                  onOpenChange={setShowBadgePicker}
-                >
-                  <DialogContent variant="shell" size="sm">
-                    <DialogHeader>
-                      <DialogTitle className="flex items-center gap-2">
-                        <Award
-                          className="h-4 w-4 text-primary"
-                          aria-hidden="true"
-                        />{" "}
-                        Award Badge
-                      </DialogTitle>
-                    </DialogHeader>
-                    <DialogBody className="flex flex-col gap-3">
-                      <p className="text-xs text-muted-foreground">
-                        Select badges to award. Changes will apply when you
-                        save.
-                      </p>
-                      {unawardedBadges.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {unawardedBadges.map((badge) => {
-                            const isPending = pendingBadgeAwards.includes(
-                              badge.id,
-                            );
-                            return (
-                              <button
-                                key={badge.id}
-                                type="button"
-                                // Staged state was conveyed by ring-2, scale
-                                // and a check icon only, so a screen-reader
-                                // user could not tell which badges were queued
-                                // for the save. aria-pressed makes the toggle
-                                // announce its own state.
-                                aria-pressed={isPending}
-                                aria-label={`${isPending ? "Queued to award" : "Award"} badge ${badge.display_name}`}
-                                onClick={() => {
-                                  if (isPending) {
-                                    setPendingBadgeAwards((p) =>
-                                      p.filter((id) => id !== badge.id),
-                                    );
-                                  } else {
-                                    setPendingBadgeAwards((p) => [
-                                      ...p,
-                                      badge.id,
-                                    ]);
-                                  }
-                                }}
-                                className={cn(
-                                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium transition-opacity",
-                                  isPending
-                                    ? "ring-2 ring-primary"
-                                    : "hover:opacity-80",
-                                )}
-                                style={{
-                                  borderColor: `${badge.color}40`,
-                                  backgroundColor: `${badge.color}15`,
-                                  color: badge.color || undefined,
-                                }}
-                              >
-                                <Tag
-                                  className="h-3 w-3 shrink-0"
-                                  aria-hidden="true"
-                                />
-                                {badge.display_name}
-                                {isPending && (
-                                  <CheckCircle2
-                                    className="h-3 w-3 ml-0.5"
-                                    aria-hidden="true"
-                                  />
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-muted-foreground py-4 text-center">
-                          All badges have already been awarded.
-                        </p>
-                      )}
-                      {pendingBadgeAwards.length > 0 && (
-                        <p className="text-[11px] text-primary">
-                          {pluralize(pendingBadgeAwards.length, "badge")} queued
-                          to award on save
-                        </p>
-                      )}
-                    </DialogBody>
-                    <DialogFooter>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowBadgePicker(false)}
-                      >
-                        Done
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
 
                 {/* Create Badge Modal */}
                 <Dialog
@@ -2118,91 +1560,37 @@ export function UserDetailPanel({
                           {formatRelativeTime(new Date(note.created_at))}
                         </span>
                       </div>
-                      {editingNote?.id === note.id ? (
-                        <div className="flex gap-2 mt-1">
-                          <Input
-                            aria-label="Edit note text"
-                            value={editingNote.text}
-                            onChange={(e) =>
-                              setEditingNote({
-                                ...editingNote,
-                                text: e.target.value,
-                              })
-                            }
-                            className="h-8 text-xs flex-1"
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (
-                                e.key === "Enter" &&
-                                editingNote.text.trim()
-                              ) {
-                                onAction(u.id, "edit_note", {
-                                  noteId: note.id,
-                                  note: editingNote.text.trim(),
-                                });
-                                setEditingNote(null);
-                              }
-                              if (e.key === "Escape") setEditingNote(null);
-                            }}
-                          />
-                          <Button
-                            size="sm"
-                            className="h-8 px-2 text-xs"
-                            disabled={!editingNote.text.trim()}
-                            onClick={() => {
-                              onAction(u.id, "edit_note", {
-                                noteId: note.id,
-                                note: editingNote.text.trim(),
-                              });
-                              setEditingNote(null);
-                            }}
-                          >
-                            Save
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 px-2 text-xs"
-                            onClick={() => setEditingNote(null)}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap wrap-break-word">
-                          {note.note}
-                        </p>
-                      )}
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap wrap-break-word">
+                        {note.note}
+                      </p>
                     </div>
                     {/* md: prefix on the fade below: touch devices have no
                         hover, so an unprefixed opacity-0 left these note
                         actions permanently invisible while still
                         hit-testable. Below md they are always shown. */}
-                    {editingNote?.id !== note.id && (
-                      <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity shrink-0">
-                        <button
-                          onClick={() =>
-                            setEditingNote({ id: note.id, text: note.note })
-                          }
-                          className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:h-7 sm:w-7"
-                          aria-label="Edit note"
-                        >
-                          <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                        </button>
-                        <button
-                          onClick={() =>
-                            setPendingDeleteNote({
-                              id: note.id,
-                              text: note.note,
-                            })
-                          }
-                          className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive sm:h-7 sm:w-7"
-                          aria-label="Delete note"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                        </button>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity shrink-0">
+                      <button
+                        onClick={() =>
+                          setEditingNote({ id: note.id, text: note.note })
+                        }
+                        className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:h-7 sm:w-7"
+                        aria-label="Edit note"
+                      >
+                        <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                      <button
+                        onClick={() =>
+                          setPendingDeleteNote({
+                            id: note.id,
+                            text: note.note,
+                          })
+                        }
+                        className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive sm:h-7 sm:w-7"
+                        aria-label="Delete note"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -3478,94 +2866,50 @@ export function UserDetailPanel({
         </div>
       )}
 
-      {/* Floating save bar. bottom offsets by --vr-cookie-h so the z-60
-          cookie notice does not cover it, same as /profile's save bar. */}
-      {hasChanges && (
-        <div className="fixed bottom-(--vr-cookie-h,0px) left-0 right-0 z-50 p-4 pointer-events-none transition-[bottom] duration-300">
-          <div className="max-w-lg mx-auto pointer-events-auto">
-            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-card/95 border border-border/50 shadow-xl backdrop-blur-xs">
-              <div className="flex items-center gap-3">
-                <div className="p-1.5 rounded-lg bg-primary/10">
-                  <Save
-                    className="h-3.5 w-3.5 text-primary"
-                    aria-hidden="true"
-                  />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">
-                    {modalChanges.length} unsaved change
-                    {modalChanges.length !== 1 ? "s" : ""}
-                  </p>
-                  {hasEmailError && (
-                    <p role="alert" className="text-[11px] text-destructive">
-                      Email address is required
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={discardChanges}
-                  disabled={isSaving}
-                >
-                  Discard
-                </Button>
-                <Button
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={handleSaveClick}
-                  disabled={isSaving || !canSave}
-                >
-                  {isSaving ? (
-                    <Loader2
-                      className="h-3.5 w-3.5 animate-spin"
-                      aria-hidden="true"
-                    />
-                  ) : (
-                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  )}
-                  Save Changes
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Edit dialogs. Mounted here, at the panel root, and never inside a
+          card: a successful action refetches the user, which sets
+          detailLoading and unmounts every card mid-save. */}
+      {isEditing("account") && perms.canBanUsers && (
+        <EditAccountDialog
+          key={u.id}
+          user={u}
+          canEditEmailAndPlan={perms.canManageStaff}
+          onSave={saveAccountChanges}
+          onClose={closeEditing}
+        />
       )}
-
-      {/* Save confirmation modal -- only ever opens when the batch touches
-          neither email nor role now: handleSaveClick sends a batch that
-          does straight to the password dialog below instead (those two
-          fields are password-gated server-side). */}
-      <SaveConfirmationModal
-        isOpen={showSaveModal}
-        onClose={() => setShowSaveModal(false)}
-        onConfirm={async (notify) => {
-          setNotifyUserOnSave(notify ?? true);
-          return await saveAllChanges();
-        }}
-        title="Save Changes"
-        description={`You're about to save ${modalChanges.length} change${modalChanges.length !== 1 ? "s" : ""} to ${u.name || u.email}'s account.`}
-        changes={modalChanges}
-        loading={isSaving}
-        isAdminAction={true}
-        affectedUser={affectedUser}
-        confirmText="Save Changes"
-      />
-
-      <AdminPasswordConfirmDialog
-        open={showSavePasswordDialog}
-        onOpenChange={setShowSavePasswordDialog}
-        title="Confirm Account Changes"
-        description={`Re-enter your password to save these changes to ${u.name || u.email}'s account.`}
-        confirmLabel="Save Changes"
-        onConfirm={async (password) => {
-          const result = await saveAllChanges(password);
-          if (result.ok) setShowSavePasswordDialog(false);
-          return result;
-        }}
-      />
+      {isEditing("role") && perms.canManageStaff && !hasGodMode(u.role) && (
+        <ChangeStaffRoleDialog
+          key={u.id}
+          user={u}
+          onSave={saveAccountChanges}
+          onClose={closeEditing}
+        />
+      )}
+      {isEditing("badges") && perms.canManageBadges && (
+        <EditBadgesDialog
+          key={u.id}
+          user={u}
+          awarded={detail.badges}
+          allBadges={allBadges}
+          onSave={saveBadgeChanges}
+          onClose={closeEditing}
+        />
+      )}
+      {editingNote &&
+        detail.notes?.some((note) => note.id === editingNote.id) && (
+          <EditNoteDialog
+            key={editingNote.id}
+            note={editingNote}
+            onSave={(text) =>
+              onAction(u.id, "edit_note", {
+                noteId: editingNote.id,
+                note: text,
+              })
+            }
+            onClose={() => setEditingNote(null)}
+          />
+        )}
 
       {/* Support action confirmation modal -- only ever opens for a
           NON-gated action now: queueSupportAction sends a password-gated
@@ -3664,7 +3008,6 @@ export function UserDetailPanel({
           <AdminMobileTocTrigger
             isOpen={tocOpen}
             onToggle={() => setTocOpen((o) => !o)}
-            raised={hasChanges}
           />
           <AdminMobileToc
             title={u.name || u.email}
