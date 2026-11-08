@@ -107,6 +107,22 @@ describe("DocsTable on a phone", () => {
   });
 });
 
+describe("a DocsTable cell holding a link", () => {
+  const html = renderToStaticMarkup(
+    <DocsTable
+      columns={[
+        { key: "symptom", header: "Symptom" },
+        { key: "fix", header: "Fix" },
+      ]}
+      data={[{ symptom: "502", fix: <a href="#tls">TLS</a> }]}
+    />,
+  );
+
+  it("renders the link in the stacked rows and in the table", () => {
+    expect(html.match(/<a href="#tls">TLS<\/a>/g)).toHaveLength(2);
+  });
+});
+
 describe("a DocsTable key column on a phone", () => {
   const html = renderToStaticMarkup(
     <DocsTable

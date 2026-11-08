@@ -341,58 +341,17 @@ const TROUBLESHOOTING_ROWS: TroubleshootingRow[] = [
   },
 ];
 
-/**
- * DocsTable renders every cell through String(), so a cell cannot hold a link.
- * These rows have to point at the section that fixes them, so this is the same
- * table drawn by hand: same scroll box, same type sizes, same row headers.
- */
 function TroubleshootingTable() {
   return (
-    <div
-      // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a scroll container has to take focus to be scrolled from the keyboard
-      tabIndex={0}
-      className="relative overflow-x-auto rounded-lg border border-border/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-    >
-      <table className="w-full border-collapse text-sm">
-        <caption className="sr-only">
-          Symptoms, their likely cause, and the fix
-        </caption>
-        <thead className="bg-muted/40">
-          <tr>
-            {["Symptom", "Likely cause", "Fix"].map((header) => (
-              <th
-                key={header}
-                scope="col"
-                className="whitespace-nowrap px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
-              >
-                {header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {TROUBLESHOOTING_ROWS.map((row) => (
-            <tr
-              key={row.symptom}
-              className="border-t border-border/50 transition-colors hover:bg-muted/40"
-            >
-              <th
-                scope="row"
-                className="px-3 py-2.5 text-left align-top text-[13px] font-medium leading-relaxed text-foreground"
-              >
-                {row.symptom}
-              </th>
-              <td className="px-3 py-2.5 align-top text-[13px] leading-relaxed text-muted-foreground">
-                {row.cause}
-              </td>
-              <td className="px-3 py-2.5 align-top text-[13px] leading-relaxed text-muted-foreground">
-                {row.fix}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DocsTable
+      caption="Symptoms, their likely cause, and the fix"
+      columns={[
+        { key: "symptom", header: "Symptom" },
+        { key: "cause", header: "Likely cause" },
+        { key: "fix", header: "Fix" },
+      ]}
+      data={TROUBLESHOOTING_ROWS}
+    />
   );
 }
 

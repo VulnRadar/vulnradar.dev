@@ -1,5 +1,6 @@
 "use client";
 
+import { isValidElement } from "react";
 import { cn } from "@/lib/ui/utils";
 import { InlineCode } from "./docs-code-block";
 import type { EndpointParam } from "./docs-types";
@@ -107,6 +108,11 @@ export function DocsTable<T extends Record<string, unknown>>({
   const meta = rest.filter((col) => STACKED_META_COLUMNS.has(col.key));
   const details = rest.filter((col) => !STACKED_META_COLUMNS.has(col.key));
   const text = (row: T, col: Column) => String(row[col.key] ?? "");
+  // A prose cell can hold a link; everything else is a value to print.
+  const cell = (row: T, col: Column): React.ReactNode => {
+    const value = row[col.key];
+    return isValidElement(value) ? value : text(row, col);
+  };
 
   return (
     <>
@@ -122,7 +128,7 @@ export function DocsTable<T extends Record<string, unknown>>({
                 "w-auto whitespace-normal",
               )}
             >
-              {text(row, keyColumn)}
+              {cell(row, keyColumn)}
             </div>
             {meta.length > 0 && (
               <div className={stackedMono}>
@@ -136,7 +142,7 @@ export function DocsTable<T extends Record<string, unknown>>({
                     {col.header}
                   </dt>
                   <dd className={cn(stackedText, "wrap-anywhere")}>
-                    {text(row, col)}
+                    {cell(row, col)}
                   </dd>
                 </div>
               ))}
@@ -170,11 +176,11 @@ export function DocsTable<T extends Record<string, unknown>>({
                       scope="row"
                       className={cn(keyCell, col.className)}
                     >
-                      {String(row[col.key] ?? "")}
+                      {cell(row, col)}
                     </th>
                   ) : (
                     <td key={col.key} className={cn(bodyCell, col.className)}>
-                      {String(row[col.key] ?? "")}
+                      {cell(row, col)}
                     </td>
                   ),
                 )}
