@@ -314,7 +314,9 @@ export default function StaffInvitePage() {
                     transitions.colors,
                     authFocusRing,
                   )}
-                  aria-label={showPass ? "Hide password" : "Show password"}
+                  // aria-pressed carries the state, so the name stays put:
+                  // "Hide password, pressed" reads as a contradiction.
+                  aria-label="Show password"
                   aria-pressed={showPass}
                 >
                   {showPass ? (

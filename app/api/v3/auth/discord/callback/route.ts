@@ -25,6 +25,7 @@ import { encryptApiKey } from "@/lib/auth/crypto";
 import { getClientIp } from "@/lib/api/request-utils";
 import { loginsPausedReasonFor } from "@/lib/admin/service-state";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
@@ -131,6 +132,20 @@ export async function GET(request: Request) {
       );
       return NextResponse.redirect(
         `${baseUrl}/login?error=discord_invalid_state`,
+      );
+    }
+    // The start route refuses this too, but a state issued to the real owner
+    // is still good for its whole lifetime, and this is the branch that
+    // writes. Checked before Discord is called: the guild join is a side
+    // effect as well.
+    const impersonating = refuseWhileImpersonating(
+      session,
+      "Linking a sign-in provider",
+    );
+    if (impersonating) {
+      const { error: message } = await impersonating.json();
+      return NextResponse.redirect(
+        `${baseUrl}/profile?tab=social&error=discord_impersonation_blocked&message=${encodeURIComponent(message)}`,
       );
     }
   }

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import pool from "@/lib/database/db";
 import { hashPassword } from "@/lib/auth";
+import { OAUTH_IDENTITY_COLUMNS } from "@/lib/auth/auth";
 import {
   analyzePassword,
   checkPasswordRequirements,
@@ -32,6 +33,22 @@ import { authTokenHashCandidates } from "@/lib/auth/token-hash";
 // sitting in someone's inbox when the switch to HMAC shipped still works
 // (AUDIT-002#secrets-03). Both are derived from the presented token, so
 // this widens nothing.
+
+// Every column that describes a linked provider identity, except the one the
+// account was created with. Names come from the fixed map, never the request.
+function identityColumnsToClear(authProvider: string | null): string[] {
+  return Object.entries(OAUTH_IDENTITY_COLUMNS).flatMap(([provider, column]) =>
+    provider === authProvider
+      ? []
+      : [
+          column.id,
+          column.email,
+          column.name,
+          column.avatarUrl,
+          ...(provider === "github" ? ["github_login"] : []),
+        ],
+  );
+}
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp();
@@ -91,7 +108,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     await client.query("BEGIN");
 
     const tokenRes = await client.query(
-      `SELECT prt.id, prt.user_id, prt.expires_at, u.email, u.name, u.totp_enabled
+      `SELECT prt.id, prt.user_id, prt.expires_at, u.email, u.name, u.totp_enabled, u.auth_provider
        FROM password_reset_tokens prt
        JOIN users u ON prt.user_id = u.id
        WHERE prt.token_hash = ANY($1::text[]) AND prt.used_at IS NULL
@@ -168,6 +185,23 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       "UPDATE api_keys SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL",
       [resetToken.user_id],
     );
+
+    // A linked identity signs in with no password, so one an attacker attached
+    // would survive everything above and walk straight back in. The identity
+    // the account was created with stays: it is the owner's, and for an
+    // account that never had a password it was the only way in until now.
+    // discord_connections goes regardless, since that row is what
+    // /auth/discord?action=login signs in from and it can name a Discord
+    // account other than the one that created this one.
+    await client.query(
+      `UPDATE users SET ${identityColumnsToClear(resetToken.auth_provider)
+        .map((column) => `${column} = NULL`)
+        .join(", ")} WHERE id = $1`,
+      [resetToken.user_id],
+    );
+    await client.query("DELETE FROM discord_connections WHERE user_id = $1", [
+      resetToken.user_id,
+    ]);
 
     await client.query("COMMIT");
 

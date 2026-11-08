@@ -29,9 +29,15 @@ const GUARD = "refuseWhileImpersonating";
  * `two_factor_method === "email"`, an ordinary read in the Discord callback,
  * matched and the guard demanded a credential guard on a route that writes
  * nothing.
+ *
+ * A linked Google, GitHub or Discord identity is a credential too: it signs
+ * into the account with no password. Those columns are looked up by value on
+ * nearly every OAuth path (`WHERE google_id = $1`), so assignment is not enough
+ * of a test for them and the match needs a SET with no WHERE before the column.
+ * discord_connections is a table, so it is the statements that write it.
  */
 const CREDENTIAL_WRITE =
-  /(?:password_hash|totp_secret|backup_codes|totp_enabled|two_factor_method)\s*(?<![=!<>])=(?!=)|SET email|deleteUserAccountData/;
+  /(?:password_hash|totp_secret|backup_codes|totp_enabled|two_factor_method)\s*(?<![=!<>])=(?!=)|SET email|deleteUserAccountData|\bSET\b(?:(?!\bWHERE\b)[^`"])*?\b(?:google_id|github_id|discord_id)\s*=(?!=)|(?:INSERT INTO|UPDATE|DELETE FROM)\s+discord_connections\b/;
 
 /**
  * Comments are stripped before testing. A guard that reads raw source finds
@@ -67,6 +73,14 @@ const NO_GUARD_NEEDED = new Map<string, string>([
   [
     "auth/2fa/verify/route.ts",
     "runs at the two-factor prompt, before the session is issued",
+  ],
+  [
+    "account/oauth/[provider]/route.ts",
+    "only ever clears a linked identity, so it cannot give anyone a way in",
+  ],
+  [
+    "account/discord/route.ts",
+    "only ever clears a linked identity, so it cannot give anyone a way in",
   ],
 ]);
 
@@ -112,6 +126,42 @@ describe("impersonation cannot rewrite the account it is impersonating", () => {
         "the route to NO_GUARD_NEEDED in this file with the reason: " +
         unguarded.join(", "),
     ).toEqual([]);
+  });
+
+  it("counts writing a sign-in provider as a credential write, and looking one up as not", () => {
+    for (const write of [
+      "UPDATE users SET google_id = $1, google_email = $2 WHERE id = $5",
+      "UPDATE users SET github_id = $1 WHERE id = $2 AND github_id IS NULL",
+      'pool.query("UPDATE users SET discord_id = $1 WHERE id = $2", [a, b])',
+      "UPDATE users SET name = $1, discord_id = NULL WHERE id = $2",
+      "UPDATE users SET ${idColumn} = $1, discord_id = $2 WHERE id = $3",
+      "INSERT INTO discord_connections (user_id) VALUES ($1)",
+      "UPDATE discord_connections SET access_token = $1",
+      "DELETE FROM discord_connections WHERE user_id = $1",
+    ]) {
+      expect(CREDENTIAL_WRITE.test(write), write).toBe(true);
+    }
+    for (const read of [
+      "SELECT id FROM users WHERE google_id = $1",
+      "SELECT user_id FROM discord_connections WHERE discord_id = $1",
+      "UPDATE users SET avatar_url = $1 WHERE discord_id = $2",
+      "const same = row.github_id === userId",
+    ]) {
+      expect(CREDENTIAL_WRITE.test(read), read).toBe(false);
+    }
+  });
+
+  it("guards all four places a sign-in provider gets attached", () => {
+    // The start routes write nothing, so the enumeration above cannot see
+    // them. Refusing only at the callback would still mint a usable state.
+    for (const rel of [
+      "auth/oauth/[provider]/route.ts",
+      "auth/oauth/[provider]/callback/route.ts",
+      "auth/discord/route.ts",
+      "auth/discord/callback/route.ts",
+    ]) {
+      expect(readFileSync(join(API_ROOT, rel), "utf8"), rel).toContain(GUARD);
+    }
   });
 
   it("does not carry exceptions for routes that no longer exist", () => {

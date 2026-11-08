@@ -21,6 +21,7 @@ let tokenRow: {
   email: string;
   name: string | null;
   totp_enabled: boolean;
+  auth_provider?: string | null;
 } | null = null;
 
 let deletedTokenIds: number[] = [];
@@ -118,6 +119,7 @@ function validToken(overrides: Partial<NonNullable<typeof tokenRow>> = {}) {
     email: "account-owner@example.com",
     name: "Account Owner",
     totp_enabled: false,
+    auth_provider: "password",
     ...overrides,
   };
 }
@@ -142,6 +144,125 @@ beforeEach(async () => {
 });
 
 describe("POST /api/v3/auth/reset-password", () => {
+  // A linked identity is a way in that needs no password. An attacker who
+  // linked one keeps the account through a reset unless the reset evicts it.
+  describe("linked sign-in providers", () => {
+    function evictionSql() {
+      return queries.filter(
+        (q) => q.sql.startsWith("UPDATE users SET") && /_id = NULL/.test(q.sql),
+      );
+    }
+
+    it("evicts every linked provider and the Discord connection inside the transaction", async () => {
+      tokenRow = validToken({ auth_provider: "password" });
+
+      const res = await POST(
+        resetRequest({ token: "t", password: STRONG_PASSWORD }),
+      );
+      expect(res.status).toBe(200);
+
+      const sql = queries.map((q) => q.sql);
+      const begin = sql.indexOf("BEGIN");
+      const commit = sql.indexOf("COMMIT");
+      const evict = sql.findIndex(
+        (q) =>
+          q.startsWith("UPDATE users SET") && q.includes("google_id = NULL"),
+      );
+      const dropDiscord = sql.findIndex((q) =>
+        q.startsWith("DELETE FROM discord_connections WHERE user_id = $1"),
+      );
+      expect(begin).toBeGreaterThanOrEqual(0);
+      expect(evict).toBeGreaterThan(begin);
+      expect(evict).toBeLessThan(commit);
+      expect(dropDiscord).toBeGreaterThan(begin);
+      expect(dropDiscord).toBeLessThan(commit);
+
+      const [update] = evictionSql();
+      expect(update!.sql).toContain("google_id = NULL");
+      expect(update!.sql).toContain("github_id = NULL");
+      expect(update!.sql).toContain("discord_id = NULL");
+      expect(update!.params).toEqual([42]);
+      expect(queries[dropDiscord]!.params).toEqual([42]);
+    });
+
+    it("clears the profile columns that describe an evicted identity", async () => {
+      tokenRow = validToken();
+
+      await POST(resetRequest({ token: "t", password: STRONG_PASSWORD }));
+
+      const [update] = evictionSql();
+      for (const column of [
+        "google_email",
+        "google_name",
+        "google_avatar_url",
+        "github_email",
+        "github_name",
+        "github_avatar_url",
+        "github_login",
+        "discord_email",
+        "discord_username",
+        "discord_avatar_url",
+      ]) {
+        expect(update!.sql).toContain(`${column} = NULL`);
+      }
+    });
+
+    it.each([
+      ["google", "google_id", ["github_id", "discord_id"]],
+      ["github", "github_id", ["google_id", "discord_id"]],
+      ["discord", "discord_id", ["google_id", "github_id"]],
+    ])(
+      "keeps the identity that created a %s account",
+      async (provider, kept, cleared) => {
+        tokenRow = validToken({ auth_provider: provider });
+
+        await POST(resetRequest({ token: "t", password: STRONG_PASSWORD }));
+
+        const [update] = evictionSql();
+        expect(update!.sql).not.toContain(`${kept} = NULL`);
+        for (const column of cleared) {
+          expect(update!.sql).toContain(`${column} = NULL`);
+        }
+      },
+    );
+
+    it("still drops the Discord connection on a Discord-created account", async () => {
+      // discord_connections is the row /auth/discord?action=login signs in
+      // from and can hold a Discord id other than the one that created the
+      // account. The creating identity survives on users.discord_id.
+      tokenRow = validToken({ auth_provider: "discord" });
+
+      await POST(resetRequest({ token: "t", password: STRONG_PASSWORD }));
+
+      expect(
+        queries.some((q) =>
+          q.sql.startsWith(
+            "DELETE FROM discord_connections WHERE user_id = $1",
+          ),
+        ),
+      ).toBe(true);
+    });
+
+    it("removes the trusted devices in the same transaction", async () => {
+      tokenRow = validToken();
+
+      await POST(resetRequest({ token: "t", password: STRONG_PASSWORD }));
+
+      expect(deviceTrustDeleteCalls).toEqual([[42]]);
+    });
+
+    it("evicts nothing for a token that does not resolve", async () => {
+      tokenRow = null;
+
+      await POST(resetRequest({ token: "t", password: STRONG_PASSWORD }));
+
+      expect(evictionSql()).toHaveLength(0);
+      expect(queries.some((q) => q.sql.includes("discord_connections"))).toBe(
+        false,
+      );
+    });
+  });
+
   it("rejects a missing token", async () => {
     const res = await POST(resetRequest({ password: STRONG_PASSWORD }));
     expect(res.status).toBe(400);

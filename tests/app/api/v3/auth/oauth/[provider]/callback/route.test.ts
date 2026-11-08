@@ -75,6 +75,8 @@ let githubLoginUpdateCalls: { sql: string; params: unknown[] }[] = [];
 let githubConnectionInsertCalls: unknown[][] = [];
 let githubTokenExchangeOk = true;
 let githubUserFetchOk = true;
+let githubConnectionThrowsUniqueViolation = false;
+let settingsRows: { key: string; value: string }[] = [];
 let githubUserFixture: { id?: number; login?: string } = {
   id: 5551234,
   login: "octocat",
@@ -87,7 +89,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   if (s.startsWith("DELETE FROM sessions WHERE expires_at"))
     return { rows: [] };
   if (s.startsWith("SELECT key, value FROM system_settings"))
-    return { rows: [] };
+    return { rows: settingsRows };
   if (s.startsWith("SELECT id, auth_provider, disabled_at")) {
     const wanted = params[0] as string;
     const visible =
@@ -192,6 +194,11 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     return { rows: [] };
   }
   if (s.startsWith("INSERT INTO github_connections")) {
+    if (githubConnectionThrowsUniqueViolation) {
+      const err = new Error("duplicate key value violates unique constraint");
+      (err as unknown as { code: string }).code = "23505";
+      throw err;
+    }
     githubConnectionInsertCalls.push(params);
     return { rows: [] };
   }
@@ -299,7 +306,7 @@ function ctx(provider: string) {
 // link / github-connect flows are bound by userId instead and never use it.
 function signLoginState(
   provider: string,
-  opts?: { intent?: "login" | "signup" },
+  opts?: { intent?: "login" | "signup"; redirect?: string },
 ): string {
   const nonce = "test-oauth-nonce";
   const state = signOAuthState(provider, { ...opts, nonce });
@@ -354,6 +361,8 @@ beforeEach(async () => {
   githubConnectionInsertCalls = [];
   githubTokenExchangeOk = true;
   githubUserFetchOk = true;
+  githubConnectionThrowsUniqueViolation = false;
+  settingsRows = [];
   githubUserFixture = { id: 5551234, login: "octocat" };
   googleUserFixture = {
     sub: "google-sub-1",
@@ -1301,6 +1310,30 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       );
     });
 
+    it("refuses an impersonation session before the provider is called, and writes nothing", async () => {
+      // A state issued to the real owner still has to fail once the browser
+      // holding it is staff signed in as that owner.
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 5, impersonated_by: 1 });
+      const state = signOAuthState("google", { purpose: "link", userId: 5 });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      const location = locationOf(res);
+      expect(location.pathname).toBe("/profile");
+      expect(location.searchParams.get("tab")).toBe("social");
+      expect(location.searchParams.get("error")).toBe(
+        "oauth_impersonation_blocked",
+      );
+      expect(location.searchParams.get("message")).toMatch(/admin/i);
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(googleLinkUpdateCalls).toHaveLength(0);
+      expect(queries.some((q) => q.sql.startsWith("UPDATE users"))).toBe(false);
+    });
+
     it("refuses to link discord even if a caller forges a link-purpose discord state", async () => {
       cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
       linkSessionRow = defaultSessionRow({ user_id: 7 });
@@ -1410,6 +1443,192 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       expect(locationOf(res).searchParams.get("github_error")).toBe("failed");
       expect(githubConnectionInsertCalls).toHaveLength(0);
     });
+
+    it("names the real problem when that GitHub account is already granted to another account", async () => {
+      // github_connections.github_user_id is unique, and the upsert only
+      // covers user_id, so this one can never succeed by trying again.
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 7 });
+      githubConnectionThrowsUniqueViolation = true;
+      const state = signOAuthState("github", {
+        purpose: "github-connect",
+        userId: 7,
+      });
+
+      const res = await GET(
+        callbackRequest("github", { code: "somecode", state }),
+        ctx("github"),
+      );
+
+      const location = locationOf(res);
+      expect(location.pathname).toBe("/profile");
+      expect(location.searchParams.get("github_error")).toBe("already_linked");
+    });
+  });
+
+  // A team invite or an emailed scan link sends the visitor to sign in with a
+  // destination; the signed state is what carries it through the provider.
+  describe("the redirect signed into the state", () => {
+    function returningAccount() {
+      userByEmailRow = { id: 42, auth_provider: "google", disabled_at: null };
+      twoFARow = {
+        totp_enabled: false,
+        two_factor_method: "app",
+        email: "u@example.com",
+      };
+    }
+
+    it("lands on the signed path after a sign-in", async () => {
+      returningAccount();
+      const state = signLoginState("google", {
+        intent: "login",
+        redirect: "/history?scan=x",
+      });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      const location = locationOf(res);
+      expect(location.pathname + location.search).toBe("/history?scan=x");
+      expect(sessionInsertCalls).toHaveLength(1);
+    });
+
+    it.each([
+      "https://evil.example",
+      "//evil.example",
+      "/\\evil.example",
+      "/\t/evil.example",
+    ])("falls back to /dashboard for %j", async (redirect) => {
+      returningAccount();
+      const state = signLoginState("google", { intent: "login", redirect });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      const location = locationOf(res);
+      expect(location.origin).toBe("http://localhost");
+      expect(location.pathname).toBe("/dashboard");
+    });
+
+    it("goes to /dashboard when the state carries no redirect", async () => {
+      returningAccount();
+      const state = signLoginState("google", { intent: "login" });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(locationOf(res).pathname).toBe("/dashboard");
+    });
+
+    it("carries it across the 2FA hop", async () => {
+      returningAccount();
+      twoFARow = {
+        totp_enabled: true,
+        two_factor_method: "app",
+        email: "u@example.com",
+      };
+      const state = signLoginState("google", {
+        intent: "login",
+        redirect: "/history?scan=x",
+      });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      const location = locationOf(res);
+      expect(location.pathname).toBe("/login");
+      expect(location.searchParams.get("oauth_2fa")).toBe("pending");
+      expect(location.searchParams.get("redirect")).toBe("/history?scan=x");
+      expect(sessionInsertCalls).toHaveLength(0);
+    });
+
+    it("adds nothing to the 2FA hop for a state with no redirect", async () => {
+      returningAccount();
+      twoFARow = {
+        totp_enabled: true,
+        two_factor_method: "app",
+        email: "u@example.com",
+      };
+      const state = signLoginState("google", { intent: "login" });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(locationOf(res).searchParams.has("redirect")).toBe(false);
+    });
+
+    it("skips the hop on a trusted device and still lands on the signed path", async () => {
+      returningAccount();
+      twoFARow = {
+        totp_enabled: true,
+        two_factor_method: "app",
+        email: "u@example.com",
+      };
+      trustedDeviceRow = { "?column?": 1 };
+      cookieState.set(DEVICE_TRUST_COOKIE_NAME, "e".repeat(64));
+      const state = signLoginState("google", {
+        intent: "login",
+        redirect: "/history?scan=x",
+      });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      const location = locationOf(res);
+      expect(location.pathname + location.search).toBe("/history?scan=x");
+    });
+
+    it("lands a brand-new account on the signed path too", async () => {
+      const state = signLoginState("google", {
+        intent: "signup",
+        redirect: "/teams/invite?t=1",
+      });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      const location = locationOf(res);
+      expect(location.pathname + location.search).toBe("/teams/invite?t=1");
+      expect(insertUserCalls).toHaveLength(1);
+    });
+  });
+
+  it("mails the code lifetime the operator configured, not the default", async () => {
+    settingsRows = [{ key: "EMAIL_2FA_CODE_EXPIRY_MINUTES", value: "3" }];
+    invalidateSettingsCache();
+    userByEmailRow = { id: 42, auth_provider: "google", disabled_at: null };
+    twoFARow = {
+      totp_enabled: true,
+      two_factor_method: "email",
+      email: "u@example.com",
+    };
+    const state = signLoginState("google", { intent: "login" });
+
+    await GET(
+      callbackRequest("google", { code: "somecode", state }),
+      ctx("google"),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    await vi.waitFor(() => expect(mockSendEmail).toHaveBeenCalledTimes(1));
+
+    expect(emailCodeInsertCalls[0]![3]).toBe(3);
+    const mail = mockSendEmail.mock.calls[0]![0] as { text: string };
+    expect(mail.text).toContain("3 minutes");
   });
 
   // The state's purpose picks which of three flows runs. Only the start

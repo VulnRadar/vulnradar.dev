@@ -6,8 +6,8 @@ import {
 } from "../_test-harness";
 
 /**
- * Route-level tests for GET /api/v3/auth/discord (start the Discord OAuth
- * flow).
+ * Route-level tests for /api/v3/auth/discord (GET starts the Discord OAuth
+ * sign-in, POST starts a connect once the password checks out).
  *
  * Mocked at the network/database boundary only: the pg pool. getSession()
  * and signDiscordState() (real HMAC signing, lib/auth/discord-state.ts) run
@@ -21,6 +21,9 @@ process.env.API_KEY_ENCRYPTION_KEY = "d".repeat(64);
 
 const queries: { sql: string; params: unknown[] }[] = [];
 let sessionRow: Record<string, unknown> | null = null;
+// password_hash for the re-authentication lookup. undefined means no row.
+let storedHash: string | null | undefined = undefined;
+let rateLimitBucketFull = false;
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
@@ -31,6 +34,13 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     return { rows: sessionRow ? [sessionRow] : [] };
   if (s.startsWith("SELECT key, value FROM system_settings"))
     return { rows: [] };
+  if (s.startsWith("SELECT password_hash FROM users WHERE id = $1"))
+    return {
+      rows: storedHash === undefined ? [] : [{ password_hash: storedHash }],
+    };
+  // Zero rows from the limiter's upsert means the bucket is full.
+  if (s.startsWith("INSERT INTO rate_limits"))
+    return { rows: rateLimitBucketFull ? [] : [{ count: "1" }] };
   return { rows: [] };
 });
 
@@ -51,7 +61,11 @@ const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
 const { verifyDiscordState, DISCORD_NONCE_COOKIE } =
   await import("@/lib/auth/discord-state");
-const { GET } = await import("@/app/api/v3/auth/discord/route");
+const { GET, POST } = await import("@/app/api/v3/auth/discord/route");
+const { hashPassword } = await import("@/lib/auth/password-hash");
+
+const CONNECT_PASSWORD = "the-account-password";
+const connectPasswordHash = await hashPassword(CONNECT_PASSWORD);
 
 function discordGet(action?: string) {
   const url = action
@@ -60,16 +74,38 @@ function discordGet(action?: string) {
   return new Request(url);
 }
 
+function discordPost(body?: unknown, action: string | null = "connect") {
+  const url = action
+    ? `http://localhost/api/v3/auth/discord?action=${action}`
+    : "http://localhost/api/v3/auth/discord";
+  return new Request(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+function signedIn(overrides: Record<string, unknown> = {}) {
+  cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+  sessionRow = defaultSessionRow(overrides);
+}
+
+function stateIn(url: string) {
+  return new URL(url).searchParams.get("state")!;
+}
+
 beforeEach(() => {
   mockQuery.mockClear();
   queries.length = 0;
   cookieState.clear();
   headerState.clear();
   sessionRow = null;
+  storedHash = undefined;
+  rateLimitBucketFull = false;
   invalidateSettingsCache();
 });
 
-describe("GET /api/v3/auth/discord", () => {
+describe("/api/v3/auth/discord", () => {
   it("requires an existing session for action=connect", async () => {
     const res = await GET(discordGet("connect"));
     expect(res.status).toBe(401);
@@ -111,13 +147,16 @@ describe("GET /api/v3/auth/discord", () => {
     }
   });
 
-  it("binds the state to the current session's userId when logged in", async () => {
-    cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
-    sessionRow = defaultSessionRow({ user_id: 55 });
+  it("binds a connect state to the session's userId once the password checks out", async () => {
+    signedIn({ user_id: 55 });
+    storedHash = connectPasswordHash;
 
-    const res = await GET(discordGet("connect"));
-    const url = new URL(res.headers.get("location") || "");
-    const state = url.searchParams.get("state")!;
+    const res = await POST(discordPost({ password: CONNECT_PASSWORD }));
+
+    expect(res.status).toBe(200);
+    const url: string = (await res.json()).url;
+    expect(url).toContain("https://discord.com/api/oauth2/authorize");
+    const state = stateIn(url);
 
     const verified = verifyDiscordState(state, 55);
     expect(verified.ok).toBe(true);
@@ -152,35 +191,126 @@ describe("GET /api/v3/auth/discord", () => {
   });
 
   it("sets no nonce cookie for action=connect, which is bound by session userId instead", async () => {
-    cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
-    sessionRow = defaultSessionRow({ user_id: 7 });
+    signedIn({ user_id: 7 });
+    storedHash = connectPasswordHash;
 
-    const res = await GET(discordGet("connect"));
+    const res = await POST(discordPost({ password: CONNECT_PASSWORD }));
+    expect(res.status).toBe(200);
     expect(res.headers.get("set-cookie") || "").not.toContain(
       DISCORD_NONCE_COOKIE,
     );
   });
 
-  it("allows action=connect once a session is present", async () => {
-    cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
-    sessionRow = defaultSessionRow({ user_id: 7 });
+  it.each([
+    ["action=connect", "connect"],
+    ["a missing action, which means connect", undefined],
+  ])(
+    "cannot start %s from a navigation, which has no way to carry the password",
+    async (_label, action) => {
+      signedIn({ user_id: 7 });
 
-    const res = await GET(discordGet("connect"));
-    expect(res.status).toBe(307);
+      const res = await GET(discordGet(action));
+
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe("Confirm your password first");
+      expect(res.headers.get("location")).toBeNull();
+    },
+  );
+
+  it("refuses a wrong password and signs no state", async () => {
+    signedIn({ user_id: 7 });
+    storedHash = connectPasswordHash;
+
+    const res = await POST(discordPost({ password: "not-the-password" }));
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).url).toBeUndefined();
   });
 
-  it("still treats a missing action as connect", async () => {
-    cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
-    sessionRow = defaultSessionRow({ user_id: 7 });
+  it("asks for the password when the account has one and none was sent", async () => {
+    signedIn({ user_id: 7 });
+    storedHash = connectPasswordHash;
 
-    const res = await GET(discordGet());
-    expect(res.status).toBe(307);
-    const state = new URL(res.headers.get("location") || "").searchParams.get(
-      "state",
-    )!;
-    const verified = verifyDiscordState(state, 7);
+    const res = await POST(discordPost({}));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Confirm your password first");
+  });
+
+  it("takes a password-less account's empty post", async () => {
+    signedIn({ user_id: 7 });
+    storedHash = null;
+
+    const res = await POST(discordPost());
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).url).toContain("discord.com");
+  });
+
+  it("still treats a missing action as connect on the POST", async () => {
+    signedIn({ user_id: 7 });
+    storedHash = null;
+
+    const res = await POST(discordPost({}, null));
+
+    expect(res.status).toBe(200);
+    const verified = verifyDiscordState(stateIn((await res.json()).url), 7);
     expect(verified.ok).toBe(true);
     if (verified.ok) expect(verified.payload.action).toBe("connect");
+  });
+
+  it("stops guessing the password once the attempt budget is spent", async () => {
+    signedIn({ user_id: 7 });
+    storedHash = connectPasswordHash;
+    rateLimitBucketFull = true;
+
+    const res = await POST(discordPost({ password: CONNECT_PASSWORD }));
+
+    expect(res.status).toBe(429);
+    expect(queries.some((q) => q.sql.includes("SELECT password_hash"))).toBe(
+      false,
+    );
+  });
+
+  it("requires a session on the POST", async () => {
+    const res = await POST(discordPost({ password: CONNECT_PASSWORD }));
+    expect(res.status).toBe(401);
+  });
+
+  it("has no POST for action=login", async () => {
+    const res = await POST(discordPost({}, "login"));
+    expect(res.status).toBe(400);
+    expect((await res.json()).url).toBeUndefined();
+  });
+
+  // An impersonation session reaches this route as the customer. Connecting
+  // the staff member's own Discord would leave a passwordless way into the
+  // customer's account after impersonation ends.
+  describe("through an impersonation session", () => {
+    it("refuses the GET with 403 and signs no state", async () => {
+      signedIn({ user_id: 5, impersonated_by: 1 });
+
+      const res = await GET(discordGet("connect"));
+
+      expect(res.status).toBe(403);
+      expect((await res.json()).impersonationBlocked).toBe(true);
+      expect(res.headers.get("location")).toBeNull();
+    });
+
+    it("refuses the POST with 403 before looking at any password", async () => {
+      signedIn({ user_id: 5, impersonated_by: 1 });
+      storedHash = connectPasswordHash;
+
+      const res = await POST(discordPost({ password: CONNECT_PASSWORD }));
+
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.impersonationBlocked).toBe(true);
+      expect(body.url).toBeUndefined();
+      expect(queries.some((q) => q.sql.includes("SELECT password_hash"))).toBe(
+        false,
+      );
+    });
   });
 
   // The callback refuses any action but connect and login, so a state signed

@@ -323,6 +323,28 @@ describe("GET /api/v3/auth/discord/callback", () => {
   });
 
   describe("action=connect", () => {
+    it("refuses an impersonation session before Discord is called, and writes nothing", async () => {
+      // A state issued to the real owner still has to fail once the browser
+      // holding it is staff signed in as that owner: the start route is not
+      // the only way a valid connect state reaches here.
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      sessionRow = defaultSessionRow({ user_id: 42, impersonated_by: 1 });
+      const state = signDiscordState({ action: "connect", userId: 42 });
+
+      const res = await GET(callbackRequest({ code: "somecode", state }));
+
+      const location = new URL(res.headers.get("location") || "");
+      expect(location.pathname).toBe("/profile");
+      expect(location.searchParams.get("tab")).toBe("social");
+      expect(location.searchParams.get("error")).toBe(
+        "discord_impersonation_blocked",
+      );
+      expect(location.searchParams.get("message")).toMatch(/admin/i);
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(connectionUpsertCalls).toHaveLength(0);
+      expect(discordIdUpdateCalls).toHaveLength(0);
+    });
+
     it("redirects with session_expired when there is no active session at callback time", async () => {
       const state = signDiscordState({ action: "connect" });
       const res = await GET(callbackRequest({ code: "somecode", state }));

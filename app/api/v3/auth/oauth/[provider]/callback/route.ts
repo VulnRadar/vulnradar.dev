@@ -54,7 +54,7 @@ import {
   loginMethodChangedEmail,
 } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
-import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/config/constants";
+import { DEVICE_TRUST_COOKIE_NAME, ROUTES } from "@/lib/config/constants";
 import { exchangeGithubCode, fetchGithubUser } from "@/lib/github/github-oauth";
 import { saveGithubConnection } from "@/lib/github/github-connections";
 import {
@@ -62,6 +62,8 @@ import {
   signupsPausedReason,
 } from "@/lib/admin/service-state";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
+import { safeRedirect } from "@/lib/auth/safe-redirect";
 import { LOCALE_COOKIE, resolveLocale } from "@/lib/i18n/config";
 
 // Separate cookie from the password-login AUTH_2FA_PENDING_COOKIE (see
@@ -158,6 +160,11 @@ export async function GET(
 
   const redirectUri = `${baseUrl}/api/v3/auth/oauth/${provider}/callback`;
 
+  // A path on this origin, so it can only ever be appended to baseUrl. Checked
+  // again here because the signature says this server issued the value, not
+  // that today's rule would accept it.
+  const afterSignIn = safeRedirect(verified.payload.redirect, ROUTES.DASHBOARD);
+
   try {
     const tokens = await exchangeOAuthCode(provider, code, redirectUri);
     if (!tokens) {
@@ -218,7 +225,7 @@ export async function GET(
           );
         }
         await persistGithubLogin(provider, linked.id, userInfo.login);
-        return signInOAuthUser(linked.id, ip, userAgent, baseUrl);
+        return signInOAuthUser(linked.id, ip, userAgent, baseUrl, afterSignIn);
       }
     }
 
@@ -300,7 +307,7 @@ export async function GET(
       await persistGithubLogin(provider, created.id, userInfo.login);
 
       await createSession(created.id, ip, userAgent);
-      return NextResponse.redirect(`${baseUrl}/dashboard`);
+      return NextResponse.redirect(`${baseUrl}${afterSignIn}`);
     }
 
     // ── An account exists with this email (but not this identity). ───
@@ -395,7 +402,7 @@ export async function GET(
     }
 
     await persistGithubLogin(provider, row.id, userInfo.login);
-    return signInOAuthUser(row.id, ip, userAgent, baseUrl);
+    return signInOAuthUser(row.id, ip, userAgent, baseUrl, afterSignIn);
   } catch (err) {
     console.error(`[OAuth:${provider}] callback error:`, err);
     return NextResponse.redirect(`${baseUrl}/login?error=oauth_failed`);
@@ -456,6 +463,7 @@ async function signInOAuthUser(
   ip: string,
   userAgent: string,
   baseUrl: string,
+  afterSignIn: string,
 ): Promise<NextResponse> {
   // `role` rides along for the PAUSE_LOGINS check below.
   const twoFAResult = await pool.query(
@@ -487,7 +495,7 @@ async function signInOAuthUser(
 
     if (deviceCookie && (await findTrustedDevice(userId, deviceCookie))) {
       await createSession(userId, ip, userAgent);
-      return NextResponse.redirect(`${baseUrl}/dashboard`);
+      return NextResponse.redirect(`${baseUrl}${afterSignIn}`);
     }
 
     const method = twoFA.two_factor_method || "app";
@@ -516,13 +524,19 @@ async function signInOAuthUser(
       });
     }
 
+    // The login page reads ?redirect= for the 2FA form it renders here, and
+    // runs its own safeRedirect over it.
+    const keepDestination =
+      afterSignIn === ROUTES.DASHBOARD
+        ? ""
+        : `&redirect=${encodeURIComponent(afterSignIn)}`;
     return NextResponse.redirect(
-      `${baseUrl}/login?oauth_2fa=pending&method=${method}`,
+      `${baseUrl}/login?oauth_2fa=pending&method=${method}${keepDestination}`,
     );
   }
 
   await createSession(userId, ip, userAgent);
-  return NextResponse.redirect(`${baseUrl}/dashboard`);
+  return NextResponse.redirect(`${baseUrl}${afterSignIn}`);
 }
 
 async function sendOAuthEmail2FACode(
@@ -540,7 +554,7 @@ async function sendOAuthEmail2FACode(
     "INSERT INTO email_2fa_codes (user_id, code_hash, code_salt, expires_at) VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 minute'))",
     [userId, codeHash, codeSalt, codeExpiryMinutes],
   );
-  const emailContent = email2FACodeEmail(code);
+  const emailContent = email2FACodeEmail(code, codeExpiryMinutes);
   await sendEmail({
     to: userEmail,
     ...emailContent,
@@ -574,6 +588,19 @@ async function handleOAuthLink(
   const session = await getSession();
   if (!session || session.userId !== payload.userId) {
     return NextResponse.redirect(`${profileUrl}&error=oauth_session_expired`);
+  }
+
+  // The start route refuses this too, but a state issued to the real owner is
+  // still good for its whole lifetime, and this is the point that writes.
+  const impersonating = refuseWhileImpersonating(
+    session,
+    "Linking a sign-in provider",
+  );
+  if (impersonating) {
+    const { error: message } = await impersonating.json();
+    return NextResponse.redirect(
+      `${profileUrl}&error=oauth_impersonation_blocked&message=${encodeURIComponent(message)}`,
+    );
   }
 
   const redirectUri = `${baseUrl}/api/v3/auth/oauth/${provider}/callback`;
@@ -708,7 +735,8 @@ async function handleOAuthLink(
 // (github_connections via saveGithubConnection, not the users table's
 // google_id/github_id link columns), and a different success param shape
 // the Developer tab's UI already expects. Error vocabulary
-// (denied/invalid/not_configured/session_expired/invalid_state/expired/failed)
+// (denied/invalid/not_configured/session_expired/invalid_state/expired/failed,
+// plus already_linked)
 // matches what used to be the dedicated
 // app/api/v3/account/github/connect/callback/route.ts (now removed) so
 // components/profile/tabs/developer/github-section.tsx needs no changes.
@@ -762,6 +790,12 @@ async function handleGithubConnect(
     url.searchParams.set("github_connected", "true");
     return NextResponse.redirect(url.toString());
   } catch (err) {
+    // The upsert covers user_id, so the unique violation left is
+    // github_user_id: this GitHub account already grants repo access to a
+    // different VulnRadar account, and retrying can never get past that.
+    if ((err as { code?: string }).code === "23505") {
+      return fail("already_linked");
+    }
     console.error("[GitHub Connect] OAuth callback error:", err);
     return fail("failed");
   }

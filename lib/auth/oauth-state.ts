@@ -27,7 +27,7 @@ import {
  * replay protection lib/auth/discord-state.ts already applies to its own
  * "connect" action.
  *
- * Format: `base64url(JSON({nonce,provider,ts,purpose?,userId?})).base64url(HMAC-SHA256(payload, secret))`
+ * Format: `base64url(JSON({nonce,provider,ts,purpose?,userId?,intent?,redirect?})).base64url(HMAC-SHA256(payload, secret))`
  */
 
 // Generous enough to complete a provider's consent screen (typing a
@@ -72,6 +72,13 @@ export interface OAuthStatePayload {
    * account instead of failing with "sign up first."
    */
   intent?: "login" | "signup";
+  /**
+   * Where a plain sign-in/sign-up lands afterwards, when the start route was
+   * given a `?redirect=` that passed safeRedirect. Absent otherwise. The
+   * callback runs safeRedirect over it again rather than trusting the
+   * signature, since the signature only says this server issued the value.
+   */
+  redirect?: string;
 }
 
 export function signOAuthState(
@@ -88,6 +95,7 @@ export function signOAuthState(
      * github-connect flows, which are already bound to a session via userId.
      */
     nonce?: string;
+    redirect?: string;
   },
 ): string {
   const payload: OAuthStatePayload = {
@@ -97,6 +105,7 @@ export function signOAuthState(
     purpose: options?.purpose,
     userId: options?.userId,
     intent: options?.intent,
+    redirect: options?.redirect,
   };
   return sealEnvelope(payload, getStateSecret);
 }
@@ -118,7 +127,8 @@ export function verifyOAuthState(
     payload === null ||
     typeof payload.provider !== "string" ||
     typeof payload.ts !== "number" ||
-    typeof payload.nonce !== "string"
+    typeof payload.nonce !== "string" ||
+    (payload.redirect !== undefined && typeof payload.redirect !== "string")
   ) {
     return { ok: false, reason: "malformed" };
   }

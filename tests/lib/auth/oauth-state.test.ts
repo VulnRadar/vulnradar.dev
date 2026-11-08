@@ -43,6 +43,31 @@ describe("signOAuthState / verifyOAuthState", () => {
     });
   });
 
+  it("roundtrips a redirect path, and omits the field when there is none", () => {
+    withSecret(() => {
+      const withPath = verifyOAuthState(
+        signOAuthState("google", { redirect: "/history?scan=x" }),
+        "google",
+      );
+      expect(withPath.ok && withPath.payload.redirect).toBe("/history?scan=x");
+
+      const without = verifyOAuthState(signOAuthState("google"), "google");
+      expect(without.ok && "redirect" in without.payload).toBe(false);
+    });
+  });
+
+  it("rejects a state whose redirect is not a string", () => {
+    withSecret(() => {
+      const state = signOAuthState("google", {
+        redirect: 7 as unknown as string,
+      });
+      expect(verifyOAuthState(state, "google")).toEqual({
+        ok: false,
+        reason: "malformed",
+      });
+    });
+  });
+
   it("roundtrips the login/signup intent", () => {
     withSecret(() => {
       const state = signOAuthState("discord", { intent: "login" });

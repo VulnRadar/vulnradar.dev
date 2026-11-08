@@ -26,6 +26,11 @@ import { NextResponse } from "next/server";
  * and logged. Reproducing a customer's bug never requires changing their
  * email.
  *
+ * Linking a sign-in provider belongs on the same list. A Google, GitHub or
+ * Discord identity attached to the account signs in with no password, so
+ * linking staff's own identity would outlast the impersonation session and
+ * nothing would attribute it to them afterwards.
+ *
  * tests/lib/auth/impersonation-guard.test.ts enumerates the routes that write
  * these columns and fails when one appears that neither calls this nor is
  * listed as a deliberate exception, because the failure mode is the next such
