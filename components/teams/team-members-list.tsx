@@ -425,7 +425,7 @@ export function TeamMembersList({
                       size="sm"
                       className="h-11 w-11 sm:h-8 sm:w-8 p-0 text-muted-foreground hover:text-destructive shrink-0"
                       onClick={() => onCancelInvite(inv.id)}
-                      aria-label={`Cancel the invite to ${inv.email}`}
+                      aria-label={`Withdraw the invite to ${inv.email}`}
                     >
                       <Trash2 className="h-4 w-4" aria-hidden="true" />
                     </Button>
