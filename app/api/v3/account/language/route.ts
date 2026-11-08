@@ -50,8 +50,12 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.badRequest("That is not a language this site speaks.");
   }
 
+  // Staff impersonating a customer may want to read the site in their own
+  // language, but that is a preference of this browser and not a change to the
+  // customer's account: no audit row is written for it, and their emails read
+  // this column. stopImpersonation puts the staff member's own cookie back.
   const session = await getSession();
-  if (session) {
+  if (session && !session.impersonatedBy) {
     await pool.query("UPDATE users SET locale = $1 WHERE id = $2", [
       locale,
       session.userId,

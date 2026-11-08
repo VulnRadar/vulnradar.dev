@@ -50,12 +50,18 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     };
     return { rows: [] };
   }
-  if (s.includes("SELECT s.expires_at, u.role FROM sessions")) {
+  if (s.includes("SELECT s.expires_at, u.role, u.locale FROM sessions")) {
     const row = sessionsById[params[0] as string];
     if (!row) return { rows: [] };
     const user = usersById[row.user_id as number];
     return {
-      rows: [{ expires_at: row.expires_at, role: user?.role ?? "user" }],
+      rows: [
+        {
+          expires_at: row.expires_at,
+          role: user?.role ?? "user",
+          locale: user?.locale ?? null,
+        },
+      ],
     };
   }
   if (s.startsWith("DELETE FROM sessions WHERE id")) {
@@ -314,5 +320,61 @@ describe("stopImpersonation", () => {
     const result = await stopImpersonation();
     expect(result.ok).toBe(false);
     expect(cookieState.has(AUTH_SESSION_COOKIE_NAME)).toBe(false);
+  });
+
+  /**
+   * PUT /account/language writes only the cookie during an impersonation, so
+   * the customer's saved language is safe, but the admin's browser is left in
+   * whatever language they picked to reproduce the problem.
+   */
+  describe("the locale cookie on the way back", () => {
+    it("restores the admin's saved locale", async () => {
+      usersById[1].locale = "de";
+      seedAdminSession("admin-sess");
+      await startImpersonation(1, 2);
+      cookieState.set("vr_locale", "ja"); // set while impersonating
+
+      const result = await stopImpersonation();
+
+      expect(result.ok).toBe(true);
+      expect(cookieState.get("vr_locale")).toBe("de");
+      expect(cookieOptions.get("vr_locale")).toMatchObject({
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+      });
+    });
+
+    it("deletes the cookie when the admin never saved a locale", async () => {
+      usersById[1].locale = null;
+      seedAdminSession("admin-sess");
+      await startImpersonation(1, 2);
+      cookieState.set("vr_locale", "ja");
+
+      await stopImpersonation();
+
+      expect(cookieState.has("vr_locale")).toBe(false);
+    });
+
+    it("treats a saved value the site no longer speaks as none saved", async () => {
+      usersById[1].locale = "tlh";
+      seedAdminSession("admin-sess");
+      await startImpersonation(1, 2);
+      cookieState.set("vr_locale", "ja");
+
+      await stopImpersonation();
+
+      expect(cookieState.has("vr_locale")).toBe(false);
+    });
+
+    it("leaves the cookie alone when this was not an impersonation at all", async () => {
+      seedAdminSession("admin-sess");
+      cookieState.set("vr_locale", "fr");
+
+      const result = await stopImpersonation();
+
+      expect(result.ok).toBe(false);
+      expect(cookieState.get("vr_locale")).toBe("fr");
+    });
   });
 });

@@ -28,6 +28,11 @@ import { STAFF_ROLE_HIERARCHY } from "@/lib/config/client-constants";
 import { hashSessionId } from "@/lib/auth/auth";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 import { getSetting } from "@/lib/config/runtime-config";
+import {
+  LOCALE_COOKIE,
+  LOCALE_COOKIE_MAX_AGE,
+  isLocale,
+} from "@/lib/i18n/config";
 
 const IMPERSONATION_SESSION_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 const RETURN_SESSION_COOKIE = "imp_return_session";
@@ -140,8 +145,9 @@ export async function stopImpersonation(): Promise<StopImpersonationResult> {
   const returnRes = await pool.query<{
     expires_at: string;
     role: string | null;
+    locale: string | null;
   }>(
-    `SELECT s.expires_at, u.role FROM sessions s
+    `SELECT s.expires_at, u.role, u.locale FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.id = $1`,
     [hashSessionId(returnSessionToken)],
@@ -162,6 +168,20 @@ export async function stopImpersonation(): Promise<StopImpersonationResult> {
     hashSessionId(currentSessionToken),
   ]);
   cookieStore.delete(RETURN_SESSION_COOKIE);
+
+  // A language picked while impersonating lands only in this cookie (see
+  // PUT /account/language), so it has to end with the impersonation.
+  if (isLocale(returnSession?.locale)) {
+    cookieStore.set(LOCALE_COOKIE, returnSession.locale, {
+      maxAge: LOCALE_COOKIE_MAX_AGE,
+      sameSite: "lax",
+      path: "/",
+      httpOnly: true,
+      secure: cookiesRequireHttps(),
+    });
+  } else {
+    cookieStore.delete(LOCALE_COOKIE);
+  }
 
   if (!returnStillValid) {
     cookieStore.delete(AUTH_SESSION_COOKIE_NAME);
