@@ -3,7 +3,9 @@ import type { TocItem } from "../docs-types";
 /** The sections of /docs/architecture, in page order. */
 export const toc: TocItem[] = [
   { id: "overview", label: "Overview" },
-  { id: "layout", label: "Project Layout" },
+  { id: "layout", label: "Where things live" },
+  { id: "layout-lib", label: "Inside lib/", level: 2 },
+  { id: "layout-components", label: "Inside components/", level: 2 },
   { id: "subsystems", label: "Key Subsystems" },
   { id: "config", label: "Configuration", level: 2 },
   { id: "database", label: "Database", level: 2 },

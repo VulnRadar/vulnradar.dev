@@ -11,6 +11,7 @@ export const toc: TocItem[] = [
   { id: "node-version-policy", label: "Node Version Policy" },
   { id: "quick-start", label: "Quick Start" },
   { id: "scripts", label: "Scripts" },
+  { id: "tests", label: "Tests", level: 2 },
   { id: "linting", label: "Linting" },
   { id: "typecheck", label: "Type Checking" },
   { id: "commits", label: "Commit Conventions" },
