@@ -6,7 +6,6 @@ import {
   DocsSubSection,
   DocsCallout,
   DocsTable,
-  CodeBlock,
   EndpointCard,
   EndpointTable,
   InlineCode,
@@ -252,6 +251,8 @@ export default function GithubScanningPage() {
 
       <DocsSection id="connect" title="Connecting GitHub">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
+          In the app this is <strong>Grant repo access</strong> under Profile
+          &gt; Social.{" "}
           <InlineCode>GET /api/v3/account/github/connect</InlineCode> starts an
           OAuth flow for an already-logged-in user. There is no sign-in variant:
           this always connects an account to an existing session. GitHub OAuth
@@ -286,28 +287,35 @@ export default function GithubScanningPage() {
       </DocsSection>
 
       <DocsSection id="running" title="Running a scan">
-        <p className="max-w-[68ch] text-sm text-muted-foreground">
-          On <InlineCode>/repos</InlineCode>, once connected, load your
-          repositories and pick the set you want to keep visible.{" "}
-          <InlineCode>GET /api/v3/account/github/repos</InlineCode> lists what
-          the account can access, newest-updated first, up to 300 (three pages
-          of 100). <InlineCode>PUT</InlineCode> to the same path saves your
-          curated working set, which the status endpoint returns on the next
-          load so the page has it without a second round trip.
-        </p>
-        <p className="max-w-[68ch] text-sm text-muted-foreground">
-          To scan, send the repo in <InlineCode>owner/repo</InlineCode> form.{" "}
-          <InlineCode>ref</InlineCode> is optional: leave it off to scan the
-          default branch, or pass a branch name, tag, or commit SHA (GitHub
-          resolves any of them).
-        </p>
-        <CodeBlock
-          language="bash"
-          code={`curl -X POST https://your-instance/api/v3/scan/github \\
-  -H "Content-Type: application/json" \\
-  --cookie "session=..." \\
-  -d '{"repoFullName":"octocat/hello-world","ref":"main"}'`}
-        />
+        <ol className="max-w-[68ch] list-decimal space-y-2 pl-6 text-sm text-muted-foreground">
+          <li>
+            Open <InlineCode>/repos</InlineCode>. If repo access has not been
+            granted yet, <strong>Go to Social settings</strong> takes you to{" "}
+            <strong>Grant repo access</strong>, and GitHub asks you to approve
+            the <InlineCode>repo</InlineCode> scope.
+          </li>
+          <li>
+            Back on <InlineCode>/repos</InlineCode>, use{" "}
+            <strong>Select repositories</strong> to pick the ones you want to
+            keep visible.
+          </li>
+          <li>
+            Press <strong>Scan</strong> on a repo. A scan started here always
+            reads the default branch. To scan a branch, tag or commit SHA, send{" "}
+            <InlineCode>ref</InlineCode> to{" "}
+            <a
+              href="#post-scan-github"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              POST /scan/github
+            </a>
+            .
+          </li>
+          <li>
+            The result opens when the scan finishes. Open the repo later for its
+            timeline of scans and their findings.
+          </li>
+        </ol>
       </DocsSection>
 
       <DocsSection id="budgets" title="Credits and token budgets">
@@ -413,6 +421,13 @@ export default function GithubScanningPage() {
 
       <DocsSection id="filing-issues" title="Filing findings as an issue">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
+          In the app, open a saved URL scan, choose{" "}
+          <strong>File as GitHub issue</strong> from its actions menu, enter the
+          repo and press <strong>Create issue</strong>. The menu item appears
+          once GitHub is connected. Repo scans have their own page without that
+          menu, so filing one goes through the endpoint.
+        </p>
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
           <InlineCode>POST /api/v3/scan/github-issue</InlineCode> pushes a
           scan&apos;s findings into a repo as a GitHub issue, using your
           connected token. It is owner-initiated only: you must own the scan (a
@@ -437,8 +452,9 @@ export default function GithubScanningPage() {
               &ldquo;and N more&rdquo; line.
             </li>
             <li>
-              A footer crediting the {APP_NAME} GitHub Scanner and linking the
-              full report at <InlineCode>/host/&lt;host&gt;</InlineCode>.
+              A footer crediting {APP_NAME} and, for public URL scans, a link to
+              the host report. Repo scans and private scans carry no report
+              link.
             </li>
             <li>
               Labels <InlineCode>security</InlineCode> and{" "}
@@ -449,7 +465,9 @@ export default function GithubScanningPage() {
             On success the response is the created issue&apos;s URL and number.
             If the token lacks write access or the repo has issues disabled, the
             call returns <InlineCode>502</InlineCode> with a message pointing at
-            those two causes.
+            those two causes. If GitHub does not answer in time it returns{" "}
+            <InlineCode>504</InlineCode>: the issue may have been created, so
+            check the repo before filing again.
           </p>
         </DocsSubSection>
       </DocsSection>
@@ -594,6 +612,11 @@ export default function GithubScanningPage() {
                 description:
                   "GitHub rejected the issue (no write scope or issues disabled)",
               },
+              {
+                code: 504,
+                description:
+                  "GitHub did not answer in time. The issue may have been created, so check the repo before retrying",
+              },
             ]}
           />
         </div>
@@ -610,6 +633,12 @@ export default function GithubScanningPage() {
               },
               {
                 method: "GET",
+                endpoint: "/account/github?include=selected-repos",
+                description:
+                  "The same status, plus repos: the details of your selected repos, so the page needs no second request. If they cannot be loaded the answer is still 200, with workingSetError in place of repos.",
+              },
+              {
+                method: "GET",
                 endpoint: "/account/github/connect",
                 description:
                   "Starts the OAuth connect flow and redirects to GitHub. Requires an existing session.",
@@ -623,7 +652,7 @@ export default function GithubScanningPage() {
                 method: "GET",
                 endpoint: "/account/github/repos",
                 description:
-                  "Lists repos the account can access, newest-updated first, up to 300.",
+                  "Lists repos the account can access, newest-updated first, up to 300. Answers 504 when GitHub does not respond in time.",
               },
               {
                 method: "PUT",

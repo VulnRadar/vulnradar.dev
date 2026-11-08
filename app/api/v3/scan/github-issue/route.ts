@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { ERROR_MESSAGES, APP_NAME, APP_URL } from "@/lib/config/constants";
-import { resolveScanRow } from "@/lib/history/resolve-scan";
+import {
+  resolveScanRow,
+  type ScanHistoryRow,
+} from "@/lib/history/resolve-scan";
 import { getDecryptedGithubToken } from "@/lib/github/github-connections";
-import { createRepoIssue } from "@/lib/github/github-api";
+import { createRepoIssue, isGithubTimeout } from "@/lib/github/github-api";
 import { normalizeHostForReputation } from "@/lib/scanner/host-reputation";
 import type { Vulnerability } from "@/lib/scanner/types";
 // One list, not a fourth private copy. See its definition for the nine-table
@@ -26,12 +29,26 @@ function hostOf(url: string): string {
   return normalizeHostForReputation(url) || url;
 }
 
+/**
+ * The report a reader of the issue can actually open, or null when there is
+ * none. /host/<host> only shows public scans, so a link from a private scan
+ * lands on a page that does not have it. A repo scan's url is "owner/name",
+ * which parses as a host called "owner": its link would be to somebody else's
+ * report, so it gets none even if the row was later marked public.
+ */
+function publicReportUrl(scan: ScanHistoryRow): string | null {
+  const isRepoScan = "scan_type" in scan && scan.scan_type === "github";
+  if (isRepoScan || scan.is_public !== true) return null;
+  const host = normalizeHostForReputation(scan.url);
+  return host ? `${APP_URL}/host/${encodeURIComponent(host)}` : null;
+}
+
 function buildIssueBody(
   url: string,
   findings: Vulnerability[],
   summary: Record<string, number>,
+  reportUrl: string | null,
 ): string {
-  const host = hostOf(url);
   const counts = SEVERITY_ORDER.map((s) => `${summary[s] ?? 0} ${s}`).join(
     " · ",
   );
@@ -51,14 +68,14 @@ function buildIssueBody(
   }
   if (bySeverity.length > MAX_FINDINGS_LISTED) {
     lines.push(
-      `- ...and ${bySeverity.length - MAX_FINDINGS_LISTED} more (see the full report).`,
+      `- ...and ${bySeverity.length - MAX_FINDINGS_LISTED} more${reportUrl ? " (see the full report)" : ""}.`,
     );
   }
 
   lines.push(
     "",
     "---",
-    `Filed by the ${APP_NAME} GitHub Scanner. Full report: ${APP_URL}/host/${encodeURIComponent(host)}`,
+    `Filed by the ${APP_NAME} GitHub Scanner.${reportUrl ? ` Full report: ${reportUrl}` : ""}`,
   );
   return lines.join("\n");
 }
@@ -124,6 +141,7 @@ export async function POST(request: NextRequest) {
     scan.url,
     findings,
     (scan.summary || {}) as Record<string, number>,
+    publicReportUrl(scan),
   );
 
   try {
@@ -138,6 +156,17 @@ export async function POST(request: NextRequest) {
       `[${APP_NAME}] GitHub issue creation failed:`,
       err instanceof Error ? err.message : err,
     );
+    // The POST reached GitHub before the clock ran out, so unlike every other
+    // failure here the issue may exist. "Try again" would file it twice.
+    if (isGithubTimeout(err)) {
+      return NextResponse.json(
+        {
+          error:
+            "GitHub did not answer in time. The issue may have been created, so check the repository before filing it again.",
+        },
+        { status: 504 },
+      );
+    }
     return NextResponse.json(
       {
         error:
