@@ -56,7 +56,7 @@ export default function SetupPage() {
       />
 
       {/* grid-cols-1 below sm: at 375px three tiles get ~109px each and the
-        two-word labels ("systemd / PM2", "5 min deploy") wrap, leaving the
+        two-word labels ("systemd / PM2", "Self-Hosting guide") wrap, leaving the
         row uneven. This was the only multi-column grid in the content
         surface with no responsive prefix. */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-4">
@@ -71,17 +71,17 @@ export default function SetupPage() {
             Clone + npm
           </div>
         </a>
-        <a
-          href="#docker"
+        <Link
+          href="/docs/self-hosting"
           className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors"
         >
           <div className="text-sm sm:text-lg font-semibold text-primary mb-0.5 sm:mb-1">
             Docker
           </div>
           <div className="text-[10px] sm:text-xs text-muted-foreground">
-            5 min deploy
+            Self-Hosting guide
           </div>
-        </a>
+        </Link>
         <a
           href="#deployment"
           className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors"
@@ -201,11 +201,18 @@ export default function SetupPage() {
           <h3 className="text-base font-semibold mb-4">
             Option A: Dedicated database (no Docker)
           </h3>
+          <p className="text-sm text-muted-foreground mb-3">
+            Open a psql shell as the Postgres superuser:
+          </p>
+          <CodeBlock code="psql -U postgres" language="bash" />
+          <p className="text-sm text-muted-foreground mt-3 mb-3">
+            Then create the user and database. Generate the password with{" "}
+            <InlineCode>openssl rand -hex 32</InlineCode> and use the same value
+            in <InlineCode>DATABASE_URL</InlineCode> below.
+          </p>
           <CodeBlock
-            code={`psql -U postgres
-
-CREATE USER vulnradar_user WITH PASSWORD 'strong_password_here';
-CREATE DATABASE vulnradar OWNER vulnradar_user;
+            code={`CREATE USER vulnradar WITH PASSWORD 'your-password';
+CREATE DATABASE vulnradar OWNER vulnradar;
 \\q`}
             language="sql"
           />
@@ -232,14 +239,14 @@ CREATE DATABASE vulnradar OWNER vulnradar_user;
             refuses to start until you set it in <InlineCode>.env</InlineCode>.
             The database port is not published to the host at all, so it is
             reachable only from inside the compose network, at{" "}
-            <InlineCode>postgres:5432</InlineCode>. See the{" "}
-            <a
-              href="#docker"
+            <InlineCode>postgres:5432</InlineCode>. See{" "}
+            <Link
+              href="/docs/self-hosting"
               className="text-primary underline-offset-2 hover:underline"
             >
-              Docker section
-            </a>{" "}
-            below.
+              Self-Hosting
+            </Link>
+            .
           </p>
         </Card>
 
@@ -291,8 +298,12 @@ DATABASE_SSL=false
 # Public URL
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 
+# Plain http://localhost with nothing terminating TLS. Trusted networks only:
+# remove this once a reverse proxy serves the app over HTTPS.
+ALLOW_INSECURE_HTTP=1
+
 # API key encryption (REQUIRED). Generate with:
-#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+#   openssl rand -hex 32
 API_KEY_ENCRYPTION_KEY=your-64-character-hex-key`}
             language="bash"
           />
@@ -404,6 +415,17 @@ npm start`}
             Traefik, nginx) for TLS.
           </p>
         </Card>
+
+        <DocsCallout variant="warning" title="No TLS yet?">
+          <p>
+            The app redirects every plain-HTTP request to https, and with no
+            proxy in front nothing is listening there. Keep{" "}
+            <InlineCode>ALLOW_INSECURE_HTTP=1</InlineCode> in{" "}
+            <InlineCode>.env</InlineCode>, as in the block above, until a proxy
+            terminates TLS, then remove it. Trusted networks only: traffic and
+            the session cookie are unencrypted while it is set.
+          </p>
+        </DocsCallout>
       </DocsSection>
 
       <DocsSection id="verification" title="Verification">
@@ -412,7 +434,9 @@ npm start`}
             <h3 className="text-base font-semibold mb-2">1. Access the app</h3>
             <p className="text-sm text-muted-foreground">
               Open <InlineCode>http://localhost:3000</InlineCode>. The landing
-              page renders at that address for anyone who is signed out.
+              page renders at that address for anyone who is signed out, once{" "}
+              <InlineCode>ALLOW_INSECURE_HTTP=1</InlineCode> is set or a proxy
+              is in front.
             </p>
           </div>
           <div>
@@ -452,24 +476,34 @@ npm start`}
             <p className="text-sm text-muted-foreground">
               Open{" "}
               <Link
-                href="/profile"
+                href="/profile?tab=developer&dtab=api-keys"
                 className="text-primary underline-offset-2 hover:underline"
               >
-                /profile
-              </Link>{" "}
-              → API Keys → Generate New Key. The raw key is shown once; copy it
-              immediately.
+                Profile &gt; Developer &gt; API Keys
+              </Link>
+              : type a name, keep the scan scopes ticked, click Create key. The
+              key is shown once.
             </p>
           </div>
           <div>
             <h3 className="text-base font-semibold mb-2">5. Run a scan</h3>
             <CodeBlock
-              code={`curl -X POST "${APP_URL}/api/v3/scan" \\
+              code={`# Your own instance: http://localhost:3000, or your NEXT_PUBLIC_APP_URL.
+curl -X POST "http://localhost:3000/api/v3/scan" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"url":"https://example.com"}'`}
+  -d '{"url":"https://example.com"}'
+
+# Answers with { "scanId": ..., "status": "running" }. Poll it, using that scanId:
+curl "http://localhost:3000/api/v3/scan/status/SCAN_ID" \\
+  -H "Authorization: Bearer YOUR_API_KEY"`}
               language="bash"
             />
+            <p className="text-sm text-muted-foreground mt-3">
+              Repeat the poll until the response says{" "}
+              <InlineCode>status: completed</InlineCode>. The result comes back
+              in the same response.
+            </p>
           </div>
         </Card>
 
@@ -521,6 +555,18 @@ docker compose ps postgres
 docker compose logs postgres`,
             },
             {
+              title: "Password authentication failed",
+              error: 'password authentication failed for user "vulnradar"',
+              solution: `# DATABASE_URL has to use the user and password from Database Setup.
+# Not sure what the password was? Set it again:
+psql -U postgres -c "ALTER USER vulnradar WITH PASSWORD 'your-password'"
+
+# Docker: Postgres reads POSTGRES_PASSWORD only when its volume is first
+# created, so a later change to .env does not change the database. Run this
+# with the value from .env, then: docker compose up -d app
+docker compose exec postgres psql -U vulnradar -d vulnradar -c "ALTER USER vulnradar WITH PASSWORD 'your-password'"`,
+            },
+            {
               title: "Port 3000 already in use",
               error: "EADDRINUSE: address already in use :::3000",
               solution: `# Find the process
@@ -549,8 +595,9 @@ npm run db:migrate:dry-run`,
               title: "Validation: API_KEY_ENCRYPTION_KEY invalid",
               error:
                 "API_KEY_ENCRYPTION_KEY must be a 64-character hex string (32 bytes).",
-              solution: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-# Paste the output into .env, restart.`,
+              solution: `openssl rand -hex 32
+# Paste the output into .env, then stop and re-run npm start.
+# Docker: docker compose up -d app`,
             },
           ].map((item, i) => (
             <div key={i}>
@@ -568,21 +615,20 @@ npm run db:migrate:dry-run`,
       </DocsSection>
 
       <DocsSection id="deployment" title="Deployment Options">
-        <Card className="p-6 border-border/40">
-          <h3 className="text-base font-semibold mb-4">Vercel</h3>
-          <p className="max-w-[68ch] text-sm text-muted-foreground mb-3">
-            {APP_NAME} is a standard Next.js 15 App Router app and runs on
-            Vercel out of the box. Use Neon or any other serverless Postgres for
-            the database. Configure environment variables in the Vercel
-            dashboard before deploying.
-          </p>
-          <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-            <li>Push the repo to GitHub.</li>
-            <li>Import the project in Vercel.</li>
-            <li>Add the required env vars (see above).</li>
-            <li>Deploy.</li>
-          </ol>
-        </Card>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          <strong className="text-foreground">
+            Serverless hosts are not supported.
+          </strong>{" "}
+          Background workers and detached scans never run there. Use Docker or a
+          Node host with PM2 or systemd, and follow{" "}
+          <Link
+            href="/docs/self-hosting"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Self-Hosting
+          </Link>
+          .
+        </p>
 
         <Card className="p-6 border-border/40">
           <h3 className="text-base font-semibold mb-4">Self-hosted (Linux)</h3>
@@ -596,191 +642,81 @@ npm run db:migrate:dry-run`,
               Configure <InlineCode>.env</InlineCode>.
             </li>
             <li>
-              <InlineCode>npm run build &amp;&amp; npm start</InlineCode>
+              <InlineCode>npm run build</InlineCode>
             </li>
             <li>
-              Manage the process with PM2 or systemd. Reverse-proxy (Caddy,
-              Traefik, nginx) for TLS.
+              Run it under systemd or PM2, below, with a reverse proxy (Caddy,
+              Traefik, nginx) in front for TLS.
             </li>
           </ol>
+
+          <h4 className="text-sm font-semibold mt-6 mb-2">systemd</h4>
+          <CodeBlock
+            code={`[Unit]
+Description=${APP_NAME}
+After=network.target postgresql.service
+
+[Service]
+User=vulnradar
+WorkingDirectory=/opt/${APP_SLUG}.dev
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target`}
+            language="ini"
+            filename="/etc/systemd/system/vulnradar.service"
+          />
+          <p className="max-w-[68ch] text-sm text-muted-foreground mt-3 mb-2">
+            Set <InlineCode>User</InlineCode> and{" "}
+            <InlineCode>WorkingDirectory</InlineCode> for your server, and the{" "}
+            <InlineCode>ExecStart</InlineCode> path to what{" "}
+            <InlineCode>which npm</InlineCode> prints. The app reads{" "}
+            <InlineCode>.env</InlineCode> from the working directory. Then:
+          </p>
+          <CodeBlock
+            code={`sudo systemctl daemon-reload
+sudo systemctl enable --now vulnradar`}
+            language="bash"
+          />
+
+          <h4 className="text-sm font-semibold mt-6 mb-2">PM2</h4>
+          <CodeBlock
+            code="pm2 start npm --name vulnradar -- start"
+            language="bash"
+          />
         </Card>
 
         <Card className="p-6 border-border/40">
           <h3 className="text-base font-semibold mb-4">Docker Compose</h3>
           <p className="text-sm text-muted-foreground">
-            See the Docker section below.
+            Follow{" "}
+            <Link
+              href="/docs/self-hosting"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Self-Hosting
+            </Link>
+            .
           </p>
         </Card>
       </DocsSection>
 
+      {/* Only the heading and id are left: the id keeps old links landing here
+          until this page redirects to Self-Hosting. */}
       <DocsSection id="docker" title="Docker Deployment">
-        <p className="text-sm text-muted-foreground">
-          Deploy {APP_NAME} with the included{" "}
-          <InlineCode>docker-compose.yml</InlineCode>. Two services, Postgres
-          and the app, each with its own healthcheck; the app waits for Postgres
-          to report healthy before it starts.
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Deploying with Docker? Follow{" "}
+          <Link
+            href="/docs/self-hosting"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Self-Hosting
+          </Link>
+          , which is the supported path.
         </p>
-
-        <DocsCallout variant="success" title="Prerequisites">
-          <p>Docker 24+ and Docker Compose v2.</p>
-          <CodeBlock
-            code={`docker --version
-docker compose version`}
-            language="bash"
-            className="mt-2"
-          />
-        </DocsCallout>
-
-        <div className="space-y-3">
-          <Card className="p-6 border-border/40">
-            <h3 className="text-base font-semibold mb-4">
-              Step 1: Project directory
-            </h3>
-            <CodeBlock
-              code={`mkdir -p ~/vulnradar
-cd ~/vulnradar`}
-              language="bash"
-            />
-          </Card>
-
-          <Card className="p-6 border-border/40">
-            <h3 className="text-base font-semibold mb-4">
-              Step 2: Get <InlineCode>docker-compose.yml</InlineCode>
-            </h3>
-            <p className="text-sm text-muted-foreground mb-3">
-              Either pull the prebuilt image from GHCR, taking both files from
-              the release you want to run:
-            </p>
-            <CodeBlock
-              code={`curl -O https://raw.githubusercontent.com/${APP_REPO}/v${APP_VERSION}/docker-compose.yml\ncurl -O https://raw.githubusercontent.com/${APP_REPO}/v${APP_VERSION}/.env.example`}
-              language="bash"
-            />
-            <p className="text-xs text-muted-foreground mt-2">
-              From a release tag, not from <InlineCode>main</InlineCode>. The
-              compose file pins the image to its own version, and on{" "}
-              <InlineCode>main</InlineCode> that version can be one whose image
-              has not been published yet, which fails on{" "}
-              <InlineCode>manifest unknown</InlineCode> before anything starts.
-            </p>
-            <p className="text-sm text-muted-foreground mt-3">
-              Or build from source locally:
-            </p>
-            <CodeBlock
-              code={`git clone https://github.com/${APP_REPO}.git\ncd ${APP_SLUG}.dev\ncp .env.example .env`}
-              language="bash"
-            />
-          </Card>
-
-          <Card className="p-6 border-border/40">
-            <h3 className="text-base font-semibold mb-4">
-              Step 3: Configure .env
-            </h3>
-            <CodeBlock
-              code={`# Required
-NEXT_PUBLIC_APP_URL=https://yourdomain.com
-API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
-
-# docker-compose.yml provisions Postgres from these and builds the app's
-# DATABASE_URL from them itself, so a DATABASE_URL here is not used.
-# Use hex for the password (openssl rand -hex 32): it goes into that URL
-# as-is. For a managed database, see /docs/self-hosting#managed-postgres.
-POSTGRES_DB=vulnradar
-POSTGRES_USER=vulnradar
-POSTGRES_PASSWORD=your-strong-password
-
-# Host port the app is published on, and the interface it binds to.
-# HOST_BIND defaults to 127.0.0.1 because the compose file assumes a
-# reverse proxy on the same host; set 0.0.0.0 to publish on every
-# interface. Postgres is not published to the host at all.
-APP_PORT=3000
-# HOST_BIND=0.0.0.0`}
-              language="bash"
-            />
-          </Card>
-
-          <Card className="p-6 border-border/40">
-            <h3 className="text-base font-semibold mb-4">Step 4: Start</h3>
-            <CodeBlock
-              code={`# Prebuilt image (the first option in Step 2)
-docker compose up -d
-
-# Built from a checkout (the second option in Step 2)
-docker compose up -d --build`}
-              language="bash"
-            />
-            <p className="text-xs text-muted-foreground mt-2">
-              The compose file names the published image as well as a build
-              context. Without <InlineCode>--build</InlineCode>, compose pulls
-              that image instead of building your checkout, and your edits to{" "}
-              <InlineCode>config-values.ts</InlineCode> are not in it.
-            </p>
-            <CodeBlock
-              code="docker compose ps"
-              language="bash"
-              className="mt-2"
-            />
-          </Card>
-
-          <Card className="p-6 border-border/40">
-            <h3 className="text-base font-semibold mb-4">Step 5: Verify</h3>
-            <CodeBlock code="docker compose logs -f app" language="bash" />
-            <p className="text-xs text-muted-foreground mt-2">
-              Look for the startup banner and{" "}
-              <InlineCode>Database schema verified successfully</InlineCode>.
-            </p>
-          </Card>
-        </div>
-
-        <DocsCallout variant="error" title="HTTPS required">
-          <p>
-            Put the app behind a reverse proxy (Caddy, Traefik, nginx) for TLS
-            termination. Cookie flags (<InlineCode>secure</InlineCode>) and CSP
-            headers assume HTTPS in production. On a trusted network with no TLS
-            at all, set <InlineCode>ALLOW_INSECURE_HTTP=1</InlineCode> (see{" "}
-            <InlineCode>.env.example</InlineCode>); traffic and the session
-            cookie are then unencrypted.
-          </p>
-        </DocsCallout>
-
-        <Card className="p-6 border-border/40">
-          <h3 className="text-base font-semibold mb-4">Common operations</h3>
-          <div className="space-y-4">
-            {[
-              {
-                title: "Tail logs",
-                cmd: "docker compose logs -f app",
-              },
-              {
-                title: "Stop (keep data)",
-                cmd: "docker compose down",
-              },
-              {
-                title: "Full reset (drop volumes)",
-                cmd: "docker compose down -v",
-              },
-              {
-                // The image is pinned to a version tag, so pull alone fetches
-                // the same image again. Updating means moving the pin.
-                title:
-                  "Update (after changing the image tag in docker-compose.yml to the new release)",
-                cmd: "docker compose pull && docker compose up -d",
-              },
-              {
-                title: "Restart only the app",
-                cmd: "docker compose restart app",
-              },
-              {
-                title: "Open a psql shell",
-                cmd: "docker compose exec postgres psql -U vulnradar -d vulnradar",
-              },
-            ].map((item, i) => (
-              <div key={i}>
-                <h4 className="font-semibold text-sm mb-2">{item.title}</h4>
-                <CodeBlock code={item.cmd} language="bash" />
-              </div>
-            ))}
-          </div>
-        </Card>
       </DocsSection>
 
       <DocsSection id="migration" title="Schema Migration">
@@ -875,7 +811,14 @@ npm run db:create`}
             </li>
             <li>
               <InlineCode>behind</InlineCode>: a newer release exists;{" "}
-              <InlineCode>release_url</InlineCode> points to it
+              <InlineCode>release_url</InlineCode> points to it. To move to it,
+              follow{" "}
+              <Link
+                href="/docs/self-hosting#updates"
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                Self-Hosting, Upgrading
+              </Link>
             </li>
             <li>
               <InlineCode>ahead</InlineCode>: running a version newer than the
