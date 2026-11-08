@@ -19,7 +19,7 @@ import {
   getCategorySeo,
 } from "@/lib/seo/checks-content";
 import type { Category } from "@/lib/scanner/types";
-import { APP_NAME } from "@/lib/config/constants";
+import { APP_NAME, ROUTES } from "@/lib/config/constants";
 import { focus } from "@/lib/ui/animations";
 import { cn } from "@/lib/ui/utils";
 
@@ -216,6 +216,7 @@ export default async function CategoryPage({
         <ScanCta
           heading="Run these against a domain you own"
           body={`Active probing is opt-in and only runs against a domain you have verified. Verify yours on the Attack surface page, then pick which of these ${checks.length} probes to switch on in the scan form.`}
+          action={{ href: ROUTES.ATTACK_SURFACE, label: "Verify a domain" }}
         />
       ) : (
         <ScanCta

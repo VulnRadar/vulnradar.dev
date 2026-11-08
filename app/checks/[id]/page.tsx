@@ -473,6 +473,7 @@ export default async function CheckPage({
         <ScanCta
           heading={`Test a domain you own for ${check.title.toLowerCase()}`}
           body="Active probing is opt-in and only runs against a domain you have verified. Verify yours on the Attack surface page, then switch this probe on in the scan form."
+          action={{ href: ROUTES.ATTACK_SURFACE, label: "Verify a domain" }}
         />
       ) : (
         <ScanCta

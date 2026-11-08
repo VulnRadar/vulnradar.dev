@@ -103,6 +103,13 @@ describe("active-probes pages", () => {
     );
   });
 
+  it("the call to action links straight there", async () => {
+    const check = textOf(await renderCheck(ACTIVE_IDS[0]!));
+    const category = textOf(await renderCategory("active-probes"));
+    expect(check).toMatch(/Verify a domain/);
+    expect(category).toMatch(/Verify a domain/);
+  });
+
   it("the category page's call to action says the same", async () => {
     const text = textOf(await renderCategory("active-probes"));
     expect(text).toMatch(/opt-in/);

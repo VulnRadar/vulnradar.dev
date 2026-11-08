@@ -4,6 +4,7 @@ import { focus } from "@/lib/ui/animations";
 import { LandingNav } from "@/components/landing/landing-nav";
 import { Footer } from "@/components/scanner/footer";
 import { ScanCtaForm } from "@/components/seo/scan-cta-form";
+import { Button } from "@/components/ui/button";
 import {
   APP_REPO,
   ROUTES,
@@ -233,7 +234,16 @@ export function ContributeCheckCta({ className }: { className?: string }) {
  * renderable. The demo and docs links stay as text beneath it, because with a
  * real primary action present a second button competing with it is noise.
  */
-export function ScanCta({ heading, body }: { heading: string; body: string }) {
+export function ScanCta({
+  heading,
+  body,
+  action,
+}: {
+  heading: string;
+  body: string;
+  /** In place of the paste-a-URL form, for a check that form cannot run. */
+  action?: { href: string; label: string };
+}) {
   return (
     <section className="border-t border-border/50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
@@ -250,7 +260,13 @@ export function ScanCta({ heading, body }: { heading: string; body: string }) {
           <p className="text-muted-foreground leading-relaxed mb-6 max-w-2xl">
             {body}
           </p>
-          <ScanCtaForm />
+          {action ? (
+            <Button asChild size="lg" shape="pill" className="h-11 px-6">
+              <Link href={action.href}>{action.label}</Link>
+            </Button>
+          ) : (
+            <ScanCtaForm />
+          )}
           <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
             <Link
               href={ROUTES.DEMO}
