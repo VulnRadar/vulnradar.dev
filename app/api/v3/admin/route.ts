@@ -17,6 +17,8 @@ import { issueResetLinkToken } from "@/lib/auth/password-reset-token";
 import { verifyReauthPassword } from "@/lib/auth/reauth";
 import { analyzePassword } from "@/lib/auth/password-strength";
 import { startImpersonation } from "@/lib/auth/impersonation";
+import { revokeStoredGithubToken } from "@/lib/github/github-connections";
+import { revokeStoredDiscordTokens } from "@/lib/discord/revoke";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
   syncPlanForRoleChange,
@@ -2415,6 +2417,15 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
           { status: 503, headers: { "Retry-After": "60" } },
         );
       }
+
+      // Before the purge, because the rows hold the only copy of the tokens,
+      // and past the refusal above, because a revoked connection cannot be
+      // given back. Neither call can throw. The self-service delete route
+      // does the same.
+      await Promise.all([
+        revokeStoredGithubToken(userId),
+        revokeStoredDiscordTokens(userId),
+      ]);
 
       // Run all deletes inside a single transaction so a mid-way failure
       // doesn't leave the user in a half-deleted state (and to avoid 33+

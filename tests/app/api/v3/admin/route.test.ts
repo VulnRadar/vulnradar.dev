@@ -210,6 +210,18 @@ vi.mock("@/lib/billing/staff-plan", () => ({
     mockSyncPlanForRoleChange(...args),
 }));
 
+const mockRevokeGithub = vi.fn();
+vi.mock("@/lib/github/github-connections", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/github/github-connections")>()),
+  revokeStoredGithubToken: (...args: unknown[]) => mockRevokeGithub(...args),
+}));
+
+const mockRevokeDiscord = vi.fn();
+vi.mock("@/lib/discord/revoke", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/discord/revoke")>()),
+  revokeStoredDiscordTokens: (...args: unknown[]) => mockRevokeDiscord(...args),
+}));
+
 const routeModule = await import("@/app/api/v3/admin/route");
 const { GET, PATCH } = routeModule;
 const { POST: resetPasswordPOST } =
@@ -1516,13 +1528,35 @@ describe("PATCH /api/v3/admin — delete_account transaction", () => {
     );
   }, 20000);
 
+  it("revokes the stored provider tokens before the rows holding them are purged", async () => {
+    mockRevokeGithub.mockClear();
+    mockRevokeDiscord.mockClear();
+    stripeForDelete(vi.fn().mockResolvedValue({}));
+    queueDeleteWithSubscription();
+
+    const res = await deleteTarget();
+
+    expect(res.status).toBe(200);
+    expect(mockRevokeGithub).toHaveBeenCalledWith(5);
+    expect(mockRevokeDiscord).toHaveBeenCalledWith(5);
+    for (const revoke of [mockRevokeGithub, mockRevokeDiscord]) {
+      expect(revoke.mock.invocationCallOrder[0]).toBeLessThan(
+        mockClientQuery.mock.invocationCallOrder[0],
+      );
+    }
+  }, 20000);
+
   it("keeps the account and answers a retryable 503 when Stripe will not cancel", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockRevokeGithub.mockClear();
+    mockRevokeDiscord.mockClear();
     stripeForDelete(vi.fn().mockRejectedValue(new Error("stripe is down")));
     queueDeleteWithSubscription();
 
     const res = await deleteTarget();
 
+    expect(mockRevokeGithub).not.toHaveBeenCalled();
+    expect(mockRevokeDiscord).not.toHaveBeenCalled();
     expect(res.status).toBe(503);
     expect(res.headers.get("Retry-After")).toBe("60");
     expect((await res.json()).error).toMatch(/not deleted/);
