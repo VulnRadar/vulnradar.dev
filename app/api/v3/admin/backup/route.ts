@@ -19,8 +19,9 @@ interface BackupFileInfo {
   name: string;
   sizeBytes: number;
   modifiedAt: string;
-  /** True when a `.json` key sidecar sits beside this dump: it is encrypted
-   *  and cannot be restored without that file. */
+  /** True when a `.json` key sidecar sits beside this dump: it is encrypted.
+   *  A dump from this version carries its IV and tag in its own header and
+   *  restores with the key alone; an older one still needs that file. */
   encrypted?: boolean;
 }
 
@@ -38,8 +39,8 @@ function resolveBackupDir(): string {
  *  prefix so unrelated files (or a stray .gitkeep) don't show up.
  *
  *  One backup is TWO files when encryption is on: the dump itself, and a
- *  ~160 byte `.json` sidecar carrying the AES-256-GCM iv and authTag that
- *  the dump cannot be decrypted without. This listing used to return both,
+ *  ~160 byte `.json` sidecar recording its AES-256-GCM parameters. This
+ *  listing used to return both,
  *  so one backup rendered as two rows and the panel's count read double:
  *  two backups showed as "4 files", which looks exactly like the job having
  *  run twice. The sidecar is folded into its own backup as the `encrypted`
