@@ -1,16 +1,7 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import {
-  Loader2,
-  RefreshCw,
-  X,
-  UsersRound,
-  Eye,
-  Pencil,
-  Save,
-  Trash2,
-} from "lucide-react";
+import React, { useId, useMemo, useState } from "react";
+import { RefreshCw, UsersRound, Eye, Pencil, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -42,10 +33,8 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ModalShell } from "@/components/ui/modal-shell";
 import { useAdminPermissions } from "@/components/admin/hooks";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";
-import { useConfirm } from "@/components/shared/use-confirm";
-
-const focusRing =
-  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
+import { EditDialog } from "@/components/shared/edit-dialog";
+import { Label } from "@/components/ui/label";
 
 interface Team {
   id: number;
@@ -67,6 +56,63 @@ interface TeamMember {
   role: string;
 }
 
+type RenameResult = { ok: boolean; error?: string };
+
+/** What the rename dialog lets through: a real name that is not the old one. */
+export function renameDraftState(
+  current: string,
+  draft: string,
+): { dirty: boolean; canSave: boolean } {
+  const next = draft.trim();
+  return { dirty: draft !== current, canSave: next !== "" && next !== current };
+}
+
+/**
+ * One rename dialog for both layouts. The table row and the phone card each
+ * had their own inline editor, and they disagreed: the desktop one asked
+ * "Rename this team?" and the phone one renamed on the first tap. Both also
+ * closed the editor before the request came back, so a refused rename threw
+ * the typed name away and reported the failure in a toast.
+ */
+export function RenameTeamDialog({
+  team,
+  onRename,
+  onClose,
+}: {
+  team: { id: number; name: string };
+  onRename: (teamId: number, newName: string) => Promise<RenameResult>;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(team.name);
+  const fieldId = useId();
+  const { dirty, canSave } = renameDraftState(team.name, name);
+  return (
+    <EditDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title="Rename team"
+      description={`Everyone in ${team.name} sees the new name straight away. They are not told it changed.`}
+      size="sm"
+      saveLabel="Rename team"
+      dirty={dirty}
+      canSave={canSave}
+      onSave={() => onRename(team.id, name.trim())}
+    >
+      <div className="flex flex-col gap-2">
+        <Label htmlFor={fieldId}>Team name</Label>
+        <Input
+          id={fieldId}
+          name="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          autoComplete="off"
+          autoFocus
+        />
+      </div>
+    </EditDialog>
+  );
+}
+
 interface TeamsListProps {
   teams: Team[];
   teamsLoading: boolean;
@@ -86,7 +132,8 @@ interface TeamsListProps {
   teamsPage: number;
   teamsPageSize: number;
   setTeamsPageSize: (size: number) => void;
-  handleTeamRename: (teamId: number, newName: string) => void;
+  /** Resolves with the outcome, so a refused rename keeps its dialog open. */
+  handleTeamRename: (teamId: number, newName: string) => Promise<RenameResult>;
   handleTeamDelete: (teamId: number) => void;
   fetchTeamMembers: (teamId: number) => void;
   teamMembers: { team: Team; members: TeamMember[] } | null;
@@ -119,13 +166,10 @@ export function TeamsList({
   callerRole,
 }: TeamsListProps) {
   const perms = useAdminPermissions(callerRole);
-  const [editingTeam, setEditingTeam] = useState<{
+  const [renamingTeam, setRenamingTeam] = useState<{
     id: number;
     name: string;
   } | null>(null);
-  // Aliased: this component already has its own `confirmDialog` state for
-  // the delete-team dialog.
-  const { confirm, confirmDialog: renameConfirmDialog } = useConfirm();
   const [confirmDialog, setConfirmDialog] = useState<{
     title: string;
     description: string;
@@ -359,90 +403,26 @@ export function TeamsList({
                             className="border-border/40 group"
                           >
                             <TableCell className="px-5 py-4">
-                              {editingTeam?.id === team.id ? (
-                                <div className="flex items-center gap-2">
-                                  <Input
-                                    value={editingTeam.name}
-                                    onChange={(e) =>
-                                      setEditingTeam({
-                                        ...editingTeam,
-                                        name: e.target.value,
-                                      })
-                                    }
-                                    aria-label="Team name"
-                                    className={cn(
-                                      "h-8 text-sm w-40 bg-background/50",
-                                      focusRing,
-                                    )}
-                                    autoFocus
-                                  />
-                                  <Button
-                                    size="sm"
-                                    className="h-8 px-2"
-                                    onClick={() =>
-                                      confirm({
-                                        title: "Rename this team?",
-                                        description: `"${team.name}" becomes "${editingTeam.name}" for everyone in it. They are not told it changed.`,
-                                        confirmLabel: "Rename",
-                                        onConfirm: () => {
-                                          handleTeamRename(
-                                            team.id,
-                                            editingTeam.name,
-                                          );
-                                          setEditingTeam(null);
-                                        },
-                                      })
-                                    }
-                                    disabled={
-                                      actionLoading === `team-rename-${team.id}`
-                                    }
-                                    aria-label="Save team name"
-                                  >
-                                    {actionLoading ===
-                                    `team-rename-${team.id}` ? (
-                                      <Loader2
-                                        className="h-3 w-3 animate-spin"
-                                        aria-hidden="true"
-                                      />
-                                    ) : (
-                                      <Save
-                                        className="h-3 w-3"
-                                        aria-hidden="true"
-                                      />
-                                    )}
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-8 px-2"
-                                    onClick={() => setEditingTeam(null)}
-                                    aria-label="Cancel rename"
-                                  >
-                                    <X className="h-3 w-3" aria-hidden="true" />
-                                  </Button>
-                                </div>
-                              ) : (
-                                /* The row had no colour anywhere: team, owner
+                              {/* The row had no colour anywhere: team, owner
                                    and date were three greys, so nothing in it
                                    read as the subject. The team gets a marker
-                                   and the metadata drops a step. */
-                                <div className="flex items-center gap-3 min-w-0">
-                                  <div
-                                    aria-hidden="true"
-                                    className="h-8 w-8 shrink-0 rounded-md bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold uppercase"
-                                  >
-                                    {team.name.slice(0, 2)}
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-medium text-foreground truncate">
-                                      {team.name}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground font-mono truncate">
-                                      {team.slug}
-                                    </p>
-                                  </div>
+                                   and the metadata drops a step. */}
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div
+                                  aria-hidden="true"
+                                  className="h-8 w-8 shrink-0 rounded-md bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold uppercase"
+                                >
+                                  {team.name.slice(0, 2)}
                                 </div>
-                              )}
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-foreground truncate">
+                                    {team.name}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground font-mono truncate">
+                                    {team.slug}
+                                  </p>
+                                </div>
+                              </div>
                             </TableCell>
                             <TableCell className="px-4 py-4">
                               <div className="flex items-center gap-3">
@@ -498,7 +478,7 @@ export function TeamsList({
                                   size="sm"
                                   className="h-8 w-8 p-0 text-muted-foreground group-hover:text-foreground group-focus-within:text-foreground transition-colors"
                                   onClick={() =>
-                                    setEditingTeam({
+                                    setRenamingTeam({
                                       id: team.id,
                                       name: team.name,
                                     })
@@ -559,81 +539,25 @@ export function TeamsList({
                       className="px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/50 transition-colors"
                     >
                       <div className="flex items-start justify-between gap-3 mb-3">
-                        {/* The rename editor has to exist in this branch too.
-                            It used to live only in the hidden md:block table,
-                            so tapping Rename on a phone set editingTeam and
-                            then rendered nothing: no way to rename a team. */}
-                        {editingTeam?.id === team.id ? (
-                          <div className="flex items-center gap-2 min-w-0 flex-1">
-                            <Input
-                              value={editingTeam.name}
-                              onChange={(e) =>
-                                setEditingTeam({
-                                  ...editingTeam,
-                                  name: e.target.value,
-                                })
-                              }
-                              aria-label="Team name"
-                              className={cn(
-                                "h-8 text-sm min-w-0 flex-1 bg-background/50",
-                                focusRing,
-                              )}
-                              autoFocus
-                            />
-                            <Button
-                              size="sm"
-                              className="h-8 px-2 shrink-0"
-                              onClick={() => {
-                                handleTeamRename(team.id, editingTeam.name);
-                                setEditingTeam(null);
-                              }}
-                              disabled={
-                                actionLoading === `team-rename-${team.id}`
-                              }
-                              aria-label="Save team name"
-                            >
-                              {actionLoading === `team-rename-${team.id}` ? (
-                                <Loader2
-                                  className="h-3 w-3 animate-spin"
-                                  aria-hidden="true"
-                                />
-                              ) : (
-                                <Save className="h-3 w-3" aria-hidden="true" />
-                              )}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 px-2 shrink-0"
-                              onClick={() => setEditingTeam(null)}
-                              aria-label="Cancel rename"
-                            >
-                              <X className="h-3 w-3" aria-hidden="true" />
-                            </Button>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            aria-hidden="true"
+                            className="h-8 w-8 shrink-0 rounded-md bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold uppercase"
+                          >
+                            {team.name.slice(0, 2)}
                           </div>
-                        ) : (
-                          <>
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div
-                                aria-hidden="true"
-                                className="h-8 w-8 shrink-0 rounded-md bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold uppercase"
-                              >
-                                {team.name.slice(0, 2)}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-foreground truncate">
-                                  {team.name}
-                                </p>
-                                <p className="text-xs text-muted-foreground font-mono truncate">
-                                  {team.slug}
-                                </p>
-                              </div>
-                            </div>
-                            <Badge className="text-xs font-medium shrink-0 tabular-nums bg-primary/10 text-primary border-primary/20">
-                              {pluralize(team.member_count, "member")}
-                            </Badge>
-                          </>
-                        )}
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">
+                              {team.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground font-mono truncate">
+                              {team.slug}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge className="text-xs font-medium shrink-0 tabular-nums bg-primary/10 text-primary border-primary/20">
+                          {pluralize(team.member_count, "member")}
+                        </Badge>
                       </div>
                       <div className="flex items-center gap-3 mb-3">
                         <UserAvatar
@@ -676,7 +600,7 @@ export function TeamsList({
                           size="sm"
                           className="h-11 w-11 sm:h-8 sm:w-8 p-0 border-border/40"
                           onClick={() =>
-                            setEditingTeam({ id: team.id, name: team.name })
+                            setRenamingTeam({ id: team.id, name: team.name })
                           }
                           aria-label={`Rename ${team.name}`}
                         >
@@ -741,7 +665,13 @@ export function TeamsList({
           onConfirm={confirmDialog?.onConfirm || (() => {})}
           onCancel={() => setConfirmDialog(null)}
         />
-        {renameConfirmDialog}
+        {renamingTeam && (
+          <RenameTeamDialog
+            team={renamingTeam}
+            onRename={handleTeamRename}
+            onClose={() => setRenamingTeam(null)}
+          />
+        )}
       </div>
     </>
   );

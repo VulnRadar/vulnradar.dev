@@ -845,7 +845,13 @@ function AdminContent() {
     setTeamMembersLoading(false);
   }
 
-  async function handleTeamRename(teamId: number, newName: string) {
+  // A refusal is returned rather than toasted: the rename dialog shows it in
+  // place and stays open with the name as typed. A toast sat under the
+  // dialog's scrim, and the inline editor this replaced had already closed.
+  async function handleTeamRename(
+    teamId: number,
+    newName: string,
+  ): Promise<{ ok: boolean; error?: string }> {
     setActionLoading(`team-rename-${teamId}`);
     try {
       const res = await fetch(`${API.ADMIN}/teams`, {
@@ -856,14 +862,15 @@ function AdminContent() {
       if (res.ok) {
         showToast("Team renamed successfully", "success");
         fetchTeams(teamsPage);
-      } else {
-        const data: TeamRenameResponse = await res.json();
-        showToast(data.error || "Failed to rename team", "error");
+        return { ok: true };
       }
+      const data: TeamRenameResponse = await res.json();
+      return { ok: false, error: data.error || "Failed to rename team" };
     } catch {
-      showToast("Failed to rename team", "error");
+      return { ok: false, error: "Failed to rename team" };
+    } finally {
+      setActionLoading(null);
     }
-    setActionLoading(null);
   }
 
   async function handleTeamDelete(teamId: number) {
