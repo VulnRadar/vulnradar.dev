@@ -195,8 +195,9 @@ describe("PUT /api/v3/account/ai-config", () => {
   });
 
   it("keeps the existing encrypted key when no new key is supplied", async () => {
+    const stored = encryptApiKey("sk-old-key");
     mockQuery.mockResolvedValueOnce({
-      rows: [{ api_key_encrypted: encryptApiKey("sk-old-key") }],
+      rows: [{ provider: "anthropic", api_key_encrypted: stored }],
     });
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const res = await PUT(
@@ -206,6 +207,57 @@ describe("PUT /api/v3/account/ai-config", () => {
       }),
     );
     expect(res.status).toBe(200);
+    const upsertParams = mockQuery.mock.calls[1][1] as unknown[];
+    expect(upsertParams[3]).toBe(stored);
+  });
+
+  // The stored key was issued by the provider it was saved under. A keyless
+  // save that switches provider used to keep it, so the next scan sent that
+  // key to the new provider's endpoint.
+  it("does not carry a stored key over to a different provider", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { provider: "openai", api_key_encrypted: encryptApiKey("sk-openai") },
+      ],
+    });
+    const res = await PUT(
+      putRequest({
+        provider: "anthropic",
+        modelId: "claude-haiku-4-5-20251001",
+      }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/API key is required/);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a key of only spaces on a provider switch as no key", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { provider: "openai", api_key_encrypted: encryptApiKey("sk-openai") },
+      ],
+    });
+    const res = await PUT(
+      putRequest({
+        provider: "anthropic",
+        modelId: "claude-haiku-4-5-20251001",
+        apiKey: "   ",
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not keep a key left on a row that has no provider", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ provider: null, api_key_encrypted: encryptApiKey("sk-stray") }],
+    });
+    const res = await PUT(
+      putRequest({ provider: "openai", modelId: "gpt-4o" }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a provider not in the catalog", async () => {

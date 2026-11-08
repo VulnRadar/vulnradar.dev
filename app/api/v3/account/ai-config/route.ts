@@ -160,14 +160,19 @@ export async function PUT(req: Request) {
   const resolvedBaseUrl = catalogEntry.baseUrl;
 
   try {
-    // Look up the current encrypted key so we can keep it if no new key was provided
+    // A save without a key keeps the stored one, but only for the provider it
+    // was saved under. Carried across a provider switch, the next scan would
+    // send one company's key to another company's endpoint.
     const existing = await pool.query(
-      `SELECT api_key_encrypted FROM user_ai_configs WHERE user_id = $1`,
+      `SELECT provider, api_key_encrypted FROM user_ai_configs WHERE user_id = $1`,
       [session.userId],
     );
+    const stored = existing.rows[0];
 
     let encryptedKey: string | null =
-      existing.rows[0]?.api_key_encrypted ?? null;
+      stored && stored.provider === provider
+        ? (stored.api_key_encrypted ?? null)
+        : null;
 
     if (apiKey && apiKey.trim().length > 0) {
       encryptedKey = encryptApiKey(apiKey.trim());

@@ -457,6 +457,14 @@ curl -sS -X POST "${APP_URL}/api/v3/history/SCAN_PUBLIC_ID/summary?regenerate=tr
           </li>
           <li>
             <strong className="text-foreground">
+              A new provider needs its own key.
+            </strong>{" "}
+            A save without a key keeps the stored one only when the provider is
+            unchanged. Switching provider without a key is refused with a 400,
+            so one provider&rsquo;s key is never sent to another.
+          </li>
+          <li>
+            <strong className="text-foreground">
               Own key means no metering.
             </strong>{" "}
             When you use your own provider, every AI feature bypasses {APP_NAME}
