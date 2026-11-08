@@ -600,6 +600,15 @@ export default async function PrivacyPage() {
               : remembers the last app version you saw so the &quot;what&apos;s
               new&quot; notification does not reappear.
             </>,
+            <>
+              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                post_verify_redirect
+              </code>
+              : holds the page on this site you were heading to when you signed
+              up, so verifying your email can take you back there. It is only
+              sent to the email verification page and lasts as long as the
+              verification link.
+            </>,
             "A per-notification dismissal cookie so a banner or announcement you closed does not reappear.",
           ]}
         />
