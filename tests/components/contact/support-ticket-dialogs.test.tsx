@@ -180,6 +180,17 @@ describe("NewTicketDialog", () => {
     expect(subject.slice(message)).not.toContain("autoFocus");
   });
 
+  it("lets a captcha wider than the dialog scroll from its left edge", () => {
+    // A flex row with plain justify-center splits the overflow across both
+    // sides, and the half past the left edge cannot be scrolled to.
+    const wrapper = html().match(
+      /<div class="([^"]*)"><div data-testid="turnstile"/,
+    );
+    expect(wrapper?.[1]).toContain("overflow-x-auto");
+    expect(wrapper?.[1]).toContain("justify-center-safe");
+    expect(wrapper?.[1].split(/\s+/)).not.toContain("justify-center");
+  });
+
   it("does not use the page-level error banner for a create failure", () => {
     const dialog = SOURCE.slice(
       SOURCE.indexOf("export function NewTicketDialog"),

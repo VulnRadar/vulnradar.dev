@@ -866,8 +866,10 @@ export function NewTicketDialog({
           />
         </div>
         {/* The widget is 300px wide and the body is narrower than that on the
-            smallest phones; scrolling beats cutting it off. */}
-        <div className="flex max-w-full justify-center overflow-x-auto sm:justify-start">
+            smallest phones; scrolling beats cutting it off. Plain
+            justify-center would push half the overflow past the left edge,
+            where no scroll reaches it, so the centring is the safe kind. */}
+        <div className="flex max-w-full justify-center-safe overflow-x-auto sm:justify-start">
           <TurnstileWidget
             onVerify={(token) => patch({ turnstileToken: token })}
             onExpire={() => patch({ turnstileToken: null })}
