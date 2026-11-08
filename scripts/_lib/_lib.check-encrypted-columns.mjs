@@ -7,12 +7,19 @@
  * owned by scripts/maintenance/db-diagnose-2fa.mjs / scripts/maintenance/db-repair-2fa.mjs).
  *
  * For each row with a non-null value in an encrypted column:
- *   1. Decrypt fails outright -> repair-eligible per the column's
- *      registered repairKind.
- *   2. Decrypts without error, but (for api_keys.key_encrypted only,
- *      where a key_locator gives us something independent to check
- *      against) the recomputed locator doesn't match the stored one ->
- *      same repair, same reasoning as (1): the plaintext isn't real.
+ *   1. Neither API_KEY_ENCRYPTION_KEY nor PREVIOUS_API_KEY_ENCRYPTION_KEY
+ *      opens it -> repair-eligible per the column's registered repairKind.
+ *   2. A key opens it, but (for api_keys.key_encrypted only, where a
+ *      key_locator gives us something independent to check against) the
+ *      recomputed locator matches under neither key -> same repair, same
+ *      reasoning as (1): the plaintext isn't real.
+ *   3. Only the previous key opens it -> reported as still on the previous
+ *      key and never repaired. That is a healthy row in the middle of the
+ *      documented rotation (lib/auth/crypto.ts); treating it as corrupt is
+ *      how a rotation used to end in revoked keys and deleted connections.
+ *
+ * If PREVIOUS_API_KEY_ENCRYPTION_KEY is set but malformed, a failed decrypt
+ * proves nothing, so the columns are reported as unchecked instead.
  *
  * If API_KEY_ENCRYPTION_KEY isn't configured for this run, every column
  * is skipped with a needs-human "could not check" finding rather than
@@ -21,8 +28,9 @@
  */
 import { ENCRYPTED_COLUMNS } from "./_lib.encrypted-columns.mjs";
 import {
-  getEncryptionKey,
-  decryptApiKeyMirror,
+  getKnownKeys,
+  isPreviousKeyUnusable,
+  openWithKnownKeys,
 } from "./_lib.2fa-crypto-mirror.mjs";
 import { computeApiKeyLocatorMirror } from "./_lib.api-key-locator-mirror.mjs";
 
@@ -33,6 +41,16 @@ function sqlIdLiteral(id) {
   return typeof id === "number"
     ? String(id)
     : `'${String(id).replace(/'/g, "''")}'`;
+}
+
+/**
+ * The stored locator was computed with whichever key was current when the row
+ * was last written, which need not be the key that opens its ciphertext today.
+ */
+function locatorMatchesAnyKey(plaintext, stored, keys) {
+  return [keys.current, keys.previous].some(
+    (key) => key && computeApiKeyLocatorMirror(plaintext, key) === stored,
+  );
 }
 
 function buildRepair(col, badIds, pk) {
@@ -69,7 +87,9 @@ function buildRepair(col, badIds, pk) {
 export async function diagnose(pool, ctx) {
   const { tables, columnsDetailed, primaryKeys } = ctx;
   const findings = [];
-  const key = getEncryptionKey();
+  const keys = getKnownKeys();
+  const previousUnusable = isPreviousKeyUnusable();
+  let stillOnPreviousKey = 0;
 
   // Group by table so "delete_row" columns (access_token/refresh_token
   // pair) produce ONE finding per table, not two overlapping deletes.
@@ -86,7 +106,21 @@ export async function diagnose(pool, ctx) {
     );
     if (presentCols.length === 0) continue;
 
-    if (!key) {
+    if (keys.current && previousUnusable) {
+      findings.push({
+        category: "encrypted_column",
+        severity: "needs-human",
+        table,
+        column: presentCols.map((c) => c.column).join(", "),
+        description:
+          "PREVIOUS_API_KEY_ENCRYPTION_KEY is set but is not a 64-character hex string, so a value that does not open with the current key may still be healthy. Fix or remove it, then re-run.",
+        count: 0,
+        examples: [],
+      });
+      continue;
+    }
+
+    if (!keys.current) {
       findings.push({
         category: "encrypted_column",
         severity: "needs-human",
@@ -114,21 +148,34 @@ export async function diagnose(pool, ctx) {
     const deleteRowIds = new Set();
     for (const col of presentCols) {
       const badIds = [];
+      const onPreviousIds = [];
       for (const row of rows.rows) {
         const raw = row[col.column];
         if (raw === null || raw === undefined) continue;
-        let decrypted;
-        try {
-          decrypted = decryptApiKeyMirror(raw, key);
-        } catch {
-          badIds.push(row[pk]);
-          continue;
-        }
-        if (col.locatorColumn && row[col.locatorColumn]) {
-          const computed = computeApiKeyLocatorMirror(decrypted, key);
-          if (computed !== row[col.locatorColumn]) badIds.push(row[pk]);
-        }
+        const locator = col.locatorColumn && row[col.locatorColumn];
+        const { status } = openWithKnownKeys(
+          raw,
+          keys,
+          (plaintext) =>
+            !locator || locatorMatchesAnyKey(plaintext, locator, keys),
+        );
+        if (status === "previous") onPreviousIds.push(row[pk]);
+        else if (status !== "current") badIds.push(row[pk]);
       }
+
+      if (onPreviousIds.length > 0) {
+        stillOnPreviousKey += onPreviousIds.length;
+        findings.push({
+          category: "encrypted_column_on_previous_key",
+          severity: "needs-human",
+          table,
+          column: col.column,
+          description: `${onPreviousIds.length} row(s) in ${table}.${col.column} are still encrypted under PREVIOUS_API_KEY_ENCRYPTION_KEY. They work, and keep working only while that variable stays set: nothing to repair, but do not remove it yet.`,
+          count: onPreviousIds.length,
+          examples: onPreviousIds.slice(0, 5).map((id) => ({ pk: id })),
+        });
+      }
+
       if (badIds.length === 0) continue;
 
       if (col.repairKind === "delete_row") {
@@ -141,7 +188,7 @@ export async function diagnose(pool, ctx) {
         severity: "auto-fixable",
         table,
         column: col.column,
-        description: `${badIds.length} row(s) in ${table}.${col.column} do not decrypt to a usable value with the configured API_KEY_ENCRYPTION_KEY (see _lib.encrypted-columns.mjs for why "${col.repairKind}" is the safe repair).`,
+        description: `${badIds.length} row(s) in ${table}.${col.column} do not decrypt to a usable value with API_KEY_ENCRYPTION_KEY or PREVIOUS_API_KEY_ENCRYPTION_KEY (see _lib.encrypted-columns.mjs for why "${col.repairKind}" is the safe repair).`,
         count: badIds.length,
         examples: badIds.slice(0, 5).map((id) => ({ pk: id })),
         repair: buildRepair(col, badIds, pk),
@@ -164,5 +211,8 @@ export async function diagnose(pool, ctx) {
     }
   }
 
-  return { findings, meta: { encryptionConfigured: Boolean(key) } };
+  return {
+    findings,
+    meta: { encryptionConfigured: Boolean(keys.current), stillOnPreviousKey },
+  };
 }

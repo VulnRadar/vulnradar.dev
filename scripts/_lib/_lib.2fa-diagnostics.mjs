@@ -21,8 +21,9 @@
  */
 import { classifyBackupCodesColumn } from "./_lib.2fa-hash-mirror.mjs";
 import {
-  getEncryptionKey,
-  decryptApiKeyMirror,
+  getKnownKeys,
+  isPreviousKeyUnusable,
+  openWithKnownKeys,
   looksLikeTotpSecret,
 } from "./_lib.2fa-crypto-mirror.mjs";
 
@@ -36,6 +37,8 @@ export const CATEGORY = {
   TOTP_SECRET_LEGACY_PLAINTEXT: "totp_secret_legacy_plaintext_prefix",
   TOTP_SECRET_DECRYPT_FAILED: "totp_secret_decrypt_failed",
   TOTP_SECRET_DECRYPTS_TO_GARBAGE: "totp_secret_decrypts_to_garbage",
+  TOTP_SECRET_ON_PREVIOUS_KEY: "totp_secret_on_previous_key",
+  PREVIOUS_KEY_UNUSABLE: "previous_key_unusable",
   ENCRYPTION_NOT_CONFIGURED: "encryption_not_configured",
 };
 
@@ -70,9 +73,13 @@ const CATEGORY_LABEL = {
   [CATEGORY.TOTP_SECRET_LEGACY_PLAINTEXT]:
     "totp_secret has the legacy 'plain:' marker the app already treats as invalid (permanent lockout for the same reason as a missing secret)",
   [CATEGORY.TOTP_SECRET_DECRYPT_FAILED]:
-    "totp_secret failed to decrypt with the configured API_KEY_ENCRYPTION_KEY",
+    "totp_secret failed to decrypt with API_KEY_ENCRYPTION_KEY or PREVIOUS_API_KEY_ENCRYPTION_KEY",
   [CATEGORY.TOTP_SECRET_DECRYPTS_TO_GARBAGE]:
     "totp_secret decrypts without error but is not a valid base32 TOTP seed (consistent with double-encryption after an encryption-key rotation)",
+  [CATEGORY.TOTP_SECRET_ON_PREVIOUS_KEY]:
+    "totp_secret is still encrypted under PREVIOUS_API_KEY_ENCRYPTION_KEY: it works, and keeps working only while that variable stays set",
+  [CATEGORY.PREVIOUS_KEY_UNUSABLE]:
+    "totp_secret did not open with API_KEY_ENCRYPTION_KEY, and PREVIOUS_API_KEY_ENCRYPTION_KEY is set but is not a 64-character hex string, so it could not be checked either way",
   [CATEGORY.ENCRYPTION_NOT_CONFIGURED]:
     "API_KEY_ENCRYPTION_KEY is not configured on this run -- totp_secret could not be checked either way",
 };
@@ -134,26 +141,40 @@ export function classifyUser(row) {
         severity: "repair-eligible",
       });
     } else {
-      const key = getEncryptionKey();
-      if (!key) {
+      const keys = getKnownKeys();
+      if (!keys.current) {
         problems.push({
           category: CATEGORY.ENCRYPTION_NOT_CONFIGURED,
           severity: "warning",
         });
       } else {
-        try {
-          const decrypted = decryptApiKeyMirror(row.totp_secret, key);
-          if (!looksLikeTotpSecret(decrypted)) {
-            problems.push({
-              category: CATEGORY.TOTP_SECRET_DECRYPTS_TO_GARBAGE,
-              severity: "repair-eligible",
-            });
-          }
-        } catch {
+        const { status } = openWithKnownKeys(
+          row.totp_secret,
+          keys,
+          looksLikeTotpSecret,
+        );
+        if (status === "previous") {
           problems.push({
-            category: CATEGORY.TOTP_SECRET_DECRYPT_FAILED,
+            category: CATEGORY.TOTP_SECRET_ON_PREVIOUS_KEY,
+            severity: "warning",
+          });
+        } else if (status === "garbage") {
+          problems.push({
+            category: CATEGORY.TOTP_SECRET_DECRYPTS_TO_GARBAGE,
             severity: "repair-eligible",
           });
+        } else if (status === "failed") {
+          problems.push(
+            isPreviousKeyUnusable()
+              ? {
+                  category: CATEGORY.PREVIOUS_KEY_UNUSABLE,
+                  severity: "warning",
+                }
+              : {
+                  category: CATEGORY.TOTP_SECRET_DECRYPT_FAILED,
+                  severity: "repair-eligible",
+                },
+          );
         }
       }
     }

@@ -18,16 +18,57 @@ const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
 
+/**
+ * The one shape every AES-256 key in these scripts has to have.
+ *
+ * The length alone is not enough: Buffer.from(value, "hex") stops at the first
+ * pair that is not hex and returns whatever it had, so a 64-character value
+ * with a stray "g" in it became a short key, every decrypt threw, and the
+ * repair tools read that as every row in the database being corrupt.
+ */
+export function isValidKeyHex(hex) {
+  return typeof hex === "string" && /^[0-9a-f]{64}$/i.test(hex);
+}
+
 /** Mirrors lib/auth/crypto.ts's getEncryptionKey(), but returns null instead of throwing. */
 export function getEncryptionKey() {
   const hex = process.env.API_KEY_ENCRYPTION_KEY;
-  if (!hex || hex.length !== 64) return null;
-  return Buffer.from(hex, "hex");
+  return isValidKeyHex(hex) ? Buffer.from(hex, "hex") : null;
 }
 
 export function isEncryptionConfigured() {
-  const hex = process.env.API_KEY_ENCRYPTION_KEY;
-  return Boolean(hex) && hex.length === 64;
+  return isValidKeyHex(process.env.API_KEY_ENCRYPTION_KEY);
+}
+
+/** Mirrors lib/auth/crypto.ts's getPreviousEncryptionKey(). */
+export function getPreviousEncryptionKey() {
+  const hex = process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY;
+  return isValidKeyHex(hex) ? Buffer.from(hex, "hex") : null;
+}
+
+/**
+ * True when the operator set PREVIOUS_API_KEY_ENCRYPTION_KEY to something that
+ * cannot be a key. A rotation is in progress and the old key is out of reach,
+ * so a value that fails to decrypt proves nothing. The app logs this and
+ * carries on; a tool about to delete data has to stop calling rows broken.
+ */
+export function isPreviousKeyUnusable() {
+  const hex = process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY;
+  return Boolean(hex) && !isValidKeyHex(hex);
+}
+
+/**
+ * The keys a stored value may be under, in the order the app tries them.
+ * A previous key equal to the current one is left out: it would only report
+ * rows on the current key as still needing to move.
+ */
+export function getKnownKeys() {
+  const current = getEncryptionKey();
+  const previous = getPreviousEncryptionKey();
+  return {
+    current,
+    previous: previous && current?.equals(previous) ? null : previous,
+  };
 }
 
 /**
@@ -51,6 +92,39 @@ export function decryptApiKeyMirror(encryptedBase64, key) {
     decipher.final(),
   ]);
   return decrypted.toString("utf8");
+}
+
+/**
+ * Try the current key, then the previous one, the way decryptApiKey() does.
+ *
+ * GCM is what makes this unambiguous: a wrong key fails the auth tag instead
+ * of returning wrong plaintext, so a value opening under the previous key
+ * really is on the previous key.
+ *
+ * `isGenuine` is the extra check a column can apply to the plaintext. Failing
+ * it under one key does not stop the other from being tried.
+ *
+ * @param {string} value the stored base64 ciphertext
+ * @param {{ current: Buffer | null, previous: Buffer | null }} keys
+ * @param {(plaintext: string) => boolean} [isGenuine]
+ * @returns {{ status: "current" | "previous" | "garbage" | "failed", plaintext?: string }}
+ *   "garbage": a key opened it, but what came out is not a real value
+ *   "failed": no key opened it
+ */
+export function openWithKnownKeys(value, keys, isGenuine = () => true) {
+  let status = "failed";
+  for (const name of ["current", "previous"]) {
+    if (!keys[name]) continue;
+    let plaintext;
+    try {
+      plaintext = decryptApiKeyMirror(value, keys[name]);
+    } catch {
+      continue;
+    }
+    if (isGenuine(plaintext)) return { status: name, plaintext };
+    status = "garbage";
+  }
+  return { status };
 }
 
 /**
