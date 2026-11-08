@@ -19,6 +19,12 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+const mockDeleteAvatarFilesIfLocal = vi.fn();
+vi.mock("@/lib/uploads/avatar-storage", () => ({
+  deleteAvatarFilesIfLocal: (...args: unknown[]) =>
+    mockDeleteAvatarFilesIfLocal(...args),
+}));
+
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
@@ -27,7 +33,8 @@ const mockConsoleError = vi
   .mockImplementation(() => undefined);
 
 const { encryptApiKey } = await import("@/lib/auth/crypto");
-const { GET, DELETE } = await import("@/app/api/v3/account/github/route");
+const { GET, PATCH, DELETE } =
+  await import("@/app/api/v3/account/github/route");
 
 function statusRequest(query = "") {
   return new Request(`http://localhost/api/v3/account/github${query}`);
@@ -39,6 +46,10 @@ beforeEach(() => {
   mockConsoleError.mockClear();
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue({ userId: 3 });
+  mockDeleteAvatarFilesIfLocal.mockReset();
+  mockDeleteAvatarFilesIfLocal.mockResolvedValue(undefined);
+  process.env.GITHUB_CLIENT_ID = "gh-client";
+  process.env.GITHUB_CLIENT_SECRET = "gh-secret";
 });
 
 describe("GET /api/v3/account/github", () => {
@@ -272,28 +283,183 @@ describe("GET /api/v3/account/github?include=selected-repos", () => {
   });
 });
 
+describe("GET /api/v3/account/github?include=linked-profile", () => {
+  it("answers from the stored sign-in identity, with no repo-connection lookup", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          github_id: "42",
+          github_name: "Real Name",
+          github_avatar_url: "https://avatars.githubusercontent.com/u/42",
+        },
+      ],
+    });
+
+    const res = await GET(statusRequest("?include=linked-profile"));
+    const json = await res.json();
+
+    expect(json.linkedProfile).toEqual({
+      name: "Real Name",
+      avatarUrl: "https://avatars.githubusercontent.com/u/42",
+    });
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("is null when no GitHub sign-in is linked", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ github_id: null, github_name: null, github_avatar_url: null }],
+    });
+    const res = await GET(statusRequest("?include=linked-profile"));
+    expect((await res.json()).linkedProfile).toBeNull();
+  });
+});
+
+describe("PATCH /api/v3/account/github", () => {
+  function patchRequest(body: unknown) {
+    return new Request("http://localhost/api/v3/account/github", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  const linked = {
+    github_id: "42",
+    github_name: "Real Name",
+    github_avatar_url: "https://avatars.githubusercontent.com/u/42",
+  };
+
+  it("requires authentication", async () => {
+    mockGetSession.mockResolvedValue(null);
+    const res = await PATCH(patchRequest({ syncName: true }));
+    expect(res.status).toBe(401);
+  });
+
+  it("no-ops when nothing was asked for", async () => {
+    const res = await PATCH(patchRequest({}));
+    expect(await res.json()).toEqual({ success: true, updated: [] });
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when no GitHub sign-in is linked", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ github_id: null, github_name: null, github_avatar_url: null }],
+    });
+    const res = await PATCH(patchRequest({ syncName: true }));
+    expect(res.status).toBe(404);
+  });
+
+  it("writes the stored values and ignores anything the client sends", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [linked] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await PATCH(
+      patchRequest({
+        syncAvatar: true,
+        syncName: true,
+        name: "evil",
+        avatarUrl: "https://evil.example/x.png",
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.updated.sort()).toEqual(["avatar", "name"]);
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain("UPDATE users SET");
+    expect(params).toEqual([
+      "https://avatars.githubusercontent.com/u/42",
+      "Real Name",
+      3,
+    ]);
+    expect(mockDeleteAvatarFilesIfLocal).toHaveBeenCalledWith(3);
+  });
+
+  it("never stores an avatar that is not on GitHub's own CDN", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ ...linked, github_avatar_url: "https://evil.example/x.png" }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await PATCH(patchRequest({ syncAvatar: true, syncName: true }));
+
+    expect((await res.json()).updated).toEqual(["name"]);
+    expect(mockDeleteAvatarFilesIfLocal).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Disconnecting only deleted our copy. The token itself, full read/write on
+ * every repo the account can reach, stayed valid at GitHub while the page said
+ * access had been revoked.
+ */
 describe("DELETE /api/v3/account/github", () => {
+  function storedToken(token = "gho_live") {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ access_token_encrypted: encryptApiKey(token) }],
+    });
+  }
+
+  function revokeCalls() {
+    return mockFetch.mock.calls.filter(
+      ([url]) => url === "https://api.github.com/applications/gh-client/token",
+    );
+  }
+
   it("requires authentication", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await DELETE();
     expect(res.status).toBe(401);
   });
 
+  it("is refused during an impersonation, before GitHub hears about it", async () => {
+    mockGetSession.mockResolvedValue({ userId: 3, impersonatedBy: 1 });
+    const res = await DELETE();
+    expect(res.status).toBe(403);
+    expect((await res.json()).impersonationBlocked).toBe(true);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
   it("returns 404 when there is no connection to remove", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // no stored token
     mockQuery.mockResolvedValueOnce({ rowCount: 0 });
     const res = await DELETE();
     expect(res.status).toBe(404);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("disconnects the account", async () => {
+  it("revokes the decrypted token at GitHub once, then removes the row", async () => {
+    storedToken();
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 204 }));
     mockQuery.mockResolvedValueOnce({ rowCount: 1 });
+
     const res = await DELETE();
     const json = await res.json();
+
     expect(res.status).toBe(200);
     expect(json.success).toBe(true);
+    expect(revokeCalls()).toHaveLength(1);
+    const [, init] = revokeCalls()[0];
+    expect(init.method).toBe("DELETE");
+    expect(init.headers.Authorization).toBe(
+      `Basic ${Buffer.from("gh-client:gh-secret").toString("base64")}`,
+    );
+    expect(JSON.parse(init.body)).toEqual({ access_token: "gho_live" });
     expect(mockQuery).toHaveBeenCalledWith(
       expect.stringContaining("DELETE FROM github_connections"),
       [3],
     );
+  });
+
+  it("still removes the row when GitHub is unreachable", async () => {
+    storedToken();
+    mockFetch.mockRejectedValueOnce(new Error("network down"));
+    mockQuery.mockResolvedValueOnce({ rowCount: 1 });
+
+    const res = await DELETE();
+
+    expect(res.status).toBe(200);
+    expect(mockConsoleError).toHaveBeenCalled();
   });
 });

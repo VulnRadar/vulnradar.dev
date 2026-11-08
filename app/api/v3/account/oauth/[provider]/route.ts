@@ -19,6 +19,8 @@ import { OAUTH_PROVIDERS } from "@/lib/auth/oauth-providers";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { loginMethodChangedEmail } from "@/lib/email/email";
+import { ApiResponse } from "@/lib/api/api-utils";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 
 type LinkableProvider = "google" | "github";
 
@@ -38,7 +40,7 @@ export async function GET(
 
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
 
   try {
@@ -83,8 +85,13 @@ export async function DELETE(
 
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
+  const refused = refuseWhileImpersonating(
+    session,
+    "Disconnecting a sign-in provider",
+  );
+  if (refused) return refused;
 
   try {
     const result = await pool.query(

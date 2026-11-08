@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
+import { ApiResponse } from "@/lib/api/api-utils";
 import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 import { decryptApiKey } from "@/lib/auth/crypto";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
+import { revokeDiscordTokens } from "@/lib/discord/revoke";
 import {
   DiscordReauthRequiredError,
   refreshDiscordAccessToken,
 } from "@/lib/discord/discord-utils";
 
-/** What the live membership check concluded, plus whether the stored
- *  authorization is dead and only the user can fix it. */
+/** What a join attempt concluded, plus whether the stored authorization is
+ *  dead and only the user can fix it. */
 interface GuildMembership {
   guildJoined: boolean;
   /** Discord refused the refresh token: the user revoked the app, or the
@@ -22,15 +25,29 @@ interface GuildMembership {
  *  refresh it before the join rather than after the rejection. */
 const TOKEN_EXPIRY_SKEW_MS = 60_000;
 
+/** How long after connecting the "sync your profile" dialog may still open. */
+const PROFILE_SYNC_WINDOW_MS = 5 * 60_000;
+
+function timestampMs(value: unknown): number {
+  if (value instanceof Date) return value.getTime();
+  return typeof value === "string" ? Date.parse(value) : NaN;
+}
+
 function accessTokenExpired(tokenExpiresAt: unknown): boolean {
-  const expiry =
-    tokenExpiresAt instanceof Date
-      ? tokenExpiresAt.getTime()
-      : typeof tokenExpiresAt === "string"
-        ? Date.parse(tokenExpiresAt)
-        : NaN;
+  const expiry = timestampMs(tokenExpiresAt);
   if (Number.isNaN(expiry)) return false;
   return expiry <= Date.now() + TOKEN_EXPIRY_SKEW_MS;
+}
+
+/** updated_at rather than connected_at: reconnecting keeps the first date but
+ *  is just as much a moment to offer the sync. */
+function connectedJustNow(updatedAt: unknown): boolean {
+  const at = timestampMs(updatedAt);
+  return !Number.isNaN(at) && Date.now() - at < PROFILE_SYNC_WINDOW_MS;
+}
+
+function discordAvatarUrl(discordId: string, avatarHash: string): string {
+  return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png?size=256`;
 }
 
 /** Discord rejects a stale user token on the join PUT with a 401, or with a
@@ -70,38 +87,23 @@ async function attemptGuildJoin(
  * Re-checks guild membership live via the bot token (a GET, needs no user
  * token and so is unaffected by the stored OAuth access token expiring)
  * instead of trusting guild_joined's value from whenever the account was
- * first connected -- that snapshot never updated again on its own, so
- * someone who joined the server after connecting (or whose original join
- * attempt failed for a since-resolved reason) stayed marked "not in
- * server" forever. If they're still not a member, retries the join (a PUT,
- * which does need the stored access token).
+ * first connected -- that snapshot never updated again on its own.
  *
- * Discord expires that access token after 7 days, so the join used to work
- * only for accounts connected within the last week and then fail silently
- * forever. The refresh token beside it was stored, encrypted and re-encrypted
- * on key rotation, and never spent. It is spent here: refreshed up front when
- * the stored token has already expired, and refreshed once in response to
- * Discord rejecting it, followed by exactly one retry. Never more than that,
- * and a refresh Discord itself refuses is reported rather than swallowed.
+ * Read-only as far as Discord is concerned. This used to PUT anyone it found
+ * outside the server straight back in, spending the refresh token to do it, so
+ * opening the Social tab undid leaving and the only way out was to disconnect
+ * entirely. Joining is POST below and the connect callback, nothing else.
  */
-async function refreshGuildMembership(
+async function checkGuildMembership(
   userId: number,
   discordId: string,
   storedGuildJoined: boolean,
-  encryptedAccessToken: string,
-  tokenExpiresAt: unknown,
-): Promise<GuildMembership> {
+): Promise<boolean> {
   const botToken = process.env.DISCORD_BOT_TOKEN;
   const guildId = process.env.DISCORD_GUILD_ID;
-  if (!botToken || !guildId) {
-    console.log(
-      "[Discord] Skipping live guild check: DISCORD_BOT_TOKEN/DISCORD_GUILD_ID not configured on this server.",
-    );
-    return { guildJoined: storedGuildJoined, reauthRequired: false };
-  }
+  if (!botToken || !guildId) return storedGuildJoined;
 
   let guildJoined = storedGuildJoined;
-  let reauthRequired = false;
   try {
     const memberRes = await fetch(
       `https://discord.com/api/guilds/${guildId}/members/${discordId}`,
@@ -110,61 +112,7 @@ async function refreshGuildMembership(
     if (memberRes.status === 200) {
       guildJoined = true;
     } else if (memberRes.status === 404) {
-      console.log(
-        `[Discord] User ${discordId} is not a member of guild ${guildId} yet -- attempting auto-join.`,
-      );
-      try {
-        let accessToken = decryptApiKey(encryptedAccessToken);
-        // One refresh budget for this request, spent either up front (the
-        // stored token is already past its expiry) or reactively (Discord
-        // rejected it). Once spent, a second rejection is a real failure.
-        let refreshAvailable = true;
-
-        if (accessTokenExpired(tokenExpiresAt)) {
-          accessToken = await refreshDiscordAccessToken(userId);
-          refreshAvailable = false;
-        }
-
-        let attempt = await attemptGuildJoin(
-          guildId,
-          botToken,
-          discordId,
-          accessToken,
-        );
-
-        if (
-          !attempt.joined &&
-          refreshAvailable &&
-          isAccessTokenRejected(attempt.status, attempt.body)
-        ) {
-          accessToken = await refreshDiscordAccessToken(userId);
-          attempt = await attemptGuildJoin(
-            guildId,
-            botToken,
-            discordId,
-            accessToken,
-          );
-        }
-
-        guildJoined = attempt.joined;
-        if (!guildJoined) {
-          console.error(
-            `[Discord] Auto-join failed with HTTP ${attempt.status}: ${attempt.body}. ` +
-              `Common causes: the OAuth token was granted without the "guilds.join" ` +
-              `scope, or the bot account isn't a member of guild ${guildId} with ` +
-              `Create Instant Invite permission.`,
-          );
-        }
-      } catch (err) {
-        if (err instanceof DiscordReauthRequiredError) {
-          // Terminal: only the user can fix this, so say so on the page
-          // rather than leaving them on a permanent "not in server".
-          reauthRequired = true;
-        } else {
-          console.error("[Discord] Opportunistic auto-join threw:", err);
-        }
-        guildJoined = false;
-      }
+      guildJoined = false;
     } else {
       // Anything other than 200/404 (401 bad bot token, 403 bot lacks
       // access to this guild, etc.) -- log the body so the real cause is
@@ -178,28 +126,106 @@ async function refreshGuildMembership(
     }
   } catch (err) {
     console.error("[Discord] Live guild membership check request failed:", err);
-    return { guildJoined: storedGuildJoined, reauthRequired: false };
+    return storedGuildJoined;
   }
 
   if (guildJoined !== storedGuildJoined) {
-    await pool.query(
-      `UPDATE discord_connections SET guild_joined = $1, updated_at = NOW() WHERE user_id = $2`,
-      [guildJoined, userId],
-    );
+    await recordGuildJoined(userId, guildJoined);
   }
-  return { guildJoined, reauthRequired };
+  return guildJoined;
+}
+
+/** Leaves updated_at alone: it is what the page prints as "Connected" and what
+ *  says the connection was made just now, and a membership change is neither. */
+async function recordGuildJoined(
+  userId: number,
+  guildJoined: boolean,
+): Promise<void> {
+  await pool.query(
+    `UPDATE discord_connections SET guild_joined = $1 WHERE user_id = $2`,
+    [guildJoined, userId],
+  );
+}
+
+/**
+ * Adds the member to the server. Needs the stored user access token, which
+ * Discord expires after 7 days, so the refresh token beside it is spent here:
+ * refreshed up front when the stored token has already expired, and refreshed
+ * once in response to Discord rejecting it, followed by exactly one retry.
+ * Never more than that, and a refresh Discord itself refuses is reported rather
+ * than swallowed.
+ */
+async function joinGuild(
+  guildId: string,
+  botToken: string,
+  userId: number,
+  discordId: string,
+  encryptedAccessToken: string,
+  tokenExpiresAt: unknown,
+): Promise<GuildMembership> {
+  try {
+    let accessToken = decryptApiKey(encryptedAccessToken);
+    // One refresh budget for this request, spent either up front (the
+    // stored token is already past its expiry) or reactively (Discord
+    // rejected it). Once spent, a second rejection is a real failure.
+    let refreshAvailable = true;
+
+    if (accessTokenExpired(tokenExpiresAt)) {
+      accessToken = await refreshDiscordAccessToken(userId);
+      refreshAvailable = false;
+    }
+
+    let attempt = await attemptGuildJoin(
+      guildId,
+      botToken,
+      discordId,
+      accessToken,
+    );
+
+    if (
+      !attempt.joined &&
+      refreshAvailable &&
+      isAccessTokenRejected(attempt.status, attempt.body)
+    ) {
+      accessToken = await refreshDiscordAccessToken(userId);
+      attempt = await attemptGuildJoin(
+        guildId,
+        botToken,
+        discordId,
+        accessToken,
+      );
+    }
+
+    if (!attempt.joined) {
+      console.error(
+        `[Discord] Join failed with HTTP ${attempt.status}: ${attempt.body}. ` +
+          `Common causes: the OAuth token was granted without the "guilds.join" ` +
+          `scope, or the bot account isn't a member of guild ${guildId} with ` +
+          `Create Instant Invite permission.`,
+      );
+    }
+    return { guildJoined: attempt.joined, reauthRequired: false };
+  } catch (err) {
+    if (err instanceof DiscordReauthRequiredError) {
+      // Terminal: only the user can fix this, so say so on the page
+      // rather than leaving them on a permanent "not in server".
+      return { guildJoined: false, reauthRequired: true };
+    }
+    console.error("[Discord] Join threw:", err);
+    return { guildJoined: false, reauthRequired: false };
+  }
 }
 
 // GET /api/v3/account/discord - Get Discord connection status
 export async function GET() {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
 
   try {
     const result = await pool.query(
-      `SELECT discord_id, discord_username, discord_avatar, guild_joined, updated_at, access_token, token_expires_at
+      `SELECT discord_id, discord_username, discord_avatar, guild_joined, updated_at
        FROM discord_connections WHERE user_id = $1`,
       [session.userId],
     );
@@ -209,12 +235,10 @@ export async function GET() {
     }
 
     const connection = result.rows[0];
-    const { guildJoined, reauthRequired } = await refreshGuildMembership(
+    const guildJoined = await checkGuildMembership(
       session.userId,
       connection.discord_id,
       connection.guild_joined,
-      connection.access_token,
-      connection.token_expires_at,
     );
 
     return NextResponse.json({
@@ -222,11 +246,20 @@ export async function GET() {
       discordId: connection.discord_id,
       discordUsername: connection.discord_username,
       discordAvatar: connection.discord_avatar,
+      avatarUrl: connection.discord_avatar
+        ? discordAvatarUrl(connection.discord_id, connection.discord_avatar)
+        : null,
       guildJoined,
-      // True only when Discord itself refused the stored refresh token, i.e.
-      // the authorization was revoked or expired outright. The page turns
-      // this into "reconnect", which is the only thing that fixes it.
-      reauthRequired,
+      // Whether "Join server" can do anything on this deployment.
+      canJoin: Boolean(
+        process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_GUILD_ID,
+      ),
+      // Only a join can discover a dead authorization (see POST), and this
+      // route no longer attempts one. Kept so the response keeps its shape.
+      reauthRequired: false,
+      // Whether the post-connect sync dialog may open, decided on this clock
+      // rather than the browser's.
+      justConnected: connectedJustNow(connection.updated_at),
       updatedAt: connection.updated_at,
     });
   } catch (error) {
@@ -238,11 +271,78 @@ export async function GET() {
   }
 }
 
+// POST /api/v3/account/discord - Join the server, on the member's explicit ask
+export async function POST() {
+  const session = await getSession();
+  if (!session) {
+    return ApiResponse.unauthorized();
+  }
+  const refused = refuseWhileImpersonating(
+    session,
+    "Joining the Discord server",
+  );
+  if (refused) return refused;
+
+  try {
+    const result = await pool.query(
+      `SELECT discord_id, guild_joined, access_token, token_expires_at
+       FROM discord_connections WHERE user_id = $1`,
+      [session.userId],
+    );
+    const connection = result.rows[0];
+    if (!connection) {
+      return NextResponse.json(
+        { error: "No Discord connection found" },
+        { status: 404 },
+      );
+    }
+
+    const botToken = process.env.DISCORD_BOT_TOKEN;
+    const guildId = process.env.DISCORD_GUILD_ID;
+    if (!botToken || !guildId) {
+      return NextResponse.json(
+        { error: "This VulnRadar server has no Discord bot set up." },
+        { status: 503 },
+      );
+    }
+
+    const { guildJoined, reauthRequired } = await joinGuild(
+      guildId,
+      botToken,
+      session.userId,
+      connection.discord_id,
+      connection.access_token,
+      connection.token_expires_at,
+    );
+    if (guildJoined !== connection.guild_joined) {
+      await recordGuildJoined(session.userId, guildJoined);
+    }
+
+    if (!guildJoined && !reauthRequired) {
+      return NextResponse.json(
+        {
+          error: "Discord would not add you to the server. Try again shortly.",
+          guildJoined,
+          reauthRequired,
+        },
+        { status: 502 },
+      );
+    }
+    return NextResponse.json({ guildJoined, reauthRequired });
+  } catch (error) {
+    console.error("Discord join error:", error);
+    return NextResponse.json(
+      { error: "Failed to join the Discord server" },
+      { status: 500 },
+    );
+  }
+}
+
 // PATCH /api/v3/account/discord - Sync avatar/name from connected Discord account
 export async function PATCH(req: Request) {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
 
   let body: { syncAvatar?: boolean; syncName?: boolean };
@@ -278,9 +378,8 @@ export async function PATCH(req: Request) {
     const updated: string[] = [];
 
     if (syncAvatar && discord_avatar) {
-      const avatarUrl = `https://cdn.discordapp.com/avatars/${discord_id}/${discord_avatar}.png?size=256`;
       sets.push(`avatar_url = $${sets.length + 1}`);
-      vals.push(avatarUrl);
+      vals.push(discordAvatarUrl(discord_id, discord_avatar));
       updated.push("avatar");
       // Switching to an external Discord avatar: drop any previously
       // uploaded local file so it doesn't linger as an orphan.
@@ -314,8 +413,13 @@ export async function PATCH(req: Request) {
 export async function DELETE() {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
+  const refused = refuseWhileImpersonating(
+    session,
+    "Disconnecting a sign-in provider",
+  );
+  if (refused) return refused;
 
   try {
     // Get current Discord connection
@@ -331,15 +435,52 @@ export async function DELETE() {
       );
     }
 
-    // Delete Discord connection
-    await pool.query(`DELETE FROM discord_connections WHERE user_id = $1`, [
-      session.userId,
-    ]);
+    const client = await pool.connect();
+    let tokens: { access_token: string | null; refresh_token: string | null };
+    try {
+      await client.query("BEGIN");
+      // Same rule as /account/oauth/[provider], which counts Discord as the
+      // way back in: never leave an account with nothing to sign in with. The
+      // check lives in the WHERE so that a concurrent Google or GitHub
+      // disconnect is re-read under the row lock instead of both passing.
+      const cleared = await client.query(
+        `UPDATE users SET discord_id = NULL
+         WHERE id = $1
+           AND (password_hash IS NOT NULL OR google_id IS NOT NULL OR github_id IS NOT NULL)
+         RETURNING id`,
+        [session.userId],
+      );
+      if ((cleared.rowCount ?? 0) === 0) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          {
+            error:
+              "Discord is your only way to sign in. Set a password or connect another account first.",
+          },
+          { status: 400 },
+        );
+      }
 
-    // Clear discord_id from user
-    await pool.query(`UPDATE users SET discord_id = NULL WHERE id = $1`, [
-      session.userId,
-    ]);
+      const removed = await client.query(
+        `DELETE FROM discord_connections WHERE user_id = $1
+         RETURNING access_token, refresh_token`,
+        [session.userId],
+      );
+      tokens = removed.rows[0] ?? { access_token: null, refresh_token: null };
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    // After the commit, never while the row lock is held, and only once it is
+    // certain the connection is going: a refused disconnect keeps its tokens.
+    await revokeDiscordTokens(session.userId, {
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+    });
 
     return NextResponse.json({
       success: true,

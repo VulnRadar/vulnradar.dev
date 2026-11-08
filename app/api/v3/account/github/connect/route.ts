@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { signOAuthState } from "@/lib/auth/oauth-state";
 import { buildGithubAuthorizeUrl } from "@/lib/github/github-oauth";
 import { resolveAppUrl } from "@/lib/config/runtime-config";
+import { ApiResponse } from "@/lib/api/api-utils";
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 
@@ -33,7 +34,7 @@ async function sharedCallbackUrl(request: Request): Promise<string> {
 export async function GET(request: Request) {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
 
   if (!GITHUB_CLIENT_ID) {

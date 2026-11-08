@@ -5,7 +5,7 @@ import {
   saveSelectedRepos,
 } from "@/lib/github/github-connections";
 import { isGithubTimeout, listUserRepos } from "@/lib/github/github-api";
-import { withErrorHandling } from "@/lib/api/api-utils";
+import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { logError } from "@/lib/logging/log";
 
 // Same bound listUserRepos itself enforces (3 pages x 100 per_page) -- a
@@ -21,7 +21,7 @@ const REPO_FULL_NAME_RE = /^[^/\s]+\/[^/\s]+$/;
 export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
 
   try {
@@ -63,7 +63,7 @@ export const GET = withErrorHandling(async () => {
 export const PUT = withErrorHandling(async (request: Request) => {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
 
   let body: { selected?: unknown };

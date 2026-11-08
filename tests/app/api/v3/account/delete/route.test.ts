@@ -13,7 +13,17 @@
  * out in the same transaction as DELETE FROM users) runs inside a
  * pool.connect() transaction, so both boundaries are mocked here.
  */
-import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  beforeAll,
+  afterEach,
+  vi,
+} from "vitest";
+
+process.env.API_KEY_ENCRYPTION_KEY = "c".repeat(64);
 
 const mockQuery = vi.fn();
 const mockClientQuery = vi.fn();
@@ -73,6 +83,7 @@ vi.mock("@/lib/billing/stripe", () => ({
 
 const { POST } = await import("@/app/api/v3/account/delete/route");
 const { hashPassword } = await import("@/lib/auth/password-hash");
+const { encryptApiKey } = await import("@/lib/auth/crypto");
 
 const REAL_PASSWORD = "correct horse battery staple 42!";
 let realHash: string;
@@ -351,7 +362,13 @@ describe("POST /api/v3/account/delete", () => {
       const res = await POST(deleteRequest({}));
 
       expect(res.status).toBe(200);
-      expect(mockQuery).toHaveBeenCalledTimes(1);
+      // The password read and nothing else: no lookup of a subscription. The
+      // two provider-token reads are not about billing.
+      expect(
+        mockQuery.mock.calls.filter(
+          ([sql]) => !String(sql).includes("_connections"),
+        ),
+      ).toHaveLength(1);
       expect(mockClientQuery).toHaveBeenLastCalledWith("COMMIT");
     });
 
@@ -389,7 +406,7 @@ describe("POST /api/v3/account/delete", () => {
 
       const res = await POST(deleteRequest({}));
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(403);
       const json = await res.json();
       expect(json.error).toMatch(/your own account/);
       expect(mockConnect).not.toHaveBeenCalled();
@@ -397,14 +414,33 @@ describe("POST /api/v3/account/delete", () => {
       expect(mockDestroySession).not.toHaveBeenCalled();
     });
 
-    it("still lets every other staff role delete their own account", async () => {
+    // A staff account owns rows other people depend on, and the admin panel
+    // already refuses to delete one without a demotion first.
+    it.each(["support", "billing", "ops", "moderator", "admin"])(
+      "refuses a %s and deletes nothing",
+      async (role) => {
+        mockQuery.mockResolvedValueOnce({
+          rows: [{ password_hash: null, email: "a@b.test", name: "A", role }],
+        });
+
+        const res = await POST(deleteRequest({}));
+
+        expect(res.status).toBe(403);
+        const json = await res.json();
+        expect(json.error).toMatch(/staff/i);
+        expect(mockConnect).not.toHaveBeenCalled();
+        expect(mockDestroySession).not.toHaveBeenCalled();
+      },
+    );
+
+    it("still lets a plain user delete their own account", async () => {
       mockQuery.mockResolvedValueOnce({
         rows: [
           {
             password_hash: null,
             email: "a@b.test",
             name: "A",
-            role: "admin",
+            role: "user",
           },
         ],
       });
@@ -413,5 +449,124 @@ describe("POST /api/v3/account/delete", () => {
 
       expect(res.status).toBe(200);
     });
+  });
+});
+
+/**
+ * The token outlived the account: nothing told GitHub or Discord, so a full
+ * read/write repo token stayed valid after the row holding it was purged.
+ */
+describe("POST /api/v3/account/delete: provider tokens", () => {
+  function storedRows(sql: string) {
+    if (sql.includes("password_hash")) {
+      return { rows: [{ password_hash: null, email: "a@b.test", name: "A" }] };
+    }
+    if (sql.includes("FROM github_connections")) {
+      return {
+        rows: [{ access_token_encrypted: encryptApiKey("gho_token") }],
+      };
+    }
+    if (sql.includes("FROM discord_connections")) {
+      return {
+        rows: [
+          {
+            access_token: encryptApiKey("dc-access"),
+            refresh_token: encryptApiKey("dc-refresh"),
+          },
+        ],
+      };
+    }
+    return { rows: [] };
+  }
+
+  const mockFetch = vi.fn();
+  const providerEnv = {
+    GITHUB_CLIENT_ID: "gh-client",
+    GITHUB_CLIENT_SECRET: "gh-secret",
+    DISCORD_CLIENT_ID: "dc-client",
+    DISCORD_CLIENT_SECRET: "dc-secret",
+  };
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+    mockFetch.mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", mockFetch);
+    for (const [k, v] of Object.entries(providerEnv)) vi.stubEnv(k, v);
+    mockQuery.mockImplementation(async (sql: string) => storedRows(sql));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  function callsTo(fragment: string) {
+    return mockFetch.mock.calls.filter(([url]) =>
+      String(url).includes(fragment),
+    );
+  }
+
+  it("revokes the GitHub token and both Discord tokens before the purge", async () => {
+    let purgeStarted = false;
+    mockFetch.mockImplementation(async () => {
+      expect(purgeStarted).toBe(false);
+      return new Response(null, { status: 200 });
+    });
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (sql === "BEGIN") purgeStarted = true;
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await POST(deleteRequest({}));
+
+    expect(res.status).toBe(200);
+    expect(callsTo("api.github.com/applications/gh-client/token")).toHaveLength(
+      1,
+    );
+    expect(callsTo("discord.com/api/oauth2/token/revoke")).toHaveLength(2);
+    expect(purgeStarted).toBe(true);
+  });
+
+  it("still deletes the account when the providers cannot be reached", async () => {
+    const quiet = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    mockFetch.mockRejectedValue(new Error("network down"));
+
+    const res = await POST(deleteRequest({}));
+
+    expect(res.status).toBe(200);
+    expect(mockConnect).toHaveBeenCalled();
+    quiet.mockRestore();
+  });
+
+  it("revokes nothing when the request is refused", async () => {
+    mockQuery.mockImplementation(async (sql: string) =>
+      sql.includes("password_hash")
+        ? { rows: [{ password_hash: realHash, email: "a@b.test", name: "A" }] }
+        : storedRows(sql),
+    );
+
+    const res = await POST(deleteRequest({ currentPassword: "wrong" }));
+
+    expect(res.status).toBe(400);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v3/account/delete: the rate-limit sentence", () => {
+  it("says how long in words, with no (s)", async () => {
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 240,
+    });
+
+    const res = await POST(deleteRequest({}));
+    const json = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(json.error).toContain("4 minutes");
+    expect(json.error).not.toContain("(s)");
   });
 });

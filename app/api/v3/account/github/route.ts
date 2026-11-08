@@ -6,8 +6,42 @@ import {
   deleteGithubConnection,
 } from "@/lib/github/github-connections";
 import { getSelectedRepos, isGithubTimeout } from "@/lib/github/github-api";
-import { withErrorHandling } from "@/lib/api/api-utils";
+import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
 import { logError } from "@/lib/logging/log";
+import pool from "@/lib/database/db";
+import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
+
+/** What a linked GitHub sign-in can offer the profile, from the users row
+ *  (handleOAuthLink writes it; repo access in github_connections is separate
+ *  and carries no display name or picture). */
+async function readLinkedProfile(userId: number) {
+  const result = await pool.query<{
+    github_id: string | null;
+    github_name: string | null;
+    github_avatar_url: string | null;
+  }>(
+    "SELECT github_id, github_name, github_avatar_url FROM users WHERE id = $1",
+    [userId],
+  );
+  const row = result.rows[0];
+  if (!row?.github_id) return null;
+  return { name: row.github_name, avatarUrl: row.github_avatar_url };
+}
+
+/** The stored value came from GitHub's API, and users.avatar_url renders on
+ *  public pages, so it is held to the one host the CSP allows for it. */
+function isGithubAvatarUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      url.hostname === "avatars.githubusercontent.com"
+    );
+  } catch {
+    return false;
+  }
+}
 
 // GET /api/v3/account/github — GitHub connection status (never returns the token).
 //
@@ -19,13 +53,23 @@ import { logError } from "@/lib/logging/log";
 // there does not fail the status: the connection and the names are still
 // true, so it comes back as `workingSetError` beside them and `repos` is left
 // out, which the page must not read as an empty selection.
+//
+// ?include=linked-profile answers only with the linked sign-in's stored name and
+// avatar, for components/modals/github-profile-modal.tsx.
 export const GET = withErrorHandling(async (request: Request) => {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
 
   try {
+    const include = new URL(request.url).searchParams.get("include");
+    if (include === "linked-profile") {
+      return NextResponse.json({
+        linkedProfile: await readLinkedProfile(session.userId),
+      });
+    }
+
     const connection = await getGithubConnection(session.userId);
     if (!connection) {
       return NextResponse.json({ connected: false });
@@ -42,7 +86,6 @@ export const GET = withErrorHandling(async (request: Request) => {
       selectedRepos: connection.selectedRepos,
     };
 
-    const include = new URL(request.url).searchParams.get("include");
     if (include !== "selected-repos") {
       return NextResponse.json(status);
     }
@@ -88,12 +131,83 @@ export const GET = withErrorHandling(async (request: Request) => {
   }
 });
 
+// PATCH /api/v3/account/github — copy the linked sign-in's stored name and
+// avatar onto the profile. The body picks which; the values are only ever read
+// from the row, so a crafted link has nothing to inject.
+export const PATCH = withErrorHandling(async (request: Request) => {
+  const session = await getSession();
+  if (!session) {
+    return ApiResponse.unauthorized();
+  }
+
+  const parsed = await parseBody<{
+    syncAvatar?: unknown;
+    syncName?: unknown;
+  }>(request);
+  if (!parsed.success) return ApiResponse.badRequest(parsed.error);
+  const { syncAvatar, syncName } = parsed.data;
+  if (!syncAvatar && !syncName) {
+    return NextResponse.json({ success: true, updated: [] });
+  }
+
+  try {
+    const profile = await readLinkedProfile(session.userId);
+    if (!profile) {
+      return NextResponse.json(
+        { error: "No GitHub sign-in is linked to this account." },
+        { status: 404 },
+      );
+    }
+
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    const updated: string[] = [];
+
+    if (
+      syncAvatar &&
+      profile.avatarUrl &&
+      isGithubAvatarUrl(profile.avatarUrl)
+    ) {
+      sets.push(`avatar_url = $${sets.length + 1}`);
+      vals.push(profile.avatarUrl);
+      updated.push("avatar");
+      // Same as the Discord sync: an external avatar replaces the upload.
+      await deleteAvatarFilesIfLocal(session.userId);
+    }
+    if (syncName && profile.name) {
+      sets.push(`name = $${sets.length + 1}`);
+      vals.push(profile.name);
+      updated.push("name");
+    }
+
+    if (sets.length > 0) {
+      vals.push(session.userId);
+      await pool.query(
+        `UPDATE users SET ${sets.join(", ")}, updated_at = NOW() WHERE id = $${vals.length}`,
+        vals,
+      );
+    }
+
+    return NextResponse.json({ success: true, updated });
+  } catch (error) {
+    logError("github", "could not sync the GitHub profile", error, {
+      userId: session.userId,
+    });
+    return NextResponse.json(
+      { error: "Failed to sync GitHub profile." },
+      { status: 500 },
+    );
+  }
+});
+
 // DELETE /api/v3/account/github — disconnect the GitHub account.
 export const DELETE = withErrorHandling(async () => {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
+  const refused = refuseWhileImpersonating(session, "Revoking repo access");
+  if (refused) return refused;
 
   try {
     const deleted = await deleteGithubConnection(session.userId);

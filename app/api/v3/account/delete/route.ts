@@ -7,9 +7,12 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 import { deleteUserAccountData } from "@/lib/auth/account-deletion";
 import { cancelSubscriptionsBeforeDeletion } from "@/lib/billing/cancel-before-deletion";
-import { hasGodMode } from "@/lib/auth/permissions-client";
+import { hasGodMode, isStaffRole } from "@/lib/auth/permissions-client";
 import { sendEmail, accountDeletedEmail } from "@/lib/email/email";
 import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
+import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
+import { revokeStoredGithubToken } from "@/lib/github/github-connections";
+import { revokeStoredDiscordTokens } from "@/lib/discord/revoke";
 
 export const POST = withErrorHandling(async (request: Request) => {
   const session = await getSession();
@@ -31,9 +34,8 @@ export const POST = withErrorHandling(async (request: Request) => {
     ...RATE_LIMITS.login,
   });
   if (!rl.allowed) {
-    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
     return ApiResponse.tooManyRequests(
-      `Too many attempts. Please try again in ${minutes} minute(s).`,
+      TOO_MANY_ATTEMPTS("attempts", rl.retryAfterSeconds),
       rl.retryAfterSeconds,
     );
   }
@@ -69,8 +71,15 @@ export const POST = withErrorHandling(async (request: Request) => {
   // super_admin exists, so the delete would also hand god mode to the oldest
   // remaining account. Read from the row, not the session, which can be stale.
   if (hasGodMode(pwRow.rows[0].role)) {
-    return ApiResponse.badRequest(
+    return ApiResponse.forbidden(
       "Cannot perform this action on your own account. A super admin account cannot be deleted.",
+    );
+  }
+  // Every other staff role too: the account carries rows and access that other
+  // people depend on, and the demotion is what records that it is going away.
+  if (isStaffRole(pwRow.rows[0].role)) {
+    return ApiResponse.forbidden(
+      "Staff accounts cannot be deleted from here. Ask a super admin to remove your staff role first, then delete the account.",
     );
   }
 
@@ -108,6 +117,14 @@ export const POST = withErrorHandling(async (request: Request) => {
     unavailable.headers.set("Retry-After", "60");
     return unavailable;
   }
+
+  // Before the purge, because the rows hold the only copy of the tokens, and
+  // past every refusal, because a revoked connection cannot be given back.
+  // Neither call can throw: a provider outage must not keep the account.
+  await Promise.all([
+    revokeStoredGithubToken(session.userId),
+    revokeStoredDiscordTokens(session.userId),
+  ]);
 
   // Shares the exact same deletion logic app/api/v3/admin/route.ts's
   // delete_account handler uses -- see lib/auth/account-deletion.ts's own

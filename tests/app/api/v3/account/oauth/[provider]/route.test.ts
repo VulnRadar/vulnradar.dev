@@ -109,6 +109,14 @@ describe("DELETE /api/v3/account/oauth/[provider]", () => {
     expect(res.status).toBe(401);
   });
 
+  it("is refused during an impersonation", async () => {
+    mockGetSession.mockResolvedValue({ userId: 3, impersonatedBy: 1 });
+    const res = await DELETE(req, ctx("google"));
+    expect(res.status).toBe(403);
+    expect((await res.json()).impersonationBlocked).toBe(true);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
   it("returns 404 when the account has no row at all", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const res = await DELETE(req, ctx("google"));
