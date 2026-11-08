@@ -1081,6 +1081,35 @@ test("incompleteOutcome: only a bot challenge or an unreachable page blocks by d
   assert.equal(incompleteOutcome({ incomplete: "dns" }).areas.length, 0);
 });
 
+test("incompleteOutcome: an entry that is not shaped like a slug is not an area", () => {
+  // The Action and the template drop these in their shared jq program, because
+  // a newline in one wrote an output line of the reply's choosing. Listing them
+  // here would make --fail-on-incomplete exit 3 on a result they pass.
+  const newline = String.fromCharCode(10);
+  const outcome = incompleteOutcome({
+    incomplete: [
+      "dns",
+      `a${newline}b`,
+      `dns${newline}`,
+      "UPPER",
+      "x y",
+      "",
+      "tls",
+    ],
+  });
+  assert.deepEqual(
+    outcome.areas.map((a) => a.slug),
+    ["dns", "tls"],
+  );
+  assert.equal(
+    incompleteOutcome(
+      { incomplete: [`a${newline}b`] },
+      { failOnIncomplete: true },
+    ).blocking,
+    false,
+  );
+});
+
 test("incompleteOutcome: --fail-on-incomplete widens it, --allow-incomplete opts out", () => {
   assert.equal(
     incompleteOutcome({ incomplete: ["dns"] }, { failOnIncomplete: true })
@@ -2047,6 +2076,150 @@ globalThis.setTimeout = (fn, ms, ...rest) =>
   assert.equal(code, EXIT.OK, stderr);
   assert.doesNotMatch(stdout + stderr, /Status poll failed/);
   assert.equal(hits.polls, 2);
+});
+
+test("cli: a poll the deadline cuts off is the deadline, not a failed poll", async () => {
+  // The floor above only covers a sliver. With 400ms left the poll is allowed
+  // to go out, and against a server that takes a second to answer the
+  // deadline aborts it. That is the budget running out on schedule, and it
+  // used to print "Status poll failed" and spend a failure on it. The preload
+  // ends every long sleep 400ms early, which leaves exactly that gap.
+  const hits = { polls: 0 };
+  const poll = pollingHandler(
+    [{ body: { status: "running" } }, { body: completedWith({}) }],
+    hits,
+  );
+  const { code, stdout, stderr } = await runCliWithHandler(
+    [
+      "scan",
+      "https://target.example",
+      "--api-key",
+      "k",
+      "--timeout",
+      "1",
+      "--poll-interval",
+      "5",
+    ],
+    (req, res) => {
+      if (req.url.startsWith("/scan/status/") && hits.polls > 0) {
+        setTimeout(() => poll(req, res), 1000);
+        return;
+      }
+      poll(req, res);
+    },
+    {
+      preload: `const setTimeoutReal = globalThis.setTimeout;
+globalThis.setTimeout = (fn, ms, ...rest) =>
+  setTimeoutReal(fn, ms >= 500 ? ms - 400 : ms, ...rest);
+`,
+    },
+  );
+  assert.equal(code, EXIT.OK, stderr);
+  assert.doesNotMatch(stdout + stderr, /Status poll failed/);
+});
+
+test("cli: a poll that times out with the deadline still far off is a failed poll", async () => {
+  // The other side of the rule above: only a timeout at the deadline is the
+  // deadline. Each request is capped at half a second here and the server
+  // sits on the first poll, with almost all of --timeout still unspent.
+  const poll = pollingHandler([{ body: completedWith({}) }]);
+  let statusRequests = 0;
+  const { code, stdout, stderr } = await runCliWithHandler(
+    [...SCAN_ARGS, "--timeout", "30"],
+    (req, res) => {
+      if (req.url.startsWith("/scan/status/") && ++statusRequests === 1) {
+        setTimeout(() => res.destroy(), 1500);
+        return;
+      }
+      poll(req, res);
+    },
+    {
+      preload: `const timeoutReal = AbortSignal.timeout.bind(AbortSignal);
+AbortSignal.timeout = (ms) => timeoutReal(Math.min(ms, 500));
+`,
+    },
+  );
+  assert.equal(code, EXIT.OK, stderr);
+  assert.match(
+    stdout + stderr,
+    /Status poll failed \(the request timed out\); retrying \(1\/5\)/,
+  );
+});
+
+test("createRetryPlan: a retry is not made when too little of the timeout would be left to send it", () => {
+  const short = {
+    kind: "other",
+    concurrentRetries: 0,
+    otherRetries: 0,
+    slotWaitedSeconds: 0,
+  };
+  // Retry-After fits, but the POST would leave with 100ms to live: long
+  // enough for the server to start and charge the scan, too short to hear
+  // about it.
+  assert.equal(
+    createRetryPlan({ ...short, retryAfter: 10, secondsLeft: 10.1 }).retry,
+    false,
+  );
+  assert.equal(
+    createRetryPlan({ ...short, retryAfter: 10, secondsLeft: 10.25 }).retry,
+    true,
+  );
+  // A wait for a slot is added to the deadline, so it costs nothing, but what
+  // was left before the wait is all the retry would have.
+  const slot = { ...short, kind: "concurrent", retryAfter: 5 };
+  assert.equal(createRetryPlan({ ...slot, secondsLeft: 0.1 }).retry, false);
+  assert.match(
+    createRetryPlan({ ...slot, secondsLeft: 0.1 }).note,
+    /--timeout/,
+  );
+  assert.equal(createRetryPlan({ ...slot, secondsLeft: 0.25 }).retry, true);
+});
+
+test("cli: a rate limit that would leave no time to send the retry is reported, and the retry is not sent", async () => {
+  const { code, stderr, requests } = await runCli(
+    [...SCAN_ARGS, "--timeout", "1.1"],
+    {
+      routes: {
+        "/scan/status/": { body: completed({ critical: 0, high: 0 }) },
+        "/scan": [
+          {
+            status: 429,
+            body: { error: "slow down" },
+            headers: { "Retry-After": "1" },
+          },
+          { body: { scanId: "s2" } },
+        ],
+      },
+    },
+  );
+  assert.equal(code, EXIT.ERROR);
+  assert.match(stderr, /Failed to start scan \(HTTP 429\): .*slow down/);
+  assert.equal(requests.filter((r) => r.method === "POST").length, 1);
+});
+
+test("cli: a deadline that passes before the retry is sent says so, not just 'Error'", async () => {
+  // The plan left time for the retry, and then the wait ran long, as a timer
+  // on a loaded runner does. The error had no message, and describeFetchError
+  // fell back to printing the class name.
+  let posts = 0;
+  const { code, stderr } = await runCliWithHandler(
+    [...SCAN_ARGS, "--timeout", "1.5"],
+    (_req, res) => {
+      posts += 1;
+      res.writeHead(429, { ...JSON_HEADERS, "Retry-After": "1" });
+      res.end(JSON.stringify({ error: "slow down" }));
+    },
+    {
+      preload: `const setTimeoutReal = globalThis.setTimeout;
+globalThis.setTimeout = (fn, ms, ...rest) =>
+  setTimeoutReal(fn, ms >= 500 ? ms + 1000 : ms, ...rest);
+`,
+    },
+  );
+  assert.equal(code, EXIT.ERROR);
+  assert.equal(posts, 1);
+  assert.match(stderr, /Could not reach .*--timeout ran out/);
+  assert.doesNotMatch(stderr, /: Error$/m);
 });
 
 test("cli: a timeout says the scan is still running, unless --cancel-on-timeout stopped it", async () => {

@@ -525,6 +525,23 @@ export function classifyRateLimit(headers, body) {
 }
 
 /**
+ * The least time left before the deadline that a request is sent with.
+ *
+ * The sleep before the deadline is clamped to end on it, but a timer and
+ * Date.now() disagree by a millisecond or two (more on a loaded CI runner), so
+ * the sleep could end just short of it. The loop then sent a poll bounded by
+ * that sliver, which the server counted and the client aborted at once, and
+ * the run printed "Status poll failed" before making the final poll as a
+ * third request. Less than this left counts as the deadline: the remainder is
+ * waited out and the next request is the final poll.
+ *
+ * A retried POST /scan is held to the same floor and matters more: the client
+ * aborting it says nothing about the server, which may already have started
+ * and charged the scan the run then reports as never started.
+ */
+export const MIN_REQUEST_BUDGET_MS = 250;
+
+/**
  * Whether, and for how long, to wait before starting the scan again after a 429.
  *
  * `retryAfter` is seconds from the header or null. `concurrentRetries` and
@@ -539,6 +556,10 @@ export function classifyRateLimit(headers, body) {
  * retry never fired for the case a CI user actually hits: two pipelines
  * starting together, or a re-run of a job whose scan is still holding the
  * slot. The wait is at least a second so a Retry-After of 0 cannot spin.
+ *
+ * Neither kind retries when under MIN_REQUEST_BUDGET_MS would be left to send
+ * it. A wait for a slot is added to the deadline, so what is left now is what
+ * the retry gets; a short rate limit's wait comes out of it.
  */
 export function createRetryPlan({
   kind,
@@ -548,6 +569,7 @@ export function createRetryPlan({
   slotWaitedSeconds,
   secondsLeft,
 }) {
+  const minimumLeft = MIN_REQUEST_BUDGET_MS / 1000;
   if (kind === "daily") {
     return {
       retry: false,
@@ -566,12 +588,18 @@ export function createRetryPlan({
         note: ` Still no free scan slot after waiting ${slotWaitedSeconds}s. Wait for the running scan to finish or cancel it, then run again.`,
       };
     }
+    if (secondsLeft < minimumLeft) {
+      return {
+        retry: false,
+        note: " Too little of --timeout is left to send a retry.",
+      };
+    }
     return { retry: true, wait, extendsBudget: true };
   }
   if (
     retryAfter === null ||
     otherRetries >= MAX_RETRY_AFTER_RETRIES ||
-    retryAfter >= secondsLeft
+    secondsLeft - retryAfter < minimumLeft
   ) {
     return { retry: false, note: "" };
   }
@@ -712,9 +740,11 @@ export function gateCounts(result, { includeSuppressed = false } = {}) {
  * What a scan did not check, and whether that should fail the run.
  *
  * `areas` is everything `result.incomplete` lists, with its plain-language
- * label. `blocking` is true when the run should exit EXIT.INCOMPLETE: the scan
- * was blocked or could not fetch the page (or, with `failOnIncomplete`, any
- * area was skipped), and `allowIncomplete` has not opted out.
+ * label, keeping only slug-shaped entries as the shared jq program in the
+ * Action and the GitLab template does. `blocking` is true when the run should
+ * exit EXIT.INCOMPLETE: the scan was blocked or could not fetch the page (or,
+ * with `failOnIncomplete`, any area was skipped), and `allowIncomplete` has
+ * not opted out.
  */
 export function incompleteOutcome(
   result,
@@ -722,7 +752,9 @@ export function incompleteOutcome(
 ) {
   const listed = Array.isArray(result?.incomplete) ? result.incomplete : [];
   const slugs = [
-    ...new Set(listed.filter((s) => typeof s === "string" && s !== "")),
+    ...new Set(
+      listed.filter((s) => typeof s === "string" && /^[a-z0-9-]+$/.test(s)),
+    ),
   ];
   const areas = slugs.map((slug) => ({
     slug,

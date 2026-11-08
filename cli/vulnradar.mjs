@@ -25,6 +25,7 @@ import {
   reportRequestUrl,
   cancelScan,
   isScanIdSegment,
+  MIN_REQUEST_BUDGET_MS,
   USAGE,
   EXIT,
 } from "./lib.mjs";
@@ -81,19 +82,6 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const FINAL_POLL_TIMEOUT_MS = 10_000;
 
 /**
- * The least time left before the deadline that a status poll is sent with.
- *
- * The sleep before the deadline is clamped to end on it, but a timer and
- * Date.now() disagree by a millisecond or two (more on a loaded CI runner), so
- * the sleep could end just short of it. The loop then sent a poll bounded by
- * that sliver, which the server counted and the client aborted at once, and
- * the run printed "Status poll failed" before making the final poll as a
- * third request. Less than this left counts as the deadline: the remainder is
- * waited out and the next request is the final poll.
- */
-const MIN_POLL_BUDGET_MS = 250;
-
-/**
  * How many polls in a row may fail before the run gives up.
  *
  * Not one. A default scan polls roughly sixty times and a crawl closer to two
@@ -103,8 +91,12 @@ const MIN_POLL_BUDGET_MS = 250;
  */
 const MAX_CONSECUTIVE_POLL_FAILURES = 5;
 
-/** The overall budget ran out mid-request. */
-class DeadlineError extends Error {}
+/** The overall budget was already spent when a request was about to go out. */
+class DeadlineError extends Error {
+  // Printed after "Could not reach <endpoint>: ". With no message
+  // describeFetchError fell back to String(err), which is just "Error".
+  message = "the time allowed by --timeout ran out before the request was sent";
+}
 
 /** A failure worth retrying rather than reporting. */
 class TransientError extends Error {}
@@ -437,7 +429,7 @@ async function main() {
   let polledPastDeadline = false;
   for (;;) {
     const remaining = deadline - Date.now();
-    const pastDeadline = remaining < MIN_POLL_BUDGET_MS;
+    const pastDeadline = remaining < MIN_REQUEST_BUDGET_MS;
     if (pastDeadline) {
       if (polledPastDeadline) break;
       polledPastDeadline = true;
@@ -483,10 +475,18 @@ async function main() {
       }
       body = parsePollBody(text, statusRes.status);
     } catch (err) {
-      // The budget ran out between the check above and the request. The next
-      // pass makes the final poll.
-      if (err instanceof DeadlineError) continue;
       if (pastDeadline) break;
+      // A poll is capped by the time left, so against a server slower than
+      // that it is aborted on the deadline. That is the budget ending on
+      // schedule, not the network failing, so it prints nothing and counts
+      // for nothing: the next pass makes the final poll. A timeout with time
+      // still left was the per-request cap, and is a real failure below.
+      if (
+        err?.name === "TimeoutError" &&
+        deadline - Date.now() < MIN_REQUEST_BUDGET_MS
+      ) {
+        continue;
+      }
       // A default scan polls roughly sixty times and a crawl closer to two
       // hundred, so one blip from a proxy or a load balancer used to fail a
       // build for a scan that was succeeding: the run went red while the
