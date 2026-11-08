@@ -28,8 +28,9 @@ vi.mock("@/components/ui/dialog", () => {
   };
 });
 
-const { RenameTeamDialog, TeamsList, renameDraftState } =
-  await import("@/components/admin/teams/teams-list");
+const { TeamsList } = await import("@/components/admin/teams/teams-list");
+const { RenameTeamDialog, renameCandidate } =
+  await import("@/components/teams/rename-team-dialog");
 
 const team = {
   id: 5,
@@ -108,21 +109,9 @@ describe("RenameTeamDialog", () => {
   });
 
   it("saves only a real, changed name", () => {
-    expect(renameDraftState("Acme", "Acme")).toEqual({
-      dirty: false,
-      canSave: false,
-    });
-    expect(renameDraftState("Acme", "  Acme ")).toEqual({
-      dirty: true,
-      canSave: false,
-    });
-    expect(renameDraftState("Acme", "   ")).toEqual({
-      dirty: true,
-      canSave: false,
-    });
-    expect(renameDraftState("Acme", "Acme Labs")).toEqual({
-      dirty: true,
-      canSave: true,
-    });
+    expect(renameCandidate("Acme", "Acme")).toBeNull();
+    expect(renameCandidate("Acme", "  Acme ")).toBeNull();
+    expect(renameCandidate("Acme", "   ")).toBeNull();
+    expect(renameCandidate("Acme", "Acme Labs")).toBe("Acme Labs");
   });
 });

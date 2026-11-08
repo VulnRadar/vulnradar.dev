@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useId, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { RefreshCw, UsersRound, Eye, Pencil, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -33,8 +32,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ModalShell } from "@/components/ui/modal-shell";
 import { useAdminPermissions } from "@/components/admin/hooks";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";
-import { EditDialog } from "@/components/shared/edit-dialog";
-import { Label } from "@/components/ui/label";
+import { RenameTeamDialog } from "@/components/teams/rename-team-dialog";
 
 interface Team {
   id: number;
@@ -57,61 +55,6 @@ interface TeamMember {
 }
 
 type RenameResult = { ok: boolean; error?: string };
-
-/** What the rename dialog lets through: a real name that is not the old one. */
-export function renameDraftState(
-  current: string,
-  draft: string,
-): { dirty: boolean; canSave: boolean } {
-  const next = draft.trim();
-  return { dirty: draft !== current, canSave: next !== "" && next !== current };
-}
-
-/**
- * One rename dialog for both layouts. The table row and the phone card each
- * had their own inline editor, and they disagreed: the desktop one asked
- * "Rename this team?" and the phone one renamed on the first tap. Both also
- * closed the editor before the request came back, so a refused rename threw
- * the typed name away and reported the failure in a toast.
- */
-export function RenameTeamDialog({
-  team,
-  onRename,
-  onClose,
-}: {
-  team: { id: number; name: string };
-  onRename: (teamId: number, newName: string) => Promise<RenameResult>;
-  onClose: () => void;
-}) {
-  const [name, setName] = useState(team.name);
-  const fieldId = useId();
-  const { dirty, canSave } = renameDraftState(team.name, name);
-  return (
-    <EditDialog
-      open
-      onOpenChange={(open) => !open && onClose()}
-      title="Rename team"
-      description={`Everyone in ${team.name} sees the new name straight away. They are not told it changed.`}
-      size="sm"
-      saveLabel="Rename team"
-      dirty={dirty}
-      canSave={canSave}
-      onSave={() => onRename(team.id, name.trim())}
-    >
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={fieldId}>Team name</Label>
-        <Input
-          id={fieldId}
-          name="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          autoComplete="off"
-          autoFocus
-        />
-      </div>
-    </EditDialog>
-  );
-}
 
 interface TeamsListProps {
   teams: Team[];
@@ -668,7 +611,7 @@ export function TeamsList({
         {renamingTeam && (
           <RenameTeamDialog
             team={renamingTeam}
-            onRename={handleTeamRename}
+            onRename={(name) => handleTeamRename(renamingTeam.id, name)}
             onClose={() => setRenamingTeam(null)}
           />
         )}

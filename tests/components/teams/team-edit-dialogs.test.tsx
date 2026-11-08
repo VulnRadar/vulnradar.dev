@@ -71,8 +71,10 @@ vi.mock("@/components/shared/edit-dialog", async (importOriginal) => {
 
 const { editCloseDecision, runEditSubmit } =
   await import("@/components/shared/edit-dialog-outcome");
-const { RenameTeamDialog, renameCandidate, TeamDetailHeader } =
+const { TeamDetailHeader } =
   await import("@/components/teams/team-detail-header");
+const { RenameTeamDialog, renameCandidate } =
+  await import("@/components/teams/rename-team-dialog");
 const {
   TeamInviteDialog,
   TeamInviteLinkCard,
@@ -152,10 +154,12 @@ describe("rename team", () => {
 
   it("opens on the saved name, with a real label, Cancel and the Rename team button", () => {
     const { html } = renderRename();
-    expect(html).toContain('for="rename-team-name"');
-    expect(html).toContain('id="rename-team-name"');
+    const fieldId = html.match(/<label[^>]*for="([^"]+)"/)?.[1];
+    expect(fieldId).toBeDefined();
+    expect(html).toContain(`id="${fieldId}"`);
     expect(html).toContain('value="Platform Security"');
-    expect(html).toContain('maxLength="50"');
+    // The limit is the MAX_TEAM_NAME_LENGTH setting, checked by the server.
+    expect(html).not.toContain("maxLength");
     const props = lastDialog();
     expect(props.title).toBe("Rename team");
     expect(props.saveLabel).toBe("Rename team");

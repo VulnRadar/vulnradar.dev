@@ -14,8 +14,9 @@ vi.mock("react", async (importOriginal) => {
 
 const { harness, find, findAll, labelled, ofType } =
   await import("../users/_hook-harness");
-const { RenameTeamDialog, TeamsList } =
-  await import("@/components/admin/teams/teams-list");
+const { TeamsList } = await import("@/components/admin/teams/teams-list");
+const { RenameTeamDialog } =
+  await import("@/components/teams/rename-team-dialog");
 const { EditDialog } = await import("@/components/shared/edit-dialog");
 const { editCloseDecision, runEditSubmit } =
   await import("@/components/shared/edit-dialog-outcome");

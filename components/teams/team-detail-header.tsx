@@ -10,9 +10,6 @@ import {
   LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { EditDialog } from "@/components/shared/edit-dialog";
 import { pluralize } from "@/lib/ui/plural";
 import {
   DropdownMenu,
@@ -25,56 +22,7 @@ import { type Team } from "./teams-types";
 import { RolePill } from "./role-pill";
 import { TeamAvatar } from "./team-avatar";
 import { TeamAvatarPicker } from "./team-avatar-picker";
-
-/** The name a rename would send: trimmed, and only when it is a change. */
-export function renameCandidate(saved: string, draft: string): string | null {
-  const next = draft.trim();
-  return next !== "" && next !== saved ? next : null;
-}
-
-export function RenameTeamDialog({
-  team,
-  onRename,
-  onClose,
-}: {
-  team: Team;
-  /** Resolves when the server accepted the name and throws an Error whose
-   *  message is the reason when it did not: the dialog shows that message and
-   *  stays open with what was typed. */
-  onRename: (name: string) => Promise<void>;
-  onClose: () => void;
-}) {
-  // Mounted only while open, so every opening starts from the saved name and a
-  // refetch of the team list cannot reset a draft that is being typed.
-  const [name, setName] = useState(team.name);
-  const next = renameCandidate(team.name, name);
-
-  return (
-    <EditDialog
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      title="Rename team"
-      size="sm"
-      dirty={name !== team.name}
-      canSave={next !== null}
-      saveLabel="Rename team"
-      onSave={() => (next === null ? undefined : onRename(next))}
-    >
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="rename-team-name">Name</Label>
-        <Input
-          id="rename-team-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          maxLength={50}
-          autoFocus
-        />
-      </div>
-    </EditDialog>
-  );
-}
+import { RenameTeamDialog } from "./rename-team-dialog";
 
 interface TeamDetailHeaderProps {
   team: Team;

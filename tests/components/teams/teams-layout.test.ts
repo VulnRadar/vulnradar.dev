@@ -19,9 +19,6 @@ const MEMBERS = read("components/teams/team-members-list.tsx");
 const INVITATIONS = read("components/teams/team-invitations.tsx");
 
 describe("renaming from the header on a phone", () => {
-  // Everything from the component's own declaration down. RenameTeamDialog is
-  // defined above it in the same file and holds the Input, so slicing here is
-  // what separates "the header" from "the dialog it opens".
   const headerBody = HEADER.slice(
     HEADER.indexOf("export function TeamDetailHeader"),
   );
@@ -32,6 +29,11 @@ describe("renaming from the header on a phone", () => {
     expect(headerBody).not.toContain("<Input");
     expect(headerBody).not.toContain("<input");
     expect(headerBody).toContain("<RenameTeamDialog");
+  });
+
+  it("opens the one rename dialog the admin Teams tab also uses", () => {
+    expect(HEADER).toContain('from "./rename-team-dialog"');
+    expect(HEADER).not.toContain("function RenameTeamDialog");
   });
 
   it("keeps the Rename team trigger at the 44px phone target", () => {
