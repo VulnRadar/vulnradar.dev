@@ -30,7 +30,8 @@ import { cn } from "@/lib/ui/utils";
  *
  * The boundary it draws, which the copy states rather than leaves implicit: an
  * owner controls EXPOSURE, not other people's data. Unpublishing takes a scan
- * off every public surface and leaves it in its own owner's private history.
+ * off the host page and revoking its share link takes it out of the directory,
+ * and either way it stays in its own owner's private history.
  * Nothing here deletes another account's record. See
  * lib/domains/owner-control.ts.
  */
@@ -298,10 +299,12 @@ export function DomainControlPanel({
               {pluralize(othersCount, "was", "were")} run by another account.
             </>
           )}{" "}
-          Taking one out of public view removes it from the public scan feed and
-          from this domain&rsquo;s host page. It stays in its own owner&rsquo;s
-          private history: this controls who can see a scan of your domain, not
-          whether someone else may keep their own record of work they did.
+          Unpublishing one removes it from this domain&rsquo;s host page. A live
+          share link keeps working, and that link is what lists a scan on Public
+          Scans, so revoke it too. Either way the scan stays in its own
+          owner&rsquo;s private history: this controls who can see a scan of
+          your domain, not whether someone else may keep their own record of
+          work they did.
         </p>
 
         {loading ? (
@@ -387,7 +390,7 @@ export function DomainControlPanel({
         open={confirming === "unpublish"}
         onCancel={() => setConfirming(null)}
         title="Take every published scan of this domain out of public view?"
-        description={`This clears the public flag on ${pluralize(publicCount, "scan")}. They come off the public scan feed and off this domain's host page immediately. Each stays in its own owner's private history, and nothing is deleted.`}
+        description={`This clears the public flag on ${pluralize(publicCount, "scan")}. They come off this domain's host page immediately. Live share links keep working and keep a listed scan on Public Scans, so revoke those as well. Each scan stays in its own owner's private history, and nothing is deleted.`}
         confirmLabel="Unpublish them"
         onConfirm={() => runScanAction("unpublish")}
       />

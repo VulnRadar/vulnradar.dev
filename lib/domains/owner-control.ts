@@ -20,9 +20,10 @@
  * What it deliberately does NOT do is delete another account's scan. The
  * report is their record of work they did; the PUBLICITY of it is what touches
  * your domain, and that is the part that is yours to withdraw. Unpublishing
- * removes it from /public-scans, from /host, and from the host reputation
- * aggregate, and leaves the row in its owner's own private history. That line
- * is the whole design: an owner controls exposure, not other people's data.
+ * removes it from /host and from the host reputation aggregate, revoking its
+ * share link removes it from /public-scans, and either way the row stays in
+ * its owner's own private history. That line is the whole design: an owner
+ * controls exposure, not other people's data.
  *
  * Blocking is the same mechanism the admin blocklist uses (access_rules, a
  * 'url' blacklist row), because it is the same thing: "do not scan this". A
@@ -98,9 +99,9 @@ const HOST_OF_URL = hostOfUrlSql("sh.url");
  * Every publicly reachable scan of this domain, from any account.
  *
  * "Publicly reachable" is the point of the list, so it is exactly the rows a
- * stranger could already read: is_public rows (which appear on /public-scans
- * and /host) and rows carrying a share_token (unlisted, but anyone with the
- * link). A private scan someone else ran against the domain is NOT listed:
+ * stranger could already read: is_public rows (which appear on /host) and
+ * rows carrying a share_token (anyone with the link, and /public-scans when
+ * the share is listed). A private scan someone else ran against the domain is NOT listed:
  * that is their own record and it exposes nothing about the domain to anyone.
  * Showing it would turn domain verification into a surveillance tool over
  * other accounts, which is the opposite of what it is for.

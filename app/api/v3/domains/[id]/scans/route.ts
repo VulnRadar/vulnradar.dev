@@ -60,8 +60,8 @@ const VALID_ACTIONS: DomainScanAction[] = ["unpublish", "revoke-shares"];
  * PATCH /api/v3/domains/[id]/scans
  *
  * Withdraw public exposure of scans of a verified domain: `unpublish` takes
- * them off /public-scans and /host, `revoke-shares` kills their unlisted share
- * links. Body: `{ action, publicIds? }`, where omitting publicIds applies to
+ * them off /host, `revoke-shares` kills their share links, which is also what
+ * takes a listed scan off /public-scans. Body: `{ action, publicIds? }`, where omitting publicIds applies to
  * every covered scan.
  *
  * It never deletes anything. The report stays in its own owner's private
