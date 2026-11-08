@@ -989,7 +989,7 @@ docker compose logs -f app   # watch startup`}
               code={`-- Only for promoting a LATER account, never the first one:
 UPDATE users
 SET role = 'admin'
-WHERE email = 'a-colleague@yourdomain.com';`}
+WHERE email = '<your-email>';`}
             />
           </li>
           <li>
@@ -1911,7 +1911,7 @@ UPDATE users
        two_factor_method = NULL,
        totp_secret = NULL,
        backup_codes = NULL
- WHERE email = 'you@example.com';`}
+ WHERE email = '<your-email>';`}
           />
           <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
             The user can sign in with their password afterwards and re-enrol.

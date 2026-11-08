@@ -465,7 +465,7 @@ npm start`}
             </p>
             <CodeBlock
               code={`docker compose exec postgres psql -U vulnradar -d vulnradar -c \\
-  "UPDATE users SET role = 'admin' WHERE email = 'a-colleague@example.com'"`}
+  "UPDATE users SET role = 'admin' WHERE email = '<your-email>'"`}
               language="bash"
             />
           </div>
