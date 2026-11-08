@@ -35,7 +35,7 @@ export const STAFF_ROLES = [
 // reading this object directly: it resolves the live admin-configured
 // values through the settings resolver, this is only the fallback table.
 // staff mirrors pro_supporter here for the same reason getDailyLimit
-// substitutes "pro_supporter" for a "staff" plan tag: staff are capped at
+// substitutes "pro_supporter" for a "staff" plan tag: the tag means
 // the Pro Supporter plan's limits, not unlimited.
 export const PLAN_LIMITS = {
   free: BILLING_PLAN_LIMITS.free,
@@ -176,7 +176,7 @@ export async function getDailyLimit(userId: number): Promise<number> {
 
   const plan = await getUserPlan(userId);
 
-  // Staff are capped at the Pro Supporter plan's limits, not unlimited --
+  // The "staff" tag means the Pro Supporter plan's limits, not unlimited --
   // substitute the real plan id and fall through to the same setting-key
   // lookup a real Pro Supporter account would use.
   const effectivePlan = plan === "staff" ? "pro_supporter" : plan;
@@ -363,7 +363,7 @@ export async function checkAndRecordRequest(userId: number): Promise<{
   remaining: number;
   resetsAt: string;
 }> {
-  // Resolve the limit first. Staff now resolve to the Pro Supporter
+  // Resolve the limit first. The "staff" tag resolves to the Pro Supporter
   // plan's real numeric cap (see getDailyLimit), not Infinity -- only a
   // genuinely disabled billing system still resolves to Infinity here.
   const limit = await getDailyLimit(userId);
