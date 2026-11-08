@@ -4,8 +4,6 @@ import {
   isOAuthProviderConfigured,
   getOAuthClientId,
   getOAuthClientSecret,
-  oauthLabelForAuthProvider,
-  OAUTH_PROVIDERS,
 } from "@/lib/auth/oauth-providers";
 
 const ENV_KEYS = [
@@ -89,31 +87,5 @@ describe("getOAuthClientId / getOAuthClientSecret", () => {
   it("returns undefined when unset", () => {
     expect(getOAuthClientId("google")).toBeUndefined();
     expect(getOAuthClientSecret("google")).toBeUndefined();
-  });
-});
-
-describe("oauthLabelForAuthProvider", () => {
-  it("returns the provider's display label for a known provider", () => {
-    expect(oauthLabelForAuthProvider("google")).toBe(
-      OAUTH_PROVIDERS.google.label,
-    );
-    expect(oauthLabelForAuthProvider("github")).toBe(
-      OAUTH_PROVIDERS.github.label,
-    );
-    expect(oauthLabelForAuthProvider("discord")).toBe(
-      OAUTH_PROVIDERS.discord.label,
-    );
-  });
-
-  it("returns null for 'password' (not an OAuth provider)", () => {
-    expect(oauthLabelForAuthProvider("password")).toBeNull();
-  });
-
-  it("returns null for null (legacy row created before auth_provider existed)", () => {
-    expect(oauthLabelForAuthProvider(null)).toBeNull();
-  });
-
-  it("returns null for an unrecognized value rather than throwing", () => {
-    expect(oauthLabelForAuthProvider("something-unexpected")).toBeNull();
   });
 });

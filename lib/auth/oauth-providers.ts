@@ -92,13 +92,3 @@ export function isOAuthProviderConfigured(provider: OAuthProviderId): boolean {
     Boolean(getOAuthClientSecret(provider))
   );
 }
-
-/** Label for an `auth_provider` DB value that isn't a known OAuth provider
- *  (i.e. `null` or `'password'`), used when composing collision messages. */
-export function oauthLabelForAuthProvider(
-  authProvider: string | null,
-): string | null {
-  if (!authProvider) return null;
-  if (!isOAuthProviderId(authProvider)) return null;
-  return OAUTH_PROVIDERS[authProvider].label;
-}

@@ -32,7 +32,6 @@ import {
   OAUTH_PROVIDERS,
   isOAuthProviderConfigured,
   isOAuthProviderId,
-  oauthLabelForAuthProvider,
   type OAuthProviderId,
 } from "@/lib/auth/oauth-providers";
 import {
@@ -219,10 +218,8 @@ export async function GET(
         // fact they already have an account. Send them to sign in instead,
         // mirroring the login page's oauth_no_account message below.
         if (intent === "signup") {
-          const label = OAUTH_PROVIDERS[provider].label;
-          const message = `A VulnRadar account already uses this ${label} account. Sign in with ${label} instead.`;
           return NextResponse.redirect(
-            `${baseUrl}/signup?error=oauth_already_exists&message=${encodeURIComponent(message)}`,
+            `${baseUrl}/signup?error=oauth_already_exists&provider=${provider}`,
           );
         }
         await persistGithubLogin(provider, linked.id, userInfo.login);
@@ -252,10 +249,8 @@ export async function GET(
       // account that already exists -- never silently create one just
       // because someone clicked the wrong button.
       if (intent === "login") {
-        const label = OAUTH_PROVIDERS[provider].label;
-        const message = `No VulnRadar account uses this ${label} account yet. Sign up with ${label} first.`;
         return NextResponse.redirect(
-          `${baseUrl}/login?error=oauth_no_account&message=${encodeURIComponent(message)}`,
+          `${baseUrl}/login?error=oauth_no_account&provider=${provider}`,
         );
       }
 
@@ -264,11 +259,8 @@ export async function GET(
       // POST /api/v3/auth/signup is obvious, whereas first-time OAuth
       // sign-in provisions an account as a side effect of a redirect. A
       // signup pause that only covered the form would leave this wide open.
-      const signupsPaused = await signupsPausedReason();
-      if (signupsPaused) {
-        return NextResponse.redirect(
-          `${baseUrl}/signup?error=signups_paused&message=${encodeURIComponent(signupsPaused)}`,
-        );
+      if (await signupsPausedReason()) {
+        return NextResponse.redirect(`${baseUrl}/signup?error=signups_paused`);
       }
 
       const created = await createOAuthUser(
@@ -314,13 +306,14 @@ export async function GET(
     // ── An account exists with this email (but not this identity). ───
     const row = existing.rows[0];
 
+    // The account's own provider, not the one just tried: that is the button
+    // the sentence tells them to use. A password account has none to name.
     if (row.auth_provider !== provider) {
-      const existingLabel = oauthLabelForAuthProvider(row.auth_provider);
-      const message = existingLabel
-        ? `An account with this email already exists. Sign in with ${existingLabel} instead.`
-        : "An account with this email already exists. Sign in with your password instead.";
+      const providerParam = isOAuthProviderId(row.auth_provider)
+        ? `&provider=${row.auth_provider}`
+        : "";
       return NextResponse.redirect(
-        `${baseUrl}/login?error=oauth_email_in_use&message=${encodeURIComponent(message)}`,
+        `${baseUrl}/login?error=oauth_email_in_use${providerParam}`,
       );
     }
 
@@ -331,12 +324,8 @@ export async function GET(
     // profile. Signing the address's real owner into it handed that person an
     // account the victim was now using. Checked before the disabled and
     // signup branches so an unproven claim learns nothing else about the row.
-    const label = OAUTH_PROVIDERS[provider].label;
     if (!row.email_verified_at) {
-      const message = `An account lists this email address but never verified it, so ${label} sign-in cannot open it. If the address is yours, contact support.`;
-      return NextResponse.redirect(
-        `${baseUrl}/login?error=oauth_email_in_use&message=${encodeURIComponent(message)}`,
-      );
+      return NextResponse.redirect(`${baseUrl}/login?error=oauth_email_in_use`);
     }
     // A row already linked to a different identity of this provider: the
     // provider-id lookup above missed, so this response is someone else's
@@ -345,10 +334,7 @@ export async function GET(
     const linkedId: string | null =
       idColumn && row[idColumn] != null ? String(row[idColumn]) : null;
     if (linkedId !== null && linkedId !== userInfo.id) {
-      const message = `This email's account is connected to a different ${label} account. Sign in with that one.`;
-      return NextResponse.redirect(
-        `${baseUrl}/login?error=oauth_email_in_use&message=${encodeURIComponent(message)}`,
-      );
+      return NextResponse.redirect(`${baseUrl}/login?error=oauth_email_in_use`);
     }
 
     if (row.disabled_at) {
@@ -362,9 +348,8 @@ export async function GET(
     // before that column was populated) -- same "tell them to sign in
     // instead of silently signing in" rule applies.
     if (intent === "signup") {
-      const message = `A VulnRadar account already uses this ${label} account. Sign in with ${label} instead.`;
       return NextResponse.redirect(
-        `${baseUrl}/signup?error=oauth_already_exists&message=${encodeURIComponent(message)}`,
+        `${baseUrl}/signup?error=oauth_already_exists&provider=${provider}`,
       );
     }
 
@@ -395,9 +380,8 @@ export async function GET(
         filled = true;
       }
       if (!filled) {
-        const message = `This email's account is connected to a different ${label} account. Sign in with that one.`;
         return NextResponse.redirect(
-          `${baseUrl}/login?error=oauth_email_in_use&message=${encodeURIComponent(message)}`,
+          `${baseUrl}/login?error=oauth_email_in_use`,
         );
       }
     }
@@ -483,11 +467,8 @@ async function signInOAuthUser(
   // point the provider has already vouched for the identity, so the same
   // "only an authenticated caller learns anything" property as the password
   // route holds.
-  const pausedReason = await loginsPausedReasonFor(twoFA?.role);
-  if (pausedReason) {
-    return NextResponse.redirect(
-      `${baseUrl}/login?error=logins_paused&message=${encodeURIComponent(pausedReason)}`,
-    );
+  if (await loginsPausedReasonFor(twoFA?.role)) {
+    return NextResponse.redirect(`${baseUrl}/login?error=logins_paused`);
   }
 
   if (twoFA?.totp_enabled) {

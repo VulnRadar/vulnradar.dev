@@ -679,9 +679,8 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       const location = locationOf(res);
       expect(location.pathname).toBe("/login");
       expect(location.searchParams.get("error")).toBe("oauth_no_account");
-      expect(
-        decodeURIComponent(location.searchParams.get("message") || ""),
-      ).toContain("Sign up with Google first");
+      expect(location.searchParams.get("provider")).toBe("google");
+      expect(location.searchParams.has("message")).toBe(false);
     });
 
     it("intent=signup (the default) still creates the account as before", async () => {
@@ -738,9 +737,8 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       const location = locationOf(res);
       expect(location.pathname).toBe("/signup");
       expect(location.searchParams.get("error")).toBe("oauth_already_exists");
-      expect(
-        decodeURIComponent(location.searchParams.get("message") || ""),
-      ).toContain("Sign in with Google instead");
+      expect(location.searchParams.get("provider")).toBe("google");
+      expect(location.searchParams.has("message")).toBe(false);
     });
 
     it("rejects a disabled account found via provider-id match without signing in", async () => {
@@ -804,9 +802,8 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       const location = locationOf(res);
       expect(location.pathname).toBe("/signup");
       expect(location.searchParams.get("error")).toBe("oauth_already_exists");
-      expect(
-        decodeURIComponent(location.searchParams.get("message") || ""),
-      ).toContain("Sign in with Google instead");
+      expect(location.searchParams.get("provider")).toBe("google");
+      expect(location.searchParams.has("message")).toBe(false);
     });
   });
 
@@ -822,9 +819,8 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
       const location = locationOf(res);
       expect(location.searchParams.get("error")).toBe("oauth_email_in_use");
-      expect(
-        decodeURIComponent(location.searchParams.get("message") || ""),
-      ).toContain("Sign in with your password instead");
+      expect(location.searchParams.has("provider")).toBe(false);
+      expect(location.searchParams.has("message")).toBe(false);
       expect(sessionInsertCalls).toHaveLength(0);
     });
 
@@ -839,9 +835,8 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
       const location = locationOf(res);
       expect(location.searchParams.get("error")).toBe("oauth_email_in_use");
-      expect(
-        decodeURIComponent(location.searchParams.get("message") || ""),
-      ).toContain("Sign in with GitHub instead");
+      expect(location.searchParams.get("provider")).toBe("github");
+      expect(location.searchParams.has("message")).toBe(false);
     });
 
     it("rejects with oauth_email_in_use for a legacy row with no auth_provider (treated as password)", async () => {
@@ -855,9 +850,8 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
       const location = locationOf(res);
       expect(location.searchParams.get("error")).toBe("oauth_email_in_use");
-      expect(
-        decodeURIComponent(location.searchParams.get("message") || ""),
-      ).toContain("Sign in with your password instead");
+      expect(location.searchParams.has("provider")).toBe(false);
+      expect(location.searchParams.has("message")).toBe(false);
     });
 
     it("rejects with oauth_account_disabled for a suspended account owned by the same provider", async () => {
@@ -1049,9 +1043,8 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
       const location = locationOf(res);
       expect(location.searchParams.get("error")).toBe("oauth_email_in_use");
-      expect(
-        decodeURIComponent(location.searchParams.get("message") || ""),
-      ).toContain("different Google account");
+      expect(location.searchParams.has("provider")).toBe(false);
+      expect(location.searchParams.has("message")).toBe(false);
       expect(identityWrites()).toHaveLength(0);
       expect(sessionInsertCalls).toHaveLength(0);
     });
