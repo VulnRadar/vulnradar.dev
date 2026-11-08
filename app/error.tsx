@@ -136,19 +136,16 @@ export default function Error({
           </Button>
         </div>
 
-        <div className="flex gap-4 text-xs">
+        <div className="flex gap-6 text-xs">
           <Link
             href={ROUTES.CONTACT}
-            className={`text-primary hover:underline underline-offset-4 rounded-sm ${focus.ring}`}
+            className={`-my-1.5 block py-1.5 text-primary hover:underline underline-offset-4 rounded-sm ${focus.ring}`}
           >
             Contact
           </Link>
-          <span aria-hidden="true" className="text-muted-foreground">
-            ·
-          </span>
           <Link
             href={ROUTES.DOCS}
-            className={`text-primary hover:underline underline-offset-4 rounded-sm ${focus.ring}`}
+            className={`-my-1.5 block py-1.5 text-primary hover:underline underline-offset-4 rounded-sm ${focus.ring}`}
           >
             Documentation
           </Link>

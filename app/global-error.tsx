@@ -94,9 +94,8 @@ const CSS = `
 .vr-ge-btn-primary{border:none;background:${BRAND.primary};color:${BRAND.onPrimary}}
 .vr-ge-btn-secondary{border:1px solid var(--ge-border,${PALETTE.darkBorder});background:transparent;color:var(--ge-text,${PALETTE.darkText})}
 .vr-ge-copy{border:none;background:transparent;cursor:pointer;font-family:inherit;font-size:0.75rem;color:var(--ge-muted,${PALETTE.darkMuted})}
-.vr-ge-links{display:flex;gap:1rem;font-size:0.75rem;align-items:center}
-.vr-ge-links a{color:${PALETTE.link};text-decoration:none}
-.vr-ge-links span{color:var(--ge-muted,${PALETTE.darkMuted})}
+.vr-ge-links{display:flex;gap:1.5rem;font-size:0.75rem;align-items:center}
+.vr-ge-links a{display:block;margin:-0.375rem 0;padding:0.375rem 0;color:${PALETTE.link};text-decoration:none}
 `;
 
 export default function GlobalError({
@@ -207,7 +206,6 @@ export default function GlobalError({
 
           <div className="vr-ge-links">
             <a href={ROUTES.CONTACT}>Contact</a>
-            <span aria-hidden="true">&middot;</span>
             <a href={ROUTES.DOCS}>Documentation</a>
           </div>
         </div>
