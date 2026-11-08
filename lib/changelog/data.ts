@@ -2142,7 +2142,7 @@ const CHANGELOG: Release[] = [
       {
         icon: GitMerge,
         label: "Large Repos Get a Partial AI Review Instead of a Refusal",
-        desc: "A GitHub repo scan no longer refuses a repo that is larger than your remaining GitHub review allowance or the server's per-run AI review limit. The pattern-based secret scan always checks every file. The AI review covers as many files as the allowance and the limit allow, stops between batches, and the result says how many files it covered. When not even the first batch fits, or your plan's allowance for the window is already used up, the scan still runs and the result says the AI review did not run and why.",
+        desc: "A GitHub repo scan no longer refuses a repo that is larger than your remaining GitHub review allowance or the server's per-run AI review limit. The pattern-based secret scan checks every file within the file caps. The AI review covers as many files as the allowance and the limit allow, stops between batches, and the result says how many files it covered. On a paid plan, with your own AI key or with billing turned off, the scan still runs when not even the first batch fits, or when a paid plan's allowance for the window is already used up, and the result says the AI review did not run and why. On the free plan the scan is refused instead (HTTP 403), with nothing spent, whenever there is no AI batch it can pay for: today's free review is used and the credits left are below one batch, or no file in the repo is small enough for one batch under the per-run limit, free review used or not.",
         category: "changed",
       },
       {
@@ -2154,7 +2154,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Code,
         label: "Repo Scan Response Reports AI Review Coverage",
-        desc: "POST /api/v3/scan/github no longer answers 413 for a repo over the per-run AI review limit, or 403 when your allowance cannot cover the whole repo or is used up for the window. It returns the scan with aiReviewStoppedAtBudget, plus three new fields: aiReviewStoppedAtRunCap, aiReviewCoverage (files and batches reviewed of the total) and aiReviewAllowanceMessage. A 403 now means only that the free plan's trial is used and no GitHub review credits are left. The v3 change is additive apart from those refusals.",
+        desc: "POST /api/v3/scan/github no longer answers 413 for a repo over the per-run AI review limit, or, on a paid plan, 403 when your allowance cannot cover the whole repo or is used up for the window. It returns the scan with aiReviewStoppedAtBudget, plus three new fields: aiReviewStoppedAtRunCap, aiReviewCoverage (files and batches reviewed of the total, plus batchesFailed for batches whose AI call failed and filesSkippedOverRunCap for files over the per-run limit on their own) and aiReviewAllowanceMessage. A 403 now means the free plan cannot pay for one AI batch: its free review is used and its GitHub review credits are below one batch, or no file in the repository fits one batch under the per-run limit. The v3 change is additive apart from those refusals.",
         category: "api",
       },
       {
