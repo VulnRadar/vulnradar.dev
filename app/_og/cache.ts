@@ -9,8 +9,10 @@
  * response it builds outside development (see node_modules/next/dist/compiled/
  * @vercel/og), and Next's generated metadata route returns the handler's
  * response untouched, so that header is what actually shipped. A year of
- * `immutable` is right for a card compiled into the build and wrong for one
- * that answers a share token: revoking a link stops the report loading at
+ * `immutable` only holds for a card whose URL changes whenever the card does,
+ * which is why a check card carries a content hash in its ?v= (./check-card.ts)
+ * and keeps the header. It is wrong for a card that answers a share token,
+ * where the URL cannot change: revoking a link stops the report loading at
  * once, and then the unfurl in Slack keeps showing the host and its severity
  * counts from any cache that saw it, for a year, because we told every cache
  * the answer would never change. Same for a host card after the scan behind

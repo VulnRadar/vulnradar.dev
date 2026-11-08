@@ -19,6 +19,17 @@ import { BRAND } from "@/lib/config/brand";
 export const OG_SIZE = { width: 1200, height: 630 };
 export const OG_CONTENT_TYPE = "image/png";
 
+/**
+ * Bump when the template below changes how a card looks. The check card URLs
+ * hash this with the text they draw (./check-card.ts), and cached copies of a
+ * card live for a year, so a redesign nobody bumped this for never reaches them.
+ */
+export const OG_CARD_VERSION = "2";
+
+// At 62px a title this long wraps to a third line, and with the subline and
+// chips the column is taller than the card.
+const LONG_HEADLINE_CHARS = 56;
+
 const INK = {
   bgTop: "#0a0e18",
   bgBottom: "#0e1526",
@@ -130,7 +141,7 @@ export function OgCard({
           style={{
             display: "flex",
             flexWrap: "wrap",
-            fontSize: 62,
+            fontSize: headline.length > LONG_HEADLINE_CHARS ? 52 : 62,
             fontWeight: 600,
             lineHeight: 1.12,
             letterSpacing: -1.5,
@@ -144,8 +155,12 @@ export function OgCard({
           ) : null}
         </div>
         {subline ? (
+          // Callers clamp the text; lineClamp is the backstop for one that
+          // does not. Satori ignores it without display: block.
           <div
             style={{
+              display: "block",
+              lineClamp: 3,
               fontSize: 26,
               color: INK.muted,
               marginTop: 20,

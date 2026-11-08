@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import { APP_NAME } from "@/lib/config/constants";
 import { BRAND } from "@/lib/config/brand";
 import { OgCard, OG_SIZE, OG_CONTENT_TYPE } from "@/app/_og/card";
+import { clampText } from "@/lib/seo/metadata";
 import { getCheckById, getCategoryLabel } from "@/lib/seo/checks-content";
 
 export const alt = `Security check reference on ${APP_NAME}`;
@@ -38,7 +39,9 @@ export default async function OpengraphImage({
     <OgCard
       eyebrow="How to fix"
       headline={check.title}
-      subline={check.description}
+      // Descriptions run to nearly 600 characters. Unclamped, the longest of
+      // them pushed the chips and the footer through the bottom of the card.
+      subline={clampText(check.description, 140)}
       chips={[
         { label: check.severity.toUpperCase(), color: severityColor },
         { label: getCategoryLabel(check.category) },
