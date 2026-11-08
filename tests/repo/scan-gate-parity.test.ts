@@ -234,6 +234,7 @@ function runGateInputs(
 }
 
 const shellAvailable = spawnSync("bash", ["--version"]).status === 0;
+const dashAvailable = spawnSync("dash", ["-c", "exit 0"]).status === 0;
 
 const GATE_DEFAULTS = {
   VR_URL: "https://example.com",
@@ -888,8 +889,8 @@ describe("what the server says stays on one line of the gate's output", () => {
     (_n, s) => {
       const printed = s
         .split("\n")
-        .filter((line) => /^\s*(if .*then )?echo /.test(line))
-        .map((line) => line.slice(line.indexOf("echo ")))
+        .filter((line) => /^\s*(if .*then )?(echo|printf) /.test(line))
+        .map((line) => line.slice(line.search(/(echo|printf) /)))
         .join("\n")
         .replace(/\$\(log_safe "(?:\$\w+|\$\(cat resp\.json[^)]*\))"\)/g, "");
       for (const name of SERVER_VALUES) {
@@ -898,6 +899,17 @@ describe("what the server says stays on one line of the gate's output", () => {
       expect(printed).not.toContain("cat resp.json");
     },
   );
+
+  it("gives the GitLab template's filtered text to printf, never to echo", () => {
+    // A backslash-n in a reply is two ordinary characters, so the filter keeps
+    // it, and where sh is dash (Debian, Ubuntu) echo then decodes it into the
+    // very line break the filter took out. The Action runs under bash, whose
+    // echo decodes nothing.
+    const echoed = GITLAB_SH.split("\n").filter((line) =>
+      /^\s*(if .*then )?echo .*log_safe/.test(line),
+    );
+    expect(echoed).toEqual([]);
+  });
 
   it("is the same filter in both files", () => {
     const filter = (script: string) => {
@@ -924,18 +936,22 @@ describe("what the server says stays on one line of the gate's output", () => {
   });
 
   const CR = String.fromCharCode(13);
+  const ESC = String.fromCharCode(27);
+  const BACKSLASH = String.fromCharCode(92);
   const FORGED = [
     "boom",
     `::warning::forged${CR}`,
     "::set-output name=forged::1",
     "%0A::error::forged%0D%25",
+    `${ESC}[2K::notice::forged`,
+    `${BACKSLASH}n::error::forged${BACKSLASH}r${BACKSLASH}033[2K`,
   ].join(NL);
   const FORGED_JSON = `{${NL}"note": "::warning::forged"${NL}}`;
 
   /** Run a gate script with whatever the scenario's env makes the API say. */
   function runScenario(
     script: string,
-    shell: "bash" | "sh",
+    shell: "bash" | "sh" | "dash",
     standInJq: boolean,
     scenario: Record<string, string>,
   ) {
@@ -1035,10 +1051,20 @@ describe("what the server says stays on one line of the gate's output", () => {
   describe.each([
     ["action.yml", "a stand-in jq", ACTION_SH, "bash" as const, true],
     ["the GitLab template", "a stand-in jq", GITLAB_SH, "sh" as const, true],
+    [
+      "the GitLab template under dash",
+      "a stand-in jq",
+      GITLAB_SH,
+      "dash" as const,
+      true,
+    ],
     ["action.yml", "jq", ACTION_SH, "bash" as const, false],
     ["the GitLab template", "jq", GITLAB_SH, "sh" as const, false],
   ])("%s, read with %s", (_name, _jq, script, shell, standInJq) => {
-    const runnable = shellAvailable && (standInJq || jqAvailable);
+    const runnable =
+      shellAvailable &&
+      (standInJq || jqAvailable) &&
+      (shell !== "dash" || dashAvailable);
     it
       .skipIf(!runnable)
       .each(
@@ -1060,6 +1086,7 @@ describe("what the server says stays on one line of the gate's output", () => {
           const prefix = `${shell === "bash" ? command : ""}${want.slice(2)}`;
           expect(lines[i].startsWith(prefix), run.out).toBe(true);
           expect(lines[i]).not.toMatch(/%(0A|0D|25)/i);
+          expect(lines[i]).not.toContain(ESC);
         });
         expect(run.output).not.toContain("forged");
       },

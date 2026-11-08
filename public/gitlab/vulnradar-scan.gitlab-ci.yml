@@ -68,6 +68,8 @@ vulnradar_scan:
       # Everything the server wrote is printed through this, the same filter
       # as the Action's: a job log honours terminal escapes and carriage
       # returns, so a reply could otherwise forge or overwrite lines in it.
+      # Printed with printf rather than echo: where sh is dash (Debian, Ubuntu),
+      # echo decodes a backslash-n in the text into the line break this removed.
       log_safe() { printf '%s' "$1" | tr -d '\000-\037\177%'; }
 
       if [ -z "${VULNRADAR_TOKEN:-}" ]; then
@@ -119,11 +121,11 @@ vulnradar_scan:
         -H "Content-Type: application/json" \
         -d "$body" || echo 000)
       if [ "$code" -ge 300 ] || [ "$code" = "000" ]; then
-        echo "Failed to start scan (HTTP $code): $(log_safe "$(cat resp.json 2>/dev/null)")"; exit 2
+        printf '%s\n' "Failed to start scan (HTTP $code): $(log_safe "$(cat resp.json 2>/dev/null)")"; exit 2
       fi
       scan_id=$(jq -r '.scanId' resp.json)
       if [ -z "$scan_id" ] || [ "$scan_id" = "null" ]; then
-        echo "No scanId in response: $(log_safe "$(cat resp.json)")"; exit 2
+        printf '%s\n' "No scanId in response: $(log_safe "$(cat resp.json)")"; exit 2
       fi
       # The id goes into the status path. A reply with a slash or a dot
       # segment in it sent the polls, token and all, to another path on the
@@ -168,7 +170,7 @@ vulnradar_scan:
           # sends no kind adds nothing.
           kind=$(jq -r '(.failureKind | strings) // empty' status.json)
           if [ -n "$kind" ]; then reason="$reason [$kind]"; fi
-          echo "Scan failed: $(log_safe "$reason")"; exit 2
+          printf '%s\n' "Scan failed: $(log_safe "$reason")"; exit 2
         fi
         sleep "$VR_POLL_INTERVAL"
         elapsed=$((elapsed + VR_POLL_INTERVAL))
@@ -246,8 +248,8 @@ vulnradar_scan:
         echo "Not checked: $incomplete"
         page_message=$(jq -r '(.result.pageUnreachable | objects | .message | strings) // empty' status.json)
         redirect_host=$(jq -r '(.result.pageUnreachable | objects | .redirectHost | strings) // empty' status.json)
-        if [ -n "$page_message" ]; then echo "Page unreachable: $(log_safe "$page_message")"; fi
-        if [ -n "$redirect_host" ]; then echo "It redirects to another host: $(log_safe "$redirect_host")"; fi
+        if [ -n "$page_message" ]; then printf '%s\n' "Page unreachable: $(log_safe "$page_message")"; fi
+        if [ -n "$redirect_host" ]; then printf '%s\n' "It redirects to another host: $(log_safe "$redirect_host")"; fi
         case ",$incomplete," in
           *,bot-challenge,*|*,page-unreachable,*) incomplete_blocking=true ;;
         esac
