@@ -285,6 +285,16 @@ describe("/docs/account-security", () => {
     expect(page).not.toContain("Connections");
   });
 
+  it("says what deleting does to a subscription, and who cannot delete", () => {
+    expect(page).toContain(
+      "Every live Stripe subscription on the account is cancelled at once rather than at the end of its period",
+    );
+    expect(page).toContain(
+      "if Stripe cannot confirm that, the account is kept and you are asked to try again in a minute",
+    );
+    expect(page).toContain("a super admin cannot delete their own account");
+  });
+
   it("says where Sign out everywhere really is", () => {
     expect(page).toContain("sits at the top right of Active sessions");
     expect(page).not.toContain("danger-zone button");

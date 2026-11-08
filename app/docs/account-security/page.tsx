@@ -474,7 +474,11 @@ export default function AccountSecurityDocsPage() {
             <InlineCode>DELETE</InlineCode> and re-enter your password (an
             account with no password, created through a provider, skips the
             password step). The purge runs as one transaction, and there is no
-            recovery afterwards.
+            recovery afterwards. Every live Stripe subscription on the account
+            is cancelled at once rather than at the end of its period, and if
+            Stripe cannot confirm that, the account is kept and you are asked to
+            try again in a minute; a super admin cannot delete their own
+            account.
           </p>
           <DocsCallout
             variant="warning"

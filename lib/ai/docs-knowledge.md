@@ -3285,7 +3285,7 @@ individual URLs instead.
 | `/docs/rate-limits` | - | 6 | 6 | 0 | 4 | 0 | 0 | 11 | 3 |
 | `/docs/architecture` | - | 5 | 1 | 0 | 3 | 0 | 0 | 8 | 0 |
 | `/docs/developers` | - | 16 | 3 | 0 | 9 | 0 | 0 | 18 | 9 |
-| `/docs/account-security` | - | 6 | 3 | 0 | 1 | 0 | 0 | 22 | 0 |
+| `/docs/account-security` | - | 6 | 3 | 0 | 1 | 0 | 0 | 21 | 0 |
 | `/docs/administration` | - | 12 | 8 | 0 | 0 | 0 | 0 | 38 | 0 |
 | `/docs/ai` | - | 11 | 1 | 0 | 2 | 0 | 0 | 23 | 0 |
 | `/docs/billing` | - | 8 | 7 | 0 | 0 | 0 | 0 | 21 | 0 |
