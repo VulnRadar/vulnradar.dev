@@ -130,7 +130,9 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-describe("the admin panel's handleTeamRename", () => {
+// A longer budget than vitest's default five seconds, or the wait for the
+// lazily loaded panel below would be cut off before its own timeout.
+describe("the admin panel's handleTeamRename", { timeout: 15_000 }, () => {
   const TEAMS_URL = `${API.ADMIN}/teams`;
 
   /** `rename` answers the PATCH; everything else is an empty, healthy panel. */
