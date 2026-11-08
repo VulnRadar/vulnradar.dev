@@ -350,12 +350,26 @@ export default function GithubScanningPage() {
           <p className="max-w-[68ch] text-sm text-muted-foreground">
             Independent of plan and of whose AI key is used,{" "}
             <InlineCode>CONFIG_GITHUB_REVIEW_MAX_TOKENS_PER_RUN</InlineCode>{" "}
-            (default 300,000 tokens, counted at one token per byte of the prompt
-            sent) bounds the input one run sends. The AI review stops at the
-            batch that would cross it and the response says so with{" "}
+            (default 300,000 tokens) bounds the input one run sends. The count
+            is conservative on purpose: one token per byte of the prompt sent,
+            line numbers and file headers included, so the default admits about
+            300 KB of code per run, though a provider usually bills that much
+            code as far fewer tokens. The AI review stops at the batch that
+            would cross it and the response says so with{" "}
             <InlineCode>aiReviewStoppedAtRunCap</InlineCode> and{" "}
-            <InlineCode>aiReviewCoverage</InlineCode>; the pattern-based secret
-            scan still checks every file.
+            <InlineCode>aiReviewCoverage</InlineCode>. A file over the ceiling
+            on its own is skipped and listed in{" "}
+            <InlineCode>aiReviewCoverage.filesSkippedOverRunCap</InlineCode>{" "}
+            while the review carries on with the rest. The pattern-based secret
+            scan still checks every file, and the coverage is saved with the
+            scan, so reopening it from the repo&apos;s history shows the same
+            notice.
+          </p>
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            To AI-review more of a large repo in one run, an admin raises{" "}
+            <InlineCode>GITHUB_REVIEW_MAX_TOKENS_PER_RUN</InlineCode> in the
+            admin panel&apos;s settings (the AI group), up to 2,000,000. It is a
+            runtime setting, so the next scan uses it without a redeploy.
           </p>
         </DocsSubSection>
         <DocsSubSection title="Buying credits">
