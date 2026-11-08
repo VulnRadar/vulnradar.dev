@@ -805,17 +805,17 @@ async function settleVerifyTokens(
 }
 
 /**
- * verifyFindingsBatch, and whether the pass actually happened.
+ * Verifies a caller-supplied findings array, and says whether the pass
+ * actually happened.
  *
- * verifyFindingsBatch hands back the findings and nothing else, so "the AI
- * looked and cleared everything", "no AI endpoint is configured" and "the
- * provider was down for every chunk" all arrive as the same array, and a route
- * that wraps it can only answer success. runAiVerification fixed that for the
- * scan page with AiVerificationOutcome; this gives the batch the same answer.
+ * The findings alone cannot say that: "the AI looked and cleared everything",
+ * "no AI endpoint is configured" and "the provider was down for every chunk"
+ * are all the same array. runAiVerification answers with
+ * AiVerificationOutcome for the scan page, and this gives the batch the same
+ * answer.
  *
- * Nothing is persisted and nothing extra is logged, exactly as for
- * verifyFindingsBatch, which now calls this: the caller has the outcome to act
- * on. A batch with nothing in it counts as configured, as it does for
+ * Nothing is persisted and nothing extra is logged: the caller has the outcome
+ * to act on. A batch with nothing in it counts as configured, as it does for
  * runAiVerification, because no endpoint was looked for.
  *
  * `reservation` is what the route's reserveAiTokens gate took for this pass:
@@ -882,21 +882,6 @@ export async function verifyFindingsBatchWithOutcome(
   } finally {
     await settleVerifyTokens(reservation, spent.tokens);
   }
-}
-
-export async function verifyFindingsBatch(
-  url: string,
-  findings: Vulnerability[],
-  userId: number | null,
-  reservation: AiTokenReservation | null,
-): Promise<Vulnerability[]> {
-  const { findings: verified } = await verifyFindingsBatchWithOutcome(
-    url,
-    findings,
-    userId,
-    reservation,
-  );
-  return verified;
 }
 
 /**

@@ -46,9 +46,6 @@ vi.mock("@/lib/ai/verify-findings", async (importOriginal) => {
     ...actual,
     verifyFindingsBatchWithOutcome: (...args: unknown[]) =>
       mockVerifyFindingsBatch(...args),
-    // The findings-only form, for a route that still calls it.
-    verifyFindingsBatch: async (...args: unknown[]) =>
-      (await mockVerifyFindingsBatch(...args)).findings,
     estimateVerifyTokens: (...args: unknown[]) =>
       mockEstimateVerifyTokens(...args),
   };
@@ -247,7 +244,7 @@ describe("POST /api/v3/scan/verify-batch: rate limiting", () => {
 });
 
 describe("POST /api/v3/scan/verify-batch: AI-disabled setting", () => {
-  it("returns 403 without calling verifyFindingsBatch when AI is disabled for the user", async () => {
+  it("returns 403 without calling verifyFindingsBatchWithOutcome when AI is disabled for the user", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ ai_disabled: true }] });
 
     const res = await POST(
@@ -493,7 +490,7 @@ describe("POST /api/v3/scan/verify-batch: findings cap", () => {
     );
   });
 
-  it("rejects a findings array over the cap without calling verifyFindingsBatch", async () => {
+  it("rejects a findings array over the cap without calling verifyFindingsBatchWithOutcome", async () => {
     const tooMany = Array.from({ length: MAX_FINDINGS + 1 }, (_, i) => ({
       id: `f${i}`,
       title: "Missing CSP",
@@ -668,7 +665,7 @@ describe("POST /api/v3/scan/verify-batch: when the allowance stops the pass", ()
 });
 
 describe("POST /api/v3/scan/verify-batch: the AI credit reservation", () => {
-  it("returns 429 with the gate's message and never calls verifyFindingsBatch when the account cannot cover one finding", async () => {
+  it("returns 429 with the gate's message and never calls verifyFindingsBatchWithOutcome when the account cannot cover one finding", async () => {
     mockReserveAiTokens.mockResolvedValue({
       allowed: false,
       busy: false,
@@ -698,7 +695,7 @@ describe("POST /api/v3/scan/verify-batch: the AI credit reservation", () => {
     );
   });
 
-  it("hands the reservation to verifyFindingsBatch, which holds the pass to it and settles it", async () => {
+  it("hands the reservation to verifyFindingsBatchWithOutcome, which holds the pass to it and settles it", async () => {
     const ownKey = { ...RESERVATION, usingOwnAi: true, budget: null };
     mockReserveAiTokens.mockResolvedValue({
       allowed: true,

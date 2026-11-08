@@ -26,7 +26,7 @@ vi.mock("@/lib/billing/github-review-usage", () => ({
   recordGithubReviewTokens: vi.fn(),
 }));
 
-const { verifyFindingsBatch, runAiVerification } =
+const { verifyFindingsBatchWithOutcome, runAiVerification } =
   await import("@/lib/ai/verify-findings");
 const { runGithubAiReview } = await import("@/lib/ai/review-source");
 
@@ -118,7 +118,7 @@ describe("verification logs carry no raw request, target or provider text", () =
       text: async () => `upstream broke${FORGED}`,
     });
 
-    await verifyFindingsBatch(
+    await verifyFindingsBatchWithOutcome(
       HOSTILE_URL,
       [makeFinding(HOSTILE_ID)],
       null,
@@ -132,7 +132,7 @@ describe("verification logs carry no raw request, target or provider text", () =
   it("a thrown call (#236) escapes the finding id and the error text", async () => {
     fetchMock().mockRejectedValue(new Error(`socket hang up${FORGED}`));
 
-    await verifyFindingsBatch(
+    await verifyFindingsBatchWithOutcome(
       HOSTILE_URL,
       [makeFinding(HOSTILE_ID)],
       null,
@@ -150,7 +150,12 @@ describe("verification logs carry no raw request, target or provider text", () =
       text: async () => "slow down",
     });
 
-    await verifyFindingsBatch(HOSTILE_URL, [makeFinding("f1")], null, null);
+    await verifyFindingsBatchWithOutcome(
+      HOSTILE_URL,
+      [makeFinding("f1")],
+      null,
+      null,
+    );
 
     expectNoForgedLines();
     expect(loggedLines().join("\n")).toContain("rate-limited the pass");
@@ -177,7 +182,12 @@ describe("verification logs carry no raw request, target or provider text", () =
       text: async () => "bad key",
     });
 
-    await verifyFindingsBatch(HOSTILE_URL, [makeFinding("f1")], 7, null);
+    await verifyFindingsBatchWithOutcome(
+      HOSTILE_URL,
+      [makeFinding("f1")],
+      7,
+      null,
+    );
 
     expectNoForgedLines();
     expect(loggedLines().join("\n")).toContain("returned 401");

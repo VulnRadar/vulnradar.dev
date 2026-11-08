@@ -42,11 +42,8 @@ function reservation(
   };
 }
 
-const {
-  verifyFindingsBatch,
-  verifyFindingsBatchWithOutcome,
-  runAiVerification,
-} = await import("@/lib/ai/verify-findings");
+const { verifyFindingsBatchWithOutcome, runAiVerification } =
+  await import("@/lib/ai/verify-findings");
 const { CONFIG_AI_VERIFY_CHUNK_SIZE } =
   await import("@/lib/config/config-values");
 
@@ -111,7 +108,7 @@ afterEach(() => {
   process.env = { ...originalEnv };
 });
 
-describe("verifyFindingsBatch: concurrency-capped chunking", () => {
+describe("verifyFindingsBatchWithOutcome: concurrency-capped chunking", () => {
   it("never has more than CONFIG_AI_VERIFY_CHUNK_SIZE fetch calls in flight at once", async () => {
     let inFlight = 0;
     let peak = 0;
@@ -128,7 +125,12 @@ describe("verifyFindingsBatch: concurrency-capped chunking", () => {
       (_, i) => makeFinding(`f${i}`),
     );
 
-    await verifyFindingsBatch("https://example.com", findings, null, null);
+    await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      findings,
+      null,
+      null,
+    );
 
     expect(peak).toBeLessThanOrEqual(CONFIG_AI_VERIFY_CHUNK_SIZE);
     expect(global.fetch).toHaveBeenCalledTimes(findings.length);
@@ -146,7 +148,7 @@ describe("verifyFindingsBatch: concurrency-capped chunking", () => {
     );
 
     const findings = [makeFinding("f1"), makeFinding("f2"), makeFinding("f3")];
-    const result = await verifyFindingsBatch(
+    const { findings: result } = await verifyFindingsBatchWithOutcome(
       "https://example.com",
       findings,
       null,
@@ -180,7 +182,7 @@ describe("verifyFindingsBatch: concurrency-capped chunking", () => {
     });
 
     const findings = [makeFinding("f1")];
-    const result = await verifyFindingsBatch(
+    const { findings: result } = await verifyFindingsBatchWithOutcome(
       "https://example.com",
       findings,
       null,
@@ -197,7 +199,7 @@ describe("verifyFindingsBatch: concurrency-capped chunking", () => {
   });
 });
 
-describe("verifyFindingsBatch: large scan coverage", () => {
+describe("verifyFindingsBatchWithOutcome: large scan coverage", () => {
   it("gets a verdict for every finding in a 60+ finding scan under the production total-timeout budget", async () => {
     // No artificial delay: models a normally-responsive provider. The
     // point of this test is coverage (does every finding reach a verdict
@@ -223,7 +225,7 @@ describe("verifyFindingsBatch: large scan coverage", () => {
       makeFinding(`f${i}`),
     );
 
-    const result = await verifyFindingsBatch(
+    const { findings: result } = await verifyFindingsBatchWithOutcome(
       "https://example.com",
       findings,
       null,
@@ -514,7 +516,7 @@ describe("runAiVerification: what is logged for a failure that does not stop the
   });
 });
 
-describe("verifyFindingsBatch: reasoning on an OpenAI-compatible endpoint", () => {
+describe("verifyFindingsBatchWithOutcome: reasoning on an OpenAI-compatible endpoint", () => {
   function sentBody(call: number): Record<string, unknown> {
     const init = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[
       call
@@ -533,7 +535,7 @@ describe("verifyFindingsBatch: reasoning on an OpenAI-compatible endpoint", () =
       confirmedResponse("f1"),
     );
 
-    await verifyFindingsBatch(
+    await verifyFindingsBatchWithOutcome(
       "https://example.com",
       [makeFinding("f1")],
       null,
@@ -549,7 +551,7 @@ describe("verifyFindingsBatch: reasoning on an OpenAI-compatible endpoint", () =
       confirmedResponse("f1"),
     );
 
-    await verifyFindingsBatch(
+    await verifyFindingsBatchWithOutcome(
       "https://example.com",
       [makeFinding("f1")],
       null,
@@ -568,7 +570,7 @@ describe("verifyFindingsBatch: reasoning on an OpenAI-compatible endpoint", () =
       )
       .mockResolvedValueOnce(confirmedResponse("f1"));
 
-    const result = await verifyFindingsBatch(
+    const { findings: result } = await verifyFindingsBatchWithOutcome(
       "https://example.com",
       [makeFinding("f1")],
       null,
@@ -589,10 +591,9 @@ describe("verifyFindingsBatch: reasoning on an OpenAI-compatible endpoint", () =
 
 describe("verifyFindingsBatchWithOutcome: says whether the pass actually ran", () => {
   /**
-   * verifyFindingsBatch returns the findings and nothing else, so a clean
-   * sweep, a missing endpoint and a provider that was down for every chunk
-   * are the same array. This returns the same findings plus the outcome
-   * runAiVerification already reports, so a route can tell them apart.
+   * The findings alone cannot tell a clean sweep from a missing endpoint or a
+   * provider that was down for every chunk. The outcome is what lets a route
+   * tell them apart, as runAiVerification's does.
    */
   beforeEach(() => {
     mockQuery.mockResolvedValue({ rows: [] });
@@ -631,29 +632,6 @@ describe("verifyFindingsBatchWithOutcome: says whether the pass actually ran", (
       verdicts: 3,
       attempted: 3,
     });
-  });
-
-  it("gives verifyFindingsBatch's findings exactly, so the two cannot disagree", async () => {
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
-      confirmedResponse("x"),
-    );
-    const input = [makeFinding("f1"), makeFinding("f2")];
-
-    const bare = await verifyFindingsBatch(
-      "https://example.com",
-      input,
-      null,
-      null,
-    );
-    const { findings } = await verifyFindingsBatchWithOutcome(
-      "https://example.com",
-      input,
-      null,
-      null,
-    );
-
-    expect(Array.isArray(bare)).toBe(true);
-    expect(findings).toEqual(bare);
   });
 
   it("says no endpoint is configured, and hands the findings back untouched", async () => {
@@ -792,7 +770,7 @@ describe("verifyFindingsBatchWithOutcome: says whether the pass actually ran", (
     errors.mockRestore();
   });
 
-  it("settles the batch's real tokens once, exactly as verifyFindingsBatch does", async () => {
+  it("settles the batch's real tokens once, exactly as verifyFindingsBatchWithOutcome does", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
       confirmedResponseWithUsage("x", 100, 50),
     );
@@ -1129,7 +1107,7 @@ describe("runAiVerification: syncs 'Mark this result' feedback from the AI verdi
   });
 });
 
-describe("verifyFindingsBatch: Set-Cookie header capture in the live probe", () => {
+describe("verifyFindingsBatchWithOutcome: Set-Cookie header capture in the live probe", () => {
   // Regression test for a bug where probeTarget() built response_headers by
   // running Headers.forEach() into a plain Record<string, string>. forEach()
   // calls back once per raw Set-Cookie header (it does not comma-join them
@@ -1168,7 +1146,7 @@ describe("verifyFindingsBatch: Set-Cookie header capture in the live probe", () 
       },
     );
 
-    await verifyFindingsBatch(
+    await verifyFindingsBatchWithOutcome(
       "https://example.com",
       [makeFinding("f1")],
       null,
@@ -1203,13 +1181,13 @@ describe("verifyFindingsBatch: Set-Cookie header capture in the live probe", () 
   });
 });
 
-describe("verifyFindingsBatch: no endpoint configured", () => {
+describe("verifyFindingsBatchWithOutcome: no endpoint configured", () => {
   it("returns findings unchanged when no AI endpoint is configured", async () => {
     delete process.env.AI_BASE_URL;
     delete process.env.AI_API_KEY;
 
     const findings = [makeFinding("f1")];
-    const result = await verifyFindingsBatch(
+    const { findings: result } = await verifyFindingsBatchWithOutcome(
       "https://example.com",
       findings,
       null,
@@ -1221,7 +1199,7 @@ describe("verifyFindingsBatch: no endpoint configured", () => {
   });
 });
 
-describe("verifyFindingsBatch: a null element from verify-batch", () => {
+describe("verifyFindingsBatchWithOutcome: a null element from verify-batch", () => {
   // The v3 route has always accepted a null element, and it stays accepted
   // there, so the pass has to carry it instead of throwing on it (a 500).
   it("goes through the pass and comes back as it was sent", async () => {
@@ -1719,7 +1697,7 @@ describe("verifyFindingsBatchWithOutcome: an element the prompt builder cannot r
   });
 });
 
-describe("verifyFindingsBatch: evidence handed to the AI reviewer", () => {
+describe("verifyFindingsBatchWithOutcome: evidence handed to the AI reviewer", () => {
   it("includes the detector's own evidenceExcerpts in the prompt, not just the generic evidence summary", async () => {
     let sentPrompt = "";
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
@@ -1738,7 +1716,12 @@ describe("verifyFindingsBatch: evidence handed to the AI reviewer", () => {
       ],
     };
 
-    await verifyFindingsBatch("https://example.com", [finding], null, null);
+    await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      [finding],
+      null,
+      null,
+    );
 
     // The prompt must carry the detector's own verbatim proof, not rely
     // solely on the generic summary + a truncated body snippet that may
@@ -1757,7 +1740,7 @@ describe("verifyFindingsBatch: evidence handed to the AI reviewer", () => {
       },
     );
 
-    await verifyFindingsBatch(
+    await verifyFindingsBatchWithOutcome(
       "https://example.com",
       [makeFinding("f1")],
       null,
@@ -1768,7 +1751,7 @@ describe("verifyFindingsBatch: evidence handed to the AI reviewer", () => {
   });
 });
 
-describe("verifyFindingsBatch: reason text is never truncated", () => {
+describe("verifyFindingsBatchWithOutcome: reason text is never truncated", () => {
   it("returns a long, well-formed reason in full, whatever its length", async () => {
     const words = Array.from({ length: 200 }, (_, i) => `word${i}`);
     const longReason = words.join(" "); // ~1300 chars, well past the old 300-char cap
@@ -1789,7 +1772,7 @@ describe("verifyFindingsBatch: reason text is never truncated", () => {
       }),
     });
 
-    const result = await verifyFindingsBatch(
+    const { findings: result } = await verifyFindingsBatchWithOutcome(
       "https://example.com",
       [makeFinding("f1")],
       null,
@@ -1809,7 +1792,7 @@ describe("verifyFindingsBatch: reason text is never truncated", () => {
       }),
     });
 
-    const result = await verifyFindingsBatch(
+    const { findings: result } = await verifyFindingsBatchWithOutcome(
       "https://example.com",
       [makeFinding("f1")],
       null,
@@ -1821,7 +1804,7 @@ describe("verifyFindingsBatch: reason text is never truncated", () => {
   });
 });
 
-describe("verifyFindingsBatch: AI response that isn't clean JSON", () => {
+describe("verifyFindingsBatchWithOutcome: AI response that isn't clean JSON", () => {
   it("reports 'uncertain' with the model's own text instead of silently dropping the finding when the AI hedges in prose", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
@@ -1838,7 +1821,7 @@ describe("verifyFindingsBatch: AI response that isn't clean JSON", () => {
     });
 
     const findings = [makeFinding("f1")];
-    const result = await verifyFindingsBatch(
+    const { findings: result } = await verifyFindingsBatchWithOutcome(
       "https://example.com",
       findings,
       null,
@@ -1867,7 +1850,7 @@ describe("verifyFindingsBatch: AI response that isn't clean JSON", () => {
     });
 
     const findings = [makeFinding("f1")];
-    const result = await verifyFindingsBatch(
+    const { findings: result } = await verifyFindingsBatchWithOutcome(
       "https://example.com",
       findings,
       null,
@@ -1907,7 +1890,7 @@ function confirmedResponseWithUsage(
   };
 }
 
-describe("verifyFindingsBatch / runAiVerification: settling the route's reservation", () => {
+describe("verifyFindingsBatchWithOutcome / runAiVerification: settling the route's reservation", () => {
   it("settles with the summed real token usage across every call in the batch, once, after it completes", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
       confirmedResponseWithUsage("x", 100, 50),
@@ -1915,7 +1898,12 @@ describe("verifyFindingsBatch / runAiVerification: settling the route's reservat
     const held = reservation();
 
     const findings = [makeFinding("f1"), makeFinding("f2")];
-    await verifyFindingsBatch("https://example.com", findings, 42, held);
+    await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      findings,
+      42,
+      held,
+    );
 
     expect(mockSettleAiTokens).toHaveBeenCalledTimes(1);
     expect(mockSettleAiTokens).toHaveBeenCalledWith(held, 300); // (100+50) * 2 findings
@@ -1942,7 +1930,7 @@ describe("verifyFindingsBatch / runAiVerification: settling the route's reservat
     });
     const held = reservation();
 
-    await verifyFindingsBatch(
+    await verifyFindingsBatchWithOutcome(
       "https://example.com",
       [makeFinding("f1")],
       42,
@@ -1957,7 +1945,7 @@ describe("verifyFindingsBatch / runAiVerification: settling the route's reservat
       confirmedResponseWithUsage("x", 100, 50),
     );
 
-    await verifyFindingsBatch(
+    await verifyFindingsBatchWithOutcome(
       "https://example.com",
       [makeFinding("f1")],
       null,
@@ -1973,7 +1961,7 @@ describe("verifyFindingsBatch / runAiVerification: settling the route's reservat
     );
     const held = reservation({ budget: 50_000 });
 
-    await verifyFindingsBatch(
+    await verifyFindingsBatchWithOutcome(
       "https://example.com",
       [makeFinding("f1")],
       42,
@@ -2003,7 +1991,7 @@ describe("verifyFindingsBatch / runAiVerification: settling the route's reservat
     errors.mockRestore();
   });
 
-  it("runAiVerification settles the same way as verifyFindingsBatch", async () => {
+  it("runAiVerification settles the same way as verifyFindingsBatchWithOutcome", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
       confirmedResponseWithUsage("x", 40, 10),
     );
@@ -2296,7 +2284,7 @@ describe("probeTarget: the scanned site's body is read with a cap, not whole", (
       },
     );
 
-    await verifyFindingsBatch(
+    await verifyFindingsBatchWithOutcome(
       "https://example.com",
       [makeFinding("f1")],
       null,
