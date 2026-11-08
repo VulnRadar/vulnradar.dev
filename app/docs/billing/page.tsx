@@ -10,6 +10,7 @@ import {
   CONFIG_GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS,
 } from "@/lib/config/config-values";
 import type { TocItem } from "@/components/docs/docs-types";
+import { limitLabel } from "@/lib/ui/plan-labels";
 import { DocsTocSpy } from "../docs-toc-spy";
 import {
   DocsHero,
@@ -30,13 +31,6 @@ const tocItems: TocItem[] = [
   { id: "refunds", label: "Refunds" },
   { id: "self-hosted", label: "Self-hosted instances" },
 ];
-
-/** `-1` is the unlimited sentinel and `0` means the feature is not on that plan. */
-function limitLabel(value: number): string {
-  if (value === -1) return "Unlimited";
-  if (value === 0) return "Not included";
-  return value.toLocaleString();
-}
 
 /**
  * Read off the catalog rather than restated, because the discount constant
