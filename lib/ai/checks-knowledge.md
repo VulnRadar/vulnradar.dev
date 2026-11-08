@@ -3638,11 +3638,11 @@ function sanitizePath(input: string): string {
 ### `ssti-indicators` [code / high / body-pattern]
 **Template Injection Indicators**
 
-A literal {{7*7}} style expression (digits multiplied inside double curly braces) appears in the output.
+A double curly brace expression that multiplies two numbers appears in the output.
 
 **Risk:** If a server-side template engine evaluates user input, the template language becomes the attack. Jinja2 and Twig expressions can reach Python or PHP internals, and from there read configuration or run commands.
 
-**Why it matters:** {{7*7}} is the standard probe for template injection. Seeing it unrendered in a page is not proof of a bug: it usually means someone tried it and the app stored the text safely. The vulnerable result looks different, because the page shows 49 where the probe was. To confirm, submit {{7*6}} through the field that produced this and look for 42. Angular and Vue evaluate these in the browser too, which is XSS rather than server compromise.
+**Why it matters:** Two small numbers multiplied inside double curly braces is the standard probe for template injection. Seeing one unrendered in a page is not proof of a bug: it usually means someone tried it and the app stored the text safely. The vulnerable result looks different, because the page shows the product where the probe was. To confirm, submit 7 times 6 in that syntax through the field that produced this and look for 42. Angular and Vue evaluate these in the browser too, which is XSS rather than server compromise.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/1336.html
@@ -6978,7 +6978,7 @@ if (!ALLOWED.includes(url.hostname)) throw new Error('Invalid');
 ### `directory-listing` [content / medium / body-pattern]
 **Directory Listing Appears Enabled**
 
-The response looks like a server-generated directory index: an Index of / title or heading, an IIS [To Parent Directory] link, or a pre-formatted list of links with dates.
+The response looks like a server-generated directory index: an Index of / title or heading, the link IIS draws back to the parent directory, or a pre-formatted list of links with dates.
 
 **Risk:** Nobody has to guess file names any more. A listing shows backups, archives, config copies and uploads that were never linked from the site, and each can be downloaded directly. The listing itself is only a map: how bad it is depends on what is in the folder.
 
@@ -7183,7 +7183,7 @@ Debug/error indicators that reveal internal application details detected.
 
 **Risk:** Debug output exposes internal file paths, framework versions, database types, and application logic.
 
-**Why it matters:** Detection covers X-Debug-Token headers (Symfony's profiler), Python tracebacks, Node stack traces, SQLSTATE errors and PHP fatal errors in the response. Each reveals how the app is built: absolute paths, package versions, SQL fragments. Symfony's profiler, when reachable, goes further and shows request data for past requests. To confirm, load the URL in a private window: if you see a stack trace without logging in, so does every visitor.
+**Why it matters:** Detection covers X-Debug-Token headers (Symfony's profiler), Python tracebacks, Node stack traces, SQLSTATE errors and fatal PHP errors in the response. Each reveals how the app is built: absolute paths, package versions, SQL fragments. Symfony's profiler, when reachable, goes further and shows request data for past requests. To confirm, load the URL in a private window: if you see a stack trace without logging in, so does every visitor.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html
@@ -8052,9 +8052,9 @@ app.use("/api-docs", requireAdminAuth, swaggerUi.serve, swaggerUi.setup(spec));
 
 The page references a Spring Boot Actuator endpoint under /actuator: health, env, info, beans or mappings.
 
-**Risk:** /actuator/env lists configuration properties, /actuator/heapdump (when enabled) downloads the JVM's memory with live secrets and session tokens, and /actuator/mappings lists every route in the app. A writable env endpoint combined with certain libraries has been used for remote code execution.
+**Risk:** The env endpoint lists configuration properties, heapdump (when enabled) downloads the JVM's memory with live secrets and session tokens, and mappings lists every route in the app. A writable env endpoint combined with certain libraries has been used for remote code execution.
 
-**Why it matters:** This finding means the path appears in the response. It does not prove the endpoints answer, and a public /actuator/health on its own is common and low risk. Confirm with curl -si https://your-site/actuator, which lists the exposed endpoints as JSON links when Actuator is reachable, then try env and heapdump specifically. Current Spring Boot versions expose only health over HTTP by default, so a wider list comes from a management.endpoints.web.exposure.include setting someone changed, often to *.
+**Why it matters:** This finding means the path appears in the response. It does not prove the endpoints answer, and a public health endpoint on its own is common and low risk. Confirm with curl -si https://your-site/actuator, which lists the exposed endpoints as JSON links when Actuator is reachable, then try env and heapdump specifically. Current Spring Boot versions expose only health over HTTP by default, so a wider list comes from a management.endpoints.web.exposure.include setting someone changed, often to *.
 
 **References:**
 - https://cwe.mitre.org/data/definitions/200.html
@@ -9332,7 +9332,7 @@ NoSQL/MongoDB error found in response.
 
 **Risk:** The message reveals the database type and the shape of the query that failed, which tells an attacker what to try next.
 
-**Why it matters:** Mongo errors describe the failed operation. E11000 names the index and the duplicate value, and Cast to ObjectId failed shows a field and type, which means an unexpected value reached Mongoose unchecked. An error triggered by a strange value is often the first sign of a NoSQL injection point, so test that route with a value like { "$ne": null } on a system you own.
+**Why it matters:** Mongo errors describe the failed operation. E11000 names the index and the duplicate value, and a failed ObjectId cast shows a field and type, which means an unexpected value reached Mongoose unchecked. An error triggered by a strange value is often the first sign of a NoSQL injection point, so test that route with a value like { "$ne": null } on a system you own.
 
 **References:**
 - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/
@@ -10403,7 +10403,7 @@ Laravel's APP_DEBUG=true is enabled in production, showing detailed error pages 
 
 **Risk:** Laravel debug mode exposes full stack traces, local variables, all configuration values (including database credentials if they appear in traces), and can allow code execution via the Ignition debug interface on older versions.
 
-**Why it matters:** The Whoops or Ignition page prints source around the failing line, the full stack and, in many versions, request data and environment values. Ignition before 2.5.2 with debug on also had CVE-2021-3129, unauthenticated remote code execution. To confirm, open the URL without logging in. Because configuration shows on this page, rotate APP_KEY and any credential visible in it, knowing that rotating APP_KEY invalidates encrypted cookies.
+**Why it matters:** The debug error page, Ignition on current versions, prints source around the failing line, the full stack and, in many versions, request data and environment values. Ignition before 2.5.2 with debug on also had CVE-2021-3129, unauthenticated remote code execution. To confirm, open the URL without logging in. Because configuration shows on this page, rotate APP_KEY and any credential visible in it, knowing that rotating APP_KEY invalidates encrypted cookies.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html

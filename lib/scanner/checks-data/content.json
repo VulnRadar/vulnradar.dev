@@ -37,7 +37,7 @@
     "title": "Directory Listing Appears Enabled",
     "category": "content",
     "severity": "medium",
-    "description": "The response looks like a server-generated directory index: an Index of / title or heading, an IIS [To Parent Directory] link, or a pre-formatted list of links with dates.",
+    "description": "The response looks like a server-generated directory index: an Index of / title or heading, the link IIS draws back to the parent directory, or a pre-formatted list of links with dates.",
     "evidence": "Response contains directory listing indicators.",
     "riskImpact": "Nobody has to guess file names any more. A listing shows backups, archives, config copies and uploads that were never linked from the site, and each can be downloaded directly. The listing itself is only a map: how bad it is depends on what is in the folder.",
     "explanation": "Servers generate these pages when a directory has no index file and autoindex (Nginx) or Options +Indexes (Apache) is on. To confirm, open the URL and read what is listed. Public downloads in a folder meant to be browsed are fine. Files like .sql, .zip, .bak or a user uploads folder are the real finding, and should be treated as already copied, since search engines index these pages. Turning listing off does not protect the files: they stay reachable to anyone who has the URL.",
@@ -293,7 +293,7 @@
     "description": "Debug/error indicators that reveal internal application details detected.",
     "evidence": "Debug headers, stack traces, or error messages found.",
     "riskImpact": "Debug output exposes internal file paths, framework versions, database types, and application logic.",
-    "explanation": "Detection covers X-Debug-Token headers (Symfony's profiler), Python tracebacks, Node stack traces, SQLSTATE errors and PHP fatal errors in the response. Each reveals how the app is built: absolute paths, package versions, SQL fragments. Symfony's profiler, when reachable, goes further and shows request data for past requests. To confirm, load the URL in a private window: if you see a stack trace without logging in, so does every visitor.",
+    "explanation": "Detection covers X-Debug-Token headers (Symfony's profiler), Python tracebacks, Node stack traces, SQLSTATE errors and fatal PHP errors in the response. Each reveals how the app is built: absolute paths, package versions, SQL fragments. Symfony's profiler, when reachable, goes further and shows request data for past requests. To confirm, load the URL in a private window: if you see a stack trace without logging in, so does every visitor.",
     "fixSteps": [
       "Disable debug mode in production.",
       "Configure custom error pages.",
@@ -1290,8 +1290,8 @@
     "severity": "high",
     "description": "The page references a Spring Boot Actuator endpoint under /actuator: health, env, info, beans or mappings.",
     "evidence": "Actuator endpoint references detected.",
-    "riskImpact": "/actuator/env lists configuration properties, /actuator/heapdump (when enabled) downloads the JVM's memory with live secrets and session tokens, and /actuator/mappings lists every route in the app. A writable env endpoint combined with certain libraries has been used for remote code execution.",
-    "explanation": "This finding means the path appears in the response. It does not prove the endpoints answer, and a public /actuator/health on its own is common and low risk. Confirm with curl -si https://your-site/actuator, which lists the exposed endpoints as JSON links when Actuator is reachable, then try env and heapdump specifically. Current Spring Boot versions expose only health over HTTP by default, so a wider list comes from a management.endpoints.web.exposure.include setting someone changed, often to *.",
+    "riskImpact": "The env endpoint lists configuration properties, heapdump (when enabled) downloads the JVM's memory with live secrets and session tokens, and mappings lists every route in the app. A writable env endpoint combined with certain libraries has been used for remote code execution.",
+    "explanation": "This finding means the path appears in the response. It does not prove the endpoints answer, and a public health endpoint on its own is common and low risk. Confirm with curl -si https://your-site/actuator, which lists the exposed endpoints as JSON links when Actuator is reachable, then try env and heapdump specifically. Current Spring Boot versions expose only health over HTTP by default, so a wider list comes from a management.endpoints.web.exposure.include setting someone changed, often to *.",
     "fixSteps": [
       "Set management.endpoints.web.exposure.include to health only.",
       "Move management to a separate internal port with management.server.port.",
@@ -2504,7 +2504,7 @@
     "description": "NoSQL/MongoDB error found in response.",
     "evidence": "NoSQL error exposed.",
     "riskImpact": "The message reveals the database type and the shape of the query that failed, which tells an attacker what to try next.",
-    "explanation": "Mongo errors describe the failed operation. E11000 names the index and the duplicate value, and Cast to ObjectId failed shows a field and type, which means an unexpected value reached Mongoose unchecked. An error triggered by a strange value is often the first sign of a NoSQL injection point, so test that route with a value like { \"$ne\": null } on a system you own.",
+    "explanation": "Mongo errors describe the failed operation. E11000 names the index and the duplicate value, and a failed ObjectId cast shows a field and type, which means an unexpected value reached Mongoose unchecked. An error triggered by a strange value is often the first sign of a NoSQL injection point, so test that route with a value like { \"$ne\": null } on a system you own.",
     "fixSteps": [
       "Catch database errors and return a generic message, logging the details on the server.",
       "Validate the type of each field before it reaches the query.",
@@ -3537,7 +3537,7 @@
     "description": "Laravel's APP_DEBUG=true is enabled in production, showing detailed error pages with application code, stack traces, and environment variables.",
     "evidence": "Laravel Ignition debug page detected at {{url}}.",
     "riskImpact": "Laravel debug mode exposes full stack traces, local variables, all configuration values (including database credentials if they appear in traces), and can allow code execution via the Ignition debug interface on older versions.",
-    "explanation": "The Whoops or Ignition page prints source around the failing line, the full stack and, in many versions, request data and environment values. Ignition before 2.5.2 with debug on also had CVE-2021-3129, unauthenticated remote code execution. To confirm, open the URL without logging in. Because configuration shows on this page, rotate APP_KEY and any credential visible in it, knowing that rotating APP_KEY invalidates encrypted cookies.",
+    "explanation": "The debug error page, Ignition on current versions, prints source around the failing line, the full stack and, in many versions, request data and environment values. Ignition before 2.5.2 with debug on also had CVE-2021-3129, unauthenticated remote code execution. To confirm, open the URL without logging in. Because configuration shows on this page, rotate APP_KEY and any credential visible in it, knowing that rotating APP_KEY invalidates encrypted cookies.",
     "fixSteps": [
       "Set APP_DEBUG=false in .env for production",
       "Set APP_ENV=production",

@@ -416,10 +416,10 @@
     "title": "Template Injection Indicators",
     "category": "code",
     "severity": "high",
-    "description": "A literal {{7*7}} style expression (digits multiplied inside double curly braces) appears in the output.",
+    "description": "A double curly brace expression that multiplies two numbers appears in the output.",
     "evidence": "Template syntax in output.",
     "riskImpact": "If a server-side template engine evaluates user input, the template language becomes the attack. Jinja2 and Twig expressions can reach Python or PHP internals, and from there read configuration or run commands.",
-    "explanation": "{{7*7}} is the standard probe for template injection. Seeing it unrendered in a page is not proof of a bug: it usually means someone tried it and the app stored the text safely. The vulnerable result looks different, because the page shows 49 where the probe was. To confirm, submit {{7*6}} through the field that produced this and look for 42. Angular and Vue evaluate these in the browser too, which is XSS rather than server compromise.",
+    "explanation": "Two small numbers multiplied inside double curly braces is the standard probe for template injection. Seeing one unrendered in a page is not proof of a bug: it usually means someone tried it and the app stored the text safely. The vulnerable result looks different, because the page shows the product where the probe was. To confirm, submit 7 times 6 in that syntax through the field that produced this and look for 42. Angular and Vue evaluate these in the browser too, which is XSS rather than server compromise.",
     "fixSteps": [
       "Pass user input to templates as data, never as part of the template source.",
       "Use a sandboxed engine mode for any template users are allowed to edit.",
