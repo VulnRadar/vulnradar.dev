@@ -907,7 +907,12 @@ export default function ConfigPage() {
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <InlineCode>DATABASE_SSL</InlineCode>:{" "}
-              <InlineCode>true</InlineCode> to require SSL
+              <InlineCode>true</InlineCode> to require SSL with a verified
+              certificate. The app and the db scripts then ignore any TLS
+              setting in <InlineCode>DATABASE_URL</InlineCode>, including{" "}
+              <InlineCode>sslmode=disable</InlineCode>, and a URL that sets{" "}
+              <InlineCode>sslcert</InlineCode> or{" "}
+              <InlineCode>sslkey</InlineCode> is refused at startup.
             </li>
             <li>
               <InlineCode>DATABASE_SSL_CA</InlineCode>: CA cert contents (when

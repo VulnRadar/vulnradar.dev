@@ -123,6 +123,12 @@ Not here. `lib/database/schema/` is an ordered array of steps that both
 two frozen snapshots (which are historical files nothing else executes) and for
 the helper modules a schema step names via `moduleSource`.
 
+## Environment and TLS
+
+Every `db:*` script reads `.env.local` and then `.env`, key by key, with the same parser as the app. A variable already set in the shell wins over both.
+
+With `DATABASE_SSL=true` the scripts connect the way the app does: the certificate is verified, using `DATABASE_SSL_CA` when it is set, and any TLS setting in `DATABASE_URL` is ignored, including `sslmode=disable`. A URL that sets `sslcert` or `sslkey` is refused rather than having them dropped.
+
 ## Available scripts
 
 | Command                       | What it does                                                                                                                                                                                                                   |
