@@ -159,6 +159,13 @@ export default defineConfig({
           functions: 100,
           branches: 100,
         },
+        // The one check that decides whether a key can be used at all.
+        "lib/auth/key-hex.ts": {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
         "lib/auth/discord-state.ts": {
           lines: 80,
           statements: 80,
