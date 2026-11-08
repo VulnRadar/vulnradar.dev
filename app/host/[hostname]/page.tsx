@@ -39,6 +39,7 @@ import type { HostReportData } from "@/app/api/v3/host/[hostname]/route";
 import type { HostScoreTrendPoint } from "@/app/api/v3/host/[hostname]/trend/route";
 import { CopyableHeading } from "@/components/shared/copyable-heading";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { DomainTakedownLine } from "@/components/host/domain-takedown-line";
 
 export default function HostReportPage() {
   const params = useParams();
@@ -84,7 +85,7 @@ export default function HostReportPage() {
       // shares nothing with the host report but the hostname. It used to be
       // issued by DangerScoreTrend, which is mounted inside the `result &&`
       // gate below, so it could not start until this request had already
-      // resolved: two serialized round trips on an indexable public page.
+      // resolved: two serialized round trips on a public page.
       // Both start together now and the chart is handed what it needs.
       const [report, trend] = await Promise.all([
         fetch(API.HOST(hostname))
@@ -237,6 +238,7 @@ export default function HostReportPage() {
                       The latest public {APP_NAME} scan of this host. Anyone
                       with this link can see it; no account needed.
                     </p>
+                    <DomainTakedownLine />
 
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">

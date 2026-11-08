@@ -41,6 +41,7 @@ import type { CrawlInfo } from "@/components/scanner/crawl-pages-info";
 import { CopyableHeading } from "@/components/shared/copyable-heading";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { hasUnreadPages } from "@/components/scanner/crawl-pages-utils";
+import { DomainTakedownLine } from "@/components/host/domain-takedown-line";
 
 export default function SharedScanPage() {
   const params = useParams();
@@ -61,7 +62,6 @@ export default function SharedScanPage() {
     }[]
   >([]);
   const [scanNotes, setScanNotes] = useState("");
-  const [scanId, setScanId] = useState<number | null>(null);
   const [tags, setTags] = useState<ScanTag[]>([]);
   const [subdomainCache, setSubdomainCache] = useState<DiscoveryResult | null>(
     null,
@@ -104,7 +104,6 @@ export default function SharedScanPage() {
         setScannedByRole(data.scannedByRole || "user");
         setScannedByBadges(data.scannedByBadges || []);
         setScanNotes(data.notes || "");
-        setScanId(data.scanId ?? null);
         setTags(data.tags || []);
         setSubdomainCache(data.subdomainCache ?? null);
         if (
@@ -231,6 +230,8 @@ export default function SharedScanPage() {
                       )}
                     </div>
 
+                    <DomainTakedownLine />
+
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-2">
@@ -263,7 +264,7 @@ export default function SharedScanPage() {
 
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
                       <ScanTags
-                        scanId={scanId ?? 0}
+                        scanId={token}
                         tags={tags}
                         onAdd={() => {}}
                         onRemove={() => {}}

@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import { preload } from "react-dom";
 import {
   pageMetadata,
   privatePageMetadata,
   clampText,
 } from "@/lib/seo/metadata";
-import { APP_NAME } from "@/lib/config/constants";
+import { API, APP_NAME } from "@/lib/config/constants";
 import { getHostSummary, decodeHostParam } from "./host-summary";
 
 /**
@@ -53,6 +54,23 @@ export async function generateMetadata({
   });
 }
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+/**
+ * The page is a client component, so its two data requests could not start
+ * until the JavaScript had downloaded and run. This server wrapper names them in
+ * the HTML, so the browser runs them alongside the download and the page's own
+ * fetches pick up the responses. Same reasoning, and the same crossOrigin, as
+ * app/shared/[token]/layout.tsx.
+ */
+export default async function Layout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: Promise<{ hostname: string }>;
+}) {
+  const { hostname } = await params;
+  for (const url of [API.HOST(hostname), API.HOST_TREND(hostname)]) {
+    preload(url, { as: "fetch", crossOrigin: "anonymous" });
+  }
   return children;
 }

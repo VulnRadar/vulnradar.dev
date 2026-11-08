@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import { preload } from "react-dom";
 import {
   pageMetadata,
   privatePageMetadata,
   clampText,
 } from "@/lib/seo/metadata";
-import { APP_NAME } from "@/lib/config/constants";
+import { API, APP_NAME } from "@/lib/config/constants";
 import { getShareSummary } from "./share-summary";
 
 /**
@@ -58,6 +59,24 @@ export async function generateMetadata({
   });
 }
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+/**
+ * The page is a client component, so its data request could not start until
+ * the JavaScript had downloaded and run. This server wrapper names the request
+ * in the HTML, so the browser runs it alongside the download and the page's own
+ * fetch picks up the response. crossOrigin "anonymous" is what makes the preload
+ * match a plain same-origin fetch(); without it the browser fetches twice.
+ */
+export default async function Layout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: Promise<{ token: string }>;
+}) {
+  const { token } = await params;
+  preload(`${API.SHARED}/${encodeURIComponent(token)}`, {
+    as: "fetch",
+    crossOrigin: "anonymous",
+  });
   return children;
 }
