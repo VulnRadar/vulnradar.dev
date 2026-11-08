@@ -653,7 +653,7 @@ npm run db:migrate:dry-run`,
           <h4 className="text-sm font-semibold mt-6 mb-2">systemd</h4>
           <CodeBlock
             code={`[Unit]
-Description=${APP_NAME}
+Description=${APP_NAME} server
 After=network.target postgresql.service
 
 [Service]

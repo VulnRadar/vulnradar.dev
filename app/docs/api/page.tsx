@@ -1907,7 +1907,7 @@ scan_id = started.json()["scanId"]
 
 # Poll every 2 seconds. GET /scan/status does not use up any daily quota.
 # Stop at the ${SCANNING.TIMEOUT_SECONDS} second scan timeout, after which the server fails the job itself.
-deadline = time.monotonic() + ${SCANNING.TIMEOUT_SECONDS}
+deadline = time.monotonic() + ${SCANNING.TIMEOUT_SECONDS}  # seconds
 while True:
     if time.monotonic() > deadline:
         raise TimeoutError("Scan did not finish before the deadline")
