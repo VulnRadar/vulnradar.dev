@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Dialog,
@@ -18,15 +18,36 @@ import { Check, Loader2, Image as ImageIcon, User } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { API } from "@/lib/config/client-constants";
 
+/** Still stripped from the URL because a redirect or an old link can carry
+ *  them. Never read: see the comment in DiscordProfileModal. */
+const OWNED_PARAMS = [
+  "discord_connected",
+  "discord_username",
+  "discord_avatar",
+];
+
+function withoutOwnedParams(): string {
+  const url = new URL(window.location.href);
+  for (const name of OWNED_PARAMS) url.searchParams.delete(name);
+  return url.pathname + url.search;
+}
+
 export function DiscordProfileModal() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  // This dialog is mounted on every page, so its query string is reachable
+  // from any link. It used to take the name and avatar from there and PATCH
+  // them to the profile, which made a crafted URL a one-click rewrite of the
+  // victim's display name and avatar. The flag only says "go and look": what
+  // is offered comes from the stored connection, what is saved is read from
+  // that row by the server, and a connection that was not made in the last
+  // few minutes opens nothing.
   const discordConnected = searchParams.get("discord_connected") === "true";
-  const discordUsername = searchParams.get("discord_username");
-  const discordAvatar = searchParams.get("discord_avatar");
 
-  const [open, setOpen] = useState(discordConnected && !!discordUsername);
+  const [discordUsername, setDiscordUsername] = useState<string | null>(null);
+  const [discordAvatar, setDiscordAvatar] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -36,13 +57,29 @@ export function DiscordProfileModal() {
 
   const hasAnySelection = syncAvatar || syncName;
 
+  useEffect(() => {
+    if (!discordConnected) return;
+    let cancelled = false;
+    fetch(API.ACCOUNT_DISCORD)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled || !d?.connected || !d.justConnected) return;
+        if (typeof d.discordUsername !== "string") return;
+        setDiscordUsername(d.discordUsername);
+        setDiscordAvatar(typeof d.avatarUrl === "string" ? d.avatarUrl : null);
+        setOpen(true);
+      })
+      .catch(() => {
+        // Optional prompt: without the status there is nothing to offer.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [discordConnected]);
+
   const handleClose = () => {
     setOpen(false);
-    const url = new URL(window.location.href);
-    url.searchParams.delete("discord_connected");
-    url.searchParams.delete("discord_username");
-    url.searchParams.delete("discord_avatar");
-    router.replace(url.pathname + url.search);
+    router.replace(withoutOwnedParams());
   };
 
   const handleSync = async () => {
@@ -55,19 +92,10 @@ export function DiscordProfileModal() {
     setError("");
 
     try {
-      const updateData: Record<string, string | undefined> = {};
-
-      if (syncAvatar && discordAvatar) {
-        updateData.avatarUrl = discordAvatar;
-      }
-      if (syncName && discordUsername) {
-        updateData.name = discordUsername;
-      }
-
-      const res = await fetch(API.AUTH.UPDATE, {
+      const res = await fetch(API.ACCOUNT_DISCORD, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updateData),
+        body: JSON.stringify({ syncAvatar, syncName }),
       });
 
       if (!res.ok) {
@@ -84,11 +112,7 @@ export function DiscordProfileModal() {
       // parameters here and navigating to the cleaned URL does the reload and
       // the cleanup in one step, with nothing left to race.
       setOpen(false);
-      const cleaned = new URL(window.location.href);
-      cleaned.searchParams.delete("discord_connected");
-      cleaned.searchParams.delete("discord_username");
-      cleaned.searchParams.delete("discord_avatar");
-      window.location.replace(cleaned.pathname + cleaned.search);
+      window.location.replace(withoutOwnedParams());
     } catch {
       setError("Failed to update profile");
     } finally {
@@ -96,7 +120,7 @@ export function DiscordProfileModal() {
     }
   };
 
-  if (!discordConnected || !discordUsername) {
+  if (!open || !discordUsername) {
     return null;
   }
 

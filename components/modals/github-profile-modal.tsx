@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Dialog,
@@ -18,6 +18,20 @@ import { FaGithub } from "react-icons/fa";
 import { Check, Loader2, Image as ImageIcon, User } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { API } from "@/lib/config/client-constants";
+import {
+  clearGithubLinkMarker,
+  githubLinkJustStarted,
+} from "./github-link-marker";
+
+/** Still stripped from the URL because a redirect or an old link can carry
+ *  them. Never read: see the comment in GithubProfileModal. */
+const OWNED_PARAMS = ["github_connected", "github_username", "github_avatar"];
+
+function withoutOwnedParams(): string {
+  const url = new URL(window.location.href);
+  for (const name of OWNED_PARAMS) url.searchParams.delete(name);
+  return url.pathname + url.search;
+}
 
 /**
  * GitHub's counterpart to DiscordProfileModal -- same shape (sync avatar +
@@ -30,11 +44,20 @@ export function GithubProfileModal() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  // Mounted on every page, so its query string is reachable from any link. It
+  // used to take the name and avatar from there, which made a crafted URL a
+  // one-click rewrite of the victim's profile. The flag only says "go and
+  // look": what is offered and what is saved both come from the stored row.
+  //
+  // The users row records no time for a GitHub link, so "connected just now"
+  // is the marker the Link button leaves in this tab (see github-link-marker).
+  // That also keeps this shut after a repo-access grant, which shares the flag
+  // and has nothing to sync.
   const githubConnected = searchParams.get("github_connected") === "true";
-  const githubUsername = searchParams.get("github_username");
-  const githubAvatar = searchParams.get("github_avatar");
 
-  const [open, setOpen] = useState(githubConnected && !!githubUsername);
+  const [githubUsername, setGithubUsername] = useState<string | null>(null);
+  const [githubAvatar, setGithubAvatar] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -43,13 +66,32 @@ export function GithubProfileModal() {
 
   const hasAnySelection = syncAvatar || syncName;
 
+  useEffect(() => {
+    if (!githubConnected || !githubLinkJustStarted()) return;
+    let cancelled = false;
+    fetch(`${API.ACCOUNT_GITHUB}?include=linked-profile`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const profile = d?.linkedProfile;
+        if (cancelled || typeof profile?.name !== "string") return;
+        setGithubUsername(profile.name);
+        setGithubAvatar(
+          typeof profile.avatarUrl === "string" ? profile.avatarUrl : null,
+        );
+        setOpen(true);
+      })
+      .catch(() => {
+        // Optional prompt: without the profile there is nothing to offer.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [githubConnected]);
+
   const handleClose = () => {
     setOpen(false);
-    const url = new URL(window.location.href);
-    url.searchParams.delete("github_connected");
-    url.searchParams.delete("github_username");
-    url.searchParams.delete("github_avatar");
-    router.replace(url.pathname + url.search);
+    clearGithubLinkMarker();
+    router.replace(withoutOwnedParams());
   };
 
   const handleSync = async () => {
@@ -62,19 +104,10 @@ export function GithubProfileModal() {
     setError("");
 
     try {
-      const updateData: Record<string, string | undefined> = {};
-
-      if (syncAvatar && githubAvatar) {
-        updateData.avatarUrl = githubAvatar;
-      }
-      if (syncName && githubUsername) {
-        updateData.name = githubUsername;
-      }
-
-      const res = await fetch(API.AUTH.UPDATE, {
+      const res = await fetch(API.ACCOUNT_GITHUB, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updateData),
+        body: JSON.stringify({ syncAvatar, syncName }),
       });
 
       if (!res.ok) {
@@ -91,11 +124,8 @@ export function GithubProfileModal() {
       // parameters here and navigating to the cleaned URL does the reload and
       // the cleanup in one step, with nothing left to race.
       setOpen(false);
-      const cleaned = new URL(window.location.href);
-      cleaned.searchParams.delete("github_connected");
-      cleaned.searchParams.delete("github_username");
-      cleaned.searchParams.delete("github_avatar");
-      window.location.replace(cleaned.pathname + cleaned.search);
+      clearGithubLinkMarker();
+      window.location.replace(withoutOwnedParams());
     } catch {
       setError("Failed to update profile");
     } finally {
@@ -103,7 +133,7 @@ export function GithubProfileModal() {
     }
   };
 
-  if (!githubConnected || !githubUsername) {
+  if (!open || !githubUsername) {
     return null;
   }
 

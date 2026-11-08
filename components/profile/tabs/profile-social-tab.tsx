@@ -24,6 +24,8 @@ import { API, ROUTES, DISCORD_INVITE_URL } from "@/lib/config/client-constants";
 import { useOAuthProviders } from "@/lib/hooks/use-oauth-providers";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { getQueryParam, setQueryParams } from "@/lib/ui/url-state";
+import { markGithubLinkStarted } from "@/components/modals/github-link-marker";
+import { ProviderReauthDialog } from "./provider-reauth-dialog";
 import type { ProfileTabProps } from "../types";
 
 const DiscordIcon = () => (
@@ -58,6 +60,8 @@ function discordCdnUrl(value: string | null | undefined): string | null {
 
 type DiscordConnection = {
   guildJoined: boolean;
+  /** False on a deployment with no bot, where "Join server" could do nothing. */
+  canJoin: boolean;
   connectedAt: string | null;
   /** Discord refused the stored refresh token, so the link is dead until the
    *  user reconnects. Distinct from "not in server", which is a state that
@@ -92,6 +96,7 @@ function OAuthIdentityCard({
   connectButtonClassName,
   description,
   identity,
+  hasPassword,
   setError,
   setSuccess,
   onDisconnected,
@@ -114,6 +119,8 @@ function OAuthIdentityCard({
   connectButtonClassName: string;
   description: string;
   identity: OAuthIdentity | null;
+  /** Whether the re-authentication dialog asks for a password. */
+  hasPassword: boolean;
   setError: (error: string | null) => void;
   setSuccess: (success: string | null) => void;
   /** Clears this provider off the page's `user` once the DELETE succeeds,
@@ -125,7 +132,7 @@ function OAuthIdentityCard({
    *  concern from signing in with this identity. Google has none. */
   extra?: React.ReactNode;
 }) {
-  const [reconnecting, setReconnecting] = useState(false);
+  const [showReauth, setShowReauth] = useState(false);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
@@ -133,11 +140,7 @@ function OAuthIdentityCard({
   const connected = Boolean(identity);
   const displayName = identity?.name || identity?.email || "Connected";
 
-  const startLink = () => {
-    // A full document navigation on purpose: this is a route handler that
-    // redirects to the provider, not an app page the router could render.
-    window.location.href = API.AUTH.OAUTH_START(provider) + "?action=link";
-  };
+  const startLink = () => setShowReauth(true);
 
   const handleDisconnect = async () => {
     setDisconnecting(true);
@@ -270,20 +273,9 @@ function OAuthIdentityCard({
                 </Button>
               </div>
 
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => {
-                  setReconnecting(true);
-                  startLink();
-                }}
-                disabled={reconnecting}
-              >
-                <RefreshCw
-                  className={`mr-2 h-4 w-4 ${reconnecting ? "animate-spin" : ""}`}
-                  aria-hidden="true"
-                />
-                {reconnecting ? "Reconnecting..." : "Reconnect account"}
+              <Button variant="outline" className="w-full" onClick={startLink}>
+                <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+                Reconnect account
               </Button>
             </>
           ) : (
@@ -306,6 +298,16 @@ function OAuthIdentityCard({
           {extra}
         </CardContent>
       </Card>
+
+      {showReauth && (
+        <ProviderReauthDialog
+          label={label}
+          startUrl={`${API.AUTH.OAUTH_START(provider)}?action=link`}
+          hasPassword={hasPassword}
+          onStarted={provider === "github" ? markGithubLinkStarted : undefined}
+          onClose={() => setShowReauth(false)}
+        />
+      )}
 
       <ConfirmDialog
         open={showDisconnectConfirm}
@@ -440,7 +442,8 @@ function GithubRepoAccessSection({
       {connected ? (
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-xs text-muted-foreground">
-            VulnRadar can read {status?.githubUsername}&apos;s repos.{" "}
+            VulnRadar has read and write access to {status?.githubUsername}
+            &apos;s repos and only ever reads them.{" "}
             {repoCount > 0
               ? `${repoCount} repo${repoCount === 1 ? "" : "s"} in your working set.`
               : "No repos in your working set yet."}
@@ -472,7 +475,8 @@ function GithubRepoAccessSection({
             Works on any repo, not just web apps: bots, games, CLIs, libraries.
             Finds hardcoded secrets, SQL/command injection, and other code-level
             issues an AI review can catch. This is separate from signing in
-            above -- it grants read access to your repo source instead.
+            above. GitHub only grants read and write access together for private
+            repos; VulnRadar only ever reads.
           </p>
           <Button
             size="sm"
@@ -498,9 +502,9 @@ function GithubRepoAccessSection({
         title="Revoke repo access?"
         description={
           <>
-            VulnRadar loses read access to your repos and can&apos;t scan them
-            until you grant access again. Your GitHub sign-in stays connected,
-            and past repo scan results in{" "}
+            VulnRadar tells GitHub to cancel its read and write access to your
+            repos, and can&apos;t scan them until you grant access again. Your
+            GitHub sign-in stays connected, and past repo scan results in{" "}
             <Link href={ROUTES.REPOS} className="underline">
               Repos
             </Link>{" "}
@@ -525,8 +529,10 @@ export function ProfileSocialTab({
   onUserPatch,
 }: ProfileTabProps) {
   const providers = useOAuthProviders();
+  const hasPassword = user?.hasPassword !== false;
 
-  const [reconnecting, setReconnecting] = useState(false);
+  const [showDiscordReauth, setShowDiscordReauth] = useState(false);
+  const [joiningServer, setJoiningServer] = useState(false);
   const [discordData, setDiscordData] = useState<DiscordConnection | null>(
     null,
   );
@@ -543,6 +549,7 @@ export function ProfileSocialTab({
         if (d.connected) {
           setDiscordData({
             guildJoined: !!d.guildJoined,
+            canJoin: !!d.canJoin,
             connectedAt: d.updatedAt ?? null,
             reauthRequired: !!d.reauthRequired,
           });
@@ -594,6 +601,37 @@ export function ProfileSocialTab({
     // setSuccess are stable setters from the parent's useState.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleJoinServer = async () => {
+    setJoiningServer(true);
+    try {
+      const res = await fetch(API.ACCOUNT_DISCORD, { method: "POST" });
+      const data = await res.json().catch(() => ({}) as { error?: string });
+      if (res.ok) {
+        setDiscordData((current) =>
+          current
+            ? {
+                ...current,
+                guildJoined: !!data.guildJoined,
+                reauthRequired: !!data.reauthRequired,
+              }
+            : current,
+        );
+        if (data.guildJoined) setSuccess("You are in the Discord server.");
+      } else {
+        setError(
+          data.error ||
+            "We could not add you to the Discord server. Try again.",
+        );
+      }
+    } catch {
+      setError(
+        "We could not reach the server. Check your connection and try again.",
+      );
+    } finally {
+      setJoiningServer(false);
+    }
+  };
 
   const handleDisconnect = async () => {
     setDisconnecting(true);
@@ -770,20 +808,29 @@ export function ProfileSocialTab({
                   </Button>
                 </div>
 
+                {/* Only ever on request: this page used to rejoin anyone who
+                    had left the server just by being opened. */}
+                {discordData?.canJoin &&
+                  !discordData.guildJoined &&
+                  !discordData.reauthRequired && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={handleJoinServer}
+                      disabled={joiningServer}
+                    >
+                      <Users className="mr-2 h-4 w-4" aria-hidden="true" />
+                      {joiningServer ? "Joining..." : "Join server"}
+                    </Button>
+                  )}
+
                 <Button
                   variant="outline"
                   className="w-full"
-                  onClick={() => {
-                    setReconnecting(true);
-                    window.location.href = API.AUTH.DISCORD_CONNECT;
-                  }}
-                  disabled={reconnecting}
+                  onClick={() => setShowDiscordReauth(true)}
                 >
-                  <RefreshCw
-                    className={`mr-2 h-4 w-4 ${reconnecting ? "animate-spin" : ""}`}
-                    aria-hidden="true"
-                  />
-                  {reconnecting ? "Reconnecting..." : "Reconnect account"}
+                  <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Reconnect account
                 </Button>
               </>
             ) : (
@@ -802,9 +849,7 @@ export function ProfileSocialTab({
                   </div>
                   <Button
                     className="bg-[#5865F2] hover:bg-[#4752C4] text-white shadow-xs"
-                    onClick={() => {
-                      window.location.href = API.AUTH.DISCORD_CONNECT;
-                    }}
+                    onClick={() => setShowDiscordReauth(true)}
                   >
                     <DiscordIcon />
                     <span className="ml-2">Continue with Discord</span>
@@ -832,6 +877,7 @@ export function ProfileSocialTab({
           connectButtonClassName="border border-border/60 bg-background hover:bg-muted text-foreground"
           description="Sign in with Google instead of typing a password. Your Google name and photo are only used if you connect."
           identity={googleIdentity}
+          hasPassword={hasPassword}
           setError={setError}
           setSuccess={setSuccess}
           onDisconnected={() =>
@@ -871,6 +917,7 @@ export function ProfileSocialTab({
           connectButtonClassName="bg-[#181717] hover:bg-[#2b3137] text-white"
           description="Sign in with GitHub instead of typing a password. Repo access for code scanning is granted separately, below."
           identity={githubIdentity}
+          hasPassword={hasPassword}
           setError={setError}
           setSuccess={setSuccess}
           onDisconnected={() =>
@@ -920,6 +967,15 @@ export function ProfileSocialTab({
           </CardContent>
         </Card>
       </section>
+
+      {showDiscordReauth && (
+        <ProviderReauthDialog
+          label="Discord"
+          startUrl={API.AUTH.DISCORD_CONNECT}
+          hasPassword={hasPassword}
+          onClose={() => setShowDiscordReauth(false)}
+        />
+      )}
 
       {/* Disconnecting is reversible but changes how this account signs in,
           so it names the account before it acts. */}
