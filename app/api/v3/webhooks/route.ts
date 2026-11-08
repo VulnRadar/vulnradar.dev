@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
+import { isIP } from "node:net";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
@@ -12,6 +13,8 @@ import {
 import { getSetting } from "@/lib/config/runtime-config";
 import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { extractRootDomain } from "@/lib/scanner/root-domain";
+import { isDiscordHost } from "@/lib/net/discord-webhook";
+import { pluralize } from "@/lib/ui/plural";
 import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp } from "@/lib/api/request-utils";
 import {
@@ -43,8 +46,6 @@ import {
 
 const TEST_ERROR_SNIPPET_MAX = 100;
 
-const TOO_MANY_TESTS =
-  "Too many test deliveries. Wait a few minutes and try again.";
 const TEST_TARGET_REFUSED =
   "This webhook's address is not a public endpoint, so nothing was sent.";
 
@@ -57,26 +58,45 @@ function parseStoredUrl(url: string): URL | null {
 }
 
 function testRateLimited(retryAfterSeconds: number) {
+  // Worked out from the limiter's answer: the per-target window is an hour, so
+  // a fixed "a few minutes" sent people back into a refusal that had most of
+  // that hour left to run.
+  const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60));
   return NextResponse.json(
-    { success: false, error: TOO_MANY_TESTS },
+    {
+      success: false,
+      error: `Too many test deliveries. Try again in ${pluralize(minutes, "minute")}.`,
+    },
     { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
   );
 }
 
 /**
  * The bucket for the place a test is sent. Normally the registrable domain, so
- * that subdomains cannot be used to dodge it. Discord and Slack are the
- * exception: every webhook on the deployment shares those domains, and one
- * bucket there would let a single account spend everybody's Test button, so
- * those count per webhook. By id, because the URL is a credential and this key
- * is stored in plain text.
+ * that subdomains cannot be used to dodge it, and the whole address for an IP,
+ * whose last two octets are not a domain. Discord and Slack are the exception:
+ * every webhook on the deployment shares those domains, and one bucket there
+ * would let a single account spend everybody's Test button, so those count per
+ * webhook. By id, because the URL is a credential and this key is stored in
+ * plain text.
+ *
+ * Discord goes by its host rather than the detected type: its /github endpoint
+ * is detected as generic and would otherwise land in one discord.com bucket.
+ * The trailing dot comes off because new URL() keeps it, and example.com. is
+ * example.com to DNS but a second bucket to a string comparison.
  */
 function testTargetLimitKey(webhookId: number, url: string): string {
-  const hostname = parseStoredUrl(url)?.hostname;
-  const scope =
-    hostname && detectWebhookType(url) === "generic"
-      ? extractRootDomain(hostname).toLowerCase()
-      : `id-${webhookId}`;
+  const parsedHost = parseStoredUrl(url)?.hostname;
+  const hostname = parsedHost?.endsWith(".")
+    ? parsedHost.slice(0, -1)
+    : parsedHost;
+  const perWebhook =
+    !hostname || isDiscordHost(hostname) || detectWebhookType(url) === "slack";
+  const scope = perWebhook
+    ? `id-${webhookId}`
+    : isIP(hostname)
+      ? hostname
+      : extractRootDomain(hostname).toLowerCase();
   return `webhook-test-target:${scope}`;
 }
 
@@ -388,10 +408,12 @@ export async function PATCH(request: NextRequest) {
   // registration, and safeFetch separately blocks redirects to private IPs.
   const targetCheck = await validateScanTarget(webhook.url);
   if (!targetCheck.safe) {
-    return NextResponse.json(
-      { success: false, error: TEST_TARGET_REFUSED },
-      { status: 400 },
-    );
+    // Same reading safeFetch gives this result: a name that no longer resolves
+    // is the far end being down (502), and only a real refusal is a 400.
+    const { status, error } = testFailure({
+      code: targetCheck.code ?? "blocked",
+    });
+    return NextResponse.json({ success: false, error }, { status });
   }
 
   const envelope = newDeliveryEnvelope();

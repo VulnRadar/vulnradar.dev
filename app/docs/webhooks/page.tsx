@@ -142,8 +142,9 @@ export default function WebhooksPage() {
           scans only. Teammates whose role manages scans (team owner, admin,
           member) can see the full address, pause, rename, test and delete it. A
           viewer sees the name and the host only, because the URL of a Discord
-          or Slack webhook is the credential for posting there. The address, the
-          type, the team and the signing secret stay with the creator.
+          or Slack webhook is the credential for posting there. Only the creator
+          can change the address, the type or the team, or rotate the signing
+          secret.
         </p>
       </DocsSection>
 
@@ -170,7 +171,7 @@ export default function WebhooksPage() {
             {
               header: "X-VulnRadar-Signature",
               value:
-                "sha256=<hex>, the HMAC-SHA256 of the exact body. Absent only on a webhook with no secret.",
+                "sha256=<hex>, the HMAC-SHA256 of the exact body. Absent only on a webhook with no usable secret.",
             },
             {
               header: "X-VulnRadar-Delivery",

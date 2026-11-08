@@ -292,6 +292,74 @@ describe("PATCH /api/v3/webhooks (test send): limits and failure answers", () =>
     expect(key).not.toContain("s3cr3t-token");
   });
 
+  it.each([
+    "https://discord.com/api/webhooks/123/s3cr3t-token/github",
+    "https://discord.com/api/webhooks/123/s3cr3t-token/slack",
+    "https://hooks.slack.com/services/T0/B0/s3cr3t-token",
+  ])("counts %s per webhook, not per shared domain", async (url) => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ ...STORED, url }] });
+    const safeFetch = await fetchMock();
+    safeFetch.mockResolvedValue(new Response("ok", { status: 200 }));
+
+    await PATCH(patchRequest({ id: 10 }));
+
+    expect(mockCheckRateLimit.mock.lastCall?.[0].key).toBe(
+      "webhook-test-target:id-10",
+    );
+  });
+
+  it.each([
+    ["a trailing dot", "https://hooks.example.com./in/abc", "example.com"],
+    ["an IP address", "https://8.8.4.4/in/abc", "8.8.4.4"],
+  ])("buckets %s by the host it really is", async (_label, url, scope) => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ ...STORED, url }] });
+    const safeFetch = await fetchMock();
+    safeFetch.mockResolvedValue(new Response("ok", { status: 200 }));
+
+    await PATCH(patchRequest({ id: 10 }));
+
+    expect(mockCheckRateLimit).toHaveBeenLastCalledWith({
+      key: `webhook-test-target:${scope}`,
+      maxAttempts: 30,
+      windowSeconds: 3600,
+    });
+  });
+
+  it.each([
+    [30, "1 minute"],
+    [120, "2 minutes"],
+    [3599, "60 minutes"],
+  ])("after %i seconds of refusal says %s", async (retryAfter, wait) => {
+    refuseNextLimit(retryAfter);
+
+    const res = await PATCH(patchRequest({ id: 10 }));
+
+    expect(res.headers.get("Retry-After")).toBe(String(retryAfter));
+    expect((await res.json()).error).toBe(
+      `Too many test deliveries. Try again in ${wait}.`,
+    );
+  });
+
+  it("answers 502, not a refusal, for a name that no longer resolves", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [STORED] });
+    mockValidateScanTarget.mockResolvedValue({
+      safe: false,
+      reason: "DNS resolution failed, cannot verify target is safe to scan.",
+      code: "unreachable",
+    });
+    const safeFetch = await fetchMock();
+
+    const res = await PATCH(patchRequest({ id: 10 }));
+    const json = await res.json();
+
+    expect(res.status).toBe(502);
+    expect(json).toEqual({
+      success: false,
+      error: "Could not connect to your endpoint.",
+    });
+    expect(safeFetch).not.toHaveBeenCalled();
+  });
+
   it("does not let someone without write access spend the target's bucket", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ ...STORED, user_id: 99 }] });
 
