@@ -139,7 +139,7 @@ function buildLlmsTxt(): string {
   lines.push("## Pricing");
   lines.push("");
   lines.push(
-    `- [Pricing](${abs("/pricing")}): A free tier with no card, then paid plans that only raise daily scan quotas and history retention. The same detection engine runs on every plan.`,
+    `- [Pricing](${abs("/pricing")}): A free tier with no card, then paid plans that raise daily scan quotas and account limits such as API keys, webhooks and scheduled scans. The same detection engine runs on every plan.`,
   );
   lines.push("");
 
