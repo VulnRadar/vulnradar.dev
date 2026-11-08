@@ -16,9 +16,9 @@
  * so that path alone is not a challenge and is deliberately not a marker here.
  *
  * Vendor markers are the ones the vendor documents or ships in its own source.
- * A vendor left out here still loses nothing that matters: its block page
- * arrives with a refusal status, which response-classifier.ts does not grade
- * either, and is reported as blocked rather than as a challenge.
+ * A block page from a vendor left out here is still not graded when it arrives
+ * with a refusal status: response-classifier.ts reports it as blocked rather
+ * than as a challenge. Served with a 200, it is graded as a page.
  */
 
 import { tokenize } from "./html/tokenizer";
@@ -70,12 +70,23 @@ const CHALLENGE_HEADERS: readonly {
 ];
 
 /**
- * Anubis renders this element on its own pages only, and can be configured to
- * send its gate with a 200. Matching the literal start tag means an article
- * showing the markup, which has it escaped, does not count.
+ * Anubis renders a script with this id on its own pages only, and can send its
+ * gate with a 200, so it counts on any status. That makes it the one body
+ * marker that can skip every check on a page that was served, so it has to be
+ * the real element: markup quoted in a comment or a script string does not
+ * count, which a pattern over the raw source cannot tell.
  */
-const ANUBIS_CHALLENGE_ELEMENT =
-  /<script\b[^>]{0,200}\bid=["']?anubis_challenge\b/i;
+const ANUBIS_CHALLENGE_ID = "anubis_challenge";
+
+function hasAnubisChallengeElement(head: string): boolean {
+  if (!head.includes(ANUBIS_CHALLENGE_ID)) return false;
+  return tokenize(head).some(
+    (token) =>
+      token.kind === "start" &&
+      token.tag === "script" &&
+      token.attrs.id === ANUBIS_CHALLENGE_ID,
+  );
+}
 
 /** Markup only a Cloudflare challenge page's bootstrap contains. */
 const CHALLENGE_BOOTSTRAP =
@@ -124,6 +135,7 @@ function isScriptOnlyPage(head: string): boolean {
     if (token.kind === "start") {
       if (token.tag === "script") {
         inScript =
+          !token.selfClosing &&
           token.attrs.src === undefined &&
           isExecutableScriptType(token.attrs.type);
       }
@@ -157,7 +169,7 @@ export function detectBotChallenge(
   }
 
   const head = body.slice(0, 32_768);
-  if (ANUBIS_CHALLENGE_ELEMENT.test(head)) return "Anubis challenge page";
+  if (hasAnubisChallengeElement(head)) return "Anubis challenge page";
   if (!BLOCKING_STATUSES.has(status)) return null;
 
   // Lazy and not `[^<]`: a real gate is titled "Please wait... <3", and

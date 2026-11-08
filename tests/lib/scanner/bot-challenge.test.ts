@@ -154,6 +154,22 @@ describe("detectBotChallenge vendor markers", () => {
     const body = '<html><pre>&lt;script id="anubis_challenge"&gt;</pre></html>';
     expect(detectBotChallenge(200, new Headers(), body)).toBeNull();
   });
+
+  it.each([
+    ["a comment", '<html><!-- <script id="anubis_challenge"> --></html>'],
+    [
+      "a string in a script",
+      "<html><script>var a = '<script id=\"anubis_challenge\">'</script></html>",
+    ],
+    [
+      "another attribute",
+      '<html><script data-id="anubis_challenge"></script></html>',
+    ],
+    ["a longer id", '<html><script id="anubis_challenge-v2"></script></html>'],
+  ])("does not take %s for the Anubis element", (_where, body) => {
+    // On a 200 a match skips every page check, so quoted markup cannot count.
+    expect(detectBotChallenge(200, new Headers(), body)).toBeNull();
+  });
 });
 
 describe("detectBotChallenge structural signal", () => {
@@ -189,6 +205,11 @@ describe("detectBotChallenge structural signal", () => {
   it("does not count a data block as a script", () => {
     // A signed-out single page app's 403 can be one big JSON state blob.
     const body = `<html><body><script type="application/json">${longScript}</script></body></html>`;
+    expect(detectBotChallenge(403, new Headers(), body)).toBeNull();
+  });
+
+  it("does not read the words after an empty script as its code", () => {
+    const body = `<html><body><script/><p>${"word ".repeat(400)}</p></body></html>`;
     expect(detectBotChallenge(403, new Headers(), body)).toBeNull();
   });
 
