@@ -136,6 +136,17 @@ describe("prices", () => {
     expect(CHEAPEST_PAID).toBe(Math.min(...paid));
   });
 
+  it("keeps the /alternatives price out of the paragraph the AI knowledge quotes", () => {
+    // scripts/knowledge/compile-features-knowledge.mjs takes the <p> straight
+    // after the <h1> and drops it whole on any expression it cannot resolve,
+    // which leaves the assistant with nothing to say about the page.
+    const lede = read("app/alternatives/page.tsx").match(
+      /<\/h1>\s*<p [^>]*>([\s\S]*?)<\/p>/,
+    );
+    expect(lede, "the /alternatives lede changed shape").not.toBeNull();
+    expect(lede![1].replaceAll("{APP_NAME}", "")).not.toMatch(/[{}]/);
+  });
+
   it("derives the /pricing title's price instead of writing it out", () => {
     const source = read("app/pricing/layout.tsx");
     expect(copyOnly(source)).not.toMatch(/From \$\d/);

@@ -54,10 +54,16 @@ export default async function AlternativesIndexPage() {
           </h1>
           <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
             {APP_NAME} is an open-source, GPL-3.0 web vulnerability scanner you
-            can self-host, with a free tier and paid plans from ${CHEAPEST_PAID}{" "}
-            a month. Here is an honest look at where it fits next to the
+            can self-host. Here is an honest look at where it fits next to the
             better-known commercial tools. No invented competitor prices, no
             disparagement.
+          </p>
+          {/* Its own paragraph on purpose: the features-knowledge compiler
+              quotes the one under the h1, and discards it whole if it holds an
+              expression it cannot resolve. */}
+          <p className="mt-3 text-base sm:text-lg text-muted-foreground leading-relaxed">
+            There is a free tier, and paid plans start at ${CHEAPEST_PAID} a
+            month.
           </p>
         </header>
 

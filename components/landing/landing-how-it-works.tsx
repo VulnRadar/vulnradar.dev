@@ -43,7 +43,7 @@ export function LandingHowItWorks({ categoryCount }: LandingHowItWorksProps) {
             the rule is in the public repo.
           </p>
           <p>
-            How long that takes depends on the target. Slow DNS or a long
+            How long a scan takes depends on the target. Slow DNS or a long
             certificate chain sets the pace, and the report tells you how long
             yours took.
           </p>
