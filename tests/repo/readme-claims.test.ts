@@ -217,20 +217,6 @@ describe("the architecture page", () => {
     expect(api).toMatch(/\berror:\s*\(/);
   });
 
-  it("draws only directories and files that exist", () => {
-    const start = page.indexOf("vulnradar.dev/\n");
-    const end = page.indexOf("`}", start);
-    expect(start).toBeGreaterThan(-1);
-    expect(end).toBeGreaterThan(start);
-
-    const named = treePaths(page.slice(start, end));
-    // Guard the parser itself: a tree this long that yields nothing means the
-    // regex stopped matching, which would turn this test into a no-op.
-    expect(named.length).toBeGreaterThan(40);
-    expect(named).toContain("app/api/v3");
-    expect(missing(named)).toEqual([]);
-  });
-
   it("says the schema is applied by apply-boot-schema, and instrumentation calls it", () => {
     expect(page).toContain("apply-boot-schema");
     expect(

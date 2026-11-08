@@ -22,12 +22,20 @@ import {
   DocsSubSection,
   DocsCallout,
   CodeBlock,
+  DocsTable,
   InlineCode,
 } from "@/components/docs";
+import { WHERE_THINGS_LIVE } from "./where-things-live";
+
+const WHERE_COLUMNS = [
+  { key: "dir", header: "Directory", className: "font-mono whitespace-nowrap" },
+  { key: "what", header: "What is in it", className: "w-full" },
+  { key: "doc", header: "Written up in", className: "whitespace-nowrap" },
+];
 
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
-  { id: "layout", label: "Project Layout" },
+  { id: "layout", label: "Where things live" },
   { id: "subsystems", label: "Key Subsystems" },
   { id: "config", label: "Configuration", level: 2 },
   { id: "database", label: "Database", level: 2 },
@@ -68,72 +76,35 @@ export default function ArchitecturePage() {
         </DocsCallout>
       </DocsSection>
 
-      <DocsSection id="layout" title="Project Layout">
-        <CodeBlock
-          language="text"
-          code={`vulnradar.dev/
-├── app/                          # Next.js App Router
-│   ├── (root pages)              # /, /landing, /pricing, /demo, /contact, /donate
-│   ├── admin/                    # Admin dashboard (staff-gated)
-│   ├── api/v3/                   # REST API v3 (and /api/security-txt, /api/version)
-│   ├── dashboard/                # User dashboard (authenticated)
-│   ├── docs/                     # This documentation site
-│   ├── history/                  # Scan history (authenticated)
-│   ├── legal/                    # Terms, privacy, etc.
-│   ├── login, signup,            # Auth pages
-│   ├── forgot-password,
-│   │  reset-password,
-│   │  verify-email
-│   ├── pricing/                  # Pricing + Stripe checkout
-│   ├── profile/                  # User profile
-│   ├── shared/[token]/           # Public shared-scan viewer
-│   └── teams/                    # Team management
-│
-├── components/                   # React components (mostly client)
-│   ├── admin/                    # Admin UI
-│   ├── auth/                     # Auth forms
-│   ├── badge/                    # Public badge widgets
-│   ├── billing/                  # Stripe checkout UI
-│   ├── docs/                     # Documentation site components
-│   ├── landing/                  # Marketing landing
-│   ├── scanner/                  # Scan UI (results, footer)
-│   ├── shared/                   # Cross-cutting (notifications, logo)
-│   └── ui/                       # shadcn/ui primitives
-│
-├── lib/                          # Server-side libraries (no React)
-│   ├── api/                      # API helpers (Bearer validation, request utils)
-│   ├── auth/                     # Sessions, 2FA, password hashing, device trust
-│   ├── billing/                  # Stripe + plan catalog
-│   ├── config/                   # Configuration system
-│   ├── database/                 # Pool, query helpers, boot/ and schema/
-│   ├── discord/                  # Discord OAuth helpers
-│   ├── email/                    # Transactional email (SMTP)
-│   ├── notifications/            # In-app + email notification preferences
-│   ├── rate-limiting/            # Generic + plan-based rate limits
-│   ├── reports/                  # SARIF, Markdown, compliance, PDF reports
-│   ├── scanner/                  # Detection engine
-│   └── uploads/                  # Avatar validation
-│
-├── instrumentation.ts            # Next.js startup hooks (DB init, schema check)
-├── middleware.ts                 # Auth + public-path middleware
-│
-├── public/                       # Static assets
-├── scripts/                      # DB migration + audit scripts
-│   ├── _lib/                     # Shared helpers
-│   ├── create-fresh-db/          # Side-by-side DB clone
-│   └── migrate/                  # Schema migrations
-│
-├── .github/                      # Workflows, dependabot, PR template
-├── Dockerfile
-├── docker-compose.yml
-├── docker-compose.dev.yml
-├── next.config.mjs
-├── tsconfig.json
-├── tailwind.config.mjs
-├── eslint.config.mjs
-├── vitest.config.ts
-└── package.json`}
+      <DocsSection id="layout" title="Where things live">
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Every directory in the repository, and the page or file that covers
+          it. At the root, <InlineCode>instrumentation.ts</InlineCode> is the
+          Next.js startup hook that applies the schema,{" "}
+          <InlineCode>middleware.ts</InlineCode> gates every request, and{" "}
+          <InlineCode>docker-compose.dev.yml</InlineCode> builds the image from
+          your checkout where <InlineCode>docker-compose.yml</InlineCode> pulls
+          the published one.
+        </p>
+        <DocsTable
+          caption="Top-level directories"
+          columns={WHERE_COLUMNS}
+          data={WHERE_THINGS_LIVE.top}
         />
+        <DocsSubSection id="layout-lib" title="Inside lib/">
+          <DocsTable
+            caption="Directories under lib"
+            columns={WHERE_COLUMNS}
+            data={WHERE_THINGS_LIVE.lib}
+          />
+        </DocsSubSection>
+        <DocsSubSection id="layout-components" title="Inside components/">
+          <DocsTable
+            caption="Directories under components"
+            columns={WHERE_COLUMNS}
+            data={WHERE_THINGS_LIVE.components}
+          />
+        </DocsSubSection>
       </DocsSection>
 
       <DocsSection id="subsystems" title="Key Subsystems">
@@ -654,26 +625,30 @@ instrumentation.ts (server startup only)
       <DocsSection id="cicd" title="CI/CD Pipeline">
         <CodeBlock
           language="text"
-          code={`On push to main / PR
-  ├── Lint (Oxlint, then ESLint 10 with the flat config in eslint.config.mjs)
-  ├── Typecheck (tsc --noEmit, hard gate)
-  ├── Test (vitest run)
-  ├── Format check (prettier --check)
-  └── Build (next build)
+          code={`On push to main / PR (.github/workflows/ci.yml)
+  ├── Lint (Oxlint, then ESLint 10 with the flat config in eslint.config.mjs, then prettier --check)
+  ├── Typecheck (tsc --noEmit, npm audit, the build:knowledge diff)
+  ├── Test (vitest run --coverage, then the CLI tests)
+  ├── Integration (tests/integration against a real PostgreSQL)
+  ├── Extension (typecheck, format check, build and package)
+  ├── Build (next build)
+  └── Self-host smoke test (builds the image, boots it on an empty database, self-scans every published route)
 
 On tag v*
   └── Docker publish (ghcr.io/${`<owner>`}/${`<repo>`})
 
-Weekly / on PR
-  ├── Stale bot
-  ├── Label (PR)
-  └── Dependabot → auto-merge patch only`}
+On PR
+  ├── Label
+  └── Dependabot → auto-merge patch only
+
+Scheduled
+  ├── Stale bot (daily)
+  └── GHCR cleanup (Mondays)`}
         />
         <p className="text-sm text-muted-foreground">
-          All four checks (<InlineCode>lint</InlineCode>,{" "}
-          <InlineCode>typecheck</InlineCode>, <InlineCode>test</InlineCode>,{" "}
-          <InlineCode>build</InlineCode>) run on Node 22 LTS in CI. See{" "}
-          <InlineCode>.github/workflows/</InlineCode>.
+          Every job that needs Node reads the version from{" "}
+          <InlineCode>.nvmrc</InlineCode>, the same patch the published image is
+          built on. See <InlineCode>.github/workflows/</InlineCode>.
         </p>
       </DocsSection>
     </div>
