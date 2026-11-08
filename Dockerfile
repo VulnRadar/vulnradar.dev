@@ -217,15 +217,14 @@ ENV HOSTNAME="0.0.0.0"
 # lib/auth/password-hash.ts stays at 2 x 128 MiB however many threads exist
 # (see the note above CONFIG_DB_POOL_MAX).
 ENV UV_THREADPOOL_SIZE=16
-# NEXT_PUBLIC_APP_URL is deliberately not carried over from the builder. The
-# OAuth redirects (lib/config/server-app-url.ts) fall back to the origin of the
-# request only when neither APP_URL nor NEXT_PUBLIC_APP_URL is set at runtime,
-# so a value baked in here would become every container's origin. The published
-# image is built with it empty for the same reason.
-# Reset, verification, invite and unsubscribe links are built from the same
-# runtime variables and otherwise fall back to CONFIG_APP_URL, which is the
-# upstream origin too, so set APP_URL or NEXT_PUBLIC_APP_URL when the
-# container starts; the compose files pass it from .env.
+# NEXT_PUBLIC_APP_URL is deliberately not carried over from the builder: a
+# value baked in here would become every container's origin. The published
+# image is built with it empty for the same reason, so its compiled, browser-side
+# code uses CONFIG_APP_URL, the upstream origin. The server reads the real
+# value at runtime (lib/config/server-app-url.ts), so set APP_URL or
+# NEXT_PUBLIC_APP_URL when the container starts; the compose files pass it from
+# .env. With neither, the server stops at boot and names the setting
+# (lib/config/env.ts).
 
 # infra: this image updates by being replaced, not by rewriting itself. The
 # updater cannot see that on its own: it can tell whether /app is writable,

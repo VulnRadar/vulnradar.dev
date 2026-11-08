@@ -710,22 +710,17 @@ export default function ConfigPage() {
               <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> empty, so its
               compiled code uses <InlineCode>CONFIG_APP_URL</InlineCode>,
               upstream&rsquo;s own domain. No image copies its build value into
-              the running container&rsquo;s environment: if one did, a
-              self-built image&rsquo;s OAuth redirects would fall back to that
-              value instead of to the address the request arrived on. So a
-              pulled image and one you built yourself both need{" "}
+              the running container&rsquo;s environment: if one did, a container
+              started with no URL would quietly use whatever the image was built
+              with. So a pulled image and one you built yourself both need{" "}
               <InlineCode>APP_URL</InlineCode> or{" "}
               <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> set when the
               container starts. Both compose files pass{" "}
               <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> from{" "}
               <InlineCode>.env</InlineCode>. With a plain{" "}
               <InlineCode>docker run</InlineCode> or a Kubernetes manifest, set
-              one of them yourself. Without either, reset, verification, invite
-              and unsubscribe links fall back to{" "}
-              <InlineCode>CONFIG_APP_URL</InlineCode>, which on a pulled image
-              is upstream&rsquo;s domain, so your users&rsquo; reset links would
-              go there. The OAuth redirects fall back to the origin of the
-              request.
+              one of them yourself. Without either, the server stops at boot and
+              names the setting.
             </p>
           </DocsCallout>
           <p className="max-w-[68ch] text-sm text-muted-foreground">

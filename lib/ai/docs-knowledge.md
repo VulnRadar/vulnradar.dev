@@ -674,22 +674,17 @@ credentials (http is accepted for localhost and 127.0.0.1).
 NEXT_PUBLIC_APP_URL empty, so its
 compiled code uses CONFIG_APP_URL,
 upstream&rsquo;s own domain. No image copies its build value into
-the running container&rsquo;s environment: if one did, a
-self-built image&rsquo;s OAuth redirects would fall back to that
-value instead of to the address the request arrived on. So a
-pulled image and one you built yourself both need
+the running container&rsquo;s environment: if one did, a container
+started with no URL would quietly use whatever the image was built
+with. So a pulled image and one you built yourself both need
 APP_URL or
 NEXT_PUBLIC_APP_URL set when the
 container starts. Both compose files pass
 NEXT_PUBLIC_APP_URL from
 .env. With a plain
 docker run or a Kubernetes manifest, set
-one of them yourself. Without either, reset, verification, invite
-and unsubscribe links fall back to
-CONFIG_APP_URL, which on a pulled image
-is upstream&rsquo;s domain, so your users&rsquo; reset links would
-go there. The OAuth redirects fall back to the origin of the
-request.
+one of them yourself. Without either, the server stops at boot and
+names the setting.
 
 > **INFO: ~30 second propagation**
 > The resolver caches the whole table for 30 seconds so a value read
