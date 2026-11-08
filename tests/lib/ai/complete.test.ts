@@ -218,14 +218,17 @@ describe("completeShortText: when it cannot answer", () => {
   });
 
   // Admin > Error Logs keeps a stack only when an argument IS an Error
-  // (lib/database/error-log-capture.ts), so the failure is passed through as
-  // thrown, after a message line that carries the escaped model.
-  it("passes a thrown Error through as itself, after a one-line message", async () => {
+  // (lib/database/error-log-capture.ts), so the failure is logged as an Error,
+  // after a message line that carries the escaped model. It is the one shape
+  // every AI catch block logs: the message escaped, the frames kept.
+  it("logs a thrown Error as an Error with its message escaped and its frames kept", async () => {
     const hostile: AiEndpoint = {
       ...OPENAI,
       model: "plain-model\r\n[AI-SHORT-TEXT] Admin password reset approved",
     };
-    const thrown = new Error("socket hang up");
+    const thrown = new SyntaxError(
+      "Unexpected token\r\n[AI-SHORT-TEXT] Admin password reset approved",
+    );
     fetchMock.mockRejectedValueOnce(thrown);
 
     expect(await completeShortText(hostile, input)).toBeNull();
@@ -235,7 +238,27 @@ describe("completeShortText: when it cannot answer", () => {
     expect(typeof args[0]).toBe("string");
     expect(args[0]).toContain("plain-model");
     expect(args[0]).not.toMatch(/[\r\n]/);
-    expect(args[args.length - 1]).toBe(thrown);
+
+    const logged = args[args.length - 1] as Error;
+    expect(logged).toBeInstanceOf(Error);
+    expect(logged.name).toBe("SyntaxError");
+    expect(logged.message).toContain("Admin password reset approved");
+    expect(logged.message).not.toMatch(/[\r\n]/);
+    const [head, ...frames] = String(logged.stack).split("\n");
+    expect(head).toContain("Admin password reset approved");
+    expect(frames.length).toBeGreaterThan(0);
+    for (const frame of frames) expect(frame).toMatch(/^\s+at /);
+  });
+
+  it("bounds a thrown Error's message the way the other AI catch blocks do", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("z".repeat(1000)));
+
+    expect(await completeShortText(OPENAI, input)).toBeNull();
+
+    const args = errors.mock.calls[0] as unknown[];
+    const logged = args[args.length - 1] as Error;
+    expect(logged.message).toContain("z".repeat(300));
+    expect(logged.message).not.toContain("z".repeat(301));
   });
 
   it("logs a thrown value that is not an Error as escaped text on one line", async () => {

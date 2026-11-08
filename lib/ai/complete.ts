@@ -1,6 +1,6 @@
 import { postChatCompletion, type AiEndpoint } from "@/lib/ai/transport";
 import { visibleText } from "@/lib/ai/think-parser";
-import { logValue } from "@/lib/logging/log-value";
+import { logSafeError, logValue } from "@/lib/logging/log-value";
 
 /**
  * One short answer from the configured model, as plain text.
@@ -48,12 +48,13 @@ export async function completeShortText(
     }
     return visibleText(res.text) || null;
   } catch (err) {
-    // The Error itself, not its message: Admin > Error Logs keeps a stack only
-    // when an argument is an Error (STYLE.md, "Logging"). Only a thrown
-    // non-Error, which has no stack to lose, is escaped into text.
+    // An Error, not its message: Admin > Error Logs keeps a stack only when an
+    // argument is an Error (STYLE.md, "Logging"). Its message is escaped all
+    // the same, since a SyntaxError from a reply that was not JSON quotes the
+    // endpoint's body, and nothing here keeps that endpoint the operator's.
     console.error(
       `[AI-SHORT-TEXT] request to ${hostOf(endpoint.baseUrl)} (${logValue(endpoint.model)}) failed:`,
-      err instanceof Error ? err : logValue(err, 300),
+      logSafeError(err, 300),
     );
     return null;
   } finally {
