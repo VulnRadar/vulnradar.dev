@@ -15,6 +15,8 @@
  * the exported functions it calls.
  */
 import type { ReactNode } from "react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -136,6 +138,64 @@ describe("the saved-provider summary", () => {
     expect(trigger).not.toBeNull();
     expect(trigger![0]).toMatch(/\bh-7\b|\bh-8\b|\bh-9\b|\bh-10\b/);
     expect(trigger![0]).toContain('type="button"');
+  });
+});
+
+describe("focus after the dialog closes", () => {
+  // The first save swaps Set up provider for Edit provider, so the button
+  // that opened the dialog has unmounted by the time it closes. The dialog
+  // returns focus through this ref, which has to be on whichever trigger is
+  // showing, or focus drops to the page body.
+  it.each([
+    ["Set up provider", unconfigured],
+    ["Edit provider", saved()],
+  ])("puts the trigger ref on %s", (label, config) => {
+    const ref = vi.fn();
+    // Server rendering never attaches refs, so read it off the element tree.
+    const tree = AiProviderSummary({
+      config,
+      onEdit: () => {},
+      onReset: () => {},
+      resetting: false,
+      triggerRef: ref,
+    });
+    const found: string[] = [];
+    const walk = (node: unknown): void => {
+      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node)) return node.forEach(walk);
+      const el = node as { props?: Record<string, unknown> };
+      if (!el.props) return;
+      if (el.props.ref === ref) {
+        const kids = ([] as unknown[]).concat(el.props.children);
+        found.push(kids.filter((k) => typeof k === "string").join(""));
+      }
+      walk(el.props.children);
+    };
+    walk(tree);
+    expect(found).toEqual([label]);
+  });
+
+  it("the tab hands the same ref to the summary and the dialog", () => {
+    const src = readFileSync(
+      join(
+        process.cwd(),
+        "components/profile/tabs/profile-ai-settings-tab.tsx",
+      ),
+      "utf8",
+    );
+    expect(src).toMatch(/<AiProviderSummary[\s\S]*?triggerRef=\{(\w+)\}/);
+    const name = src.match(
+      /<AiProviderSummary[\s\S]*?triggerRef=\{(\w+)\}/,
+    )![1];
+    expect(src).toMatch(
+      new RegExp(`<AiProviderDialog[\\s\\S]*?returnFocusRef=\\{${name}\\}`),
+    );
+    // And the dialog passes it on to EditDialog, which does the focusing.
+    const dialog = src.match(
+      /export function AiProviderDialog[\s\S]*?<EditDialog([\s\S]*?)\n\s*>\n/,
+    );
+    expect(dialog).not.toBeNull();
+    expect(dialog![1]).toContain("returnFocusRef={returnFocusRef}");
   });
 });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, type Ref, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { clearAiInfoCache } from "@/components/shared/ai-info";
@@ -166,17 +166,23 @@ export async function saveAiProvider(
 /**
  * The own-provider block of the tab: what is saved, with the trigger that
  * opens AiProviderDialog. Nothing here is editable in place.
+ *
+ * `triggerRef` goes on whichever trigger is showing. The first save swaps Set
+ * up provider for Edit provider, so the button that opened the dialog is gone
+ * by the time it closes, and focus would otherwise drop to the page body.
  */
 export function AiProviderSummary({
   config,
   onEdit,
   onReset,
   resetting,
+  triggerRef,
 }: {
   config: AiConfig;
   onEdit: () => void;
   onReset: () => void;
   resetting: boolean;
+  triggerRef?: Ref<HTMLButtonElement>;
 }) {
   if (config.useVulnradarAi) {
     return (
@@ -187,6 +193,7 @@ export function AiProviderSummary({
             add a provider, a model and an API key.
           </p>
           <Button
+            ref={triggerRef}
             type="button"
             size="sm"
             className="h-7 text-xs gap-1.5 shrink-0"
@@ -221,6 +228,7 @@ export function AiProviderSummary({
             </dd>
           </dl>
           <Button
+            ref={triggerRef}
             type="button"
             variant="outline"
             size="sm"
@@ -264,10 +272,12 @@ export function AiProviderDialog({
   config,
   onClose,
   onSaved,
+  returnFocusRef,
 }: {
   config: AiConfig;
   onClose: () => void;
   onSaved: (next: AiConfig) => void;
+  returnFocusRef?: RefObject<HTMLElement | null>;
 }) {
   const [draft, setDraft] = useState(() => aiProviderDraftFrom(config));
   const [showApiKeyText, setShowApiKeyText] = useState(false);
@@ -295,6 +305,7 @@ export function AiProviderDialog({
       }
       description="The provider, model and API key used to analyze the websites you scan."
       saveLabel="Save provider"
+      returnFocusRef={returnFocusRef}
       dirty={aiProviderDirty(draft, config)}
       canSave={aiProviderCanSave(draft, config)}
       onSave={async () => {
@@ -410,6 +421,7 @@ export function ProfileAiSettingsTab({
   const [togglingAi, setTogglingAi] = useState(false);
   const [useOwn, setUseOwn] = useState(false);
   const [editingProvider, setEditingProvider] = useState(false);
+  const providerTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Action state
   const [resetting, setResetting] = useState(false);
@@ -694,6 +706,7 @@ export function ProfileAiSettingsTab({
             onEdit={() => setEditingProvider(true)}
             onReset={askReset}
             resetting={resetting}
+            triggerRef={providerTriggerRef}
           />
         )}
       </section>
@@ -701,6 +714,7 @@ export function ProfileAiSettingsTab({
       {editingProvider && (
         <AiProviderDialog
           config={config}
+          returnFocusRef={providerTriggerRef}
           onClose={() => setEditingProvider(false)}
           onSaved={(next) => {
             setConfig(next);
