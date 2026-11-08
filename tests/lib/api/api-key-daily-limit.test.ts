@@ -193,6 +193,33 @@ describe("validateApiKey daily limit", () => {
     expect(result?.dailyLimit).toBe(5000);
   });
 
+  it("keeps a staff member's paid Elite allowance instead of cutting it to Pro", async () => {
+    setKeyOwner({
+      plan: "elite_supporter",
+      role: "moderator",
+      daily_limit: 25,
+    });
+
+    expect((await validateApiKey(RAW_KEY))?.dailyLimit).toBe(20000);
+  });
+
+  it("keeps a staff member's gifted Elite allowance", async () => {
+    setKeyOwner({
+      plan: "free",
+      role: "support",
+      gifted_plan: "elite_supporter",
+      daily_limit: 25,
+    });
+
+    expect((await validateApiKey(RAW_KEY))?.dailyLimit).toBe(20000);
+  });
+
+  it("lifts a staff member on Core to the Pro Supporter floor", async () => {
+    setKeyOwner({ plan: "core_supporter", role: "ops", daily_limit: 100 });
+
+    expect((await validateApiKey(RAW_KEY))?.dailyLimit).toBe(5000);
+  });
+
   it("maps the -1 unlimited sentinel to a finite number, never Infinity", async () => {
     // This value is serialised into the 429 body and X-RateLimit-Limit, and
     // JSON.stringify(Infinity) is `null`.

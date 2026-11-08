@@ -13,7 +13,8 @@ import { PLANS } from "@/lib/billing/catalog";
 
 // Staff roles that get resolved to the "staff" plan tag below (see
 // getUserPlan) -- NOT unlimited access. getDailyLimit resolves that tag to
-// the Pro Supporter plan's real numeric caps, same as a paying account.
+// the Pro Supporter plan's real numeric caps, same as a paying account. A
+// staff member with a higher paid or gifted plan keeps that plan instead.
 // Exported so lib/billing/staff-plan.ts's role-transition grant/revoke
 // logic uses the exact same staff-role set as the dynamic-limits resolver
 // here, rather than a second hardcoded copy that could drift from this one.
@@ -95,13 +96,6 @@ export function resolveEffectivePlan(row: {
   role?: string | null;
   gifted_plan?: string | null;
 }): PlanType {
-  // Staff roles are tagged "staff" -- callers (getDailyLimit,
-  // getUserPlanLimits, userMeetsScheduleFrequency) resolve that tag to
-  // the Pro Supporter plan's real limits, not unlimited.
-  if (row?.role && STAFF_ROLES.includes(row.role)) {
-    return "staff";
-  }
-
   // Whichever of the gifted plan and the paid plan is HIGHER wins, not the
   // gift unconditionally. A gift used to replace users.plan outright with no
   // rank comparison, so an admin gifting Core Supporter to an Elite
@@ -113,6 +107,21 @@ export function resolveEffectivePlan(row: {
     planRankLocal(row?.gifted_plan) >= planRankLocal(row?.plan)
       ? row?.gifted_plan || row?.plan
       : row?.plan;
+
+  // Staff roles are tagged "staff" -- callers (getDailyLimit,
+  // getUserPlanLimits, userMeetsScheduleFrequency) resolve that tag to
+  // the Pro Supporter plan's real limits, not unlimited. That is a floor, not
+  // a ceiling: the tag used to win over every plan, so promoting an Elite
+  // subscriber to moderator cut them to Pro limits while Stripe kept charging
+  // for Elite, which is what staff-plan.ts already refuses to do to users.plan.
+  if (
+    row?.role &&
+    STAFF_ROLES.includes(row.role) &&
+    planRankLocal(effectivePlan) <= planRankLocal("pro_supporter")
+  ) {
+    return "staff";
+  }
+
   if (effectivePlan && effectivePlan !== "free") {
     return effectivePlan as PlanType;
   }

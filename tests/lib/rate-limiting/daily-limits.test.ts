@@ -16,6 +16,8 @@ vi.mock("@/lib/database/db", () => ({
 const {
   isBillingEnabled,
   getUserPlan,
+  resolveEffectivePlan,
+  STAFF_ROLES,
   getDailyLimit,
   getDailyRequestCount,
   incrementDailyCount,
@@ -51,7 +53,7 @@ describe("isBillingEnabled", () => {
 });
 
 describe("getUserPlan", () => {
-  it("returns 'staff' for an admin role regardless of their plan column", async () => {
+  it("returns 'staff' for an admin role on a plan below the Pro floor", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ plan: "free", role: "admin", gifted_plan: null }],
     });
@@ -128,6 +130,63 @@ describe("getUserPlan", () => {
     expect(await getUserPlan(7)).toBe("free");
     expect(logged).toHaveBeenCalled();
     logged.mockRestore();
+  });
+});
+
+describe("resolveEffectivePlan", () => {
+  it.each(["free", "core_supporter", "pro_supporter", null, undefined])(
+    "tags staff on %s as 'staff', the Pro floor",
+    (plan) => {
+      expect(resolveEffectivePlan({ plan, role: "moderator" })).toBe("staff");
+    },
+  );
+
+  it("treats every role in STAFF_ROLES the same way", () => {
+    for (const role of STAFF_ROLES) {
+      expect(resolveEffectivePlan({ plan: "free", role })).toBe("staff");
+      expect(resolveEffectivePlan({ plan: "elite_supporter", role })).toBe(
+        "elite_supporter",
+      );
+    }
+  });
+
+  it("keeps a higher paid plan for staff", () => {
+    expect(
+      resolveEffectivePlan({ plan: "elite_supporter", role: "admin" }),
+    ).toBe("elite_supporter");
+  });
+
+  it("keeps a higher gifted plan for staff", () => {
+    expect(
+      resolveEffectivePlan({
+        plan: "core_supporter",
+        role: "support",
+        gifted_plan: "elite_supporter",
+      }),
+    ).toBe("elite_supporter");
+  });
+
+  it("does not let a lower gift pull a paying staff member back to the floor", () => {
+    expect(
+      resolveEffectivePlan({
+        plan: "elite_supporter",
+        role: "support",
+        gifted_plan: "core_supporter",
+      }),
+    ).toBe("elite_supporter");
+  });
+
+  it("falls back to 'staff' on a plan id the catalog does not know", () => {
+    expect(resolveEffectivePlan({ plan: "retired_tier", role: "ops" })).toBe(
+      "staff",
+    );
+  });
+
+  it("leaves a non-staff account on its own plan", () => {
+    expect(resolveEffectivePlan({ plan: "core_supporter", role: "user" })).toBe(
+      "core_supporter",
+    );
+    expect(resolveEffectivePlan({ plan: null, role: "user" })).toBe("free");
   });
 });
 
