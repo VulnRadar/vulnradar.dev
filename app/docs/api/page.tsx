@@ -9,6 +9,7 @@ import {
   APP_REPO,
   APP_VERSION,
   ENGINE_VERSION,
+  SCANNING,
 } from "@/lib/config/constants";
 import {
   EXACT_LEGACY_CHECK_COUNT,
@@ -1815,15 +1816,25 @@ const tocItems: TocItem[] = [
 
 const codeExamples: CodeExamples = {
   curl: {
-    scan: `curl -X POST "${APP_URL}/api/v3/scan" \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"url": "example.com", "portScan": true}'
-# → { "scanId": 12345, "status": "running" }
+    scan: `BASE="${APP_URL}/api/v3"
+AUTH="Authorization: Bearer YOUR_API_KEY"
 
-# Poll until status is completed or failed
-curl "${APP_URL}/api/v3/scan/status/12345" \\
-  -H "Authorization: Bearer YOUR_API_KEY"`,
+SCAN_ID=$(curl -sf -X POST "$BASE/scan" -H "$AUTH" \\
+  -H "Content-Type: application/json" \\
+  -d '{"url": "example.com", "portScan": true}' | jq -r .scanId)
+
+# Poll every 3 seconds and give up at the ${SCANNING.TIMEOUT_SECONDS} second scan timeout.
+# GET /scan/status does not use up any daily quota.
+deadline=$((SECONDS + ${SCANNING.TIMEOUT_SECONDS}))
+status=""
+until [ "$status" = completed ] || [ "$status" = failed ]; do
+  [ "$SECONDS" -lt "$deadline" ] || { echo "scan timed out" >&2; exit 1; }
+  sleep 3
+  job=$(curl -sf "$BASE/scan/status/$SCAN_ID" -H "$AUTH") || exit 1
+  status=$(jq -r .status <<<"$job")
+done
+
+echo "$job" | jq '.result.findings'`,
     history: `curl -X GET "${APP_URL}/api/v3/history" \\
   -H "Authorization: Bearer YOUR_API_KEY"`,
     detail: `# SCAN_ID is the opaque "id" string from GET /history
@@ -1831,30 +1842,37 @@ curl -X GET "${APP_URL}/api/v3/history/SCAN_ID" \\
   -H "Authorization: Bearer YOUR_API_KEY"`,
   },
   javascript: {
-    scan: `const started = await fetch('${APP_URL}/api/v3/scan', {
+    scan: `const headers = { 'Authorization': 'Bearer YOUR_API_KEY' };
+
+const started = await fetch('${APP_URL}/api/v3/scan', {
   method: 'POST',
-  headers: {
-    'Authorization': 'Bearer YOUR_API_KEY',
-    'Content-Type': 'application/json',
-  },
+  headers: { ...headers, 'Content-Type': 'application/json' },
   body: JSON.stringify({
     url: 'example.com',
     portScan: true
   })
 });
+if (!started.ok) throw new Error(await started.text());
 const { scanId } = await started.json();
 
-// Poll until status is completed or failed
+// Poll every 2 seconds. GET /scan/status does not use up any daily quota.
+// Stop at the ${SCANNING.TIMEOUT_SECONDS} second scan timeout, after which the server fails the job itself.
 async function waitForScan(id) {
-  for (;;) {
-    const res = await fetch(\`${APP_URL}/api/v3/scan/status/\${id}\`, {
-      headers: { 'Authorization': 'Bearer YOUR_API_KEY' },
-    });
+  const deadline = Date.now() + ${SCANNING.TIMEOUT_SECONDS * 1000};
+  while (Date.now() < deadline) {
+    const res = await fetch(\`${APP_URL}/api/v3/scan/status/\${id}\`, { headers });
+    if (res.status === 429) {
+      const wait = Number(res.headers.get('Retry-After')) || 5;
+      await new Promise((r) => setTimeout(r, wait * 1000));
+      continue;
+    }
+    if (!res.ok) throw new Error(\`\${res.status} \${await res.text()}\`);
     const job = await res.json();
     if (job.status === 'completed') return job.result;
     if (job.status === 'failed') throw new Error(job.error);
     await new Promise((r) => setTimeout(r, 2000));
   }
+  throw new Error('Scan did not finish before the deadline');
 }
 const result = await waitForScan(scanId);
 console.log(result.findings);`,
@@ -1869,36 +1887,65 @@ const response = await fetch(\`${APP_URL}/api/v3/history/\${scanId}\`, {
 const scan = await response.json();`,
   },
   python: {
-    scan: `from vulnradar import VulnRadar
+    scan: `import time
+import requests
 
-client = VulnRadar(api_key='YOUR_API_KEY')
+BASE = "${APP_URL}/api/v3"
+HEADERS = {"Authorization": "Bearer YOUR_API_KEY"}
 
-result = client.scan('example.com')
+started = requests.post(
+    f"{BASE}/scan",
+    headers=HEADERS,
+    json={"url": "example.com", "portScan": True},
+)
+if not started.ok:
+    raise RuntimeError(started.text)
+scan_id = started.json()["scanId"]
 
-print(f"Total findings: {result.summary.total}")
-print(f"Critical: {result.summary.critical}")
+# Poll every 2 seconds. GET /scan/status does not use up any daily quota.
+# Stop at the ${SCANNING.TIMEOUT_SECONDS} second scan timeout, after which the server fails the job itself.
+deadline = time.monotonic() + ${SCANNING.TIMEOUT_SECONDS}
+while True:
+    if time.monotonic() > deadline:
+        raise TimeoutError("Scan did not finish before the deadline")
+    res = requests.get(f"{BASE}/scan/status/{scan_id}", headers=HEADERS)
+    if res.status_code == 429:
+        time.sleep(int(res.headers.get("Retry-After", "5")))
+        continue
+    if not res.ok:
+        raise RuntimeError(f"{res.status_code} {res.text}")
+    job = res.json()
+    if job["status"] == "completed":
+        result = job["result"]
+        break
+    if job["status"] == "failed":
+        raise RuntimeError(job.get("error"))
+    time.sleep(2)
 
-for finding in result.findings:
-    print(f"[{finding.severity.value.upper()}] {finding.title}")`,
-    history: `from vulnradar import VulnRadar
+print(f"Total findings: {result['summary']['total']}")
+for finding in result["findings"]:
+    print(f"[{finding['severity'].upper()}] {finding['title']}")`,
+    history: `import requests
 
-client = VulnRadar(api_key='YOUR_API_KEY')
+res = requests.get("${APP_URL}/api/v3/history", headers={"Authorization": "Bearer YOUR_API_KEY"})
+res.raise_for_status()
 
-history = client.history.list()
+for scan in res.json()["scans"]:
+    print(scan["id"], scan["url"], scan["scanned_at"])
+    print(f"  Findings: {scan['findings_count']}")`,
+    detail: `import requests
 
-for scan in history.scans:
-    print(scan.id, scan.url, scan.scanned_at)
-    print(f"  Findings: {scan.findings_count}")`,
-    detail: `from vulnradar import VulnRadar
+# scan_id is the opaque "id" string from GET /history, not a number
+res = requests.get(
+    f"${APP_URL}/api/v3/history/{scan_id}",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+)
+res.raise_for_status()
+scan = res.json()
 
-client = VulnRadar(api_key='YOUR_API_KEY')
-
-# The opaque "id" string from history.list(), not a number
-result = client.history.get(scan_id)
-
-print(result.url)
-for finding in result.findings:
-    print(finding.title, finding.severity)`,
+print(scan["url"])
+for finding in scan["findings"]:
+    print(finding["title"], finding["severity"])`,
   },
 };
 
@@ -1989,12 +2036,14 @@ export default function APIDocsPage() {
             <ol className="list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-muted-foreground marker:text-primary">
               <li>Sign in to your {APP_NAME} account.</li>
               <li>
-                Open <strong className="text-foreground">Profile</strong>, then{" "}
-                <strong className="text-foreground">API Keys</strong>.
+                Go to{" "}
+                <strong className="text-foreground">
+                  Profile &gt; Developer &gt; API Keys
+                </strong>
+                .
               </li>
               <li>
-                Click{" "}
-                <strong className="text-foreground">Generate New Key</strong>.
+                Click <strong className="text-foreground">Create key</strong>.
               </li>
               <li>
                 Copy the raw key now. It is shown once. The server keeps only an
@@ -2026,9 +2075,9 @@ export default function APIDocsPage() {
                 (start scans), <InlineCode>scan:read</InlineCode> (read history
                 and reports), and <InlineCode>scan:delete</InlineCode> (delete
                 scans). New keys default to write and read; choose the set when
-                you generate a key in Profile -&gt; Developer -&gt; API Keys. A
-                route you call without the scope it needs returns 403 naming the
-                missing one.
+                you create a key in Profile &gt; Developer &gt; API Keys &gt;
+                Create key. A route you call without the scope it needs returns
+                403 naming the missing one.
               </p>
             </DocsCallout>
           </div>
@@ -2091,17 +2140,15 @@ export default function APIDocsPage() {
       <DocsSection id="code-examples" title="Code Examples">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
           The same three calls in curl, JavaScript, and Python. Swap the
-          placeholder key and they run as-is. The Python tab uses the official
-          SDK (<InlineCode>pip install vulnradar</InlineCode>, source at{" "}
-          <a
-            href="https://github.com/VulnRadar/Python-SDK"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary underline-offset-2 hover:underline"
-          >
-            github.com/VulnRadar/Python-SDK
-          </a>
-          ) instead of raw HTTP calls.
+          placeholder key and they run as-is. The Python tab uses plain{" "}
+          <InlineCode>requests</InlineCode>. The{" "}
+          <InlineCode>vulnradar</InlineCode> package on PyPI targets the retired
+          v2 API and does not work against v3 or v4; use{" "}
+          <InlineCode>requests</InlineCode> until it is rebuilt. Starting a scan
+          is two steps: the create call returns a scan id, and you poll{" "}
+          <InlineCode>GET /scan/status/&#123;scanId&#125;</InlineCode> every 2
+          to 5 seconds until it finishes. That poll does not consume daily
+          quota.
         </p>
 
         <CodeExampleTabs examples={codeExamples} />
@@ -2416,9 +2463,9 @@ X-RateLimit-Reset: 2026-03-12T00:00:00.000Z`}
                 "Check ids are stable across scans and releases. GET /api/v3/finding-types gives you the whole catalogue in one unauthenticated call.",
             },
             {
-              title: "Let webhooks tell you it finished",
+              title: "Poll the status, use webhooks for alerts",
               description:
-                "Polling /history burns quota. A webhook fires once per completed scan and costs nothing.",
+                "Poll GET /scan/status/{id} (no quota cost, every 2 to 5 s, stop at the scan timeout); use webhooks for completed-scan alerts. Webhooks do not fire for failed, cancelled or timed-out scans.",
             },
           ].map((practice) => (
             <div key={practice.title} className="py-3">
