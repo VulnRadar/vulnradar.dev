@@ -107,19 +107,26 @@ describe("GET /api/v3/host/[hostname]", () => {
   });
 
   it("returns the full findings snapshot when the host has a public scan on record", async () => {
-    mockQuery.mockResolvedValue({
+    mockQuery.mockResolvedValueOnce({
       rows: [
         {
           danger_score: 7,
           severity_counts: { critical: 1, high: 0, medium: 2, low: 0, info: 1 },
-          findings: [
-            { id: "a", severity: "critical", title: "Exposed .env file" },
-          ],
           response_headers: { "x-frame-options": "DENY" },
           last_scanned_at: "2026-01-01T00:00:00.000Z",
           result_meta: { checksRun: 42 },
           authenticated: true,
           auto_tags: ["Critical Exposure", "Secrets Exposed"],
+        },
+      ],
+      rowCount: 1,
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          findings: [
+            { id: "a", severity: "critical", title: "Exposed .env file" },
+          ],
         },
       ],
       rowCount: 1,
@@ -147,7 +154,6 @@ describe("GET /api/v3/host/[hostname]", () => {
         {
           danger_score: 3,
           severity_counts: { critical: 0, high: 0, medium: 1, low: 0, info: 0 },
-          findings: [],
           response_headers: null,
           last_scanned_at: "2026-01-01T00:00:00.000Z",
           result_meta: {},
@@ -185,7 +191,6 @@ describe("GET /api/v3/host/[hostname]", () => {
         {
           danger_score: 5,
           severity_counts: { critical: 0, high: 1, medium: 0, low: 0, info: 0 },
-          findings: [{ id: "a", severity: "high", title: "Missing HSTS" }],
           response_headers: null,
           last_scanned_at: "2026-01-01T00:00:00.000Z",
           result_meta: { checksRun: 10 },
@@ -226,6 +231,68 @@ describe("GET /api/v3/host/[hostname]", () => {
     expect(sql2).toContain("FROM scan_history");
     expect(sql2).toContain("is_public = true");
     expect(queryParams2).toEqual([123]);
+    // A live source answered, so the snapshot's copy is never read.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not select the snapshot's findings on the first read", async () => {
+    await GET(getRequest("example.com"), params("example.com"));
+
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain("FROM host_reputation");
+    expect(sql).not.toMatch(/\bfindings\b/);
+  });
+
+  describe("caching", () => {
+    const KNOWN_ROW = {
+      danger_score: 1,
+      severity_counts: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+      response_headers: null,
+      last_scanned_at: "2026-01-01T00:00:00.000Z",
+      result_meta: {},
+      authenticated: false,
+      auto_tags: [],
+      source_scan_id: null,
+    };
+
+    it("lets a known host's report be cached briefly", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [KNOWN_ROW], rowCount: 1 });
+
+      const res = await GET(getRequest("example.com"), params("example.com"));
+
+      expect(res.headers.get("Cache-Control")).toBe(
+        "public, max-age=60, stale-while-revalidate=300",
+      );
+    });
+
+    it("does not cache 'never scanned', which the next scan makes false", async () => {
+      const res = await GET(getRequest("example.com"), params("example.com"));
+
+      expect((await res.clone().json()).known).toBe(false);
+      expect(res.headers.get("Cache-Control")).toBeNull();
+    });
+
+    it("does not cache a refusal or a failure", async () => {
+      mockRateLimit.mockResolvedValueOnce({
+        allowed: false,
+        remaining: 0,
+        retryAfterSeconds: 5,
+      });
+      const refused = await GET(
+        getRequest("example.com"),
+        params("example.com"),
+      );
+      expect(refused.status).toBe(429);
+      expect(refused.headers.get("Cache-Control")).toBeNull();
+
+      mockQuery.mockRejectedValueOnce(new Error("db exploded"));
+      const failed = await GET(
+        getRequest("example.com"),
+        params("example.com"),
+      );
+      expect(failed.status).toBe(500);
+      expect(failed.headers.get("Cache-Control")).toBeNull();
+    });
   });
 
   it("backfills findings and meta from the live scan when the snapshot predates those columns (empty)", async () => {
@@ -236,7 +303,6 @@ describe("GET /api/v3/host/[hostname]", () => {
         {
           danger_score: 4,
           severity_counts: { critical: 0, high: 1, medium: 2, low: 0, info: 0 },
-          findings: [],
           response_headers: null,
           last_scanned_at: "2026-01-01T00:00:00.000Z",
           result_meta: {},
@@ -260,6 +326,7 @@ describe("GET /api/v3/host/[hostname]", () => {
     const res = await GET(getRequest("legacy2.com"), params("legacy2.com"));
     const body = await res.json();
     expect(body.findings).toHaveLength(1);
+    expect(mockQuery).toHaveBeenCalledTimes(2);
     expect(body.checksRun).toBe(20);
     expect(body.sslGrade).toBe("B");
   });
@@ -270,7 +337,6 @@ describe("GET /api/v3/host/[hostname]", () => {
         {
           danger_score: 6,
           severity_counts: { critical: 0, high: 1, medium: 0, low: 0, info: 0 },
-          findings: [{ id: "s", severity: "high", title: "Snapshot finding" }],
           response_headers: null,
           last_scanned_at: "2026-01-01T00:00:00.000Z",
           result_meta: { checksRun: 9 },
@@ -283,6 +349,14 @@ describe("GET /api/v3/host/[hostname]", () => {
     });
     // Source scan is no longer public (or was deleted): no row returned.
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          findings: [{ id: "s", severity: "high", title: "Snapshot finding" }],
+        },
+      ],
+      rowCount: 1,
+    });
 
     const res = await GET(getRequest("fellback.com"), params("fellback.com"));
     const body = await res.json();
@@ -291,6 +365,9 @@ describe("GET /api/v3/host/[hostname]", () => {
     ]);
     expect(body.checksRun).toBe(9);
     expect(body.aiSummary).toBeUndefined();
+    const [sql3, queryParams3] = mockQuery.mock.calls[2];
+    expect(sql3).toContain("FROM host_reputation");
+    expect(queryParams3).toEqual(["fellback.com"]);
   });
 
   it("500s and does not leak the raw error when the query throws", async () => {

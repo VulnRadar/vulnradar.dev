@@ -35,6 +35,7 @@ vi.mock("@/lib/api/request-utils", () => ({
 }));
 
 const { GET } = await import("@/app/api/v3/host/[hostname]/trend/route");
+const { PUBLIC_HOST_SQL } = await import("@/lib/database/sql-fragments");
 
 function getRequest(hostname: string) {
   return new NextRequest(
@@ -84,10 +85,7 @@ describe("GET /api/v3/host/[hostname]/trend", () => {
     expect(res.status).toBe(200);
   });
 
-  it("rate limits per IP and runs no regex scan when the cap is hit", async () => {
-    // The query this guards is `url ~* $1` over every public completed scan,
-    // with no index to seek within. Anonymous and unthrottled, that is a
-    // table walk per request against the busiest table in the schema.
+  it("rate limits per IP and runs no query when the cap is hit", async () => {
     mockRateLimit.mockResolvedValue({
       allowed: false,
       remaining: 0,
@@ -123,9 +121,7 @@ describe("GET /api/v3/host/[hostname]/trend", () => {
   it("normalizes the hostname the same way host_reputation does before querying", async () => {
     await GET(getRequest("www.Example.com"), params("www.Example.com"));
     const [, queryParams] = mockQuery.mock.calls[0];
-    expect((queryParams as unknown[])[0]).toBe(
-      "^https?://(www\\.)?example\\.com([:/?]|$)",
-    );
+    expect((queryParams as unknown[])[0]).toBe("example.com");
   });
 
   it("scopes the query to public, completed scans only", async () => {
@@ -136,21 +132,20 @@ describe("GET /api/v3/host/[hostname]/trend", () => {
     expect(sql).toContain("status = 'completed'");
   });
 
+  it("filters on the exact expression the partial index is built on", async () => {
+    // Any other spelling still returns the right rows and silently goes back
+    // to walking every public completed scan. Which rows it matches is proven
+    // in tests/integration/read-perf.test.ts.
+    await GET(getRequest("example.com"), params("example.com"));
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain(`${PUBLIC_HOST_SQL} = $1`);
+    expect(sql).not.toContain("~*");
+  });
+
   it("caps the query at the 30-scan LIMIT", async () => {
     await GET(getRequest("example.com"), params("example.com"));
     const [, queryParams] = mockQuery.mock.calls[0];
     expect((queryParams as unknown[])[1]).toBe(30);
-  });
-
-  it("escapes regex-special characters in the hostname", async () => {
-    // normalizeHostForReputation lowercases and only ever returns a
-    // domain-shaped hostname, but the dot(s) in it are regex metachars
-    // that must be escaped literally, not left to match any character.
-    await GET(getRequest("my-site.co.uk"), params("my-site.co.uk"));
-    const [, queryParams] = mockQuery.mock.calls[0];
-    expect((queryParams as unknown[])[0]).toBe(
-      "^https?://(www\\.)?my-site\\.co\\.uk([:/?]|$)",
-    );
   });
 
   it("returns an empty points array when the host has no matching scan history", async () => {

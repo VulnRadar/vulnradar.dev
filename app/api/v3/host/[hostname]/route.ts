@@ -116,7 +116,6 @@ export async function GET(
     const result = await pool.query<{
       danger_score: number;
       severity_counts: SeverityCounts;
-      findings: Vulnerability[];
       response_headers: Record<string, string> | null;
       last_scanned_at: string | Date;
       result_meta: Record<string, unknown> | null;
@@ -124,7 +123,10 @@ export async function GET(
       auto_tags: string[] | null;
       source_scan_id: number | null;
     }>(
-      `SELECT danger_score, severity_counts, findings, response_headers, last_scanned_at, result_meta, authenticated, auto_tags, source_scan_id
+      // No findings here. They are by far the widest column and the live
+      // source scan below usually supersedes them, so reading both copies
+      // detoasted and parsed the same list twice on every report view.
+      `SELECT danger_score, severity_counts, response_headers, last_scanned_at, result_meta, authenticated, auto_tags, source_scan_id
        FROM host_reputation
        WHERE host = $1`,
       [host],
@@ -182,6 +184,15 @@ export async function GET(
       }
     }
 
+    let findings = liveFindings;
+    if (!findings) {
+      const snapshot = await pool.query<{ findings: Vulnerability[] | null }>(
+        `SELECT findings FROM host_reputation WHERE host = $1`,
+        [host],
+      );
+      findings = snapshot.rows[0]?.findings ?? [];
+    }
+
     // Live meta overrides the snapshot but never drops a field the snapshot had.
     const meta: Record<string, unknown> = {
       ...row.result_meta,
@@ -228,14 +239,22 @@ export async function GET(
       host,
       dangerScore: row.danger_score,
       severityCounts: row.severity_counts,
-      findings: liveFindings ?? row.findings ?? [],
+      findings,
       responseHeaders: row.response_headers || null,
       lastScannedAt: new Date(row.last_scanned_at).toISOString(),
       authenticated: row.authenticated || false,
       autoTags: row.auto_tags || [],
       ...publicMeta,
     };
-    return NextResponse.json(body);
+    // The same body for every visitor until the host is next scanned. Only a
+    // known host: "not scanned yet" costs one primary-key lookup to answer, and
+    // caching it would keep telling someone who has just scanned this host
+    // that nobody has.
+    return NextResponse.json(body, {
+      headers: {
+        "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
+      },
+    });
   } catch (error) {
     console.error(
       `[${APP_NAME}] Host report lookup error:`,

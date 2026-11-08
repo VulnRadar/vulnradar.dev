@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { normalizeHostForReputation } from "@/lib/scanner/host-reputation";
 import { getDangerScore } from "@/lib/scanner/safety-rating";
+import { RATING_FINDINGS_SQL } from "@/lib/scanner/rating-findings-sql";
+import { PUBLIC_HOST_SQL } from "@/lib/database/sql-fragments";
 import { APP_NAME } from "@/lib/config/constants";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
@@ -25,23 +27,14 @@ import type { Vulnerability } from "@/lib/scanner/types";
  * which is always private) must never surface here, exactly as documented
  * on getExactUrlReputation.
  *
- * scan_history has no `host` column (see instrumentation.ts's scan_history
- * DDL) -- only the full scanned `url`. Rather than adding a schema column
- * (a migration touches the same instrumentation.ts other in-flight work is
- * editing concurrently), this matches the host boundary with a regex:
- * scheme, optional "www.", the exact normalized host, then a port/path/
- * query boundary or end of string. That mirrors normalizeHostForReputation's
- * own www-stripping so "example.com" and "www.example.com" scans both
- * count, without also matching an unrelated subdomain like
- * "evil.example.com" or "example.com.attacker.com".
- *
- * The regex is not b-tree indexable, so this still walks every public
- * completed scan (the partial index idx_scan_history_url_public_completed
- * narrows that to the public completed rows, but cannot seek within them).
- * The remaining fix is the schema one: a normalized `host` column written at
- * scan time and indexed, after which this becomes `WHERE host = $1`
- * (AUDIT-012#perf-16). Until then the projection below keeps the cost to the
- * row walk rather than the row walk plus 30 detoasted findings blobs.
+ * scan_history has no `host` column, only the full scanned `url`, so the
+ * match is on PUBLIC_HOST_SQL: the host inside url, lowercased, one leading
+ * "www." removed. That mirrors normalizeHostForReputation, so "example.com"
+ * and "www.example.com" scans both count, while "evil.example.com" and
+ * "example.com.attacker.com" do not. It has to be that exact expression text
+ * and those exact two predicates, because that is what the partial index
+ * idx_scan_history_public_host is built on: anything else still returns the
+ * right rows and quietly goes back to walking every public scan.
  */
 export interface HostScoreTrendPoint {
   scanId: number;
@@ -64,16 +57,10 @@ export async function GET(
   { params }: { params: Promise<{ hostname: string }> },
 ) {
   try {
-    // abuse: the sibling route this one sits beside has been rate limited
-    // since it shipped, and this one never was, even though it is the more
-    // expensive of the two by a wide margin. `url ~* $1` is not b-tree
-    // indexable (see the header comment), so every call walks every public
-    // completed scan in the table and runs a regex over each url, and the
-    // hostname it matches on is whatever the caller put in the path. An
-    // anonymous client could hold the pool open with one cheap request after
-    // another, against the one table every list, dashboard and public page
-    // reads from. Same publicScans budget the host report uses, under its own
-    // key so a normal page load (which fetches both) spends one from each
+    // abuse: anonymous, and the hostname it looks up is whatever the caller
+    // put in the path, against the one table every list, dashboard and public
+    // page reads from. Same publicScans budget the host report uses, under its
+    // own key so a normal page load (which fetches both) spends one from each
     // rather than two from one.
     const ip = await getClientIp();
     const rl = await checkRateLimit({
@@ -102,9 +89,6 @@ export async function GET(
       return NextResponse.json({ error: "Invalid hostname." }, { status: 400 });
     }
 
-    const escapedHost = host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const hostPattern = `^https?://(www\\.)?${escapedHost}([:/?]|$)`;
-
     const result = await pool.query<{
       id: number;
       findings: Vulnerability[] | string | null;
@@ -117,18 +101,12 @@ export async function GET(
       // finding, so project those four in SQL and leave the rest on disk,
       // the same shape app/api/v3/shares/route.ts and the posture digest
       // already use (AUDIT-012#perf-16).
-      `SELECT id, scanned_at,
-              (SELECT COALESCE(jsonb_agg(jsonb_build_object(
-                        'title', e->>'title',
-                        'severity', e->>'severity',
-                        'aiVerdict', e->'aiVerdict',
-                        'aiConfidence', e->'aiConfidence')), '[]'::jsonb)
-                 FROM jsonb_array_elements(COALESCE(findings, '[]'::jsonb)) e) AS findings
+      `SELECT id, scanned_at, ${RATING_FINDINGS_SQL} AS findings
        FROM scan_history
-       WHERE is_public = true AND status = 'completed' AND url ~* $1
+       WHERE is_public = true AND status = 'completed' AND ${PUBLIC_HOST_SQL} = $1
        ORDER BY scanned_at DESC
        LIMIT $2`,
-      [hostPattern, TREND_SCAN_LIMIT],
+      [host, TREND_SCAN_LIMIT],
     );
 
     const points: HostScoreTrendPoint[] = result.rows
