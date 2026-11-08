@@ -94,7 +94,7 @@ const CHALLENGE_BOOTSTRAP =
 
 /** Block-page markup, only meaningful on a blocking status. */
 const VENDOR_BODY_MARKERS: readonly { vendor: string; marker: RegExp }[] = [
-  { vendor: "DataDome", marker: /captcha-delivery\.com/i },
+  { vendor: "DataDome", marker: /captcha-delivery\.com[/"'?]/i },
   { vendor: "HUMAN", marker: /\bid=["']?px-captcha\b/i },
 ];
 
