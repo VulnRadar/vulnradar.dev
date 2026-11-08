@@ -133,7 +133,6 @@ const DEBT: Record<string, string> = {
   "components/admin/features/engine-feedback-manager.tsx":
     "an empty-state sentence naming a route",
   "components/landing/landing-api-example.tsx": "the marketing request sample",
-  "components/landing/landing-features.tsx": "marketing copy naming a route",
   "extension/src/lib/api.ts":
     "the extension's request paths; ext-v4-migration moves them",
   "extension/src/onboarding/welcome.ts":
