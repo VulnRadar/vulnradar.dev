@@ -2294,7 +2294,7 @@ const CHANGELOG: Release[] = [
       {
         icon: UserCheck,
         label: "Mixed-Case Email Addresses Found Again",
-        desc: "Accounts whose email address was saved with capital letters before addresses were normalised can sign in with their password again, request a password reset, sign in with Google, GitHub, Discord or staff SSO, and receive, accept and decline team invites. Signing up with that address no longer tries to create a second account, and such an account can accept a staff invite without being asked for a password it has no field to enter.",
+        desc: "Accounts whose email address was saved with capital letters before addresses were normalised can sign in with their password again, request a password reset, sign in with Google, GitHub, Discord or staff SSO, and receive, accept and decline team invites. Reset links go to the address on the account. Signing up with that address no longer tries to create a second account, and such an account can accept a staff invite without being asked for a password it has no field to enter.",
         category: "fixed",
       },
       {
@@ -2440,12 +2440,6 @@ const CHANGELOG: Release[] = [
         label: "Choosing Who Can See a Ticket",
         desc: "Sharing a ticket with teammates now opens a dialog where you stage who to add and who to remove, then press Save sharing. Before, each click applied immediately, including taking someone's access away. If a change fails part way, the dialog says which ones went through and keeps the rest ready to retry.",
         category: "improved",
-      },
-      {
-        icon: UserCheck,
-        label: "Mixed-Case Email Addresses Work Everywhere",
-        desc: "Accounts whose email address was saved with capital letters can now request a password reset, sign in with Google, GitHub, Discord or staff SSO without hitting an error or a duplicate account, and be found by team invites. Reset links go to the address on the account.",
-        category: "fixed",
       },
       {
         icon: Users,
