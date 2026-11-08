@@ -289,12 +289,12 @@ export async function PATCH(request: Request) {
   }
 
   if (wantsRename) {
-    await pool.query("UPDATE teams SET name = $1 WHERE id = $2", [
-      name.trim(),
-      teamId,
-    ]);
+    const renamed = await pool.query(
+      "UPDATE teams SET name = $1 WHERE id = $2",
+      [name.trim(), teamId],
+    );
     const previousName = memberRes.rows[0].team_name;
-    if (previousName !== name.trim()) {
+    if (renamed.rowCount && previousName !== name.trim()) {
       await recordTeamAudit((ip) =>
         logAction(
           session.userId,

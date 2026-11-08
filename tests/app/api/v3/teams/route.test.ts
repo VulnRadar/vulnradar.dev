@@ -475,7 +475,7 @@ describe("PATCH /api/v3/teams", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ role: "admin", team_name: "Old Name" }],
     });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
     await PATCH(patchRequest({ teamId: "1", name: " New Name " }));
 
@@ -494,9 +494,20 @@ describe("PATCH /api/v3/teams", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ role: "admin", team_name: "Same" }],
     });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
     await PATCH(patchRequest({ teamId: 1, name: "Same" }));
+
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("records nothing when a racing request already deleted the team", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "admin", team_name: "Old Name" }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    await PATCH(patchRequest({ teamId: 1, name: "New Name" }));
 
     expect(mockLogAction).not.toHaveBeenCalled();
   });
@@ -507,7 +518,7 @@ describe("PATCH /api/v3/teams", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ role: "admin", team_name: "Old Name" }],
     });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
     const res = await PATCH(patchRequest({ teamId: 1, name: "New Name" }));
 
