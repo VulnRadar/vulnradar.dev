@@ -6,6 +6,7 @@ import pool from "@/lib/database/db";
 import { DB_CLEANUP_INTERVAL } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { RATE_LIMIT_MAX_WINDOW_SECONDS } from "@/lib/config/registry";
+import { AI_FEEDBACK_NOTE } from "@/lib/scanner/feedback-source";
 import { purgeExpiredAdminAuditLog } from "@/lib/database/audit-log-archive";
 import { createFailureEscalator } from "@/lib/admin/failure-escalation";
 import { AI_USAGE_WINDOWS_SHOWN } from "@/lib/admin/ai-usage-report";
@@ -38,14 +39,6 @@ const CLEANUP_INTERVAL_MS = DB_CLEANUP_INTERVAL;
  * same character: operational delivery output, not a compliance record.
  */
 const WEBHOOK_DELIVERIES_RETENTION_DAYS = 30;
-
-/**
- * The note lib/ai/verify-findings.ts writes on a feedback row it pre-filled
- * from an AI verdict. Until those rows have a real source column this text is
- * the only thing that tells them apart from a person's verdict, and the
- * feedback prune has to, because they are kept (owner decision T2).
- */
-const AI_FEEDBACK_NOTE = "Set automatically from an AI verify verdict.";
 
 /**
  * The shortest browserbase_usage retention the setting can produce. The table

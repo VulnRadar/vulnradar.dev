@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import { AI_FEEDBACK_NOTE } from "@/lib/scanner/feedback-source";
 
 /**
  * Tests for lib/database/cleanup.ts: the periodic cleanup job.
@@ -342,12 +341,7 @@ describe("performDatabaseCleanup", () => {
     const prune = calls.find((c) =>
       c.sql.startsWith("DELETE FROM scan_finding_feedback"),
     );
-    const verifier = readFileSync(
-      path.resolve(process.cwd(), "lib/ai/verify-findings.ts"),
-      "utf8",
-    );
-    expect(prune?.params?.[1]).toEqual(expect.any(String));
-    expect(verifier).toContain(`'${String(prune?.params?.[1])}'`);
+    expect(prune?.params?.[1]).toBe(AI_FEEDBACK_NOTE);
   });
 
   it("keeps a rate_limits row for the longest window any limiter can be set to", async () => {

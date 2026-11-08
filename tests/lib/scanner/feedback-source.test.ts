@@ -1,9 +1,9 @@
 /**
  * The note is the only marker separating an AI-written feedback row from a
- * person's, and it lives in two places: the verifier writes it inside a SQL
- * literal, and every suppressing reader compares against it. If the two drift
- * apart nothing fails at runtime, every AI row just starts counting as a human
- * verdict again, so the pairing is pinned here.
+ * person's: the verifier writes it inside a SQL literal, and every suppressing
+ * reader compares against it. If the two drift apart nothing fails at runtime,
+ * every AI row just starts counting as a human verdict again, so the verifier
+ * is held to the one constant here.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -30,7 +30,10 @@ describe("feedback source", () => {
       resolve(process.cwd(), "lib/ai/verify-findings.ts"),
       "utf8",
     );
-    expect(source).toContain(`'${AI_FEEDBACK_NOTE}'`);
+    expect(source).toContain("'${AI_FEEDBACK_NOTE}'");
+    expect(source).toContain(
+      'import { AI_FEEDBACK_NOTE } from "@/lib/scanner/feedback-source";',
+    );
   });
 
   it("keeps a row with no note, and stays a valid single SQL literal", () => {

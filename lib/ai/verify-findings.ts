@@ -12,6 +12,7 @@ import { CALL_FRAMING_TOKENS, maxInputTokens } from "@/lib/ai/token-ceiling";
 import { getSettings } from "@/lib/config/runtime-config";
 import { APP_NAME } from "@/lib/config/constants";
 import { logSafeError, logValue } from "@/lib/logging/log-value";
+import { AI_FEEDBACK_NOTE } from "@/lib/scanner/feedback-source";
 import {
   settleAiTokens,
   type AiTokenReservation,
@@ -936,7 +937,7 @@ async function syncFeedbackFromAiVerdicts(
       `INSERT INTO scan_finding_feedback
          (user_id, scan_history_id, finding_id, finding_url, verdict, notes)
        SELECT $1, $2, f.finding_id, $3, f.verdict,
-              'Set automatically from an AI verify verdict.'
+              '${AI_FEEDBACK_NOTE}'
          FROM UNNEST($4::text[], $5::text[]) AS f(finding_id, verdict)
        ON CONFLICT (user_id, finding_id, finding_url) DO NOTHING`,
       [userId, historyId, url, findingIds, feedbackVerdicts],
