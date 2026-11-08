@@ -29,11 +29,13 @@ import {
  */
 export function createFrontServer(getRequestHandler, env = process.env) {
   const server = createServer(async (req, res) => {
-    enforceForwardedFor(req, trustedProxyCidr(env));
     try {
+      enforceForwardedFor(req, trustedProxyCidr(env));
       await getRequestHandler()(req, res);
     } catch (err) {
-      console.error(`Failed to handle request for ${req.url}:`, err);
+      // Not req.url: console.error is persisted to the admin error log, and
+      // the URL is where reset tokens and OAuth codes travel.
+      console.error("Failed to handle a request:", err);
       if (!res.headersSent) res.statusCode = 500;
       res.end("Internal Server Error");
     }
@@ -42,15 +44,23 @@ export function createFrontServer(getRequestHandler, env = process.env) {
   return server;
 }
 
+/**
+ * Has to run before Next is imported, which is why that import is dynamic:
+ * Next and React pick their production builds from NODE_ENV as they load,
+ * `next start` sets it for itself, and the middleware sandbox copies the
+ * environment it finds.
+ *
+ * @param {Record<string, string | undefined>} env
+ * @returns {void}
+ */
+export function prepareStartEnv(env) {
+  env.NODE_ENV ||= "production";
+  env.NEXT_MANUAL_SIG_HANDLE ||= "1";
+  if (localPlainHttpApplies(env)) env.ALLOW_INSECURE_HTTP = "1";
+}
+
 async function main() {
-  // Before the import below, which is why it is dynamic: Next and React pick
-  // their production builds from NODE_ENV as they load, `next start` sets it
-  // for itself, and the middleware sandbox copies the environment it finds.
-  process.env.NODE_ENV ||= "production";
-  process.env.NEXT_MANUAL_SIG_HANDLE ||= "1";
-  if (localPlainHttpApplies(process.env)) {
-    process.env.ALLOW_INSECURE_HTTP = "1";
-  }
+  prepareStartEnv(process.env);
 
   // The flags `next start` took, so a start command that passes one keeps
   // working. PORT is read here, not after prepare(), for the same reason it
@@ -84,6 +94,8 @@ async function main() {
   server.listen(port, hostname, () => {
     // `next start` publishes this for its redirect handling of server actions.
     process.env.__NEXT_PRIVATE_ORIGIN = `http://localhost:${port}`;
+    // `next start` printed its own ready line; nothing else says this now.
+    console.log(`Ready on port ${port}.`);
   });
 }
 

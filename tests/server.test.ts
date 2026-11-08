@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { IncomingMessage } from "node:http";
-import { createFrontServer } from "@/server.mjs";
+import { createFrontServer, prepareStartEnv } from "@/server.mjs";
 import {
   DEFAULT_TRUSTED_PROXY_CIDR,
   enforceForwardedFor,
@@ -94,9 +94,43 @@ describe("enforceForwardedFor", () => {
   });
 
   it("treats an operator list as the whole list, not an addition", () => {
-    const req = requestFrom("127.0.0.1", { "x-forwarded-for": "1.1.1.1" });
-    enforceForwardedFor(req, "10.0.0.0/8");
-    expect(req.headers["x-forwarded-for"]).toBe("127.0.0.1");
+    const bridge = requestFrom("172.17.0.1", { "x-forwarded-for": "1.1.1.1" });
+    enforceForwardedFor(bridge, "10.0.0.0/8");
+    expect(bridge.headers["x-forwarded-for"]).toBe("172.17.0.1");
+
+    const listed = requestFrom("10.1.2.3", {
+      "x-forwarded-for": "198.51.100.7",
+    });
+    enforceForwardedFor(listed, "10.0.0.0/8");
+    expect(listed.headers["x-forwarded-for"]).toBe("198.51.100.7");
+  });
+
+  it("believes a same-host proxy when the operator's list leaves loopback out", () => {
+    // The example in .env.example and the self-hosting docs has no 127.0.0.0/8
+    // in it, because the list used to mean hops inside the header and a proxy
+    // on this machine is never one of those.
+    const documented = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16";
+    for (const peer of ["127.0.0.1", "::ffff:127.0.0.1", "::1"]) {
+      const req = requestFrom(peer, { "x-forwarded-for": "198.51.100.7" });
+      enforceForwardedFor(req, documented);
+      expect(req.headers["x-forwarded-for"], peer).toBe("198.51.100.7");
+    }
+  });
+
+  it("does not let an outside address pass for loopback", () => {
+    for (const peer of ["128.0.0.1", "::2", "::ffff:128.0.0.1"]) {
+      const req = requestFrom(peer, { "x-forwarded-for": "1.1.1.1" });
+      enforceForwardedFor(req, "10.0.0.0/8");
+      expect(req.headers["x-forwarded-for"], peer).not.toBe("1.1.1.1");
+    }
+  });
+
+  it("matches nothing on a prefix that is not a whole number", () => {
+    // BigInt() throws on a fraction, so an IPv6 connection used to reject
+    // inside the request listener, where nothing would answer it.
+    const req = requestFrom("2001:db8::9", { "x-forwarded-for": "1.1.1.1" });
+    expect(() => enforceForwardedFor(req, "2001:db8::/32.5")).not.toThrow();
+    expect(req.headers["x-forwarded-for"]).toBe("2001:db8::9");
   });
 });
 
@@ -204,6 +238,40 @@ describe("localPlainHttpApplies", () => {
   });
 });
 
+describe("prepareStartEnv", () => {
+  it("hands signal handling to the shutdown sequence", () => {
+    const env: Record<string, string | undefined> = {};
+    prepareStartEnv(env);
+    expect(env.NEXT_MANUAL_SIG_HANDLE).toBe("1");
+  });
+
+  it("defaults to production and keeps a value already set", () => {
+    const blank: Record<string, string | undefined> = {};
+    prepareStartEnv(blank);
+    expect(blank.NODE_ENV).toBe("production");
+
+    const test: Record<string, string | undefined> = { NODE_ENV: "test" };
+    prepareStartEnv(test);
+    expect(test.NODE_ENV).toBe("test");
+  });
+
+  it("turns plain HTTP on only for the local quick start", () => {
+    const quickStart: Record<string, string | undefined> = {
+      HOST_BIND: "127.0.0.1",
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000",
+    };
+    prepareStartEnv(quickStart);
+    expect(quickStart.ALLOW_INSECURE_HTTP).toBe("1");
+
+    const behindTls: Record<string, string | undefined> = {
+      HOST_BIND: "127.0.0.1",
+      NEXT_PUBLIC_APP_URL: "https://scan.example.com",
+    };
+    prepareStartEnv(behindTls);
+    expect(behindTls.ALLOW_INSECURE_HTTP).toBeUndefined();
+  });
+});
+
 describe("createFrontServer, over a real socket", () => {
   let server: http.Server | undefined;
 
@@ -216,6 +284,7 @@ describe("createFrontServer, over a real socket", () => {
   async function echoForwardedFor(
     env: Record<string, string | undefined>,
     sent: string,
+    peer?: string,
   ): Promise<string> {
     server = createFrontServer(
       () => (req: IncomingMessage, res: http.ServerResponse) => {
@@ -223,6 +292,12 @@ describe("createFrontServer, over a real socket", () => {
       },
       env,
     );
+    if (peer) {
+      // A test can only connect from loopback, and that is always believed.
+      server.prependListener("connection", (socket) =>
+        Object.defineProperty(socket, "remoteAddress", { value: peer }),
+      );
+    }
     await new Promise<void>((done) => server!.listen(0, "127.0.0.1", done));
     const { port } = server.address() as AddressInfo;
     return new Promise((resolve, reject) => {
@@ -252,8 +327,12 @@ describe("createFrontServer, over a real socket", () => {
 
   it("rewrites what a peer outside the list sent", async () => {
     await expect(
-      echoForwardedFor({ TRUSTED_PROXY_CIDR: "10.0.0.0/8" }, "1.1.1.1"),
-    ).resolves.toBe("127.0.0.1");
+      echoForwardedFor(
+        { TRUSTED_PROXY_CIDR: "10.0.0.0/8" },
+        "1.1.1.1",
+        "203.0.113.9",
+      ),
+    ).resolves.toBe("203.0.113.9");
   });
 
   it("answers 500 instead of hanging when the handler throws", async () => {
@@ -265,22 +344,34 @@ describe("createFrontServer, over a real socket", () => {
     );
     await new Promise<void>((done) => server!.listen(0, "127.0.0.1", done));
     const { port } = server.address() as AddressInfo;
-    const original = console.error;
-    console.error = () => {};
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const status = await new Promise<number | undefined>(
         (resolve, reject) => {
           http
-            .get({ port, host: "127.0.0.1", agent: false }, (res) => {
-              res.resume();
-              res.on("end", () => resolve(res.statusCode));
-            })
+            .get(
+              {
+                port,
+                host: "127.0.0.1",
+                agent: false,
+                path: "/reset-password/abc123?token=live-reset-token",
+              },
+              (res) => {
+                res.resume();
+                res.on("end", () => resolve(res.statusCode));
+              },
+            )
             .on("error", reject);
         },
       );
       expect(status).toBe(500);
+      // Every console.error is persisted to the error log staff can read.
+      expect(logged).toHaveBeenCalled();
+      expect(JSON.stringify(logged.mock.calls)).not.toMatch(
+        /live-reset-token|abc123/,
+      );
     } finally {
-      console.error = original;
+      logged.mockRestore();
     }
   });
 });
