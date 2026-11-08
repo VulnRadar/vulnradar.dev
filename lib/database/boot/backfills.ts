@@ -20,6 +20,7 @@
  */
 
 import type { Pool } from "pg";
+import type { AuditAction } from "@/lib/admin/audit-actions";
 import { DEFAULT_BADGES_SQL } from "@/lib/database/schema/seeds.mjs";
 import { logError } from "@/lib/logging/log";
 import { parsedFormOf } from "@/lib/scanner/canonical-url";
@@ -42,6 +43,74 @@ export async function runBootBackfills(
   await backfillWebhookSecrets(appName);
   await backfillSubDailyScheduleSlots(pool, appName);
   await canonicalizeStoredScanUrls(pool);
+  await redactAlertWebhookAuditRows(pool, appName);
+}
+
+const ALERT_WEBHOOK_KEY = "ADMIN_ALERT_WEBHOOK_URL";
+
+/** The two sentences that quoted the value, and what each one becomes. */
+const ALERT_WEBHOOK_AUDIT_REWRITES: ReadonlyArray<{
+  action: AuditAction;
+  prefix: string;
+  replacement: string;
+}> = [
+  {
+    action: "system_setting_changed",
+    prefix: `Changed "${ALERT_WEBHOOK_KEY}" from `,
+    replacement: `Changed "${ALERT_WEBHOOK_KEY}" (value redacted)`,
+  },
+  {
+    action: "system_setting_reset",
+    prefix: `Reset "${ALERT_WEBHOOK_KEY}" to its default (was `,
+    replacement: `Reset "${ALERT_WEBHOOK_KEY}" to its default (value redacted)`,
+  },
+];
+
+/**
+ * Take old ADMIN_ALERT_WEBHOOK_URL values out of admin_audit_log.
+ *
+ * A Slack or Discord webhook URL carries its token in the path. The setting
+ * was not marked secret when these rows were written, so each one kept a
+ * working credential where any staff member who can read the log could copy
+ * it, for the year the log is retained. Marking it secret only stopped new
+ * rows.
+ *
+ * Compared with left() rather than LIKE because the underscores in the key are
+ * LIKE wildcards. The impersonation note logAction appends is kept: it says
+ * who really made the change and holds no part of the value. The brackets in
+ * its pattern are bracket expressions, so no backslash has to survive being
+ * quoted twice. Idempotent: a rewritten row no longer starts with the prefix.
+ */
+export async function redactAlertWebhookAuditRows(
+  pool: Pool,
+  appName: string,
+): Promise<void> {
+  try {
+    let redacted = 0;
+    for (const rewrite of ALERT_WEBHOOK_AUDIT_REWRITES) {
+      const result = await pool.query(
+        `UPDATE admin_audit_log
+            SET details = $3::text || COALESCE(
+                  substring(details FROM ' [[]while impersonating user #[0-9]+[]]$'),
+                  '')
+          WHERE action = $1
+            AND left(details, length($2::text)) = $2::text`,
+        [rewrite.action, rewrite.prefix, rewrite.replacement],
+      );
+      redacted += result.rowCount ?? 0;
+    }
+    if (redacted > 0) {
+      console.log(
+        `[${appName}] Redacted ${redacted} audit log row(s) that quoted ${ALERT_WEBHOOK_KEY}.`,
+      );
+    }
+  } catch (err) {
+    logError(
+      "admin",
+      `Failed to redact ${ALERT_WEBHOOK_KEY} from the audit log (non-fatal)`,
+      err,
+    );
+  }
 }
 
 /** Rows per page of the scan URL rewrite; it walks the table by id. */
@@ -132,8 +201,11 @@ async function backfillAvatars(appName: string): Promise<void> {
   }
 }
 
+/** Registered in lib/admin/audit-actions.ts, so the log has a label for it. */
+const BOOTSTRAP_AUDIT_ACTION: AuditAction = "set_role";
+
 /**
- * SUPER_ADMIN BOOTSTRAP - the first registered account.
+ * SUPER_ADMIN BOOTSTRAP - the lowest-id verified account.
  *
  * super_admin is deliberately un-assignable through the admin panel
  * (app/api/v3/admin/route.ts's set_role, see STAFF_ROLES in
@@ -141,16 +213,32 @@ async function backfillAvatars(appName: string): Promise<void> {
  * host (the self-updater, see app/api/v3/admin/updater/apply/route.ts). On a
  * self-hosted deployment that leaves no UI path to ever gain it: someone would
  * have to hand-edit the database. Instead: if the users table has NO
- * super_admin yet, promote the lowest-id row (the very first account ever
- * registered on this instance) automatically on boot. A no-op forever after
- * that first promotion, even if that user is later demoted or deleted.
+ * super_admin, promote the lowest-id account that is verified and not disabled.
+ *
+ * This runs on every boot, so it re-promotes whenever no super_admin exists:
+ * that is the recovery path for a first account demoted by mistake, and it
+ * also means the last super_admin cannot be retired by editing the role, since
+ * the next restart hands it to whoever is lowest then. While any account holds
+ * the role, disabled or not, it does nothing.
+ *
+ * Verified and not disabled because the role gates code execution on the host.
+ * The lowest id alone could be a sign-up that never proved its address or an
+ * account an admin shut down. Without SMTP, sign-up verifies automatically, so
+ * this does not strand an install that cannot send mail.
+ *
+ * The role and the audit row are one statement: nobody clicked anything, so
+ * the row is the only record of why this account can now run the updater. It
+ * names the promoted account as actor because admin_id is NOT NULL.
  *
  * lib/billing/staff-plan.ts's syncPlanForRoleChange also grants the promoted
  * account elite_supporter (super_admin's plan tier, above the pro_supporter
  * the rest of staff get), the same real, non-Stripe grant/revoke bookkeeping
  * (pre_staff_plan) every other staff promotion uses.
  */
-async function bootstrapSuperAdmin(pool: Pool, appName: string): Promise<void> {
+export async function bootstrapSuperAdmin(
+  pool: Pool,
+  appName: string,
+): Promise<void> {
   try {
     const existingSuperAdmin = await pool.query(
       "SELECT 1 FROM users WHERE role = 'super_admin' LIMIT 1",
@@ -158,19 +246,32 @@ async function bootstrapSuperAdmin(pool: Pool, appName: string): Promise<void> {
     if (existingSuperAdmin.rowCount !== 0) return;
 
     const firstUser = await pool.query<{ id: number; role: string | null }>(
-      "SELECT id, role FROM users ORDER BY id ASC LIMIT 1",
+      `SELECT id, role FROM users
+        WHERE disabled_at IS NULL AND email_verified_at IS NOT NULL
+        ORDER BY id ASC
+        LIMIT 1`,
     );
     const row = firstUser.rows[0];
     if (!row) return;
 
     await pool.query(
-      "UPDATE users SET role = 'super_admin', updated_at = NOW() WHERE id = $1",
-      [row.id],
+      `WITH promoted AS (
+         UPDATE users SET role = 'super_admin', updated_at = NOW()
+          WHERE id = $1
+          RETURNING id
+       )
+       INSERT INTO admin_audit_log (admin_id, target_user_id, action, details)
+       SELECT id, id, $2::varchar, $3::text FROM promoted`,
+      [
+        row.id,
+        BOOTSTRAP_AUDIT_ACTION,
+        "Promoted to super_admin at boot: no account held the role, and this was the lowest-id verified, non-disabled account.",
+      ],
     );
     const { syncPlanForRoleChange } = await import("@/lib/billing/staff-plan");
     await syncPlanForRoleChange(row.id, row.role, "super_admin");
     console.log(
-      `[${appName}] Bootstrapped user #${row.id} as super_admin (first account, none existed yet).`,
+      `[${appName}] Bootstrapped user #${row.id} as super_admin (lowest-id verified account, none existed).`,
     );
   } catch (err) {
     console.error(

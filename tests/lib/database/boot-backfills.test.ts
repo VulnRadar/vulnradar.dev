@@ -2,9 +2,29 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Pool } from "pg";
 import {
   backfillSubDailyScheduleSlots,
+  bootstrapSuperAdmin,
   canonicalizeStoredScanUrls,
+  redactAlertWebhookAuditRows,
+  runBootBackfills,
 } from "@/lib/database/boot/backfills";
+import { isAuditAction } from "@/lib/admin/audit-actions";
 import { computeNextRunAt } from "@/lib/scanner/schedule-timing";
+
+const mockSyncPlan = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/billing/staff-plan", () => ({
+  syncPlanForRoleChange: mockSyncPlan,
+  reconcileStaffPlans: async () => 0,
+}));
+vi.mock("@/lib/auth/security-migration", () => ({
+  migratePlaintextSecretsToEncrypted: async () => {},
+}));
+vi.mock("@/lib/uploads/avatar-migration", () => ({
+  migrateBase64AvatarsToDatabase: async () => {},
+  migrateAvatarFilesToDatabase: async () => {},
+}));
+vi.mock("@/lib/webhooks/secret", () => ({
+  migratePlaintextWebhookSecrets: async () => {},
+}));
 
 /**
  * The unit tier fakes the pool, so this proves which rows the backfill
@@ -229,6 +249,139 @@ describe("canonicalizeStoredScanUrls", () => {
     } as unknown as Pool;
 
     await expect(canonicalizeStoredScanUrls(pool)).resolves.toBeUndefined();
+    expect(console.error).toHaveBeenCalled();
+  });
+});
+
+describe("redactAlertWebhookAuditRows", () => {
+  function auditPool(rowCount = 0) {
+    const query = vi.fn(async (_sql: string, _params?: unknown[]) => ({
+      rows: [],
+      rowCount,
+    }));
+    return { pool: { query } as unknown as Pool, query };
+  }
+
+  it("rewrites both sentences that quoted the value, each under its own action", async () => {
+    const { pool, query } = auditPool();
+    await redactAlertWebhookAuditRows(pool, "App");
+
+    expect(query.mock.calls.map(([, params]) => params)).toEqual([
+      [
+        "system_setting_changed",
+        'Changed "ADMIN_ALERT_WEBHOOK_URL" from ',
+        'Changed "ADMIN_ALERT_WEBHOOK_URL" (value redacted)',
+      ],
+      [
+        "system_setting_reset",
+        'Reset "ADMIN_ALERT_WEBHOOK_URL" to its default (was ',
+        'Reset "ADMIN_ALERT_WEBHOOK_URL" to its default (value redacted)',
+      ],
+    ]);
+  });
+
+  it("reports how many rows it rewrote and stays quiet when there were none", async () => {
+    await redactAlertWebhookAuditRows(auditPool(0).pool, "App");
+    expect(console.log).not.toHaveBeenCalled();
+
+    await redactAlertWebhookAuditRows(auditPool(2).pool, "App");
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining("4"));
+  });
+
+  it("does not throw when the query fails, so a boot is never stopped", async () => {
+    const pool = {
+      query: vi.fn(async () => {
+        throw new Error("relation does not exist");
+      }),
+    } as unknown as Pool;
+
+    await expect(
+      redactAlertWebhookAuditRows(pool, "App"),
+    ).resolves.toBeUndefined();
+    expect(console.error).toHaveBeenCalled();
+  });
+
+  it("is wired into the boot sequence", async () => {
+    const { pool, query } = auditPool();
+    await runBootBackfills(pool, "App");
+
+    expect(
+      query.mock.calls.some(([sql]) => sql.includes("UPDATE admin_audit_log")),
+    ).toBe(true);
+  });
+});
+
+describe("bootstrapSuperAdmin", () => {
+  function bootstrapPool(opts: {
+    superAdmins?: number;
+    candidate?: { id: number; role: string | null };
+  }) {
+    const query = vi.fn(async (sql: string, _params?: unknown[]) => {
+      if (sql.includes("role = 'super_admin' LIMIT 1")) {
+        return { rows: [], rowCount: opts.superAdmins ?? 0 };
+      }
+      if (sql.trimStart().startsWith("SELECT id, role")) {
+        return { rows: opts.candidate ? [opts.candidate] : [], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    return { pool: { query } as unknown as Pool, query };
+  }
+
+  beforeEach(() => mockSyncPlan.mockReset());
+
+  it("only considers a verified, non-disabled account, lowest id first", async () => {
+    const { pool, query } = bootstrapPool({});
+    await bootstrapSuperAdmin(pool, "App");
+
+    const select = query.mock.calls[1][0];
+    expect(select).toContain("disabled_at IS NULL");
+    expect(select).toContain("email_verified_at IS NOT NULL");
+    expect(select).toContain("ORDER BY id ASC");
+  });
+
+  it("promotes and writes the audit row in one statement, then syncs the plan", async () => {
+    const { pool, query } = bootstrapPool({
+      candidate: { id: 7, role: "user" },
+    });
+    await bootstrapSuperAdmin(pool, "App");
+
+    const [sql, params] = query.mock.calls[2] as [string, unknown[]];
+    expect(sql).toContain("UPDATE users");
+    expect(sql).toContain("INSERT INTO admin_audit_log");
+    expect(params[0]).toBe(7);
+    expect(isAuditAction(params[1] as string)).toBe(true);
+    expect(params[2]).toMatch(/super_admin/);
+    expect(mockSyncPlan).toHaveBeenCalledWith(7, "user", "super_admin");
+  });
+
+  it("does nothing while any account holds the role", async () => {
+    const { pool, query } = bootstrapPool({
+      superAdmins: 1,
+      candidate: { id: 7, role: "user" },
+    });
+    await bootstrapSuperAdmin(pool, "App");
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(mockSyncPlan).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing when no account qualifies", async () => {
+    const { pool, query } = bootstrapPool({});
+    await bootstrapSuperAdmin(pool, "App");
+
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(mockSyncPlan).not.toHaveBeenCalled();
+  });
+
+  it("does not throw when the query fails, so a boot is never stopped", async () => {
+    const pool = {
+      query: vi.fn(async () => {
+        throw new Error("relation does not exist");
+      }),
+    } as unknown as Pool;
+
+    await expect(bootstrapSuperAdmin(pool, "App")).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalled();
   });
 });
