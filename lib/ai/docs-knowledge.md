@@ -3281,7 +3281,7 @@ individual URLs instead.
 | Page | Hero | Sections | Callouts | Code tabs | Code blocks | Endpoints | Features | Paragraphs | Headings |
 |---|---|---|---|---|---|---|---|---|---|
 | `/docs` | ✓ | 5 | 0 | 0 | 1 | 0 | 0 | 9 | 1 |
-| `/docs/setup` | - | 12 | 3 | 0 | 19 | 0 | 0 | 30 | 25 |
+| `/docs/setup` | - | 12 | 3 | 0 | 19 | 0 | 0 | 31 | 25 |
 | `/docs/extension` | ✓ | 11 | 1 | 0 | 0 | 0 | 0 | 16 | 2 |
 | `/docs/self-hosting` | - | 18 | 19 | 0 | 21 | 0 | 0 | 65 | 3 |
 | `/docs/config` | - | 10 | 5 | 0 | 2 | 0 | 0 | 43 | 0 |

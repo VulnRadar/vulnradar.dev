@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
 
 const read = (file: string) => readFileSync(file, "utf8");
 // Sentences wrap across comment lines in .env.example and the Dockerfile.
@@ -11,6 +12,34 @@ describe("what operators are told about restoring a backup", () => {
     expect(text).toMatch(/A backup carries its IV and auth tag in its header/);
     expect(text).toMatch(/only older backups and db:migrate's pre-migration/);
     expect(text).not.toMatch(/\.enc file needs its \.json sidecar/);
+  });
+});
+
+/**
+ * The server drains for 30 seconds on a restart and PM2's default kill timeout
+ * is 1.6, so a documented PM2 line without its own timeout cuts running scans
+ * off. Searched rather than named: the setup page is moving.
+ */
+describe("the documented PM2 command", () => {
+  function pages(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) return pages(full);
+      return entry.name === "page.tsx" ? [full] : [];
+    });
+  }
+
+  it("waits as long as the compose stop grace period", () => {
+    const grace = /stop_grace_period: (\d+)s/.exec(read("docker-compose.yml"));
+    expect(grace).not.toBeNull();
+    const lines = pages("app/docs")
+      .flatMap((file) => read(file).split("\n"))
+      .filter((line) => line.includes("pm2 start "));
+
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      expect(line).toContain(`--kill-timeout ${Number(grace![1]) * 1000}`);
+    }
   });
 });
 

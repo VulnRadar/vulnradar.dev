@@ -679,9 +679,15 @@ sudo systemctl enable --now vulnradar`}
 
           <h4 className="text-sm font-semibold mt-6 mb-2">PM2</h4>
           <CodeBlock
-            code="pm2 start npm --name vulnradar -- start"
+            code="pm2 start npm --name vulnradar --kill-timeout 40000 -- start"
             language="bash"
           />
+          <p className="text-sm text-muted-foreground mt-3">
+            A restart gives running requests and scans up to 30 seconds to
+            finish, and PM2 kills the process after 1.6 seconds unless told
+            otherwise, so the timeout matches the 40 second grace period in the
+            compose files.
+          </p>
         </Card>
 
         <Card className="p-6 border-border/40">
