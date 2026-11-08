@@ -664,13 +664,17 @@ export async function POST(_request: NextRequest) {
       // is safe to hand back; redacted_html is the same content again and is
       // left out so the file does not double in size for no new information.
       // Case folds because an account saved with capitals has rows under the
-      // lowercased spelling too, and they are still its own.
+      // lowercased spelling too. Only a verified address counts: a profile
+      // edit can put any unclaimed address on an account at once, and what was
+      // mailed there (a team invite's subject and preview name the team and
+      // the inviter) belongs to whoever really holds it. Unverified, the
+      // subselect is NULL and matches no rows.
       () =>
         pool.query(
           `
         SELECT id, subject, status, error_message, redacted_preview, created_at
         FROM email_logs
-        WHERE LOWER(recipient) = LOWER((SELECT email FROM users WHERE id = $1))
+        WHERE LOWER(recipient) = LOWER((SELECT email FROM users WHERE id = $1 AND email_verified_at IS NOT NULL))
         ORDER BY created_at DESC
         LIMIT $2
       `,
@@ -774,14 +778,14 @@ export async function POST(_request: NextRequest) {
       // Messages you sent us through a contact form. Keyed on the address you
       // typed rather than on an account, because the landing form takes
       // messages from people who do not have one, which is also why it is
-      // matched the same way emailLog above is.
+      // matched the same way emailLog above is, verified address included.
       () =>
         pool.query(
           `
         SELECT id, source, name, subject, category, message,
                email_status, created_at
         FROM contact_submissions
-        WHERE LOWER(email) = LOWER((SELECT email FROM users WHERE id = $1))
+        WHERE LOWER(email) = LOWER((SELECT email FROM users WHERE id = $1 AND email_verified_at IS NOT NULL))
         ORDER BY created_at DESC
         LIMIT $2
       `,

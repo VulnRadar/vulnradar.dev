@@ -230,13 +230,16 @@ export async function deleteUserAccountData(
   // deleted immediately below) so both delete paths get this without a
   // signature change, and purge by recipient. Case folds on every address
   // match here: an account saved with capitals still has mail logged and
-  // contact forms stored under the lowercased spelling, and those rows are
-  // its data whichever way the address was typed.
-  const emailRow = await client.query<{ email: string | null }>(
-    "SELECT email FROM users WHERE id = $1",
-    [userId],
-  );
-  const email = emailRow.rows[0]?.email;
+  // contact forms stored under the lowercased spelling. Only a verified
+  // address counts: a profile edit can put any unclaimed address on an account
+  // at once, and deleting that account must not take the mail log, contact
+  // messages or staff invite of whoever really holds the address with it.
+  const emailRow = await client.query<{
+    email: string | null;
+    email_verified_at: Date | null;
+  }>("SELECT email, email_verified_at FROM users WHERE id = $1", [userId]);
+  const owner = emailRow.rows[0];
+  const email = owner?.email_verified_at ? owner.email : null;
   if (email) {
     await client.query(
       "DELETE FROM email_logs WHERE LOWER(recipient) = LOWER($1)",

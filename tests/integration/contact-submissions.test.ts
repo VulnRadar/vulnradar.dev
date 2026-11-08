@@ -85,8 +85,13 @@ describeIntegration("contact submissions", () => {
     // Nothing links these rows to an account by a foreign key: the landing
     // form takes messages from people who have no account at all, so the
     // address is the only handle. That means only the explicit purge in
-    // account-deletion.ts reaches them, the same shape email_logs needs.
+    // account-deletion.ts reaches them, the same shape email_logs needs. The
+    // address has to be proven, or the rows are not this account's to erase.
     const user = await createUser();
+    await pool.query(
+      "UPDATE users SET email_verified_at = NOW() WHERE id = $1",
+      [user.id],
+    );
 
     await recordContactSubmission({
       source: "contact",
@@ -146,6 +151,10 @@ describeIntegration("contact submissions", () => {
     // whoever holds the link.
     const inviter = await createUser({ role: "admin" });
     const invitee = await createUser();
+    await pool.query(
+      "UPDATE users SET email_verified_at = NOW() WHERE id = $1",
+      [invitee.id],
+    );
 
     await pool.query(
       `INSERT INTO staff_invites (token, email, role, invited_by, expires_at)

@@ -173,6 +173,11 @@ describeIntegration("account deletion", () => {
       "INSERT INTO email_logs (recipient, subject, status) VALUES ($1, 'Welcome', 'sent')",
       [user.email],
     );
+    // The mail log is purged by address only when the address is proven.
+    await pool.query(
+      "UPDATE users SET email_verified_at = NOW() WHERE id = $1",
+      [user.id],
+    );
 
     // Rows OTHER records hold that point AT this user. These are the four
     // that account-deletion.ts nulls by hand plus the audit trail it

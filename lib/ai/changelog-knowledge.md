@@ -762,6 +762,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Sending a team invitation ended in a server error, because the database refused the statement that writes it. Invitations are created again.
 - [ShieldAlert] **[SECURITY]** **Team Invite Bell Needs a Verified Address**
   The in-app notification for a team invite names the team, the inviter and the role. It now goes only to an account that has verified the invited address, the rule the invitations list already follows. The invite email still goes to the address.
+- [ShieldAlert] **[SECURITY]** **Data Export and Erasure Need a Verified Address**
+  Changing the address on an account does not prove it holds that address. Until it is verified, the data export leaves out mail sent to that address and contact messages sent from it, and deleting the account leaves that address's mail log, contact messages and staff invites alone, so they stay with whoever really holds it.
 - [Trash2] **[SECURITY]** **Erasing an Account Finds All of Its Messages**
   An account whose address was saved with capital letters kept its contact messages and mail log after it was deleted, and its data export left them out, when they were stored under the lowercase spelling. Both now match the address whatever its letter case.
 - [Webhook] **[FIXED]** **Webhook List Shows the Real Format**
@@ -3094,6 +3096,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1239
+- **Total changes documented:** 1240
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

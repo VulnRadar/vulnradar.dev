@@ -20,8 +20,15 @@ describe("deleteUserAccountData", () => {
     // which has no user_id) just before deleting the users row, so the fake
     // client has to answer that one query with a real row.
     mockQuery.mockImplementation(async (sql: string) =>
-      String(sql).startsWith("SELECT email FROM users")
-        ? { rows: [{ email: "gone@example.com" }] }
+      String(sql).startsWith("SELECT email, email_verified_at FROM users")
+        ? {
+            rows: [
+              {
+                email: "gone@example.com",
+                email_verified_at: new Date("2026-01-01T00:00:00Z"),
+              },
+            ],
+          }
         : { rows: [] },
     );
   });
@@ -171,8 +178,15 @@ describe("deleteUserAccountData: tables with no cascading link to the account", 
   beforeEach(() => {
     mockQuery.mockReset();
     mockQuery.mockImplementation(async (sql: string) =>
-      String(sql).startsWith("SELECT email FROM users")
-        ? { rows: [{ email: "gone@example.com" }] }
+      String(sql).startsWith("SELECT email, email_verified_at FROM users")
+        ? {
+            rows: [
+              {
+                email: "gone@example.com",
+                email_verified_at: new Date("2026-01-01T00:00:00Z"),
+              },
+            ],
+          }
         : { rows: [] },
     );
   });
@@ -213,13 +227,35 @@ describe("deleteUserAccountData: tables with no cascading link to the account", 
     await deleteUserAccountData(fakeClient, 11);
     const sqls = mockQuery.mock.calls.map(([sql]) => String(sql));
     const readAt = sqls.findIndex((s) =>
-      s.startsWith("SELECT email FROM users"),
+      s.startsWith("SELECT email, email_verified_at FROM users"),
     );
     const deleteAt = sqls.findIndex(
       (s) => s === "DELETE FROM users WHERE id = $1",
     );
     expect(readAt).toBeGreaterThanOrEqual(0);
     expect(readAt).toBeLessThan(deleteAt);
+  });
+
+  // A profile edit puts any unclaimed address on an account at once, so the
+  // address alone does not make these rows the account's to erase.
+  it("leaves every address-keyed table alone when the address was never verified", async () => {
+    mockQuery.mockImplementation(async (sql: string) =>
+      String(sql).startsWith("SELECT email, email_verified_at FROM users")
+        ? { rows: [{ email: "claimed@example.com", email_verified_at: null }] }
+        : { rows: [] },
+    );
+    await deleteUserAccountData(fakeClient, 11);
+    const sqls = mockQuery.mock.calls.map(([sql]) => String(sql));
+    for (const table of [
+      "email_logs",
+      "contact_submissions",
+      "staff_invites",
+    ]) {
+      expect(sqls.filter((s) => s.includes(`DELETE FROM ${table}`))).toEqual(
+        [],
+      );
+    }
+    expect(sqls[sqls.length - 1]).toBe("DELETE FROM users WHERE id = $1");
   });
 
   it("skips the email_logs purge when the user row is already gone", async () => {

@@ -588,6 +588,66 @@ describeIntegration("every account lookup by address folds case", () => {
     ).toBe(0);
   });
 
+  // A profile edit puts any unclaimed address on an account at once, with
+  // email_verified_at NULL and the session intact. What is filed under that
+  // address belongs to whoever really holds it, the rule the invite bell and
+  // the invitations list follow.
+  it("the data export leaves out what is filed under an address the account never verified", async () => {
+    const claimed = await createLegacyUser({ verified: false });
+    await addressKeyedRows(claimed.email);
+    sessionUserId = claimed.id;
+
+    const res = await exportAccountData(
+      new NextRequest("http://localhost/api/v3/data-request", {
+        method: "POST",
+      }),
+    );
+    await flushMail();
+
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.emailLog).toEqual([]);
+    expect(data.contactSubmissions).toEqual([]);
+  });
+
+  it("erasing an account leaves what is filed under an address it never verified", async () => {
+    const claimed = await createLegacyUser({ verified: false });
+    await addressKeyedRows(claimed.email);
+    await insertStaffInvite(claimed.email.toLowerCase());
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await deleteUserAccountData(client, claimed.id);
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    expect(await accountsAt(claimed.email)).toBe(0);
+    expect(
+      await count(
+        "SELECT COUNT(*)::int AS n FROM email_logs WHERE LOWER(recipient) = LOWER($1)",
+        [claimed.email],
+      ),
+    ).toBe(1);
+    expect(
+      await count(
+        "SELECT COUNT(*)::int AS n FROM contact_submissions WHERE LOWER(email) = LOWER($1)",
+        [claimed.email],
+      ),
+    ).toBe(1);
+    expect(
+      await count(
+        "SELECT COUNT(*)::int AS n FROM staff_invites WHERE LOWER(email) = LOWER($1)",
+        [claimed.email],
+      ),
+    ).toBe(1);
+  });
+
   it("the invitations route still ignores another address and an unverified account", async () => {
     const legacy = await createLegacyUser();
     const someoneElses = await insertTeamInvite(

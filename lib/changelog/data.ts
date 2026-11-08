@@ -2454,6 +2454,12 @@ const CHANGELOG: Release[] = [
         category: "security",
       },
       {
+        icon: ShieldAlert,
+        label: "Data Export and Erasure Need a Verified Address",
+        desc: "Changing the address on an account does not prove it holds that address. Until it is verified, the data export leaves out mail sent to that address and contact messages sent from it, and deleting the account leaves that address's mail log, contact messages and staff invites alone, so they stay with whoever really holds it.",
+        category: "security",
+      },
+      {
         icon: Trash2,
         label: "Erasing an Account Finds All of Its Messages",
         desc: "An account whose address was saved with capital letters kept its contact messages and mail log after it was deleted, and its data export left them out, when they were stored under the lowercase spelling. Both now match the address whatever its letter case.",

@@ -253,7 +253,7 @@ describe("POST /api/v3/data-request", () => {
     }
   });
 
-  it("folds case on the two address-keyed reads, so capitals on the account do not hide rows", async () => {
+  it("folds case on the two address-keyed reads and needs a verified address for both", async () => {
     routeQueries({});
     await POST(postRequest());
     const sqls = mockQuery.mock.calls.map(([sql]) =>
@@ -262,10 +262,10 @@ describe("POST /api/v3/data-request", () => {
     const fromTable = (table: string) =>
       sqls.find((sql) => sql.includes(`FROM ${table} `));
     expect(fromTable("email_logs")).toContain(
-      "LOWER(recipient) = LOWER((SELECT email FROM users WHERE id = $1))",
+      "LOWER(recipient) = LOWER((SELECT email FROM users WHERE id = $1 AND email_verified_at IS NOT NULL))",
     );
     expect(fromTable("contact_submissions")).toContain(
-      "LOWER(email) = LOWER((SELECT email FROM users WHERE id = $1))",
+      "LOWER(email) = LOWER((SELECT email FROM users WHERE id = $1 AND email_verified_at IS NOT NULL))",
     );
   });
 
