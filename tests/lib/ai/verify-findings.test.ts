@@ -1240,9 +1240,135 @@ describe("verifyFindingsBatch: a null element from verify-batch", () => {
     expect(out).toHaveLength(2);
     expect(out[0]).toMatchObject({ id: "f1", aiVerdict: "confirmed" });
     expect(out[1]).toBeNull();
-    expect(outcome).toMatchObject({ verdicts: 1, attempted: 2 });
+    // A null element is not a finding the pass was asked to judge, so it is
+    // not counted as one left unverified either.
+    expect(outcome).toStrictEqual({
+      configured: true,
+      verdicts: 1,
+      attempted: 1,
+    });
     // Nothing is sent for the null element: there is no finding to ask about.
     expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns before the endpoint lookup, the probe and any call when every element is null", async () => {
+    const held = reservation({ budget: 1 });
+    const findings = [
+      null as unknown as Vulnerability,
+      null as unknown as Vulnerability,
+    ];
+
+    const { findings: out, outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      findings,
+      42,
+      held,
+    );
+
+    expect(out).toBe(findings);
+    expect(outcome).toStrictEqual({
+      configured: true,
+      verdicts: 0,
+      attempted: 0,
+    });
+    // A budget of one token would stop any real pass at its first finding.
+    // Nothing was asked, so nothing ran out.
+    expect(outcome).not.toHaveProperty("budgetExhausted");
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockSettleAiTokens).toHaveBeenCalledWith(held, 0);
+  });
+});
+
+describe("verifyFindingsBatchWithOutcome: counting verdicts on a caller-supplied batch", () => {
+  // v3 accepts a finding with a missing or repeated id, as 3.9.1 did. The
+  // verdict lands on every finding carrying that id, so the count is of the
+  // findings handed back with a verdict, not of distinct ids.
+  it("counts every finding that came back with a verdict, not distinct ids", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponseWithUsage("x", 100, 50),
+    );
+    const noId = { ...makeFinding("unused") } as Partial<Vulnerability>;
+    delete noId.id;
+
+    const { findings, outcome } = await verifyFindingsBatchWithOutcome(
+      "https://example.com",
+      [noId, { ...noId }] as Vulnerability[],
+      null,
+      null,
+    );
+
+    expect(findings.map((f) => f.aiVerdict)).toEqual([
+      "confirmed",
+      "confirmed",
+    ]);
+    expect(outcome).toStrictEqual({
+      configured: true,
+      verdicts: 2,
+      attempted: 2,
+    });
+  });
+});
+
+describe("isAcceptedBatchElement: what v3 verify-batch takes as a findings[] element", () => {
+  // The rule is what the prompt builder can turn into text, because that is
+  // what took a request down with a 500. Everything else 3.9.1 took stays
+  // accepted.
+  it.each<[string, unknown]>([
+    ["a null element", null],
+    ["a full finding", makeFinding("f1")],
+    ["a numeric id", { id: 7, title: "t" }],
+    ["a missing id", { title: "no id" }],
+    ["an empty id", { id: "" }],
+    ["a long id", { id: "x".repeat(10_000) }],
+    ["a string element", "missing-csp"],
+    ["a number element", 7],
+    ["a boolean element", true],
+    ["an array element", ["a", "b"]],
+    ["an object field that converts", { id: "x", title: { a: 1 } }],
+    ["a string evidenceExcerpts", { id: "x", evidenceExcerpts: "abc" }],
+  ])("accepts %s", async (_label, element) => {
+    const { isAcceptedBatchElement } = await import("@/lib/ai/verify-findings");
+    expect(isAcceptedBatchElement(element)).toBe(true);
+  });
+
+  const unconvertible = JSON.parse('{"toString":1}');
+  const nullPrototype = Object.create(null) as Record<string, unknown>;
+  nullPrototype.text = "no prototype to convert with";
+
+  it.each(["id", "title", "category", "severity", "evidence"])(
+    "refuses a finding whose %s cannot be converted to text",
+    async (field) => {
+      const { isAcceptedBatchElement } =
+        await import("@/lib/ai/verify-findings");
+      expect(isAcceptedBatchElement({ id: "x", [field]: unconvertible })).toBe(
+        false,
+      );
+      expect(isAcceptedBatchElement({ id: "x", [field]: nullPrototype })).toBe(
+        false,
+      );
+      expect(
+        isAcceptedBatchElement({ id: "x", [field]: [unconvertible] }),
+      ).toBe(false);
+    },
+  );
+
+  it("refuses evidenceExcerpts the prompt builder cannot read", async () => {
+    const { isAcceptedBatchElement } = await import("@/lib/ai/verify-findings");
+    expect(
+      isAcceptedBatchElement({
+        id: "x",
+        evidenceExcerpts: { length: unconvertible },
+      }),
+    ).toBe(false);
+  });
+
+  it("refuses an element that is itself a null-prototype object", async () => {
+    const { isAcceptedBatchElement } = await import("@/lib/ai/verify-findings");
+    const bare = Object.create(null) as Record<string, unknown>;
+    bare.id = nullPrototype;
+    expect(isAcceptedBatchElement(bare)).toBe(false);
   });
 });
 
@@ -1739,12 +1865,48 @@ describe("verification is held to the reservation's budget", () => {
     expect(one).toBeGreaterThan(await ceilingOf(makeFinding("f1")));
   });
 
-  it("a null element in a caller-supplied batch costs the bare template instead of throwing", async () => {
-    const { estimateVerifyTokens } = await import("@/lib/ai/verify-findings");
-    const { estimate } = await estimateVerifyTokens([
+  // A null element is carried through the pass untouched and never asked
+  // about, so it is not priced either. Pricing the minimum on it priced the
+  // bare template, below what the first real finding needs, and let in an
+  // account that then stopped with nothing verified.
+  it("prices a batch that starts with a null element on its first real finding", async () => {
+    const { estimateVerifyTokens, admittedCallCeiling } =
+      await import("@/lib/ai/verify-findings");
+    const { CONFIG_AI_VERIFY_MAX_TOKENS } =
+      await import("@/lib/config/config-values");
+    const real = {
+      ...makeFinding("f1"),
+      evidence: "e".repeat(5_000),
+    } as Vulnerability;
+
+    const { estimate, minimum } = await estimateVerifyTokens([
       null as unknown as Vulnerability,
+      real,
     ]);
-    expect(estimate).toBeGreaterThan(0);
+
+    expect(minimum).toBe(
+      admittedCallCeiling(
+        real,
+        { maxTokens: CONFIG_AI_VERIFY_MAX_TOKENS },
+        {
+          status_code: 0,
+          final_url: "",
+          response_headers: {},
+          body_snippet: "",
+        },
+      ),
+    );
+    expect(estimate).toBe(await reservedCeilingOf(real));
+  });
+
+  it("prices a batch of only null elements at nothing", async () => {
+    const { estimateVerifyTokens } = await import("@/lib/ai/verify-findings");
+    expect(
+      await estimateVerifyTokens([
+        null as unknown as Vulnerability,
+        null as unknown as Vulnerability,
+      ]),
+    ).toEqual({ estimate: 0, minimum: 0 });
   });
 });
 

@@ -443,10 +443,7 @@ export function admittedCallCeiling(
   settings: Pick<VerifySettings, "maxTokens">,
   probe: ProbeData,
 ): number {
-  // verify-batch takes its findings from the request body. The route refuses
-  // a non-null element whose id is not a string, but a null element is
-  // accepted on v3, so it costs the bare template rather than throwing.
-  const prompt = buildVerifyPrompt(finding ?? ({} as Vulnerability), probe);
+  const prompt = buildVerifyPrompt(finding, probe);
   return (
     CALL_FRAMING_TOKENS +
     maxInputTokens(VERIFY_SYSTEM_PROMPT) +
@@ -468,17 +465,52 @@ export function admittedCallCeiling(
  * refused after a fraction of its allowance. Asking less up front cannot
  * overspend: admitWithinBudget measures each call against the page it really
  * fetched and refuses a call that would not fit what was reserved.
+ *
+ * A null element (verify-batch accepts one on v3) is never asked about, so it
+ * is not priced. Pricing the minimum on a leading null priced the bare
+ * template, below what the first real finding needs, and let in an account
+ * that could then verify nothing.
  */
 export async function estimateVerifyTokens(
   findings: Vulnerability[],
 ): Promise<{ estimate: number; minimum: number }> {
-  if (findings.length === 0) return { estimate: 0, minimum: 0 };
+  const askable = askableFindings(findings);
+  if (askable.length === 0) return { estimate: 0, minimum: 0 };
   const settings = await resolveVerifySettings();
-  const ceilings = findings.map((f) => verifyCallCeiling(f, settings));
+  const ceilings = askable.map((f) => verifyCallCeiling(f, settings));
   return {
     estimate: ceilings.reduce((sum, c) => sum + c, 0),
-    minimum: admittedCallCeiling(findings[0], settings, EMPTY_PROBE),
+    minimum: admittedCallCeiling(askable[0], settings, EMPTY_PROBE),
   };
+}
+
+/**
+ * The findings a pass asks about: every element but a null one, which
+ * verify-batch accepts on v3 and hands back as it was sent.
+ */
+function askableFindings(findings: Vulnerability[]): Vulnerability[] {
+  return findings.filter((f) => f != null);
+}
+
+/**
+ * Whether v3 POST /scan/verify-batch takes this findings[] element.
+ *
+ * v3 changes only by addition, so the route refuses only what used to take
+ * the request down with a 500: an element the prompt builder cannot turn into
+ * text, such as an id, title, category, severity or evidence that is an
+ * object with a toString that is not a function, or one with no prototype to
+ * convert with. Everything 3.9.1 took is still taken: a numeric, missing,
+ * empty or long id, a primitive element, and a null element, which the pass
+ * carries through untouched. The stricter id rule belongs to the v4 contract.
+ */
+export function isAcceptedBatchElement(element: unknown): boolean {
+  if (element === null) return true;
+  try {
+    buildVerifyPrompt(element as Vulnerability, EMPTY_PROBE);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 interface CallVerifyResult {
@@ -658,7 +690,7 @@ async function verifyInChunks(
   // A null element (accepted by verify-batch on v3) has nothing to ask about.
   // It is left out before any chunk is formed, so it takes no slot and no
   // admission, and applyVerdicts hands it back as it was sent.
-  const askable = findings.filter((f) => f != null);
+  const askable = askableFindings(findings);
   while (next < askable.length) {
     if (Date.now() >= deadline) break;
 
@@ -708,9 +740,9 @@ async function verifyInChunks(
     // On verify-batch the URL and the findings array are the request body,
     // so both go through logValue. The route checks that the url is an http
     // or https address and that findings is an array within the batch cap
-    // whose elements are null or carry a string id; nothing else about an
-    // element is checked, and the count is escaped with the rest rather than
-    // trusted to be the number those checks imply.
+    // whose elements the prompt builder can read (isAcceptedBatchElement);
+    // an id may still be a number or missing, and the count is escaped with
+    // the rest rather than trusted to be the number those checks imply.
     if (rateLimited) {
       console.error(
         `[AI-VERIFY] ${logValue(endpoint.baseUrl)} rate-limited the pass for ${logValue(url)}; stopped after ${verdictMap.size} of ${logValue(findings.length)} verdicts.`,
@@ -782,7 +814,13 @@ export async function verifyFindingsBatchWithOutcome(
 ): Promise<{ findings: Vulnerability[]; outcome: AiVerificationOutcome }> {
   const spent = { tokens: 0 };
   try {
-    if (findings.length === 0) {
+    // `attempted` counts what there was to ask about. A null element is
+    // handed back as sent rather than judged, so counting it would report a
+    // finding left unverified that was never a finding. A batch with nothing
+    // else in it returns here, before the endpoint lookup and the probe of
+    // the target: nothing in it would use either.
+    const attempted = askableFindings(findings).length;
+    if (attempted === 0) {
       return {
         findings,
         outcome: { configured: true, verdicts: 0, attempted: 0 },
@@ -796,11 +834,7 @@ export async function verifyFindingsBatchWithOutcome(
     if (!endpoint) {
       return {
         findings,
-        outcome: {
-          configured: false,
-          verdicts: 0,
-          attempted: findings.length,
-        },
+        outcome: { configured: false, verdicts: 0, attempted },
       };
     }
 
@@ -822,12 +856,20 @@ export async function verifyFindingsBatchWithOutcome(
       spent,
     );
 
+    // Counted per finding, not per distinct id: v3 takes a missing or
+    // repeated id, and applyVerdicts puts a verdict on every finding carrying
+    // that id, so verdictMap.size undercounted what the caller received. Not
+    // read off aiVerdict either, which a finding from an earlier pass
+    // already carries when it is sent back.
+    const verdicts = askableFindings(findings).filter((f) =>
+      verdictMap.has(f.id),
+    ).length;
     return {
       findings: applyVerdicts(findings, verdictMap),
       outcome: {
         configured: true,
-        verdicts: verdictMap.size,
-        attempted: findings.length,
+        verdicts,
+        attempted,
         ...(rateLimited ? { rateLimited: true } : {}),
         ...(budgetExhausted ? { budgetExhausted: true } : {}),
       },
