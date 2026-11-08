@@ -57,6 +57,7 @@ import {
   ROUTES,
 } from "@/lib/config/client-constants";
 import { classifyScanTarget } from "@/lib/scanner/scan-target-classify";
+import { scanFormPrivacy } from "@/lib/scanner/scan-form-privacy";
 import { useAuth } from "@/components/providers/auth-provider";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
 import { resolveScanMode } from "@/lib/config/feature-surfaces";
@@ -442,9 +443,9 @@ export function ScanForm({
   // unknown the request now omits isPublic entirely, which is exactly what the
   // server wants: resolveScanIsPublic (lib/scanner/scan-privacy.ts) falls back
   // to users.scans_private_by_default when the field is absent.
-  const [keepPrivate, setKeepPrivate] = useState<boolean | null>(
-    defaultPrivate === undefined ? null : defaultPrivate,
-  );
+  const [privacyChoice, setPrivacyChoice] = useState<boolean | null>(null);
+  const keepPrivate =
+    privacyChoice ?? (defaultPrivate === undefined ? null : defaultPrivate);
   // Known once the account default has arrived OR the user has chosen for
   // themselves. Only the first of those is worth waiting on, so the control is
   // disabled only while auth is genuinely in flight: if /auth/me fails outright
@@ -452,11 +453,11 @@ export function ScanForm({
   // the server applies the account setting either way.
   const privacyKnown = keepPrivate !== null;
   const privacyPending = authLoading && !privacyKnown;
-  const userTouchedPrivacyRef = useRef(false);
-  useEffect(() => {
-    if (userTouchedPrivacyRef.current || defaultPrivate === undefined) return;
-    setKeepPrivate(defaultPrivate);
-  }, [defaultPrivate]);
+  const privacy = scanFormPrivacy({
+    hasLogin: !!authValue,
+    chosen: privacyChoice !== null,
+    keepPrivate,
+  });
 
   // "Capture page screenshot" -- opt-in, off by default. A screenshot spins
   // up a real, metered live-browser session, so it is never on unless the
@@ -648,7 +649,7 @@ export function ScanForm({
       auth: authValue ?? undefined,
       // Omitted while the account default is still unknown, so the server
       // resolves it rather than the client guessing "public".
-      isPublic: privacyKnown ? !keepPrivate : undefined,
+      isPublic: privacy.isPublic,
       captureScreenshot,
       portScan,
     });
@@ -862,19 +863,16 @@ export function ScanForm({
           <span className="hidden text-[11px] text-muted-foreground sm:block">
             {privacyPending
               ? "Reading your account default..."
-              : !privacyKnown
+              : privacy.keepPrivate === null
                 ? "Uses your account default."
-                : keepPrivate
+                : privacy.keepPrivate
                   ? "Skips the public host page."
                   : t("keepPrivateHint")}
           </span>
           <Switch
             id="scan-keep-private"
-            checked={keepPrivate ?? false}
-            onCheckedChange={(checked) => {
-              userTouchedPrivacyRef.current = true;
-              setKeepPrivate(checked);
-            }}
+            checked={privacy.keepPrivate ?? false}
+            onCheckedChange={setPrivacyChoice}
             disabled={isScanning || isBulkScanning || privacyPending}
             aria-label={t("keepPrivate")}
             className={cn("ml-auto", privacyPending && "opacity-50")}

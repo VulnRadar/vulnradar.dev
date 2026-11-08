@@ -207,9 +207,10 @@ export default function ScanningDocsPage() {
           scan form to scan a page as a logged-in user. Login details are used
           for that one scan and never stored: the form clears them the moment
           you submit. The result can include what only a logged-in user sees, so
-          turn on{" "}
+          adding a login turns on{" "}
           <strong className="text-foreground">Keep this scan private</strong>{" "}
-          unless you mean to publish it.
+          whatever your account default is. Turn it off yourself only if you
+          mean to publish the result.
         </p>
         <DocsTable
           caption="The three ways to sign in and whether each needs a verified domain"

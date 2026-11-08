@@ -298,10 +298,10 @@ export default function SharingDocsPage() {
             Every writer of the reputation cache skips a non-public scan, and
             flipping a scan from public to private deletes its cached row
             outright. An authenticated scan lands here only when its own request
-            asks for that, which on the scan form means Keep this scan private
-            was left off. A host nobody has publicly scanned comes back as{" "}
-            <InlineCode>known: false</InlineCode>, and a bare IP is rejected as
-            an invalid hostname.
+            asks for that, which on the scan form means you switched Keep this
+            scan private off after adding a login. A host nobody has publicly
+            scanned comes back as <InlineCode>known: false</InlineCode>, and a
+            bare IP is rejected as an invalid hostname.
           </p>
         </DocsCallout>
 
