@@ -182,7 +182,7 @@ curl "http://localhost:3000/api/v3/scan/status/SCAN_ID" \\
 
 ```ini
 [Unit]
-Description=<value>
+Description=<value> server
 After=network.target postgresql.service
 
 [Service]
@@ -783,9 +783,9 @@ today&rsquo;s usage count carry over.
 (start scans), scan:read (read history
 and reports), and scan:delete (delete
 scans). New keys default to write and read; choose the set when
-you create a key in Profile > Developer > API Keys >
-Create key. A route you call without the scope it needs returns
-403 naming the missing one.
+you create a key under
+Profile > Developer > API Keys. A route you call
+without the scope it needs returns 403 naming the missing one.
 
 > **WARNING: Pin the ref, do not use @main**
 > This is a composite action: its only step is a shell block that runs
@@ -1714,7 +1714,7 @@ Remove a webhook so it stops being called.
 - Authentication is either the session cookie the web app already holds, or a Bearer API key prefixed vr_live_ ( CONFIG_API_KEY_PREFIX). Which one you use changes how quota is counted, so read Rate Limits before you wire this into CI.
 - Prefer a machine-readable spec? The OpenAPI 3.1 description of this API lives at /api/v3/openapi.json. Import it into Postman, Insomnia, or Bruno, or try calls right in the browser on the API playground .
 - Each plan caps how many active keys you can hold (one on the free tier, more on paid plans). Keep them out of version control and rotate with POST /api/v3/keys/[id]/rotate, which swaps the secret in place: the old secret stops working immediately, and the key&rsquo;s id, name, scopes and today&rsquo;s usage count carry over.
-- Each key carries scopes: scan:write (start scans), scan:read (read history and reports), and scan:delete (delete scans). New keys default to write and read; choose the set when you create a key in Profile > Developer > API Keys > Create key. A route you call without the scope it needs returns 403 naming the missing one.
+- Each key carries scopes: scan:write (start scans), scan:read (read history and reports), and scan:delete (delete scans). New keys default to write and read; choose the set when you create a key under Profile > Developer > API Keys. A route you call without the scope it needs returns 403 naming the missing one.
 - The API Playground loads this same spec and sends real requests: pick an endpoint, paste a key, and read the live response. Your key stays in the browser and is never stored.
 - The same three calls in curl, JavaScript, and Python. Swap the placeholder key and they run as-is. The curl tab needs bash and jq. The Python tab uses plain requests. The vulnradar package on PyPI targets the retired v2 API and does not work against v3 or v4; use requests until it is rebuilt. Starting a scan is two steps: the create call returns a scan id, and you poll GET /scan/status/ every 2 to 5 seconds until it finishes. That poll does not consume daily quota.
 - Finding IDs are stable, so a scan can gate a pull request: fail the build when critical or high findings show up, without hand-rolling the poll loop yourself.

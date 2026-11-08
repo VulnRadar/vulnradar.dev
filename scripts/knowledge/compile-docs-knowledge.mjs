@@ -88,7 +88,27 @@ function listDocPages(dir = DOCS_DIR, route = "/docs") {
   return pages;
 }
 
+/**
+ * The labels behind <DocsUiPath to="...">, read from the table the component
+ * renders. Removed as an ordinary tag, a sentence naming a click path reads
+ * "create a key under ." and the assistant loses the one fact it was for.
+ */
+const UI_PATH_LABELS = new Map(
+  [
+    ...readFileSync(join(ROOT, "lib", "docs", "ui-paths.ts"), "utf8").matchAll(
+      /"([\w.]+)":\s*\{\s*segments:\s*\[([^\]]*)\]/g,
+    ),
+  ].map(([, key, segments]) => [
+    key,
+    [...segments.matchAll(/"([^"]+)"/g)].map(([, label]) => label).join(" > "),
+  ]),
+);
+
 function stripJsx(s) {
+  s = s.replace(
+    /<DocsUiPath\s+to="([^"]+)"\s*\/>/g,
+    (_, key) => UI_PATH_LABELS.get(key) ?? "",
+  );
   // Loop until stable: a single pass over /<[^>]+>/g can reassemble a tag
   // from a nested/malformed sequence like "<scr<script>ipt>" (the classic
   // incomplete-multi-character-sanitization bypass). Repeating the replace
