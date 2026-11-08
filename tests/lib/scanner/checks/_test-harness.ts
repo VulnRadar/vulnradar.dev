@@ -52,10 +52,9 @@ export interface DetectorFixture {
 export type DetectorFixtures = Record<string, DetectorFixture[]>;
 
 /**
- * Detectors in checks/code.ts and checks/cookies.ts whose evidence still has
- * an em dash, skipped by the "evidence copy" test until those files are
- * rewritten. tests/repo/scanner-no-em-dash.test.ts holds the count of what is
- * left, so this can only shrink.
+ * Detectors in checks/cookies.ts whose evidence still has an em dash, skipped
+ * by the "evidence copy" test until that file is rewritten. Nothing gets added
+ * here: tests/repo/scanner-no-em-dash.test.ts holds the file's exact count.
  */
 export const EM_DASH_PENDING_DETECTORS = new Set<string>([
   "cookie-maxage-expires-conflict",

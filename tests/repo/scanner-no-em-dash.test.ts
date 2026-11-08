@@ -18,9 +18,9 @@ import ts from "typescript";
  * fixtures and fails on a returned em dash.
  *
  * DEBT is every file still carrying one, by exact count, so the list only
- * shrinks and a new string in a listed file still fails. When code.ts or
- * cookies.ts reaches zero, remove its detectors from
- * EM_DASH_PENDING_DETECTORS in the harness too.
+ * shrinks and a new string in a listed file still fails. When cookies.ts
+ * reaches zero, remove its detectors from EM_DASH_PENDING_DETECTORS in the
+ * harness too.
  */
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -43,7 +43,7 @@ const NO_PAREN_PLURAL = [
   "lib/scanner/checks/information-disclosure.ts",
   "lib/scanner/checks/vibe-code.ts",
 ];
-const PAREN_PLURAL = /[\w>]\((?:s|es)\)/;
+const PAREN_PLURAL = /[\w>}]\((?:s|es)\)/;
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
