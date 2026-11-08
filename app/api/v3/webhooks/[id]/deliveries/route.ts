@@ -16,7 +16,8 @@ import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
  * Read access follows the same rule as the webhook list: the owner, or any
  * co-member of the team the webhook is assigned to. http_status is null on
  * a network error or an SSRF block, in which case response_snippet carries
- * the error text; neither ever contains the request payload.
+ * the error text; neither ever contains the request payload. response_snippet
+ * is withheld from anyone who cannot edit the webhook.
  */
 const MAX_DELIVERIES = 50;
 
@@ -64,5 +65,12 @@ export async function GET(
     [id, MAX_DELIVERIES],
   );
 
-  return NextResponse.json({ deliveries: result.rows });
+  // A teammate who cannot edit the webhook gets its host and not its URL, and
+  // a receiver's error page can echo the path it was called on ("Cannot POST
+  // /hook-secret"), which on a generic receiver may be the whole credential.
+  const deliveries = access.canWrite
+    ? result.rows
+    : result.rows.map((row) => ({ ...row, response_snippet: null }));
+
+  return NextResponse.json({ deliveries });
 }

@@ -1765,7 +1765,7 @@ format=json       -> application/json            vulnradar-example.com.json`,
       "http_status is null on a network error or a blocked target; response_snippet then carries the error text instead of a body.",
       "Neither field ever contains the request payload, so the log is safe to read without exposing what was sent.",
       "Fixed at 50 rows with no paging. There is no older page: this is a recent-attempts view, not an audit trail.",
-      "Read access follows the list: the owner, or a co-member of the team the webhook is assigned to.",
+      "Read access follows the list: the owner, or a co-member of the team the webhook is assigned to. A teammate without write access gets response_snippet: null, because a receiver's error page can echo the path it was called on.",
     ],
     errors: [
       { code: 400, description: "Invalid webhook id" },
