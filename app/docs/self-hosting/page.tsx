@@ -442,9 +442,8 @@ COMPOSE_FILE=docker-compose.yml:docker-compose.managed-db.yml`}
             scripts verify the certificate and ignore any TLS setting in the
             URL, such as <InlineCode>sslmode</InlineCode>. A URL that sets{" "}
             <InlineCode>sslcert</InlineCode> or <InlineCode>sslkey</InlineCode>{" "}
-            is refused at startup. A source install's{" "}
-            <InlineCode>npm run db:*</InlineCode> commands read{" "}
-            <InlineCode>.env.local</InlineCode> and then{" "}
+            is refused at startup. On a source install the database commands
+            read <InlineCode>.env.local</InlineCode> and then{" "}
             <InlineCode>.env</InlineCode>, and a variable already set in the
             shell wins over both. Keep the <InlineCode>POSTGRES_*</InlineCode>{" "}
             lines from <InlineCode>.env.example</InlineCode>, since the base
