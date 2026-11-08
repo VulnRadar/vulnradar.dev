@@ -7,6 +7,7 @@
  * uses pool.connect() for a transaction, so the mock exposes both query()
  * and connect().
  */
+import { dataUrl, realPng } from "../../../../lib/uploads/_avatar-fixtures";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const mockQuery = vi.fn();
@@ -550,12 +551,10 @@ describe("PATCH /api/v3/teams", () => {
    * and clearing it removes the stored row rather than leaving an orphan.
    */
   describe("team picture", () => {
-    // A minimal but genuinely PNG-signed payload: validateAvatarDataUrl checks
-    // magic bytes, so base64 of arbitrary text would be rejected for the wrong
-    // reason and the test would pass without proving anything.
-    const PNG_DATA_URL = `data:image/png;base64,${Buffer.from([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3,
-    ]).toString("base64")}`;
+    // A whole PNG: validateAvatarDataUrl walks the chunks, so anything less
+    // would be rejected for the wrong reason and the test would pass without
+    // proving anything.
+    const PNG_DATA_URL = dataUrl("image/png", realPng(8, 8));
 
     it("rejects a body carrying neither a name nor a picture", async () => {
       const res = await PATCH(patchRequest({ teamId: 1 }));

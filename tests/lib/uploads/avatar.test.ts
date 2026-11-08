@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
+import { randomBytes } from "node:crypto";
 import { validateAvatarDataUrl } from "@/lib/uploads/avatar";
+import {
+  PNG_SIGNATURE,
+  dataUrl as imageDataUrl,
+  jpegDeclaring,
+  pngDeclaring,
+  realPng,
+} from "./_avatar-fixtures";
 
 /**
 tests for avatar upload validation.
@@ -113,7 +121,7 @@ describe("validateAvatarDataUrl", () => {
   });
 
   it("rejects oversized data URL", () => {
-    // 6 MiB of zeros — bigger than the 5 MiB cap.
+    // 6 MiB of zeros: over the cap whatever it is set to.
     const huge = Buffer.alloc(6 * 1024 * 1024, 0).toString("base64");
     const result = validateAvatarDataUrl(dataUrl("image/png", huge));
     expect(result.valid).toBe(false);
@@ -131,5 +139,143 @@ describe("validateAvatarDataUrl", () => {
     if (!result.valid) {
       expect(result.reason).toMatch(/PNG or JPEG/);
     }
+  });
+
+  /**
+   * The check used to stop at the first 3 to 8 bytes, so the origin would host
+   * any blob that started with a signature, labelled image/png. Each case below
+   * passed that check.
+   */
+  describe("the image structure behind the signature", () => {
+    it("rejects a PNG signature followed by random bytes", () => {
+      const result = validateAvatarDataUrl(
+        imageDataUrl(
+          "image/png",
+          Buffer.concat([PNG_SIGNATURE, randomBytes(1000)]),
+        ),
+      );
+      expect(result.valid).toBe(false);
+    });
+
+    it("rejects a JPEG signature followed by random bytes", () => {
+      const result = validateAvatarDataUrl(
+        imageDataUrl(
+          "image/jpeg",
+          Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), randomBytes(1000)]),
+        ),
+      );
+      expect(result.valid).toBe(false);
+    });
+
+    it("rejects a 20000x20000 PNG header", () => {
+      const result = validateAvatarDataUrl(
+        imageDataUrl("image/png", pngDeclaring(20000, 20000)),
+      );
+      expect(result.valid).toBe(false);
+      if (!result.valid) expect(result.reason).toMatch(/1024/);
+    });
+
+    it("rejects a zero-width PNG header", () => {
+      expect(
+        validateAvatarDataUrl(imageDataUrl("image/png", pngDeclaring(0, 16)))
+          .valid,
+      ).toBe(false);
+    });
+
+    it("accepts a real 256x256 PNG, which is what the crop dialog exports", () => {
+      const bytes = realPng(256, 256);
+      const result = validateAvatarDataUrl(imageDataUrl("image/png", bytes));
+      expect(result.valid).toBe(true);
+      if (result.valid) expect(result.bytes.equals(bytes)).toBe(true);
+    });
+
+    it("accepts exactly 1024x1024 and refuses one pixel more", () => {
+      expect(
+        validateAvatarDataUrl(
+          imageDataUrl("image/png", pngDeclaring(1024, 1024)),
+        ).valid,
+      ).toBe(true);
+      expect(
+        validateAvatarDataUrl(
+          imageDataUrl("image/png", pngDeclaring(1025, 1024)),
+        ).valid,
+      ).toBe(false);
+    });
+
+    it("rejects bytes after a PNG's IEND", () => {
+      const result = validateAvatarDataUrl(
+        imageDataUrl(
+          "image/png",
+          Buffer.concat([realPng(8, 8), Buffer.from("<script>")]),
+        ),
+      );
+      expect(result.valid).toBe(false);
+      if (!result.valid) expect(result.reason).toMatch(/after the end/);
+    });
+
+    it("rejects a PNG cut off before IEND", () => {
+      const whole = realPng(8, 8);
+      expect(
+        validateAvatarDataUrl(
+          imageDataUrl("image/png", whole.subarray(0, whole.length - 12)),
+        ).valid,
+      ).toBe(false);
+    });
+
+    it("rejects a PNG whose chunk length runs off the end of the file", () => {
+      const lying = Buffer.from(realPng(8, 8));
+      lying.writeUInt32BE(0x7fffffff, 8 + 25);
+      expect(
+        validateAvatarDataUrl(imageDataUrl("image/png", lying)).valid,
+      ).toBe(false);
+    });
+
+    it("accepts a baseline and a progressive JPEG within the limit", () => {
+      for (const marker of [0xc0, 0xc2]) {
+        expect(
+          validateAvatarDataUrl(
+            imageDataUrl("image/jpeg", jpegDeclaring(256, 256, marker)),
+          ).valid,
+        ).toBe(true);
+      }
+    });
+
+    it("rejects a JPEG frame over 1024x1024", () => {
+      const result = validateAvatarDataUrl(
+        imageDataUrl("image/jpeg", jpegDeclaring(20000, 300)),
+      );
+      expect(result.valid).toBe(false);
+      if (!result.valid) expect(result.reason).toMatch(/1024/);
+    });
+
+    it("rejects bytes after a JPEG's EOI", () => {
+      const result = validateAvatarDataUrl(
+        imageDataUrl(
+          "image/jpeg",
+          Buffer.concat([jpegDeclaring(16, 16), randomBytes(32)]),
+        ),
+      );
+      expect(result.valid).toBe(false);
+      if (!result.valid) expect(result.reason).toMatch(/after the end/);
+    });
+
+    it("rejects a JPEG with no frame header", () => {
+      expect(
+        validateAvatarDataUrl(
+          imageDataUrl("image/jpeg", Buffer.from([0xff, 0xd8, 0xff, 0xd9])),
+        ).valid,
+      ).toBe(false);
+    });
+  });
+
+  it("caps at what the crop dialog can produce, under the 1 MiB request cap", () => {
+    // A 256x256 RGBA PNG is at most about 263 KB whatever the pixels are. The
+    // old 5 MiB limit sat above the request cap, so its message was unreachable
+    // and a too-big avatar got the middleware's generic refusal instead.
+    const padded = Buffer.alloc(400 * 1024, 0);
+    PNG_SIGNATURE.copy(padded);
+    const result = validateAvatarDataUrl(imageDataUrl("image/png", padded));
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.reason).toMatch(/too large.*KiB/);
   });
 });

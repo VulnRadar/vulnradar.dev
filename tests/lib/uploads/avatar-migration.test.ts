@@ -1,3 +1,4 @@
+import { jpegDeclaring, realPng } from "./_avatar-fixtures";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 /**
@@ -65,10 +66,8 @@ vi.mock("@/lib/database/db", () => ({
 const { migrateBase64AvatarsToDatabase } =
   await import("@/lib/uploads/avatar-migration");
 
-const PNG_BYTES = Buffer.from([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3,
-]);
-const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 4, 5, 6]);
+const PNG_BYTES = realPng(8, 8);
+const JPEG_BYTES = jpegDeclaring(8, 8);
 const PNG_DATA_URL = `data:image/png;base64,${PNG_BYTES.toString("base64")}`;
 const JPEG_DATA_URL = `data:image/jpeg;base64,${JPEG_BYTES.toString("base64")}`;
 // Declares PNG but the decoded bytes are not a PNG (magic-byte mismatch).

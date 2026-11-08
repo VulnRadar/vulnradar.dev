@@ -1,3 +1,4 @@
+import { dataUrl, realPng } from "../../../../../lib/uploads/_avatar-fixtures";
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import {
@@ -557,10 +558,7 @@ describe("PATCH /api/v3/auth/update", () => {
   });
 
   describe("avatar", () => {
-    const pngMagic = Buffer.from([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-    ]);
-    const pngDataUrl = `data:image/png;base64,${Buffer.concat([pngMagic, Buffer.from("fake-rest-of-png")]).toString("base64")}`;
+    const pngDataUrl = dataUrl("image/png", realPng(8, 8));
 
     it("allows clearing the avatar with an empty string", async () => {
       logIn();
