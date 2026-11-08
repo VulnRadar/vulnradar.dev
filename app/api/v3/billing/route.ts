@@ -14,9 +14,9 @@ import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
 import { checkGithubReviewQuota } from "@/lib/billing/github-review-usage";
 import { checkBrowserbaseQuota } from "@/lib/billing/browserbase-usage";
-import { isStaffRole } from "@/lib/auth/permissions-client";
 import { planRank } from "@/lib/billing/plan-limits";
 import {
+  staffPlanFloor,
   staffPlanFloorCase,
   STAFF_PLAN_FLOOR_ROLES,
 } from "@/lib/billing/staff-plan";
@@ -227,12 +227,11 @@ export const GET = withErrorHandling(async () => {
           stripeErr.code === "resource_missing"
         ) {
           // billing: a staff account (lib/billing/staff-plan.ts) already
-          // holds a real, granted pro_supporter floor -- a dangling
-          // subscription reference clears back to that floor, not all the
-          // way to free, same as every other cancel/lapse path.
-          const fallbackPlan = isStaffRole(user.role)
-            ? "pro_supporter"
-            : "free";
+          // holds a real, granted floor -- pro_supporter, or elite_supporter
+          // for super_admin -- so a dangling subscription reference clears
+          // back to that floor, not all the way to free, same as every other
+          // cancel/lapse path.
+          const fallbackPlan = staffPlanFloor(user.role);
           const downgrade = {
             userId: session.userId,
             previousPlan: user.plan as string,

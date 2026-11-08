@@ -509,6 +509,39 @@ describe("GET /api/v3/billing", () => {
     expect(cleanupCall?.[1]).toEqual(["pro_supporter", 42]);
   });
 
+  it.each([
+    ["super_admin", "elite_supporter"],
+    ["admin", "pro_supporter"],
+    ["security_analyst", "pro_supporter"],
+    ["ops", "pro_supporter"],
+    ["user", "free"],
+  ])(
+    "clears a dangling subscription on a %s account back to %s",
+    async (role, floor) => {
+      const retrieve = vi.fn().mockRejectedValue({ code: "resource_missing" });
+      mockGetStripe.mockReturnValue({ subscriptions: { retrieve } });
+      setupPoolForGet({
+        user: {
+          plan: "elite_supporter",
+          subscription_status: "active",
+          stripe_customer_id: "cus_1",
+          stripe_subscription_id: "sub_gone",
+          role,
+        },
+        dailyPlanRow: { plan: "free", role, gifted_plan: null },
+      });
+
+      const res = await GET();
+      expect(res.status).toBe(200);
+      expect((await res.json()).plan).toBe(floor);
+
+      const cleanupCall = mockQuery.mock.calls.find((c) =>
+        String(c[0]).includes("stripe_subscription_id = NULL"),
+      );
+      expect(cleanupCall?.[1]).toEqual([floor, 42]);
+    },
+  );
+
   it("returns 500 when the database query fails unexpectedly", async () => {
     mockGetStripe.mockReturnValue({ subscriptions: { retrieve: vi.fn() } });
     mockQuery.mockImplementation(async (sql: string) => {

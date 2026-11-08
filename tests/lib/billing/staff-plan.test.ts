@@ -24,6 +24,8 @@ const {
   syncPlanForRoleChange,
   syncPreStaffPlanForManualPlanChange,
   reconcileStaffPlans,
+  staffPlanFloor,
+  STAFF_PLAN_FLOOR_ROLES,
 } = await import("@/lib/billing/staff-plan");
 
 beforeEach(() => {
@@ -408,4 +410,24 @@ describe("reconcileStaffPlans — self-heals a staff role set directly via SQL",
     expect(count).toBe(0);
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
+});
+
+describe("staffPlanFloor", () => {
+  it("gives every plain staff role the pro_supporter floor", () => {
+    expect(STAFF_PLAN_FLOOR_ROLES.length).toBeGreaterThan(0);
+    for (const role of STAFF_PLAN_FLOOR_ROLES) {
+      expect(staffPlanFloor(role)).toBe("pro_supporter");
+    }
+  });
+
+  it("gives super_admin the tier above the rest of staff", () => {
+    expect(staffPlanFloor("super_admin")).toBe("elite_supporter");
+  });
+
+  it.each([["user"], [null], [undefined], ["no_such_role"]])(
+    "gives %s no floor",
+    (role) => {
+      expect(staffPlanFloor(role)).toBe("free");
+    },
+  );
 });

@@ -95,6 +95,15 @@ export function staffPlanFloorCase(roleParam: string): string {
   );
 }
 
+/**
+ * The same answer as staffPlanFloorCase, for a caller that already holds the
+ * role and needs the plan name before it writes.
+ */
+export function staffPlanFloor(role: string | null | undefined): string {
+  if (role === "super_admin") return SUPER_ADMIN_GRANTED_PLAN;
+  return role && STAFF_PLAN_FLOOR_ROLES.includes(role) ? GRANTED_PLAN : "free";
+}
+
 export async function grantStaffPlan(
   userId: number,
   role: string | null | undefined,
