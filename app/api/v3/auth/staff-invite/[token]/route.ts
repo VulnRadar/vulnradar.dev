@@ -202,9 +202,17 @@ export const POST = withErrorHandling(
     const preProblem = inviteProblem(preInvite);
     if (preProblem) return inviteProblemResponse(preProblem, missingInvite);
 
+    // Both account reads compare as getUserByEmail does, on the same
+    // lowercased address, so they resolve the row the GET reported. `email = $1` missed an account
+    // stored in mixed case before addresses were lowercased: the GET told
+    // that invitee they had an account, the page sent no password, and this
+    // read then asked for one they had no field to give.
     const preUserRes = await pool.query<{ id: number }>(
-      "SELECT id FROM users WHERE email = $1",
-      [preInvite.email],
+      `SELECT id FROM users
+       WHERE LOWER(email) = LOWER($1)
+       ORDER BY (email = $1) DESC, id
+       LIMIT 1`,
+      [preInvite.email.toLowerCase().trim()],
     );
     let passwordHash: string | null = null;
     if (preUserRes.rows.length === 0) {
@@ -250,8 +258,12 @@ export const POST = withErrorHandling(
           role: string;
           email_verified_at: string | null;
         }>(
-          "SELECT id, role, email_verified_at FROM users WHERE email = $1 FOR UPDATE",
-          [invite.email],
+          `SELECT id, role, email_verified_at FROM users
+           WHERE LOWER(email) = LOWER($1)
+           ORDER BY (email = $1) DESC, id
+           LIMIT 1
+           FOR UPDATE`,
+          [invite.email.toLowerCase().trim()],
         );
         const existing = existingUserRes.rows[0];
 

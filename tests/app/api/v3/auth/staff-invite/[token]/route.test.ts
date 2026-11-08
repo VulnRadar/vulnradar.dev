@@ -59,10 +59,22 @@ const events: string[] = [];
 const poolCalls: { sql: string; params: unknown[] }[] = [];
 const clientCalls: { sql: string; params: unknown[] }[] = [];
 
-// getUserByEmail compares LOWER(email), the expression the unique index is
-// built on; the route's own unlocked and locked reads still write `email`.
+// Every account read compares LOWER(email), the expression the unique index
+// is built on: getUserByEmail against its lowercased parameter, the POST's
+// unlocked and locked reads against LOWER($1). The plain `email = $1` form is
+// still matched so a read that goes back to it reaches the legacy fake below
+// and fails there, rather than falling through to an empty answer.
 function usersByEmail(sql: string): boolean {
-  return /FROM users\s+WHERE (LOWER\(email\)|email) = \$1/.test(sql);
+  return /FROM users\s+WHERE (LOWER\(email\)|email) = (LOWER\(\$1\)|\$1)/.test(
+    sql,
+  );
+}
+
+// A legacy account stored before addresses were lowercased (Invitee@...):
+// only a read that compares LOWER(email) finds it.
+let legacyMixedCase = false;
+function missesLegacyRow(sql: string): boolean {
+  return legacyMixedCase && !/LOWER\(email\)/.test(sql);
 }
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
@@ -72,6 +84,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   }
   if (usersByEmail(sql)) {
     if (userLookupFails) throw new Error("connection terminated");
+    if (missesLegacyRow(sql)) return { rows: [] };
     return { rows: userRow ? [{ email: inviteRow?.email, ...userRow }] : [] };
   }
   if (sql.includes("INSERT INTO security_alerts")) events.push("alert");
@@ -88,6 +101,7 @@ const mockClientQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     return { rows: inviteRow ? [inviteRow] : [] };
   }
   if (usersByEmail(sql)) {
+    if (missesLegacyRow(sql)) return { rows: [] };
     const row = userRowInTx === undefined ? userRow : userRowInTx;
     return { rows: row ? [row] : [] };
   }
@@ -207,6 +221,7 @@ beforeEach(() => {
   userRow = null;
   userRowInTx = undefined;
   userLookupFails = false;
+  legacyMixedCase = false;
   events.length = 0;
   poolCalls.length = 0;
   clientCalls.length = 0;
@@ -444,6 +459,51 @@ describe("POST /api/v3/auth/staff-invite/[token] — verified binding (sec-auth-
     expect(update[0].params).toEqual(["admin", 55]);
     expect(callsMatching("SET accepted_at")).toHaveLength(1);
     expect(callsMatching("INSERT INTO security_alerts")).toHaveLength(0);
+  });
+});
+
+describe("POST /api/v3/auth/staff-invite/[token] — an account stored in mixed case", () => {
+  // The GET finds such an account through getUserByEmail and reports
+  // hasAccount, so the page sends no password. The POST's own reads compared
+  // `email = $1` and missed it, then asked for the password the invitee had
+  // no field to give. Against Postgres: tests/integration/email-case-lookup.
+  it("promotes it without a password, as the GET said it would", async () => {
+    legacyMixedCase = true;
+    inviteRow = invite({ role: "moderator" });
+    userRow = { id: 55, role: "user", email_verified_at: VERIFIED_AT };
+
+    const got = await GET(getRequest(), ctx());
+    expect((await got.json()).hasAccount).toBe(true);
+
+    const res = await POST(postRequest({}), ctx());
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).createdAccount).toBe(false);
+    expect(callsMatching("UPDATE users SET role")[0].params).toEqual([
+      "moderator",
+      55,
+    ]);
+    expect(callsMatching("INSERT INTO users")).toHaveLength(0);
+    expect(events).not.toContain("hash");
+  });
+
+  it("reads it with getUserByEmail's comparison in both reads, locking the second", async () => {
+    inviteRow = invite({ email: " Invitee@Example.com " });
+    userRow = { id: 55, role: "user", email_verified_at: VERIFIED_AT };
+
+    await POST(postRequest({}), ctx());
+
+    const reads = allCalls().filter(
+      (c) => usersByEmail(c.sql) && !c.sql.includes("password_hash"),
+    );
+    expect(reads).toHaveLength(2);
+    for (const read of reads) {
+      expect(read.sql).toMatch(/WHERE LOWER\(email\) = LOWER\(\$1\)/);
+      expect(read.sql).toMatch(/ORDER BY \(email = \$1\) DESC, id\s+LIMIT 1/);
+      expect(read.params).toEqual(["invitee@example.com"]);
+    }
+    expect(reads[0].sql).not.toContain("FOR UPDATE");
+    expect(reads[1].sql).toMatch(/LIMIT 1\s+FOR UPDATE/);
   });
 });
 
