@@ -5,9 +5,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { LoginForm, Login2FAForm } from "@/components/auth";
 import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
 import { AuthHeading, AuthSteps } from "@/components/auth/auth-shell";
+import { loginErrorCopy } from "@/components/auth/auth-error-copy";
+import { withRedirect } from "@/components/auth/redirect-target";
 import { Skeleton } from "@/components/ui/skeleton";
 import { safeRedirect } from "@/lib/auth/safe-redirect";
 import { APP_NAME, ROUTES } from "@/lib/config/client-constants";
+
+const TWO_FACTOR_HEADING_ID = "login-2fa-heading";
 
 export default function LoginPage() {
   return (
@@ -52,73 +56,9 @@ function LoginPageContent() {
     searchParams.get("redirect"),
     ROUTES.DASHBOARD,
   );
-  const authError = searchParams.get("error");
-  const authErrorMessage = searchParams.get("message");
   const discord2FA = searchParams.get("discord_2fa");
   const oauth2FA = searchParams.get("oauth_2fa");
   const thirdPartyMethod = searchParams.get("method");
-
-  const getInitialError = () => {
-    if (authError === "discord_not_linked")
-      return "No account is linked to that Discord login. Create an account with your email first, then connect Discord from your profile.";
-    if (authError === "discord_denied")
-      return "Discord login was cancelled. Nothing was shared with us.";
-    if (authError === "discord_expired")
-      return "That Discord login took too long and expired. Start it again.";
-    if (authError === "invalid_token")
-      return "That link is missing its token, so there is nothing to verify. Sign in and request a new verification email.";
-    if (authError === "discord_not_configured")
-      return "Discord sign-in is not set up on this instance yet.";
-    if (
-      authError === "discord_invalid_state" ||
-      authError === "discord_invalid"
-    )
-      return "That Discord login could not be verified. Start it again from this page.";
-    if (
-      authError === "discord_token_failed" ||
-      authError === "discord_failed" ||
-      authError === "discord_user_failed"
-    )
-      return "Discord rejected the connection. If you run this instance, check that DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, and the OAuth2 redirect URL match the Discord developer portal.";
-    // Google/GitHub/Discord sign-up-or-sign-in (app/api/v3/auth/oauth/),
-    // separate from the discord_* codes above, which belong to the
-    // existing account-linking flow.
-    if (authError === "oauth_email_in_use")
-      return (
-        (authErrorMessage && decodeURIComponent(authErrorMessage)) ||
-        "An account with this email already exists. Sign in with your password instead."
-      );
-    if (authError === "oauth_no_account")
-      return (
-        (authErrorMessage && decodeURIComponent(authErrorMessage)) ||
-        "No account uses that sign-in yet. Sign up first."
-      );
-    if (authError === "oauth_denied")
-      return "That sign-in was cancelled. Nothing was shared with us.";
-    if (authError === "oauth_expired" || authError === "oauth_invalid_state")
-      return "That sign-in took too long and expired. Start it again.";
-    if (authError === "oauth_email_unverified")
-      return "That provider account has no verified email, so we cannot use it to sign in.";
-    if (authError === "oauth_account_disabled")
-      return "This account has been suspended. Please contact support.";
-    if (authError === "oauth_not_configured")
-      return "That sign-in option is not set up on this instance yet.";
-    if (
-      authError === "oauth_token_failed" ||
-      authError === "oauth_user_failed" ||
-      authError === "oauth_failed" ||
-      authError === "oauth_invalid"
-    )
-      return "That sign-in did not go through. Try again.";
-    if (authError === "session_expired")
-      return "Your session expired. Sign in again to continue.";
-    // Catch-all: the OAuth callbacks emit codes this mapper does not know
-    // (discord_invalid, discord_user_failed, and anything added later). Without
-    // this, an unmapped code rendered an empty string and the user got a normal
-    // looking login form with no hint that their sign-in had failed.
-    if (authError) return "Sign-in failed. Try again, or use another method.";
-    return "";
-  };
 
   const isDiscord2FA = discord2FA === "pending";
   const isOAuth2FA = oauth2FA === "pending";
@@ -158,7 +98,7 @@ function LoginPageContent() {
     // string, so clearing the state is not enough: the params have to go too
     // or `needs2FA` above resolves back to true on the next render.
     if (isThirdPartyPending2FA) {
-      router.push("/login");
+      router.push(withRedirect(ROUTES.LOGIN, redirectTo));
     }
   }
 
@@ -179,7 +119,11 @@ function LoginPageContent() {
       {needs2FA ? (
         <>
           <AuthSteps current={2} total={2} />
-          <AuthHeading title={title} description={description} focusOnMount />
+          <AuthHeading
+            id={TWO_FACTOR_HEADING_ID}
+            title={title}
+            description={description}
+          />
           <Login2FAForm
             redirectTo={redirectTo}
             userId={pendingUserId}
@@ -187,6 +131,7 @@ function LoginPageContent() {
             _maskedEmail={maskedEmail}
             isDiscordAuth={isThirdPartyPending2FA}
             onCancel={handleCancel2FA}
+            headingId={TWO_FACTOR_HEADING_ID}
           />
         </>
       ) : (
@@ -194,7 +139,10 @@ function LoginPageContent() {
           <AuthHeading title={title} description={description} />
           <LoginForm
             redirectTo={redirectTo}
-            initialError={getInitialError()}
+            initialError={loginErrorCopy(
+              searchParams.get("error"),
+              searchParams.get("provider"),
+            )}
             onRequires2FA={handleRequires2FA}
           />
         </>

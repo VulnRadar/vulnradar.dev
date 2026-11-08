@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Eye, EyeOff, Check, X } from "lucide-react";
+import { ArrowLeft, Loader2, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   API,
   PASSWORD_MIN_LENGTH,
+  ROUTES,
   TURNSTILE_ENABLED,
 } from "@/lib/config/client-constants";
 import {
@@ -17,7 +18,6 @@ import {
   passwordRequirementsMet,
 } from "@/lib/auth/password-strength";
 import { cn } from "@/lib/ui/utils";
-import { transitions } from "@/lib/ui/animations";
 import {
   AuthAlert,
   authFieldClass,
@@ -26,14 +26,25 @@ import {
   PasswordStrengthMeter,
 } from "@/components/auth/auth-shell";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
+import { PasswordToggle } from "@/components/auth/password-toggle";
+import {
+  rememberPostVerifyRedirect,
+  withRedirect,
+} from "@/components/auth/redirect-target";
 import { TurnstileWidget } from "@/components/shared/turnstile-widget";
 
 interface SignupFormProps {
   onSuccess: (email: string) => void;
   initialError?: string;
+  /** A checked path from ?redirect=, for after the email is verified. */
+  redirectTo?: string;
 }
 
-export function SignupForm({ onSuccess, initialError }: SignupFormProps) {
+export function SignupForm({
+  onSuccess,
+  initialError,
+  redirectTo,
+}: SignupFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -103,6 +114,7 @@ export function SignupForm({ onSuccess, initialError }: SignupFormProps) {
         return;
       }
 
+      rememberPostVerifyRedirect(redirectTo);
       onSuccess(email);
     } catch {
       setError(
@@ -174,29 +186,10 @@ export function SignupForm({ onSuccess, initialError }: SignupFormProps) {
             aria-describedby={password ? "password-strength" : undefined}
             className={cn(authFieldClass, "pr-11")}
           />
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className={cn(
-              // after: overlay, the same technique inline-auth-form.tsx uses.
-              // The visible control stays 36px so it still fits inside the
-              // field, while the hit area grows past the 44px minimum. Raising
-              // h-9 to h-11 instead would have burst the input.
-              "absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9 rounded-md",
-              "after:absolute after:-inset-1.5 sm:after:hidden",
-              "flex items-center justify-center text-muted-foreground hover:text-foreground",
-              transitions.colors,
-              authFocusRing,
-            )}
-            aria-label={showPassword ? "Hide password" : "Show password"}
-            aria-pressed={showPassword}
-          >
-            {showPassword ? (
-              <EyeOff className="h-4 w-4" aria-hidden="true" />
-            ) : (
-              <Eye className="h-4 w-4" aria-hidden="true" />
-            )}
-          </button>
+          <PasswordToggle
+            shown={showPassword}
+            onToggle={() => setShowPassword(!showPassword)}
+          />
         </div>
         {password && (
           <PasswordStrengthMeter
@@ -273,12 +266,16 @@ export function SignupForm({ onSuccess, initialError }: SignupFormProps) {
         )}
       </Button>
 
-      <OAuthButtons actionLabel="Sign up" intent="signup" />
+      <OAuthButtons
+        actionLabel="Sign up"
+        intent="signup"
+        redirectTo={redirectTo}
+      />
 
       <p className="text-sm text-muted-foreground">
         Already have an account?{" "}
         <Link
-          href="/login"
+          href={withRedirect(ROUTES.LOGIN, redirectTo)}
           className={cn(
             "text-primary font-medium rounded hover:underline underline-offset-4",
             authFocusRing,

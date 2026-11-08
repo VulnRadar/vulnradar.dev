@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Eye, EyeOff, Loader2, Mail } from "lucide-react";
-import { API } from "@/lib/config/client-constants";
+import { ArrowLeft, Loader2, Mail } from "lucide-react";
+import { API, ROUTES } from "@/lib/config/client-constants";
+import { safeRedirect } from "@/lib/auth/safe-redirect";
 import { cn } from "@/lib/ui/utils";
 import { transitions } from "@/lib/ui/animations";
 import {
@@ -17,6 +18,8 @@ import {
   authPillClass,
 } from "@/components/auth/auth-shell";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
+import { PasswordToggle } from "@/components/auth/password-toggle";
+import { withRedirect } from "@/components/auth/redirect-target";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { useStaffOidcConfigured } from "@/lib/hooks/use-staff-oidc";
 
@@ -113,7 +116,9 @@ export function LoginForm({
       }
 
       refreshAuthCache();
-      router.push(redirectTo);
+      // Checked here as well as on the page: this is the line that navigates,
+      // straight after a password was accepted.
+      router.push(safeRedirect(redirectTo, ROUTES.DASHBOARD));
       router.refresh();
     } catch {
       setError(
@@ -176,29 +181,10 @@ export function LoginForm({
             required
             className={cn(authFieldClass, "pr-11")}
           />
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className={cn(
-              // after: overlay, the same technique inline-auth-form.tsx uses.
-              // The visible control stays 36px so it still fits inside the
-              // field, while the hit area grows past the 44px minimum. Raising
-              // h-9 to h-11 instead would have burst the input.
-              "absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9 rounded-md",
-              "after:absolute after:-inset-1.5 sm:after:hidden",
-              "flex items-center justify-center text-muted-foreground hover:text-foreground",
-              transitions.colors,
-              authFocusRing,
-            )}
-            aria-label={showPassword ? "Hide password" : "Show password"}
-            aria-pressed={showPassword}
-          >
-            {showPassword ? (
-              <EyeOff className="h-4 w-4" aria-hidden="true" />
-            ) : (
-              <Eye className="h-4 w-4" aria-hidden="true" />
-            )}
-          </button>
+          <PasswordToggle
+            shown={showPassword}
+            onToggle={() => setShowPassword(!showPassword)}
+          />
         </div>
       </div>
 
@@ -261,7 +247,11 @@ export function LoginForm({
         )}
       </Button>
 
-      <OAuthButtons actionLabel="Sign in" intent="login" />
+      <OAuthButtons
+        actionLabel="Sign in"
+        intent="login"
+        redirectTo={redirectTo}
+      />
 
       {staffOidcConfigured && (
         <p className="text-center">
@@ -280,7 +270,7 @@ export function LoginForm({
       <p className="text-sm text-muted-foreground mt-2">
         No account yet?{" "}
         <Link
-          href="/signup"
+          href={withRedirect(ROUTES.SIGNUP, redirectTo)}
           className={cn(
             "text-primary font-medium rounded hover:underline underline-offset-4",
             authFocusRing,

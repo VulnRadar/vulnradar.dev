@@ -9,8 +9,10 @@ import { ArrowLeft, KeyRound, Loader2, Mail } from "lucide-react";
 import {
   API,
   DEVICE_TRUST_DURATION,
+  ROUTES,
   TOTP_CODE_VALIDITY,
 } from "@/lib/config/client-constants";
+import { safeRedirect } from "@/lib/auth/safe-redirect";
 import { cn } from "@/lib/ui/utils";
 import {
   AuthAlert,
@@ -36,6 +38,11 @@ interface Login2FAFormProps {
   // app/api/v3/auth/2fa/verify/route.ts).
   isDiscordAuth?: boolean;
   onCancel?: () => void;
+  /**
+   * The id on the step's heading. The code input autofocuses, so a screen
+   * reader lands on it and would otherwise never hear what this step is.
+   */
+  headingId?: string;
 }
 
 export function Login2FAForm({
@@ -45,6 +52,7 @@ export function Login2FAForm({
   _maskedEmail,
   isDiscordAuth,
   onCancel,
+  headingId,
 }: Login2FAFormProps) {
   const router = useRouter();
   const [totpCode, setTotpCode] = useState("");
@@ -91,7 +99,9 @@ export function Login2FAForm({
       }
 
       refreshAuthCache();
-      router.push(redirectTo);
+      // Checked here as well as on the page: this is the line that navigates,
+      // straight after the second factor was accepted.
+      router.push(safeRedirect(redirectTo, ROUTES.DASHBOARD));
       router.refresh();
     } catch {
       setError(
@@ -178,6 +188,7 @@ export function Login2FAForm({
             required
             autoFocus
             autoComplete="one-time-code"
+            aria-describedby={headingId}
             className={cn(
               authFieldClass,
               "text-center text-lg tracking-[0.3em] font-mono",

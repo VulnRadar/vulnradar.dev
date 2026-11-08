@@ -6,6 +6,8 @@ import { SignupForm } from "@/components/auth/signup-form";
 import { SignupSuccess } from "@/components/auth/signup-success";
 import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
 import { AuthHeading, AuthSteps } from "@/components/auth/auth-shell";
+import { signupErrorCopy } from "@/components/auth/auth-error-copy";
+import { safeRedirect } from "@/lib/auth/safe-redirect";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function SignupPage() {
@@ -42,23 +44,8 @@ function SignupFormSkeleton() {
 
 function SignupPageContent() {
   const searchParams = useSearchParams();
-  const authError = searchParams.get("error");
-  const authErrorMessage = searchParams.get("message");
   const [successEmail, setSuccessEmail] = useState<string | null>(null);
-
-  const getInitialError = () => {
-    // Google/GitHub/Discord sign-up-or-sign-in
-    // (app/api/v3/auth/oauth/[provider]/callback/route.ts) refuses to
-    // silently sign someone into an account that already exists just
-    // because they clicked "Sign up with X" -- this mirrors the login
-    // page's oauth_no_account message for the opposite case.
-    if (authError === "oauth_already_exists")
-      return (
-        (authErrorMessage && decodeURIComponent(authErrorMessage)) ||
-        "You already have an account connected to that sign-in. Sign in instead."
-      );
-    return "";
-  };
+  const redirectTo = safeRedirect(searchParams.get("redirect"), "");
 
   return (
     <AuthSplitLayout>
@@ -71,11 +58,15 @@ function SignupPageContent() {
           />
           <SignupForm
             onSuccess={(email) => setSuccessEmail(email)}
-            initialError={getInitialError()}
+            initialError={signupErrorCopy(
+              searchParams.get("error"),
+              searchParams.get("provider"),
+            )}
+            redirectTo={redirectTo}
           />
         </>
       ) : (
-        <SignupSuccess email={successEmail} />
+        <SignupSuccess email={successEmail} redirectTo={redirectTo} />
       )}
     </AuthSplitLayout>
   );

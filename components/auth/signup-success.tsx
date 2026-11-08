@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   API,
   EMAIL_VERIFICATION_TOKEN_LIFETIME,
+  ROUTES,
 } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import {
@@ -14,14 +15,16 @@ import {
   AuthOutcome,
   authFocusRing,
 } from "@/components/auth/auth-shell";
+import { withRedirect } from "@/components/auth/redirect-target";
 
 const VERIFY_HOURS = Math.round(EMAIL_VERIFICATION_TOKEN_LIFETIME / 3600);
 
 interface SignupSuccessProps {
   email: string;
+  redirectTo?: string;
 }
 
-export function SignupSuccess({ email }: SignupSuccessProps) {
+export function SignupSuccess({ email, redirectTo }: SignupSuccessProps) {
   const [resending, setResending] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resendMessage, setResendMessage] = useState("");
@@ -100,7 +103,9 @@ export function SignupSuccess({ email }: SignupSuccessProps) {
             size="lg"
             className={cn("h-11 w-full", authFocusRing)}
           >
-            <Link href="/login">Back to sign in</Link>
+            <Link href={withRedirect(ROUTES.LOGIN, redirectTo)}>
+              Back to sign in
+            </Link>
           </Button>
         </>
       }

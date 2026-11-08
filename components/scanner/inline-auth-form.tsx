@@ -8,9 +8,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { ChevronDown, Eye, EyeOff, KeyRound, Plus, X } from "lucide-react";
+import { ChevronDown, KeyRound, Plus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordToggle } from "@/components/auth/password-toggle";
 import { cn } from "@/lib/ui/utils";
 import { SCAN_AUTH } from "@/lib/config/client-constants";
 import type { EphemeralAuthInput } from "@/lib/scanner/auth/types";
@@ -70,37 +71,22 @@ function emptyCookieRow(id: number): CookieRow {
   return { id, name: "", value: "", show: false };
 }
 
-function RevealButton({
-  shown,
-  onToggle,
-  disabled,
-  label,
-}: {
+// The after: overlay widens the tap area to 44px without growing the 28px icon
+// box, which has to stay inside an h-9 field.
+const REVEAL_SIZE = "right-1 h-7 w-7 after:absolute after:-inset-2";
+
+function RevealButton(props: {
   shown: boolean;
   onToggle: () => void;
   disabled?: boolean;
   label: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      disabled={disabled}
-      className={cn(
-        // The after: overlay widens the tap area to 44px without growing the
-        // 28px icon box, which has to stay inside an h-9 field.
-        "absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors after:absolute after:-inset-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
-        FOCUS_RING,
-      )}
-      aria-label={shown ? `Hide ${label}` : `Show ${label}`}
-      aria-pressed={shown}
-    >
-      {shown ? (
-        <EyeOff className="h-3.5 w-3.5" aria-hidden />
-      ) : (
-        <Eye className="h-3.5 w-3.5" aria-hidden />
-      )}
-    </button>
+    <PasswordToggle
+      {...props}
+      sizeClassName={REVEAL_SIZE}
+      iconClassName="h-3.5 w-3.5"
+    />
   );
 }
 

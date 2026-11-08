@@ -80,22 +80,16 @@ export const AUTH_HEADING_CLASS =
 export function AuthHeading({
   title,
   description,
-  focusOnMount = false,
+  id,
 }: {
   title: string;
   description?: React.ReactNode;
-  focusOnMount?: boolean;
+  /** For an input that names this heading with aria-describedby. */
+  id?: string;
 }) {
-  const ref = useFocusOnMount<HTMLHeadingElement>(undefined, {
-    enabled: focusOnMount,
-  });
   return (
     <div className="mb-6">
-      <h1
-        ref={ref}
-        tabIndex={-1}
-        className={cn(AUTH_HEADING_CLASS, "outline-hidden", authFocusRing)}
-      >
+      <h1 id={id} className={AUTH_HEADING_CLASS}>
         {title}
       </h1>
       {description ? (

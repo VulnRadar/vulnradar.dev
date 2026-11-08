@@ -25,8 +25,17 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/components/auth", () => ({
-  LoginForm: ({ redirectTo }: { redirectTo: string }) =>
-    React.createElement("output", { "data-redirect": redirectTo }),
+  LoginForm: ({
+    redirectTo,
+    initialError,
+  }: {
+    redirectTo: string;
+    initialError?: string;
+  }) =>
+    React.createElement("output", {
+      "data-redirect": redirectTo,
+      "data-error": initialError,
+    }),
   Login2FAForm: ({ redirectTo }: { redirectTo: string }) =>
     React.createElement("output", { "data-redirect": redirectTo }),
 }));
@@ -90,5 +99,78 @@ describe("/login ?redirect=", () => {
 
   it("falls back to the dashboard with no redirect", () => {
     expect(redirectFor("")).toBe("/dashboard");
+  });
+});
+
+/**
+ * The OAuth callback used to carry its sentence in `?message=` and the pages
+ * printed it, so anyone could mail out a link to the real login page with
+ * "call this number to restore your account" in the official error alert. A
+ * lone `%` was worse: URLSearchParams had already decoded the value once, so
+ * the second decodeURIComponent threw and took the page down.
+ */
+describe("/login ?error= copy", () => {
+  function errorFor(query: string): string {
+    search = new URLSearchParams(query);
+    const html = renderToStaticMarkup(React.createElement(LoginPage));
+    const match = html.match(/data-error="([^"]*)"/);
+    return match ? match[1] : "";
+  }
+
+  const IN_USE =
+    "An account with this email already exists, and this sign-in cannot open it. Use your password or the provider you signed up with, or contact support if neither works.";
+
+  it("shows the fixed sentence, never the link's own text", () => {
+    const shown = errorFor("error=oauth_email_in_use&message=Call%20555");
+    expect(shown).toBe(IN_USE);
+    expect(shown).not.toContain("555");
+  });
+
+  it.each(["oauth_no_account", "oauth_email_in_use", "logins_paused"])(
+    "ignores ?message= on %s",
+    (code) => {
+      expect(errorFor(`error=${code}&message=Call%20555`)).not.toContain("555");
+    },
+  );
+
+  it("explains a login pause with its own sentence", () => {
+    expect(errorFor("error=logins_paused&message=Call%20555")).toBe(
+      "Sign-in is paused on this instance right now. Try again later.",
+    );
+  });
+
+  it("survives a message that is not valid percent-encoding", () => {
+    expect(errorFor("error=oauth_email_in_use&message=100%25")).toBe(IN_USE);
+    expect(errorFor("error=oauth_no_account&message=100%25")).toBe(
+      "No account uses that sign-in yet. Sign up first.",
+    );
+  });
+
+  it("names the provider only from the fixed list", () => {
+    expect(errorFor("error=oauth_no_account&provider=github")).toBe(
+      "No VulnRadar account uses this GitHub account yet. Sign up with GitHub first.",
+    );
+    expect(errorFor("error=oauth_email_in_use&provider=discord")).toBe(
+      "An account with this email already exists. Sign in with Discord instead.",
+    );
+    expect(errorFor("error=oauth_no_account&provider=Call%20555")).toBe(
+      "No account uses that sign-in yet. Sign up first.",
+    );
+    expect(errorFor("error=oauth_no_account&provider=__proto__")).toBe(
+      "No account uses that sign-in yet. Sign up first.",
+    );
+  });
+
+  it.each(["constructor", "__proto__", "toString", "made_up"])(
+    "gives the catch-all for the unknown code %s",
+    (code) => {
+      expect(errorFor(`error=${code}`)).toBe(
+        "Sign-in failed. Try again, or use another method.",
+      );
+    },
+  );
+
+  it("shows nothing without a code", () => {
+    expect(errorFor("message=Call%20555")).toBe("");
   });
 });

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Check, Eye, EyeOff, Loader2, X } from "lucide-react";
+import { ArrowLeft, Check, Loader2, X } from "lucide-react";
 import { API, PASSWORD_MIN_LENGTH } from "@/lib/config/client-constants";
 import {
   analyzePassword,
@@ -21,6 +21,7 @@ import {
   authPillClass,
   PasswordStrengthMeter,
 } from "@/components/auth/auth-shell";
+import { PasswordToggle } from "@/components/auth/password-toggle";
 
 // This page only has the reset token, not the target account's email or
 // name, so those two personal-info checks can't run client-side. The
@@ -107,29 +108,10 @@ export function ResetPasswordForm({
             aria-describedby={password ? "password-strength" : undefined}
             className={cn(authFieldClass, "pr-11")}
           />
-          <button
-            type="button"
-            onClick={() => setShowPass(!showPass)}
-            className={cn(
-              // after: overlay, the same technique inline-auth-form.tsx uses.
-              // The visible control stays 36px so it still fits inside the
-              // field, while the hit area grows past the 44px minimum. Raising
-              // h-9 to h-11 instead would have burst the input.
-              "absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9 rounded-md",
-              "after:absolute after:-inset-1.5 sm:after:hidden",
-              "flex items-center justify-center text-muted-foreground hover:text-foreground",
-              transitions.colors,
-              authFocusRing,
-            )}
-            aria-label={showPass ? "Hide password" : "Show password"}
-            aria-pressed={showPass}
-          >
-            {showPass ? (
-              <EyeOff className="h-4 w-4" aria-hidden="true" />
-            ) : (
-              <Eye className="h-4 w-4" aria-hidden="true" />
-            )}
-          </button>
+          <PasswordToggle
+            shown={showPass}
+            onToggle={() => setShowPass(!showPass)}
+          />
         </div>
         {password && (
           <PasswordStrengthMeter

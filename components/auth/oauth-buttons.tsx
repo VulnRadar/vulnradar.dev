@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { API } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { authFocusRing } from "@/components/auth/auth-shell";
+import { withRedirect } from "@/components/auth/redirect-target";
 import { useOAuthProviders } from "@/lib/hooks/use-oauth-providers";
 
 function DiscordIcon() {
@@ -34,6 +35,8 @@ interface OAuthButtonsProps {
    * "signup" is the only path allowed to create one on no match.
    */
   intent: "login" | "signup";
+  /** Where to land afterwards. Sent to the start route as `&redirect=`. */
+  redirectTo?: string;
 }
 
 type ConfiguredProvider = {
@@ -79,7 +82,11 @@ function ProviderButton({
  * three are set up, so a self-hosted instance with no OAuth apps
  * registered sees exactly the password form and nothing else.
  */
-export function OAuthButtons({ actionLabel, intent }: OAuthButtonsProps) {
+export function OAuthButtons({
+  actionLabel,
+  intent,
+  redirectTo,
+}: OAuthButtonsProps) {
   const providers = useOAuthProviders();
 
   const configured: ConfiguredProvider[] = [];
@@ -101,7 +108,10 @@ export function OAuthButtons({ actionLabel, intent }: OAuthButtonsProps) {
   if (configured.length === 0) return null;
 
   const startUrl = (provider: string) =>
-    `${API.AUTH.OAUTH_START(provider)}?intent=${intent}`;
+    withRedirect(
+      `${API.AUTH.OAUTH_START(provider)}?intent=${intent}`,
+      redirectTo,
+    );
   const start = (id: string) => {
     window.location.href = startUrl(id);
   };
