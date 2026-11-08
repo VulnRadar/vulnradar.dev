@@ -9,9 +9,9 @@
 //
 // Every count here is derived from the same list the pages render, so a
 // category page's "N checks" number always equals the number of links on it.
-// (The 43 PageCheck-architecture checks in lib/scanner/checks/page-checks/**
-// live outside these JSON files and are intentionally not surfaced as their
-// own pages -- there is no dead link to a check that has no page.)
+// (The PageCheck-architecture checks in lib/scanner/checks/page-checks/**,
+// EXACT_PAGE_CHECK_COUNT of them, live outside these JSON files and have no
+// page of their own yet, so nothing here can link to a check without one.)
 
 import type { Category, Severity } from "@/lib/scanner/types";
 import { CATEGORY_META } from "@/lib/scanner/category-meta";
@@ -153,6 +153,28 @@ export function getChecksInCategory(category: Category): SeoCheck[] {
   return BY_CATEGORY.get(category) ?? [];
 }
 
+/**
+ * The checks a page links as its siblings: the nearest ones in file order, so
+ * every check is linked from the checks around it. Slicing the top of the
+ * category instead gave the same eight pages every sibling link and left 652
+ * of 804 with none, on a site whose crawl budget is the constraint.
+ *
+ * Same-CWE entries only reorder the window. Pulling them in from elsewhere in
+ * the category would make the popular CWEs the new top of the file.
+ */
+export function getRelatedChecks(check: SeoCheck, limit = 8): SeoCheck[] {
+  const peers = getChecksInCategory(check.category);
+  const index = peers.findIndex((c) => c.id === check.id);
+  const nearest = peers
+    .map((peer, i) => ({ peer, distance: Math.abs(i - index) }))
+    .filter(({ peer }) => peer.id !== check.id)
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, limit)
+    .map(({ peer }) => peer);
+  const sameCwe = (c: SeoCheck) => !!check.cwe && c.cwe === check.cwe;
+  return [...nearest.filter(sameCwe), ...nearest.filter((c) => !sameCwe(c))];
+}
+
 /** `{ category -> number of documented checks }`, matching what pages list. */
 export function getSeoCategoryCounts(): Record<Category, number> {
   const out = {} as Record<Category, number>;
@@ -198,26 +220,26 @@ export const CATEGORY_SEO: Record<Category, CategorySeo> = {
       "Check a site's HTTP response headers: Content-Security-Policy, HSTS, X-Frame-Options, referrer and permissions policy, and the dozens of value-level mistakes that weaken each one.",
   },
   ssl: {
-    heading: "SSL Certificate Scanner",
+    heading: "HTTPS and Mixed Content Scanner",
     keywords: [
-      "ssl scanner",
-      "ssl certificate checker",
-      "tls certificate check",
       "https checker",
+      "mixed content scanner",
+      "http to https check",
+      "ssl scanner",
     ],
     intro:
-      "Inspect the certificate chain, signature algorithm, issuer, and expiry, and catch the HTTPS mistakes that break the padlock: mixed content, Secure cookies set over HTTP, and non-standard ports.",
+      "Find the places an HTTPS site still falls back to cleartext: pages served over HTTP, mixed content in src, srcset and poster attributes, cleartext preloads and canonical links, HSTS set where browsers ignore it, and Secure cookies set over HTTP.",
   },
   tls: {
-    heading: "TLS Scanner",
+    heading: "TLS and Certificate Scanner",
     keywords: [
       "tls scanner",
-      "ssl tls scanner",
+      "ssl certificate checker",
+      "tls certificate check",
       "cipher suite checker",
-      "tls version check",
     ],
     intro:
-      "Read the negotiated TLS protocol version, cipher suite, ALPN, and OCSP stapling, and flag downgrade-prone and deprecated configurations.",
+      "Read the certificate and the handshake: expiry, chain, hostname match, key size, signature algorithm, SANs and Certificate Transparency, plus the negotiated TLS version, cipher suite, forward secrecy, and OCSP stapling.",
   },
   content: {
     heading: "Web Content Vulnerability Scanner",
@@ -267,12 +289,12 @@ export const CATEGORY_SEO: Record<Category, CategorySeo> = {
     heading: "DNS Security Checker",
     keywords: [
       "dns security checker",
-      "spf dmarc checker",
       "dnssec check",
+      "caa record checker",
       "dangling cname scanner",
     ],
     intro:
-      "Validate the DNS records that decide who can send mail as you and who can take over a subdomain: SPF, DMARC, DKIM, DNSSEC, CAA, and dangling CNAMEs.",
+      "Validate the DNS records that decide who can issue certificates for your domain and who can take over a subdomain: CAA, DNSSEC, dangling CNAMEs, and open zone transfers, plus the NS, SOA and MX setup behind them.",
   },
   email: {
     heading: "Email Security Scanner",

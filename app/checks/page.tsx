@@ -31,7 +31,7 @@ const TITLE = "Every Web Vulnerability Check, With Fixes";
 
 // Two numbers, both true, one click apart in the search results: the landing
 // page's meta description says TOTAL_CHECKS_LABEL ("795+", counting the
-// PageCheck-architecture detectors that deliberately have no standalone page)
+// PageCheck-architecture detectors that have no standalone page yet)
 // and this page counts only the ones with a public fix guide. Presented alone
 // the smaller number read as the larger one having been marketing. State both
 // so they reconcile instead of contradicting.
@@ -58,7 +58,7 @@ export const metadata: Metadata = pageMetadata({
 const FAQ = [
   {
     question: `How many checks does ${APP_NAME} run?`,
-    answer: `${APP_NAME} runs ${TOTAL_CHECKS_LABEL} checks across ${EXACT_CHECK_CATEGORY_COUNT} categories, from security headers and TLS to secret detection and DNS. Each documented one has its own page with the risk it catches and the fix. The rest run inside multi-page analysis, where a finding depends on several pages at once, so there is no single-check page to link to.`,
+    answer: `${APP_NAME} runs ${TOTAL_CHECKS_LABEL} checks across ${EXACT_CHECK_CATEGORY_COUNT} categories, from security headers and TLS to secret detection and DNS. Each documented one has its own page with the risk it catches and the fix. The rest are newer detectors that report under their own ids and do not have a page yet.`,
   },
   {
     question: "Do I have to run every check?",
@@ -96,8 +96,7 @@ export default async function ChecksIndexPage() {
             {EXACT_CHECK_CATEGORY_COUNT} categories. Not a marketing number:
             most have a real page here that tells you what the check catches,
             why it matters, and how to fix it with code you can paste. The rest
-            only fire across several pages at once, so there is no single check
-            to link to.
+            report under their own ids and do not have a page yet.
           </p>
           <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm border-t border-border/40 pt-4">
             <span className="text-muted-foreground">

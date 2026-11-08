@@ -17,6 +17,7 @@ import { getChecksInCategory } from "@/lib/seo/checks-content";
 import { APP_NAME } from "@/lib/config/constants";
 import { focus } from "@/lib/ui/animations";
 import { cn } from "@/lib/ui/utils";
+import { getFeaturedApiChecks } from "./featured-checks";
 
 const API_CHECKS = getChecksInCategory("api");
 
@@ -68,7 +69,7 @@ export default async function ApiScannerPage() {
     { name: "Tools", path: "/tools" },
     { name: "API Scanner", path: "/tools/api-scanner" },
   ];
-  const featured = API_CHECKS.slice(0, 8);
+  const featured = getFeaturedApiChecks();
 
   return (
     <SeoPageShell>
@@ -111,10 +112,11 @@ export default async function ApiScannerPage() {
             id="checks"
             className="text-lg sm:text-xl font-semibold tracking-tight mb-2"
           >
-            Some of the {API_CHECKS.length} API checks
+            The {featured.length} checks that matter most on an API
           </h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Each one is a real check with its own fix guide.{" "}
+            Picked across categories, because CORS and GraphQL findings are not
+            all filed under API. Each one has its own fix guide.{" "}
             <Link
               href="/checks/category/api"
               // Inline box: the padding grows the tappable area without

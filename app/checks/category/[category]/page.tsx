@@ -16,7 +16,6 @@ import {
   SEO_CATEGORIES,
   getChecksInCategory,
   getCategoryLabel,
-  getCategoryBlurb,
   getCategorySeo,
 } from "@/lib/seo/checks-content";
 import type { Category } from "@/lib/scanner/types";
@@ -77,7 +76,6 @@ export default async function CategoryPage({
   const nonce = (await headers()).get("x-nonce") ?? "";
   const seo = getCategorySeo(cat);
   const label = getCategoryLabel(cat);
-  const blurb = getCategoryBlurb(cat);
   const checks = getChecksInCategory(cat);
 
   const bySeverity = SEVERITY_ORDER.map((sev) => ({
@@ -94,7 +92,10 @@ export default async function CategoryPage({
   const faq = [
     {
       question: `What does the ${label} category check?`,
-      answer: `${seo.intro} ${blurb}`,
+      // Not the blurb as well. That describes what a scan limited to this
+      // category runs, which for ssl, tls and dns is not the same list as the
+      // pages here, so the answer contradicted itself.
+      answer: seo.intro,
     },
     {
       question: `How many ${label.toLowerCase()} checks are there?`,
@@ -211,10 +212,17 @@ export default async function CategoryPage({
         </p>
       </div>
 
-      <ScanCta
-        heading={`Run the ${label.toLowerCase()} checks on your site`}
-        body={`${APP_NAME} runs all ${checks.length} of these against a URL in seconds, with the evidence and fix for every finding. No agent to install, just paste a URL.`}
-      />
+      {cat === "active-probes" ? (
+        <ScanCta
+          heading="Run these against a domain you own"
+          body={`Active probing is opt-in and only runs against a domain you have verified. Verify yours on the Attack surface page, then pick which of these ${checks.length} probes to switch on in the scan form.`}
+        />
+      ) : (
+        <ScanCta
+          heading={`Run the ${label.toLowerCase()} checks on your site`}
+          body={`${APP_NAME} runs all ${checks.length} of these against a URL in seconds, with the evidence and fix for every finding. No agent to install, just paste a URL.`}
+        />
+      )}
     </SeoPageShell>
   );
 }
