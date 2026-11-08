@@ -289,9 +289,9 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Wrench] **[IMPROVED]** **Steadier Pages While They Load**
   Several pages, including assets, public scans and repositories, jumped or changed shape when their content finished loading, because the placeholder shown while loading did not match the real layout. They now match. The same scan verdict reads Clean, Caution or Exploitable on every page, including the badge page, which said Safe and Unsafe. Closing a support ticket now asks first, because a closed ticket cannot be reopened. Dates on team invites, domains and repositories use the same format as the rest of the app.
 - [ShieldCheck] **[CHANGED]** **Anything That Changes Your Data Asks First**
-  About thirty controls across the app and the staff panel did what they did the moment you clicked them. They now ask first, and say what will happen: making a scan public or listing it in the public directory, signing out one session, removing a trusted device, removing your profile picture, scanning a site again, stopping a scan in progress, changing a teammate's role, cancelling an invite, applying a status to every selected finding at once, and setting a finding back to Open, which is the one that also clears its note, assignee and due date. On the staff side the same now applies to failing stuck scans, unlisting somebody's report, closing a support ticket, pausing a blocking rule, renaming a team, replacing a site-wide notice, and every quota reset. Switches that simply flip back, like pausing a webhook, still act immediately.
+  About thirty controls across the app and the staff panel did what they did the moment you clicked them. They now ask first, and say what will happen: making a scan public or listing it in the public directory, signing out one session, removing a trusted device, removing your profile picture, scanning a site again, stopping a scan in progress, changing a teammate's role, cancelling an invite, applying a status to every selected finding at once, and setting a finding back to Open, which is the one that also clears its note, assignee and due date. On the staff side the same now applies to failing stuck scans, unlisting somebody's report, closing a support ticket, pausing a blocking rule, renaming a team, replacing a site-wide notice, and every quota reset. Switches that simply flip back, like pausing a webhook, still act immediately. Changing a teammate's role, setting a status for every selected finding and renaming a team in the staff panel now ask in their own dialog, which names the change and waits for Save, rather than with a second confirmation after the choice.
 - [UserCog] **[FIXED]** **Your Settings Pages, Reviewed Screen by Screen**
-  A pass over every tab of your account settings. Confirmations that could fail silently now stay open and say why, so a disconnect or a delete that did not work no longer looks like it did. Dates across the tabs are written the same way instead of three ways. Copy buttons announce themselves to screen readers, password and code fields point at their own error messages, and pressing Enter submits the password form from any of its three fields. Leaving the Security tab while your one-time backup codes are on screen now asks first, because leaving was the last chance to see them. Panels that failed to load announce themselves, the schedule and webhook rows stop showing raw internal names, and a progress bar that could overflow its track is capped.
+  A pass over every tab of your account settings. Confirmations that could fail silently now stay open and say why, so a disconnect or a delete that did not work no longer looks like it did. Dates across the tabs are written the same way instead of three ways. Copy buttons announce themselves to screen readers, a refused password or code is announced inside its own dialog, and pressing Enter saves the password dialog from any of its fields. Leaving the Security tab while your one-time backup codes are on screen now asks first, because leaving was the last chance to see them. Panels that failed to load announce themselves, the schedule and webhook rows stop showing raw internal names, and a progress bar that could overflow its track is capped.
 - [Bug] **[FIXED]** **Payment and Account Dialogs Behave**
   The billing verification step no longer jumps to 'check your email' before the code has actually been sent, and pressing Continue twice no longer sends two emails. Pressing Escape or clicking outside a dialog while it is saving no longer closes it and loses what you typed. Subscription prices show as $5/mo like the credit prices, instead of $5.00/mo. The upgrade prompt uses the full plan name, such as Pro Supporter, so it matches the pricing page. Back links on checkout pages are easier to tap on phones, the credit meter shows your remaining free allowance as its own section, and the terms prompt's full terms link now opens the Terms of Service instead of the disclaimer.
 - [Lock] **[ENGINE]** **Fewer Repeated Requests to Your Site**
@@ -714,6 +714,50 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Inviting staff now recognises an existing account or a pending invite whatever the letter case of the stored address, so the protection for the super admin account and the duplicate-invite check cannot be bypassed by an older mixed-case address.
 - [BookOpen] **[SELFHOST]** **Docs: Repo Review Limits and Staff SSO Upgrade**
   The GitHub scanning docs now say what happens to an oversized repo: every file within the file caps is pattern-scanned, and the AI review covers what the per-run ceiling and the allowance admit. The self-hosting docs gain an upgrade note for staff single sign-on on Microsoft Entra ID, naming the super-admin setting that accepts a token without an email_verified claim.
+- [Pencil] **[IMPROVED]** **One Edit Dialog Across the App**
+  Changing something that already exists now opens one shared dialog with Save and Cancel. It keeps what you typed when a save fails and shows the reason inside the dialog, asks before throwing away changes, and saves on Enter, or on Ctrl or Cmd+Enter in a longer text box.
+- [Mail] **[SECURITY]** **Admin Account Edits Always Tell the User**
+  In the admin user panel, unticking the notify box on one save no longer carries into the next. Before, a later email, name, plan or role change could go out without telling the user, while the save where the box was unticked emailed them anyway. Name, email and plan changes now always send the user one email listing what changed, and the staff role and badge dialogs each have a notify box that applies to that save only.
+- [UserCog] **[ADMIN]** **Admin Edits Open in Dialogs**
+  Editing a user's name, email or plan, their staff role, their badges or an admin note now opens a dialog with its own Save and Cancel, in place of the floating save bar. A failed save keeps the dialog open with the reason and everything you typed. Email and role changes ask for your password first, and a wrong password writes nothing. Saving several badge changes at once shows one summary message instead of one per badge.
+- [Users] **[ADMIN]** **Team Rename Works the Same on Desktop and Phone**
+  Renaming a team from the admin Teams tab opens one dialog from both the table and the phone layout. A rename the server refuses keeps the dialog open with the reason instead of closing and losing the new name.
+- [UserCheck] **[SECURITY]** **Name and Email Change in a Dialog**
+  Your display name and email address are now changed from an Edit button that opens a dialog with Save and Cancel, instead of turning the tiles into inputs saved by the page's save bar. The current password an email change asks for stays inside that dialog and is forgotten as soon as it closes. If the email is refused after the name went through, the dialog says the name was saved.
+- [KeyRound] **[SECURITY]** **Your Own AI Provider Is Edited in a Dialog**
+  The AI tab now shows your saved provider, model and the last four characters of your key, with Edit provider or Set up provider opening a dialog. A key made only of spaces no longer counts as a new key: it let a provider switch save the new provider with the old provider's key, which the next scan then sent to the new provider. The server now refuses a provider switch that arrives without a key (HTTP 400), so a direct API call or a second open tab cannot do it either.
+- [Lock] **[SECURITY]** **Email Codes Take Your Password Exactly as Typed**
+  Turning on email sign-in codes trimmed the password before checking it, so a password that starts or ends with a space was always refused. Every password on the Security tab is now sent exactly as typed.
+- [Shield] **[CHANGED]** **Security Tab Forms Open in Dialogs**
+  Changing or setting your password, generating new backup codes, setting up an authenticator app, turning on email codes and turning two-step verification off now each open in their own dialog with Save and Cancel. A failed attempt shows its message inside the dialog and keeps what you typed. Setting a first password on an account that signed up with Google, GitHub or Discord now shows on the tab straight away, so the next change asks for it.
+- [Fingerprint] **[IMPROVED]** **Authenticator Setup Drops Its Secret on Close**
+  Closing the authenticator setup dialog in any way discards the half-finished setup key, and the key now has a copy button for apps that cannot scan the QR code.
+- [ShieldQuestion] **[IMPROVED]** **Password Change Explains What It Signs Out**
+  The password dialog now says that saving signs out your other devices, makes trusted devices pass two-step again and revokes your API keys.
+- [Webhook] **[CHANGED]** **Edit a Webhook in a Dialog**
+  Editing a webhook's name or URL now opens a dialog with Save and Cancel instead of turning the row into inputs. A failed save shows its reason inside the dialog, and closing it with unsaved changes asks first.
+- [Share2] **[CHANGED]** **Sharing With a Team Is Chosen in a Dialog**
+  Sharing a webhook, scheduled scan or verified domain with a team now opens a dialog that says what your teammates will be able to do, and only applies when you press Save. Before, it took effect the moment you picked a team.
+- [Users] **[CHANGED]** **Team Rename, Invite and Role Changes Open in a Dialog**
+  Renaming a team, inviting someone and changing a member's role now open a dialog with Save and Cancel, instead of turning the page into an editor. If something is refused, the reason shows inside the dialog and what you typed stays put.
+- [UserCheck] **[FIXED]** **Team Invites Only Offer Roles You Can Grant**
+  The invite dialog lists only the roles you are allowed to hand out, so a manager is no longer offered Admin and sent into an error. Managers can now open the invite dialog from the Invite button.
+- [UserCog] **[IMPROVED]** **One Step to Change a Team Role**
+  Change role is a single menu item that opens a dialog showing what each role can do, so there is no second confirmation after you pick one.
+- [Link2] **[FIXED]** **An Invite Link Stays Up After the Next Team Change**
+  Changing someone's role or removing a member right after sending an invite no longer throws away the invite's copy-once link before you have copied it. Cancelling an invite still closes the link.
+- [FileText] **[IMPROVED]** **Scan Notes Open in a Dialog**
+  Notes on a scan are now edited in a dialog with Cancel and Save note. The notes card always shows the saved note, and a failed save keeps your text in the dialog.
+- [Tag] **[FIXED]** **Adding a Tag Opens a Dialog**
+  Add tag now opens a small dialog that saves on Enter or Add tag only, so clicking elsewhere on a history row no longer adds a half-typed tag. A tag remove that fails now says so beside the tags.
+- [List] **[IMPROVED]** **Finding Tracking Details in a Dialog**
+  A finding's note, assignee and due date show read-only under its status and change in a dialog. The Edit details button waits until the latest saved values have loaded.
+- [CheckCheck] **[IMPROVED]** **Bulk Status Change in a Dialog**
+  With findings selected, Set status opens a dialog for the status, assignee and due date. It warns before Open clears each finding's details, and its Apply button names how many findings it will change.
+- [LifeBuoy] **[CHANGED]** **A New Support Ticket Opens in a Dialog**
+  Starting a support ticket now opens a dialog instead of replacing your ticket list. The Open ticket button stays disabled until the subject and message are filled in and the captcha, when shown, is done. A failure shows inside the dialog with everything you typed still there, and closing a half-written ticket asks before discarding it.
+- [MessagesSquare] **[IMPROVED]** **Choosing Who Can See a Ticket**
+  Sharing a ticket with teammates now opens a dialog where you stage who to add and who to remove, then press Save sharing. Before, each click applied immediately, including taking someone's access away. If a change fails part way, the dialog says which ones went through and keeps the rest ready to retry.
 
 ---
 
@@ -3022,6 +3066,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1203
+- **Total changes documented:** 1225
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
