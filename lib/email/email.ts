@@ -2240,6 +2240,30 @@ export function criticalFindingsEmail(
   const listBlock = (label: string, items: CriticalFindingSummary[]) =>
     emailPanel(label, emailFindingList(findingListItems(items)));
 
+  // Nothing new is the Critical findings switch on a rescan that still has a
+  // known critical (lib/webhooks/scan-notifications.ts). The wording below
+  // would call that "0 new critical/high findings" above an empty panel.
+  if (newFindings.length === 0) {
+    const stillOpen = pluralize(outstandingFindings.length, "critical finding");
+    return {
+      template: "criticalFindings",
+      preheader: `${url}: ${stillOpen} still open from before.`,
+      subject: `${hostOf(url)}: ${stillOpen} still open`,
+      text: `Critical findings are still open on your latest scan.\n\nURL: ${url}\n\nStill outstanding from before (${outstandingFindings.length}):\n${findingListText(outstandingFindings)}\n\nThese pose real risk. Review and fix them as soon as you can. View the report: ${viewLink}`,
+      html: `
+      ${emailHeading("Critical findings still open")}
+      ${emailLead(`Your latest scan of ${emailStrong(safeUrl)} found nothing new, and ${stillOpen} from before ${outstandingFindings.length === 1 ? "is" : "are"} still open.`)}
+      ${severityChipRow({ critical: outstandingFindings.length, high: 0 })}
+      ${listBlock(`Still outstanding (${outstandingFindings.length})`, outstandingFindings)}
+      ${emailNote(
+        "These pose real risk. Review and fix them as soon as you can.",
+        "bad",
+      )}
+      ${emailButton(viewLink, "View the report", "bad")}
+    `,
+    };
+  }
+
   return {
     template: "criticalFindings",
     preheader: `${url}: ${newFindings.length} new, ${outstandingFindings.length} still open from before.`,

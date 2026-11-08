@@ -886,6 +886,52 @@ describe("redactEmailHtml", () => {
   });
 });
 
+describe("criticalFindingsEmail with nothing new", () => {
+  it("says what is still open, with no zero count and no empty panel", async () => {
+    const { criticalFindingsEmail } = await import("@/lib/email/email");
+    const one = criticalFindingsEmail(
+      "https://shop.example.test/checkout",
+      [],
+      [{ title: "Reflected XSS", severity: "critical" }],
+      12,
+    );
+    expect(one.subject).toBe(
+      "shop.example.test: 1 critical finding still open",
+    );
+    expect(one.html).toContain("Critical findings still open");
+    expect(one.html).toContain("is still open");
+    expect(one.html).toContain("Reflected XSS");
+    for (const copy of [one.subject, one.preheader, one.text, one.html]) {
+      expect(copy).not.toContain("0 new");
+      expect(copy).not.toContain("New since your last scan");
+    }
+
+    const two = criticalFindingsEmail(
+      "https://shop.example.test/",
+      [],
+      [
+        { title: "Reflected XSS", severity: "critical" },
+        { title: "SQL injection", severity: "critical" },
+      ],
+    );
+    expect(two.subject).toBe(
+      "shop.example.test: 2 critical findings still open",
+    );
+    expect(two.html).toContain("are still open");
+  });
+
+  it("keeps the regression wording when something is new", async () => {
+    const { criticalFindingsEmail } = await import("@/lib/email/email");
+    const mail = criticalFindingsEmail(
+      "https://shop.example.test/",
+      [{ title: "Reflected XSS", severity: "critical" }],
+      [],
+    );
+    expect(mail.subject).toBe("shop.example.test: 1 new critical/high finding");
+    expect(mail.html).toContain("New since your last scan");
+  });
+});
+
 describe("high-stakes templates", () => {
   let email: Awaited<ReturnType<typeof loadEmail>>;
 
