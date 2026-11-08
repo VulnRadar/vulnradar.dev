@@ -299,7 +299,10 @@ npm install -g .`}
             <InlineCode>--include-suppressed</InlineCode> counts them.
             Accepted-risk and won&apos;t-fix findings are always counted. A
             completed scan whose result has no summary is an error (
-            <InlineCode>2</InlineCode>), not zero findings.
+            <InlineCode>2</InlineCode>), not zero findings. With no findings
+            list, so is a summary count that is not a whole number of fewer than
+            ten digits, such as 2.5, -1 or &quot;3&quot;, as in the GitHub
+            Action and the GitLab template.
           </p>
         </DocsSubSection>
       </DocsSection>

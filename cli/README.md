@@ -168,7 +168,11 @@ them. Accepted-risk and won't-fix findings are always counted; `--apply-triage`
 only changes how they appear in a report.
 
 A completed scan whose result has no `summary` object is an error (exit `2`),
-not zero findings.
+not zero findings. A result with no findings list is judged on the summary's
+counts instead, and a count there that is not a whole number of fewer than ten
+digits (a fraction, a negative number, a quoted string) is an error (exit `2`)
+too, as it is in the GitHub Action and the GitLab CI template. A missing or
+null count reads as 0.
 
 ### Scans that did not check the target
 
