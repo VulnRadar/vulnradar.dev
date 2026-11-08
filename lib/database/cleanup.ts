@@ -5,6 +5,7 @@
 import pool from "@/lib/database/db";
 import { DB_CLEANUP_INTERVAL } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
+import { RATE_LIMIT_MAX_WINDOW_SECONDS } from "@/lib/config/registry";
 import { purgeExpiredAdminAuditLog } from "@/lib/database/audit-log-archive";
 import { createFailureEscalator } from "@/lib/admin/failure-escalation";
 import { AI_USAGE_WINDOWS_SHOWN } from "@/lib/admin/ai-usage-report";
@@ -37,20 +38,6 @@ const CLEANUP_INTERVAL_MS = DB_CLEANUP_INTERVAL;
  * same character: operational delivery output, not a compliance record.
  */
 const WEBHOOK_DELIVERIES_RETENTION_DAYS = 30;
-
-/**
- * How old a rate_limits row has to be before the pass may delete it: the
- * longest window any limiter can be configured to (DEMO_WINDOW_HOURS tops out
- * at 168 hours; every RATE_LIMIT_*_WINDOW_MINUTES at 1440).
- *
- * A row is keyed by the START of its bucket, so a bucket is still counting
- * until window_start + its own window. This was a flat 1 day, which wiped the
- * count of any longer window part way through: a demo cap set to 72 hours
- * really reset every 24. The rows that wait longer now are the per-day quota
- * counters and the keys nobody came back to, since checkRateLimit trims a
- * returning key's old buckets itself.
- */
-const RATE_LIMIT_PRUNE_AFTER_SECONDS = 7 * 24 * 60 * 60;
 
 /**
  * The note lib/ai/verify-findings.ts writes on a feedback row it pre-filled
@@ -436,11 +423,17 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
   // cached reputation row itself is never deleted or modified here. Do
   // not add a DELETE FROM host_reputation to this function.
   //
-  // Delete rate limit records no window can still be counting
+  // Delete rate limit records no window can still be counting. A row is keyed
+  // by the START of its bucket, so a bucket is still counting until
+  // window_start + its own window. This was a flat 1 day, which wiped the count
+  // of any longer window part way through: a demo cap set to 72 hours really
+  // reset every 24. The rows that wait longer now are the per-day quota
+  // counters and the keys nobody came back to, since checkRateLimit trims a
+  // returning key's old buckets itself.
   await runPrune("rate_limits", async () => {
     const res = await pool.query(
       "DELETE FROM rate_limits WHERE window_start < NOW() - ($1 * INTERVAL '1 second')",
-      [RATE_LIMIT_PRUNE_AFTER_SECONDS],
+      [RATE_LIMIT_MAX_WINDOW_SECONDS],
     );
     stats.oldRateLimits = res.rowCount || 0;
   });
