@@ -1306,6 +1306,7 @@ format=json       -> application/json            vulnradar-example.com.json`,
     notes: [
       "The id does not change. Anything keyed on it (audit records, per-key dashboards, allow-lists) keeps working across a rotation.",
       "Because the row survives, so does its usage history: today's consumed quota carries over to the rotated key rather than resetting.",
+      "On deployments with API key IP binding switched on, rotating also clears the key's bound_ip. The first request made with the new secret pins the network again.",
       "daily_limit reports your current plan's allowance. Rotation is not how a plan change reaches a key: every key is checked against your live plan on each request.",
       "Note the envelope differs from POST /keys: this one wraps the key in { success: true, key } and returns 200.",
     ],
