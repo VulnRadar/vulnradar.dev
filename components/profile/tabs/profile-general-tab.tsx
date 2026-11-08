@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import { LanguageSelect } from "@/components/shared/language-select";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -9,7 +9,6 @@ import {
   Award,
   Mail,
   Pencil,
-  X,
   Camera,
   Loader2,
   Tag,
@@ -19,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   API,
   APP_REPO,
@@ -27,12 +25,272 @@ import {
   MAX_AVATAR_UPLOAD_BYTES,
 } from "@/lib/config/client-constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
-import type { ProfileTabProps } from "../types";
+import type { ProfileTabProps, ProfileUser } from "../types";
 import { useConfirm } from "@/components/shared/use-confirm";
+import { EditDialog } from "@/components/shared/edit-dialog";
 
 interface ProfileGeneralTabProps extends ProfileTabProps {
   onAvatarCrop?: (croppedDataUrl: string) => void;
   onSetCropDialog?: (open: boolean, imageSrc: string | null) => void;
+}
+
+type DetailsUser = Pick<ProfileUser, "name" | "email" | "hasPassword">;
+
+/**
+ * What ProfileDetailsDialog holds while it is open. The current password is
+ * here, in the dialog's own state, and nowhere else: it used to sit in the
+ * page-wide pendingChanges, where the inline Cancel left it behind.
+ */
+export interface ProfileDetailsDraft {
+  name: string;
+  email: string;
+  currentPassword: string;
+}
+
+export function profileDetailsDraftFrom(
+  user: DetailsUser,
+): ProfileDetailsDraft {
+  return {
+    name: user.name || "",
+    email: user.email || "",
+    currentPassword: "",
+  };
+}
+
+function nameChanged(draft: ProfileDetailsDraft, user: DetailsUser) {
+  return draft.name !== (user.name || "");
+}
+
+function emailChanged(draft: ProfileDetailsDraft, user: DetailsUser) {
+  return draft.email !== user.email;
+}
+
+/**
+ * PATCH /auth/update refuses an address change without the current password,
+ * except for an OAuth-only account that has none to re-enter.
+ */
+export function profileDetailsNeedsPassword(
+  draft: ProfileDetailsDraft,
+  user: DetailsUser,
+): boolean {
+  return emailChanged(draft, user) && user.hasPassword !== false;
+}
+
+/** Putting the address back hides the password field, so it forgets the password too. */
+export function withDetailsEmail(
+  draft: ProfileDetailsDraft,
+  email: string,
+  user: DetailsUser,
+): ProfileDetailsDraft {
+  return {
+    ...draft,
+    email,
+    currentPassword: email === user.email ? "" : draft.currentPassword,
+  };
+}
+
+export function profileDetailsDirty(
+  draft: ProfileDetailsDraft,
+  user: DetailsUser,
+): boolean {
+  return nameChanged(draft, user) || emailChanged(draft, user);
+}
+
+export function profileDetailsCanSave(
+  draft: ProfileDetailsDraft,
+  user: DetailsUser,
+): boolean {
+  if (!profileDetailsDirty(draft, user)) return false;
+  if (emailChanged(draft, user) && draft.email.trim() === "") return false;
+  if (profileDetailsNeedsPassword(draft, user) && draft.currentPassword === "")
+    return false;
+  return true;
+}
+
+export type ProfileDetailsSaveResult =
+  { ok: true; message: string } | { ok: false; error: string };
+
+async function patchProfile(
+  body: Record<string, string>,
+  fallback: string,
+): Promise<
+  { ok: true; data: Record<string, unknown> } | { ok: false; error: string }
+> {
+  try {
+    const res = await fetch(API.AUTH.UPDATE, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    if (res.ok) return { ok: true, data };
+    return {
+      ok: false,
+      error:
+        typeof data.error === "string" && data.error ? data.error : fallback,
+    };
+  } catch {
+    return { ok: false, error: fallback };
+  }
+}
+
+/**
+ * The dialog's Save. The name goes first, on its own, because it needs no
+ * password and a refused email must not take a good rename down with it;
+ * when that happens the message says the name went through, since the
+ * dialog stays open showing both fields as typed.
+ *
+ * The password is sent exactly as typed, never trimmed (a password is
+ * whatever its owner set, spaces included), and only in the request body.
+ */
+export async function saveProfileDetails(
+  draft: ProfileDetailsDraft,
+  user: DetailsUser,
+  onUserPatch?: (patch: Partial<ProfileUser>) => void,
+): Promise<ProfileDetailsSaveResult> {
+  let nameSaved = false;
+  if (nameChanged(draft, user)) {
+    const result = await patchProfile(
+      { name: draft.name },
+      "Failed to update your name.",
+    );
+    if (!result.ok) return result;
+    onUserPatch?.({ name: result.data.name as string | null });
+    nameSaved = true;
+  }
+
+  let emailSaved = false;
+  if (emailChanged(draft, user)) {
+    const result = await patchProfile(
+      { email: draft.email, currentPassword: draft.currentPassword },
+      "Failed to update your email.",
+    );
+    if (!result.ok) {
+      if (nameSaved) refreshAuthCache();
+      return {
+        ok: false,
+        error: nameSaved
+          ? `Your name was saved. The email address was not: ${result.error}`
+          : result.error,
+      };
+    }
+    onUserPatch?.({ email: result.data.email as string });
+    emailSaved = true;
+  }
+
+  // name and email are part of MeResponse, so the nav and every other page
+  // reading useAuth() need telling, not just this page's own copy.
+  refreshAuthCache();
+  return {
+    ok: true,
+    message: emailSaved
+      ? "Your email address was updated."
+      : "Your name was updated.",
+  };
+}
+
+export function ProfileDetailsFields({
+  draft,
+  user,
+  onChange,
+}: {
+  draft: ProfileDetailsDraft;
+  user: DetailsUser;
+  onChange: (next: ProfileDetailsDraft) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="profile-details-name">Display name</Label>
+        <Input
+          id="profile-details-name"
+          value={draft.name}
+          onChange={(e) => onChange({ ...draft, name: e.target.value })}
+          placeholder="Your display name"
+          autoComplete="name"
+          autoFocus
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="profile-details-email">Email address</Label>
+        <Input
+          id="profile-details-email"
+          type="email"
+          value={draft.email}
+          onChange={(e) =>
+            onChange(withDetailsEmail(draft, e.target.value, user))
+          }
+          placeholder="Your email address"
+          autoComplete="email"
+          required
+        />
+      </div>
+      {/* The address is the account's recovery route, so changing it is a
+          sensitive change and the API requires the current password for one.
+          Shown only while the address is actually being changed, and only for
+          an account that has a password to re-enter, matching the condition
+          the route applies. */}
+      {profileDetailsNeedsPassword(draft, user) && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="profile-details-password">Current password</Label>
+          <Input
+            id="profile-details-password"
+            type="password"
+            value={draft.currentPassword}
+            onChange={(e) =>
+              onChange({ ...draft, currentPassword: e.target.value })
+            }
+            placeholder="Confirm it is you"
+            autoComplete="current-password"
+          />
+          <p className="text-xs text-muted-foreground">
+            Required to change the address your account recovers through.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Mounted only while open, so every opening starts from the saved account and
+ * a typed password is gone with the dialog the moment it closes.
+ */
+export function ProfileDetailsDialog({
+  user,
+  onClose,
+  onUserPatch,
+  onSaved,
+}: {
+  user: DetailsUser;
+  onClose: () => void;
+  onUserPatch?: (patch: Partial<ProfileUser>) => void;
+  onSaved: (message: string) => void;
+}) {
+  const [draft, setDraft] = useState(() => profileDetailsDraftFrom(user));
+  return (
+    <EditDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title="Edit personal details"
+      description="Your display name and the email address you sign in and recover your account with."
+      dirty={profileDetailsDirty(draft, user)}
+      canSave={profileDetailsCanSave(draft, user)}
+      onSave={async () => {
+        const result = await saveProfileDetails(draft, user, onUserPatch);
+        if (!result.ok) return result.error;
+        onSaved(result.message);
+        return null;
+      }}
+    >
+      <ProfileDetailsFields draft={draft} user={user} onChange={setDraft} />
+    </EditDialog>
+  );
 }
 
 export function ProfileGeneralTab({
@@ -40,46 +298,16 @@ export function ProfileGeneralTab({
   setError,
   setSuccess,
   onTabChange,
-  pendingChanges,
-  setPendingChanges,
-  discardKey,
+  onUserPatch,
   onAvatarCrop,
   onSetCropDialog,
 }: ProfileGeneralTabProps) {
   const router = useRouter();
   const { confirm, confirmDialog } = useConfirm();
-  const [profileEditMode, setProfileEditMode] = useState(false);
-  const [nameInput, setNameInput] = useState(user?.name || "");
-  const [emailInput, setEmailInput] = useState(user?.email || "");
-  // Held in pendingChanges rather than in local state so the page's own save
-  // handler can read it without a second channel, and so discarding changes
-  // clears it along with everything else.
-  const emailPassword =
-    typeof pendingChanges.emailPassword === "string"
-      ? pendingChanges.emailPassword
-      : "";
-  const emailIsChanging =
-    pendingChanges.email !== undefined && pendingChanges.email !== user?.email;
+  const [editingDetails, setEditingDetails] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [replayingTour, setReplayingTour] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
-
-  // Reset inputs when user changes
-  useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- resets edit-buffer inputs when the user prop identity changes, gated on the dependency array so it only fires on an actual change, not every render
-    setNameInput(user?.name || "");
-    setEmailInput(user?.email || "");
-  }, [user]);
-
-  // Reset inputs when discard is clicked
-  useEffect(() => {
-    if (discardKey && discardKey > 0) {
-      // oxlint-disable-next-line react/set-state-in-effect -- resets edit-buffer inputs when discardKey increments (an explicit "discard" click elsewhere), gated on the dependency array
-      setNameInput(user?.name || "");
-      setEmailInput(user?.email || "");
-      setProfileEditMode(false);
-    }
-  }, [discardKey, user]);
 
   function handleAvatarFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -156,40 +384,6 @@ export function ProfileGeneralTab({
     } catch {
       setError("Failed to restart the product tour.");
       setReplayingTour(false);
-    }
-  }
-
-  function handleCancelEdit() {
-    setNameInput(user?.name || "");
-    setEmailInput(user?.email || "");
-    setPendingChanges((prev) => {
-      const { name: _, email: __, ...rest } = prev;
-      return rest;
-    });
-    setProfileEditMode(false);
-  }
-
-  function handleNameChange(val: string) {
-    setNameInput(val);
-    if (val !== (user?.name || "")) {
-      setPendingChanges((prev) => ({ ...prev, name: val }));
-    } else {
-      setPendingChanges((prev) => {
-        const { name: _, ...rest } = prev;
-        return rest;
-      });
-    }
-  }
-
-  function handleEmailChange(val: string) {
-    setEmailInput(val);
-    if (val !== user?.email) {
-      setPendingChanges((prev) => ({ ...prev, email: val }));
-    } else {
-      setPendingChanges((prev) => {
-        const { email: _, ...rest } = prev;
-        return rest;
-      });
     }
   }
 
@@ -329,162 +523,53 @@ export function ProfileGeneralTab({
               </div>
             )}
 
-            {/* Name + Email with edit mode toggle */}
+            {/* Read-only here. Edit opens ProfileDetailsDialog, which saves
+                the name and email itself rather than through the save bar. */}
             <div className="flex items-center justify-between mb-1">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Personal Details
               </p>
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs gap-1.5"
-                onClick={() =>
-                  profileEditMode
-                    ? handleCancelEdit()
-                    : setProfileEditMode(true)
-                }
+                aria-label="Edit name and email"
+                onClick={() => setEditingDetails(true)}
               >
-                {profileEditMode ? (
-                  <>
-                    <X className="h-3 w-3" />
-                    Cancel
-                  </>
-                ) : (
-                  <>
-                    <Pencil className="h-3 w-3" />
-                    Edit
-                  </>
-                )}
+                <Pencil className="h-3 w-3" aria-hidden="true" />
+                Edit
               </Button>
             </div>
 
-            {!profileEditMode ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
-                  <div className="flex items-center gap-2 mb-1">
-                    <UserCog className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-[11px] text-muted-foreground font-medium">
-                      Display Name
-                    </span>
-                  </div>
-                  <span className="text-sm font-medium text-foreground truncate">
-                    {user?.name || (
-                      <span className="text-muted-foreground italic">
-                        Not set
-                      </span>
-                    )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                <div className="flex items-center gap-2 mb-1">
+                  <UserCog className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-[11px] text-muted-foreground font-medium">
+                    Display Name
                   </span>
                 </div>
-                <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-[11px] text-muted-foreground font-medium">
-                      Email Address
+                <span className="text-sm font-medium text-foreground truncate">
+                  {user?.name || (
+                    <span className="text-muted-foreground italic">
+                      Not set
                     </span>
-                  </div>
-                  <span className="text-sm font-mono text-foreground truncate">
-                    {user?.email}
+                  )}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                <div className="flex items-center gap-2 mb-1">
+                  <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-[11px] text-muted-foreground font-medium">
+                    Email Address
                   </span>
                 </div>
+                <span className="text-sm font-mono text-foreground truncate">
+                  {user?.email}
+                </span>
               </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label
-                      htmlFor="display-name-input"
-                      className="text-xs font-medium text-muted-foreground"
-                    >
-                      Display Name
-                    </Label>
-                    {pendingChanges.name !== undefined &&
-                      pendingChanges.name !== (user?.name || "") && (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/30"
-                        >
-                          Unsaved
-                        </Badge>
-                      )}
-                  </div>
-                  <Input
-                    id="display-name-input"
-                    value={nameInput}
-                    onChange={(e) => handleNameChange(e.target.value)}
-                    className="bg-card h-10"
-                    placeholder="Your display name"
-                    autoComplete="name"
-                    autoFocus
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label
-                      htmlFor="email-address-input"
-                      className="text-xs font-medium text-muted-foreground"
-                    >
-                      Email Address
-                    </Label>
-                    {pendingChanges.email !== undefined &&
-                      pendingChanges.email !== user?.email && (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/30"
-                        >
-                          Unsaved
-                        </Badge>
-                      )}
-                  </div>
-                  <Input
-                    id="email-address-input"
-                    type="email"
-                    value={emailInput}
-                    onChange={(e) => handleEmailChange(e.target.value)}
-                    className="bg-card h-10"
-                    placeholder="Your email address"
-                    autoComplete="email"
-                  />
-                </div>
-                {/* The address is the account's recovery route, so changing it
-                    is a sensitive change and the API has always required the
-                    current password for one. No field collected it, so the
-                    input above accepted typing, showed an Unsaved badge, and
-                    then failed with 403 every single time for anyone who has
-                    a password: a control that looked completely alive and
-                    could never work. The route's own comment recorded the
-                    gap. Shown only when the address is actually being
-                    changed, and only for an account that has a password to
-                    re-enter, matching the condition the route applies. */}
-                {emailIsChanging && user?.hasPassword !== false && (
-                  <div className="flex flex-col gap-1.5">
-                    <Label
-                      htmlFor="email-change-password"
-                      className="text-xs font-medium text-muted-foreground"
-                    >
-                      Current password
-                    </Label>
-                    <Input
-                      id="email-change-password"
-                      type="password"
-                      value={emailPassword}
-                      onChange={(e) =>
-                        setPendingChanges((prev) => ({
-                          ...prev,
-                          emailPassword: e.target.value,
-                        }))
-                      }
-                      className="bg-card h-10"
-                      placeholder="Confirm it is you"
-                      autoComplete="current-password"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Required to change the address your account recovers
-                      through.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
+            </div>
           </CardContent>
         </Card>
       </section>
@@ -604,6 +689,17 @@ export function ProfileGeneralTab({
         .
       </p>
       {confirmDialog}
+      {editingDetails && user && (
+        <ProfileDetailsDialog
+          user={user}
+          onClose={() => setEditingDetails(false)}
+          onUserPatch={onUserPatch}
+          onSaved={(message) => {
+            setError(null);
+            setSuccess(message);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -587,47 +587,6 @@ function ProfileContent() {
     setError(null);
 
     try {
-      // Save name if changed
-      if (pendingChanges.name !== undefined) {
-        const res = await fetch(API.AUTH.UPDATE, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: pendingChanges.name }),
-        });
-        const data = await res.json();
-        if (res.ok) {
-          setUser((u) => (u ? { ...u, name: data.name } : u));
-        } else {
-          const message = data.error || "Failed to update your name.";
-          setError(message);
-          return { ok: false, error: message };
-        }
-      }
-
-      // Save email if changed
-      if (pendingChanges.email !== undefined) {
-        const res = await fetch(API.AUTH.UPDATE, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          // currentPassword too: the route treats an address change as a
-          // sensitive change and refuses one without it, so sending the
-          // address alone was a guaranteed 403 for every account with a
-          // password.
-          body: JSON.stringify({
-            email: pendingChanges.email,
-            currentPassword: pendingChanges.emailPassword ?? "",
-          }),
-        });
-        const data = await res.json();
-        if (res.ok) {
-          setUser((u) => (u ? { ...u, email: data.email } : u));
-        } else {
-          const message = data.error || "Failed to update your email.";
-          setError(message);
-          return { ok: false, error: message };
-        }
-      }
-
       // Save notification preferences if changed
       if (pendingChanges.notifications) {
         const res = await fetch(API.ACCOUNT_NOTIFICATIONS, {
@@ -704,7 +663,7 @@ function ProfileContent() {
       }
 
       // Every branch above updates only this page's own local state
-      // (setUser, setScansPrivateByDefault, ...) -- none of them touch the
+      // (setScansPrivateByDefault, ...) -- none of them touch the
       // app-wide useAuth() SWR cache for /api/v3/auth/me, which is what
       // app/dashboard/page.tsx (and the nav, and everything else reading
       // useAuth().me) actually reads from. That cache dedupes for
@@ -735,26 +694,6 @@ function ProfileContent() {
 
   // Build change items for modal - include all types of changes
   const pendingChangeItems: ChangeItem[] = [
-    ...(pendingChanges.name !== undefined
-      ? [
-          {
-            field: "name",
-            label: "Display Name",
-            oldValue: user?.name || "",
-            newValue: pendingChanges.name as string,
-          },
-        ]
-      : []),
-    ...(pendingChanges.email !== undefined
-      ? [
-          {
-            field: "email",
-            label: "Email Address",
-            oldValue: user?.email || "",
-            newValue: pendingChanges.email as string,
-          },
-        ]
-      : []),
     // Include notification preference changes
     ...(pendingChanges.notifications
       ? Object.entries(pendingChanges.notifications as Record<string, boolean>)
@@ -1098,6 +1037,9 @@ function ProfileContent() {
                   pendingChanges={pendingChanges}
                   setPendingChanges={setPendingChanges}
                   discardKey={discardKey}
+                  // The name and email are saved by the tab's own dialog, not
+                  // the save bar, so it patches this page's `user` directly.
+                  onUserPatch={patchUser}
                   onAvatarCrop={handleCroppedAvatar}
                   onSetCropDialog={(open, src) => {
                     setCropDialogOpen(open);
