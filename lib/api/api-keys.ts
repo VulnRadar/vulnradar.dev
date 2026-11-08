@@ -412,10 +412,13 @@ async function rowToResult(
  * The first successful use of a key after binding is enabled adopts
  * that request's subnet as the key's home network (there is nothing yet
  * to compare against). Every later mismatch declines just that one
- * request — the key itself is never revoked, and a legitimate owner
- * recovers by rotating the key (which starts a fresh, unbound row) or by
- * simply retrying from the expected network. Returns true (no-op) when
- * the feature is disabled or when the current IP can't be determined.
+ * request — the key itself is never revoked. A legitimate owner recovers
+ * by retrying from the expected network, by clearing the binding
+ * (resetApiKeyBinding), or by rotating the key, which keeps the row and
+ * clears the binding with the old secret. Both of those need a signed-in
+ * session, so whoever holds only a leaked key can do neither. Returns true
+ * (no-op) when the feature is disabled or when the current IP can't be
+ * determined.
  */
 export async function passesApiKeyIpBinding(row: {
   key_id: number;
@@ -848,23 +851,33 @@ export async function validateApiKey(
   return null;
 }
 
+const API_USAGE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * When the rolling window next frees a slot: 24 hours after the oldest request
+ * still in it, or a full window from now when it is empty.
+ */
+function usageWindowResetsAt(oldest: Date | null): string {
+  const start = oldest ? new Date(oldest).getTime() : Date.now();
+  return new Date(start + API_USAGE_WINDOW_MS).toISOString();
+}
+
 // rate-limit: atomic check-and-increment under a row lock.
 // Concurrent requests observing `used = limit - 1` would otherwise
 // both pass and both insert — a real billing-cap bypass for paid
 // API customers. The lock on api_keys.id serializes the count +
 // insert, so the second request sees the first's incremented
 // counter and is rejected.
+//
+// Everything runs on the one client this call holds. It used to ask the pool
+// for a second connection (the last_used_at update and the oldest-row read)
+// before releasing the first, so once every pooled client belonged to a caller
+// doing the same thing, each waited on a connection only another could free,
+// and a burst of API requests ended in connect timeouts.
 export async function checkRateLimit(keyId: number, dailyLimit: number) {
-  // Use a dedicated client so the BEGIN / COMMIT is scoped to this
-  // call and we can issue SELECT ... FOR UPDATE + INSERT + count on
-  // the same connection.
   const client = await pool.connect();
-  let inserted = false;
   try {
     await client.query("BEGIN");
-    // Acquire a row lock on the api_keys row. SELECT ... FOR UPDATE
-    // blocks any other transaction trying to lock the same row until
-    // we COMMIT.
     const lockResult = await client.query<{ id: number }>(
       "SELECT id FROM api_keys WHERE id = $1 FOR UPDATE",
       [keyId],
@@ -876,62 +889,56 @@ export async function checkRateLimit(keyId: number, dailyLimit: number) {
         remaining: 0,
         limit: dailyLimit,
         used: 0,
-        resetsAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        resetsAt: usageWindowResetsAt(null),
       };
     }
 
-    // Count current usage in the 24h window (now that we hold the lock).
-    const countResult = await client.query<{ count: number }>(
-      `SELECT COUNT(*)::int AS count FROM api_usage
-         WHERE api_key_id = $1
-           AND used_at > NOW() - INTERVAL '24 hours'`,
+    // The lock has to come first, as its own statement. READ COMMITTED takes
+    // a fresh snapshot per statement, so this one starts after the lock was
+    // granted and sees what the previous holder committed. Folding the lock
+    // into the CTE would count against a snapshot from before the wait.
+    //
+    // COALESCE is for a key's first request in the window: every part of a
+    // statement shares one snapshot, so in_window cannot see the row being
+    // inserted here and the new row is the oldest.
+    const meter = await client.query<{
+      used: number;
+      inserted: boolean;
+      oldest: Date | null;
+    }>(
+      `WITH in_window AS (
+         SELECT COUNT(*)::int AS used, MIN(used_at) AS oldest
+           FROM api_usage
+          WHERE api_key_id = $1::int
+            AND used_at > NOW() - INTERVAL '24 hours'
+       ), recorded AS (
+         INSERT INTO api_usage (api_key_id)
+         SELECT $1::int FROM in_window WHERE used < $2::int
+         RETURNING used_at
+       )
+       SELECT in_window.used,
+              EXISTS (SELECT 1 FROM recorded) AS inserted,
+              COALESCE(in_window.oldest, (SELECT used_at FROM recorded)) AS oldest
+         FROM in_window`,
+      [keyId, dailyLimit],
+    );
+    const { used, inserted, oldest } = meter.rows[0];
+
+    await client.query(
+      "UPDATE api_keys SET last_used_at = NOW() WHERE id = $1",
       [keyId],
     );
-    const used = countResult.rows[0]?.count ?? 0;
-    const allowed = used < dailyLimit;
-
-    if (allowed) {
-      await client.query("INSERT INTO api_usage (api_key_id) VALUES ($1)", [
-        keyId,
-      ]);
-      inserted = true;
-    }
 
     await client.query("COMMIT");
 
-    const usedAfter = allowed ? used + 1 : used;
-    const remaining = Math.max(0, dailyLimit - usedAfter);
-
-    // Update last_used_at on the key (best-effort, fire-and-forget on
-    // a separate connection so it doesn't extend our transaction).
-    pool
-      .query("UPDATE api_keys SET last_used_at = NOW() WHERE id = $1", [keyId])
-      .catch((err) =>
-        console.error("[api-keys] last_used_at update failed:", err),
-      );
-
-    // Calculate reset time (oldest usage in the window + 24h).
-    let resetsAt: string;
-    if (inserted && used > 0) {
-      // The oldest usage before this request stays the same; just add 24h.
-      resetsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    } else {
-      resetsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    }
-    // Best-effort: fetch oldest usage for a precise reset time. Done
-    // outside the lock to keep the lock window short.
-    const oldestResult = await pool.query<{ used_at: Date }>(
-      `SELECT used_at FROM api_usage
-         WHERE api_key_id = $1 AND used_at > NOW() - INTERVAL '24 hours'
-         ORDER BY used_at ASC LIMIT 1`,
-      [keyId],
-    );
-    if (oldestResult.rows.length > 0) {
-      const oldest = new Date(oldestResult.rows[0].used_at);
-      resetsAt = new Date(oldest.getTime() + 24 * 60 * 60 * 1000).toISOString();
-    }
-
-    return { allowed, remaining, limit: dailyLimit, used: usedAfter, resetsAt };
+    const usedAfter = inserted ? used + 1 : used;
+    return {
+      allowed: inserted,
+      remaining: Math.max(0, dailyLimit - usedAfter),
+      limit: dailyLimit,
+      used: usedAfter,
+      resetsAt: usageWindowResetsAt(oldest),
+    };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     throw err;
@@ -946,35 +953,26 @@ export async function checkRateLimit(keyId: number, dailyLimit: number) {
  * exhausted before we do any work") where the actual per-item enforcement is a
  * separate atomic checkRateLimit call. Using checkRateLimit for such a pre-check
  * would burn a phantom slot the request never actually used.
+ *
+ * Takes no lock on purpose: the answer is advisory, and waiting behind the
+ * requests that are being metered would make the fast-fail slow.
  */
 export async function peekRateLimit(keyId: number, dailyLimit: number) {
-  const countResult = await pool.query<{ count: number }>(
-    `SELECT COUNT(*)::int AS count FROM api_usage
-       WHERE api_key_id = $1
-         AND used_at > NOW() - INTERVAL '24 hours'`,
+  const result = await pool.query<{ used: number; oldest: Date | null }>(
+    `SELECT COUNT(*)::int AS used, MIN(used_at) AS oldest
+       FROM api_usage
+      WHERE api_key_id = $1
+        AND used_at > NOW() - INTERVAL '24 hours'`,
     [keyId],
   );
-  const used = countResult.rows[0]?.count ?? 0;
-  const remaining = Math.max(0, dailyLimit - used);
-
-  let resetsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  const oldestResult = await pool.query<{ used_at: Date }>(
-    `SELECT used_at FROM api_usage
-       WHERE api_key_id = $1 AND used_at > NOW() - INTERVAL '24 hours'
-       ORDER BY used_at ASC LIMIT 1`,
-    [keyId],
-  );
-  if (oldestResult.rows.length > 0) {
-    const oldest = new Date(oldestResult.rows[0].used_at);
-    resetsAt = new Date(oldest.getTime() + 24 * 60 * 60 * 1000).toISOString();
-  }
+  const { used, oldest } = result.rows[0];
 
   return {
     allowed: used < dailyLimit,
-    remaining,
+    remaining: Math.max(0, dailyLimit - used),
     limit: dailyLimit,
     used,
-    resetsAt,
+    resetsAt: usageWindowResetsAt(oldest),
   };
 }
 
@@ -1099,10 +1097,15 @@ export async function rotateApiKey(
   // Re-check ownership in the WHERE clause itself (not just the SELECT
   // above) so a future refactor can't turn this into an update-any-key-by-id
   // primitive.
+  //
+  // bound_ip goes with the old secret: the next use of the new one adopts its
+  // network, exactly as a new key would. Keeping it left a key that had moved
+  // networks refused even after its owner replaced the secret to recover it.
   const updateResult = await pool.query(
     `UPDATE api_keys
         SET key_hash = $1, key_locator = $2, key_prefix = $3,
-            key_encrypted = $4, daily_limit = $5, scopes = $6
+            key_encrypted = $4, daily_limit = $5, scopes = $6,
+            bound_ip = NULL
       WHERE id = $7 AND user_id = $8
       RETURNING id, key_prefix, name, daily_limit, created_at, scopes`,
     [

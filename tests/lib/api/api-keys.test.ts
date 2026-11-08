@@ -87,8 +87,12 @@ vi.mock("@/lib/notifications/notifications", () => ({
   sendNotificationEmail: (params: unknown) => mockSendNotificationEmail(params),
 }));
 
-const { passesApiKeyIpBinding, validateApiKey, __resetLegacyKeyRowCache } =
-  await import("@/lib/api/api-keys");
+const {
+  passesApiKeyIpBinding,
+  validateApiKey,
+  rotateApiKey,
+  __resetLegacyKeyRowCache,
+} = await import("@/lib/api/api-keys");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 
 function enableSettingsRow(enabled: boolean, ipv4 = 32, ipv6 = 128) {
@@ -474,5 +478,46 @@ describe("validateApiKey: legacy fallback scans", () => {
     expect(queries.filter((q) => q.sql.includes("SELECT EXISTS"))).toHaveLength(
       1,
     );
+  });
+});
+
+describe("rotateApiKey", () => {
+  function queueRotation() {
+    mockQuery.mockImplementationOnce(async (sql: string, params = []) => {
+      queries.push({ sql, params });
+      return { rows: [{ daily_limit: 50, scopes: ["scan:read"] }] };
+    });
+    mockQuery.mockImplementationOnce(async (sql: string, params = []) => {
+      queries.push({ sql, params });
+      return {
+        rows: [
+          {
+            id: 9,
+            key_prefix: "vr_live_abcd1234",
+            name: "CI key",
+            daily_limit: 50,
+            created_at: new Date("2030-01-01T00:00:00.000Z"),
+            scopes: ["scan:read"],
+          },
+        ],
+      };
+    });
+  }
+
+  it("clears the IP binding in the same UPDATE that swaps the secret", async () => {
+    // The binding belongs to the old secret. A key that kept it could not be
+    // used from the network the owner just rotated it for, and the rotation
+    // itself is the proof of ownership that reset-binding asks for.
+    queueRotation();
+
+    const rotated = await rotateApiKey(9, 3);
+
+    expect(rotated?.id).toBe(9);
+    const update = queries.find((q) =>
+      /^\s*UPDATE api_keys\s+SET key_hash/.test(q.sql),
+    );
+    expect(update?.sql).toMatch(/bound_ip = NULL/);
+    expect(update?.sql).toMatch(/WHERE id = \$7 AND user_id = \$8/);
+    expect(update?.params.slice(-2)).toEqual([9, 3]);
   });
 });
