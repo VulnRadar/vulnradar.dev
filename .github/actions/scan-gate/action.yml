@@ -303,12 +303,30 @@ runs:
             end
         '
         counts=$(echo "$result" | jq -c --argjson inc "$VR_INCLUDE_SUPPRESSED" "$gate_counts_jq")
-        critical=$(echo "$counts" | jq -r '.critical')
-        high=$(echo "$counts" | jq -r '.high')
-        medium=$(echo "$counts" | jq -r '.medium')
-        low=$(echo "$counts" | jq -r '.low')
-        total=$(echo "$counts" | jq -r '.total')
-        suppressed=$(echo "$counts" | jq -r '.suppressed')
+        # Read without -r, so a count sent as a string comes out quoted and
+        # is refused below rather than passing for the number inside it.
+        critical=$(echo "$counts" | jq '.critical')
+        high=$(echo "$counts" | jq '.high')
+        medium=$(echo "$counts" | jq '.medium')
+        low=$(echo "$counts" | jq '.low')
+        total=$(echo "$counts" | jq '.total')
+        suppressed=$(echo "$counts" | jq '.suppressed')
+        # With no findings array these are the summary's values as the reply
+        # wrote them, and each one is compared with [ -gt ] or written to
+        # $GITHUB_OUTPUT. One the shell cannot compare (2.0, "3", -1) made the
+        # test error, an error inside `if` is just false, and the gate passed.
+        # A newline in one wrote an output line of the reply's choosing. Ten
+        # digits or more is refused too: no scan finds a billion issues, and
+        # past nineteen the shell cannot compare it either. The value is not
+        # echoed, since it may hold a newline.
+        for pair in "critical:$critical" "high:$high" "medium:$medium" "low:$low" "total:$total" "suppressed:$suppressed"; do
+          case "${pair#*:}" in
+            ''|*[!0-9]*|??????????*)
+              echo "::error::Scan $scan_id reported a ${pair%%:*} count that is not a whole number, so the thresholds cannot be judged."
+              exit 2
+              ;;
+          esac
+        done
 
         # What the scan did not look at. bot-challenge and page-unreachable
         # mean the target was never read, so zero findings proves nothing.

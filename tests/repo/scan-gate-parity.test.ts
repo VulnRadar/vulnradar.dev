@@ -444,6 +444,19 @@ describe("one counting rule in the Action and the template", () => {
       squash(incompleteProgram(ACTION_SH)),
     );
   });
+
+  it("checks the same counts against the same pattern", () => {
+    const countCheck = (script: string) => {
+      const match =
+        /(for pair in "critical:[^\n]*)\n\s*case "\$\{pair#\*:\}" in\n\s*([^)\n]+\))/.exec(
+          script,
+        );
+      expect(match, "a whole-number check over the counts").not.toBeNull();
+      return [(match as RegExpExecArray)[1], (match as RegExpExecArray)[2]];
+    };
+    expect(countCheck(GITLAB_SH)).toEqual(countCheck(ACTION_SH));
+    expect(countCheck(ACTION_SH)[1]).toBe("''|*[!0-9]*|??????????*)");
+  });
 });
 
 describe("the floating GitLab include", () => {
@@ -572,6 +585,212 @@ describe.skipIf(!jqAvailable)("the jq filters give the CLI's answers", () => {
     );
   });
 });
+
+const NL = String.fromCharCode(10);
+const STAND_IN_CURL = read("tests/fixtures/scan-gate/stand-in-curl.sh");
+const STAND_IN_JQ = read("tests/fixtures/scan-gate/stand-in-jq.sh");
+
+/** A summary count as the API sends it, and as jq prints it without -r. */
+type Count = { literal: string; printed: string };
+const count = (literal: string, printed = literal): Count => ({
+  literal,
+  printed,
+});
+const ZERO = count("0");
+const summaryWith = (field: string, value: Count) => ({
+  critical: ZERO,
+  high: ZERO,
+  medium: ZERO,
+  low: ZERO,
+  total: ZERO,
+  [field]: value,
+});
+
+/**
+ * Run a gate script against a scan that completes on the first poll with no
+ * findings array, so the counts come from `summary`. The body is written out
+ * by hand because a literal such as 2.0 does not survive JSON.stringify.
+ */
+function runGateCounts(
+  script: string,
+  shell: "bash" | "sh",
+  standInJq: boolean,
+  summary: Record<string, Count>,
+) {
+  const dir = mkdtempSync(path.join(tmpdir(), "scan-gate-counts-"));
+  try {
+    const output = path.join(dir, "output.txt").replace(/\\/g, "/");
+    const stepSummary = path.join(dir, "summary.md").replace(/\\/g, "/");
+    const file = path.join(dir, "gate.sh").replace(/\\/g, "/");
+    const fields = Object.entries(summary)
+      .map(([name, value]) => `"${name}":${value.literal}`)
+      .join(",");
+    const env: Record<string, string> = {
+      ...GATE_DEFAULTS,
+      FAKE_STATUS_BODY: `{"status":"completed","result":{"summary":{${fields}}}}`,
+      GITHUB_OUTPUT: output,
+      GITHUB_STEP_SUMMARY: stepSummary,
+    };
+    for (const [name, value] of Object.entries(summary)) {
+      env[`FAKE_COUNT_${name}`] = value.printed;
+    }
+    writeFileSync(
+      file,
+      [STAND_IN_CURL, standInJq ? STAND_IN_JQ : "", script].join("\n"),
+    );
+    const result = spawnSync(shell, [file], {
+      cwd: dir,
+      encoding: "utf8",
+      env: { ...process.env, ...env },
+    });
+    return {
+      status: result.status,
+      out: `${result.stdout}${result.stderr}`,
+      output: existsSync(output) ? readFileSync(output, "utf8") : "",
+    };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// jq 1.7 prints a number the way the reply wrote it, so 2.0 reaches the
+// script as "2.0". jq 1.6 prints it as 2, which is a whole number and fine.
+const jqKeepsDecimals =
+  jqAvailable &&
+  spawnSync("jq", [".c"], {
+    input: '{"c":2.0}',
+    encoding: "utf8",
+  }).stdout.trim() === "2.0";
+
+const NOT_WHOLE: [string, Count][] = [
+  ["2.0", count("2.0")],
+  ["a fraction", count("2.5")],
+  ["a string of digits", count('"3"')],
+  [
+    "a string with a newline in it",
+    count(JSON.stringify(`0${NL}scan-id=forged`)),
+  ],
+  ["a negative number", count("-1")],
+  ["a number past the shell's integers", count("1e19", "10000000000000000000")],
+  ["true", count("true")],
+  ["a list", count("[1]")],
+];
+
+/** [field, label, value]: every way a count can fail, on every field. */
+const REFUSALS: [string, string, Count][] = [
+  ...NOT_WHOLE.map(([label, value]): [string, string, Count] => [
+    "critical",
+    label,
+    value,
+  ]),
+  ...["high", "medium", "low", "total"].flatMap(
+    (field): [string, string, Count][] => [
+      [field, "a fraction", count("2.5")],
+      [
+        field,
+        "a string with a newline in it",
+        count(JSON.stringify(`0${NL}${field}=0`)),
+      ],
+    ],
+  ),
+];
+
+// A full run forks a few dozen times, which is quick on a CI runner and
+// seconds apiece on Windows. The stand-in runs, which go wherever there is a
+// shell, keep to one case of each kind; the jq runs in CI take every case.
+const STAND_IN_REFUSALS = REFUSALS.filter(
+  ([field, label]) =>
+    (field === "critical" &&
+      [
+        "2.0",
+        "a string of digits",
+        "a number past the shell's integers",
+      ].includes(label)) ||
+    (field === "low" && label === "a string with a newline in it"),
+);
+const FULL_RUN_MS = 120_000;
+
+describe.each([
+  ["action.yml", "a stand-in jq", ACTION_SH, "bash" as const, true],
+  ["the GitLab template", "a stand-in jq", GITLAB_SH, "sh" as const, true],
+  ["action.yml", "jq", ACTION_SH, "bash" as const, false],
+  ["the GitLab template", "jq", GITLAB_SH, "sh" as const, false],
+])(
+  "%s judges only whole-number summary counts, read with %s",
+  (_name, _jq, script, shell, standInJq) => {
+    // With no findings array the counts come from `summary` as the reply
+    // wrote them. `[ 2.0 -gt 0 ]` is an error, an error inside `if` is just
+    // false, and so a count the shell could not compare passed the gate. The
+    // Action also writes each count to $GITHUB_OUTPUT, where a newline in one
+    // added an output line of the reply's choosing.
+    const runnable = shellAvailable && (standInJq || jqAvailable);
+    const run = (summary: Record<string, Count>) =>
+      runGateCounts(script, shell, standInJq, summary);
+
+    it.skipIf(!runnable).each(standInJq ? STAND_IN_REFUSALS : REFUSALS)(
+      "refuses a %s count that is %s with exit 2",
+      (field, label, value) => {
+        if (!standInJq && label === "2.0" && !jqKeepsDecimals) return;
+        const result = run(summaryWith(field, value));
+        expect(result.status, result.out).toBe(EXIT.ERROR);
+        expect(result.out).toContain(
+          `Scan abc123 reported a ${field} count that is not a whole number`,
+        );
+        expect(result.out).not.toContain("Scan complete");
+        expect(result.out).not.toContain("scan-id=forged");
+        expect(result.output).not.toMatch(
+          /^(critical|high|medium|low|total)=/m,
+        );
+        expect(result.output).not.toContain("forged");
+      },
+      FULL_RUN_MS,
+    );
+
+    it.skipIf(!runnable)(
+      "passes and reports whole-number counts",
+      () => {
+        const result = run({
+          ...summaryWith("medium", count("3")),
+          low: count("4"),
+          total: count("7"),
+        });
+        expect(result.status, result.out).toBe(0);
+        expect(result.out).toContain(
+          "Scan complete: critical=0 high=0 medium=3 low=4 total=7",
+        );
+        if (shell === "bash") {
+          expect(result.output).toContain(
+            ["critical=0", "high=0", "medium=3", "low=4", "total=7", ""].join(
+              NL,
+            ),
+          );
+        }
+      },
+      FULL_RUN_MS,
+    );
+
+    it.skipIf(!runnable || standInJq)(
+      "reads a null count as 0, as the CLI does",
+      () => {
+        const result = run(summaryWith("critical", count("null", "0")));
+        expect(result.status, result.out).toBe(0);
+      },
+      FULL_RUN_MS,
+    );
+
+    it.skipIf(!runnable).each(standInJq ? [["3"]] : [["3"], ["999999999"]])(
+      "fails the gate on a critical count of %s",
+      (critical) => {
+        const result = run(summaryWith("critical", count(critical)));
+        expect(result.status, result.out).toBe(EXIT.GATE_FAILED);
+        expect(result.out).toContain(
+          `${critical} critical finding(s) exceed the max of 0`,
+        );
+      },
+      FULL_RUN_MS,
+    );
+  },
+);
 
 describe("the documented flags and exit codes are the ones the CLI has", () => {
   const flags = [
