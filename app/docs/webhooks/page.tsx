@@ -105,12 +105,14 @@ export default function WebhooksPage() {
               platform: "Discord",
               pattern:
                 "/api/webhooks/* or /api/v<n>/webhooks/* on discord.com, discordapp.com, or a subdomain of either such as ptb. or canary.",
-              payload: "Rich embeds with colour-coded severity",
+              payload:
+                "Rich embeds with colour-coded severity. A Discord URL ending in /slack gets the Slack payload and one ending in /github the generic one, even on a webhook saved earlier as Discord.",
             },
             {
               platform: "Slack",
               pattern: "hooks.slack.com/*",
-              payload: "Block Kit with section fields",
+              payload:
+                "Block Kit with section fields, plus a top-level text line that shows in the notification preview",
             },
             {
               platform: "Generic",
