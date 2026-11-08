@@ -38,8 +38,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { pipeline } from "node:stream/promises";
 import { loadEnv, requireDatabaseUrl } from "./_lib/_lib.env.mjs";
-import { splitDbUrlForEnv } from "./_lib/_lib.db-url.mjs";
-import { createPool } from "./_lib/_lib.db.mjs";
+import { createPool, pgToolConnection } from "./_lib/_lib.db.mjs";
 import {
   banner,
   info,
@@ -354,6 +353,7 @@ async function runRestore() {
   // therefore which preflight) runs.
   let plaintextPath = filePath;
   let tempDir = null;
+  let releaseTlsFiles = async () => {};
 
   try {
     if (filePath.endsWith(".enc")) {
@@ -422,8 +422,12 @@ async function runRestore() {
     info("Format: pg_dump plain SQL.");
 
     // Keep the DB password out of psql's argv (visible via `ps` on a shared
-    // host); libpq reads it from PGPASSWORD in the child env instead.
-    const { connArg, env } = splitDbUrlForEnv(process.env.DATABASE_URL);
+    // host); libpq reads it from PGPASSWORD in the child env instead. The same
+    // env carries the TLS rule, so a URL's sslmode cannot loosen it.
+    const { connArg, env, cleanup } = await pgToolConnection(
+      process.env.DATABASE_URL,
+    );
+    releaseTlsFiles = cleanup;
 
     section("Preflight");
     // backup-db.mjs dumps with --format=plain and no --clean/--create, so the
@@ -519,6 +523,7 @@ async function runRestore() {
 
     success("Restore complete.");
   } finally {
+    await releaseTlsFiles().catch(() => {});
     if (tempDir) await rm(tempDir, { recursive: true, force: true });
   }
 }

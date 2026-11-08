@@ -255,3 +255,13 @@ describe("choosing between pg_dump and the built-in dumper", () => {
     expect(tail).toContain("pipeline([source, ...tail])");
   });
 });
+
+describe("pg_dump follows the shared TLS rule", () => {
+  const src = readFileSync("scripts/backup-db.mjs", "utf8");
+
+  it("takes its connection from pgToolConnection and removes the CA file after", () => {
+    expect(src).toContain("await pgToolConnection(");
+    expect(src).not.toContain("splitDbUrlForEnv");
+    expect(src).toMatch(/\.finally\(\(\) => cleanup\(\)/);
+  });
+});

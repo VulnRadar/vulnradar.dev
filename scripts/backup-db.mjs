@@ -91,7 +91,7 @@ import { pathToFileURL } from "node:url";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { loadEnv, requireDatabaseUrl, ROOT } from "./_lib/_lib.env.mjs";
-import { createPool } from "./_lib/_lib.db.mjs";
+import { createPool, pgToolConnection } from "./_lib/_lib.db.mjs";
 import { getProjectMeta } from "./_lib/_lib.meta.mjs";
 import {
   generateSqlDump,
@@ -104,7 +104,6 @@ import {
  * so anything in that region is an empty artefact rather than a backup.
  */
 const MIN_USABLE_BACKUP_BYTES = 512;
-import { splitDbUrlForEnv } from "./_lib/_lib.db-url.mjs";
 import {
   banner,
   info,
@@ -333,8 +332,11 @@ async function runBackup() {
 
   if (usePgDump) {
     // Keep the DB password out of pg_dump's argv (visible via `ps` on a shared
-    // host); libpq reads it from PGPASSWORD in the child env instead.
-    const { connArg, env } = splitDbUrlForEnv(process.env.DATABASE_URL);
+    // host); libpq reads it from PGPASSWORD in the child env instead. The same
+    // env carries the TLS rule, so a URL's sslmode cannot loosen it.
+    const { connArg, env, cleanup } = await pgToolConnection(
+      process.env.DATABASE_URL,
+    );
     const pgDump = spawn(
       "pg_dump",
       ["--no-owner", "--no-privileges", "--format=plain", connArg],
@@ -358,7 +360,7 @@ async function runBackup() {
         resolvePromise(-1);
       });
       pgDump.on("close", (code) => resolvePromise(code));
-    });
+    }).finally(() => cleanup().catch(() => {}));
 
     try {
       await pipeline([pgDump.stdout, ...tail]);

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -279,5 +280,15 @@ describe("decryptBackupWithFallback", () => {
         decryptBackupWithFallback({ ...args, candidates: [] }),
       ).rejects.toThrow(/No decryption key/);
     });
+  });
+});
+
+describe("psql follows the shared TLS rule", () => {
+  const src = readFileSync("scripts/restore-db.mjs", "utf8");
+
+  it("takes its connection from pgToolConnection and removes the CA file after", () => {
+    expect(src).toContain("await pgToolConnection(");
+    expect(src).not.toContain("splitDbUrlForEnv");
+    expect(src).toContain("await releaseTlsFiles()");
   });
 });
