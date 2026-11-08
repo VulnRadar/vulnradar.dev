@@ -105,6 +105,8 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+On the defaults (port on 127.0.0.1, `http://localhost:3000`) the stack sets `ALLOW_INSECURE_HTTP=1` for itself, so it opens over plain HTTP; any other URL or bind stays HTTPS-only.
+
 `API_KEY_ENCRYPTION_KEY` is required: the app refuses to start without a
 64-character hex value, rather than falling back to plaintext. It encrypts API
 keys, TOTP secrets and other stored credentials at rest, so a lost key means

@@ -1,6 +1,6 @@
 # VulnRadar Production Docker Compose
 # Uses pre-built image from GHCR for easy deployment
-# For development with custom Turnstile keys, use: docker compose -f docker-compose.dev.yml up -d
+# To build from a local checkout instead, use: docker compose -f docker-compose.dev.yml up -d --build
 #
 # Quick start:
 #   1. Copy .env.example to .env and fill in values
@@ -81,6 +81,11 @@ services:
         NEXT_PUBLIC_CHROME_WEB_STORE_URL: ${NEXT_PUBLIC_CHROME_WEB_STORE_URL:-}
         NEXT_PUBLIC_FIREFOX_ADDON_URL: ${NEXT_PUBLIC_FIREFOX_ADDON_URL:-}
     container_name: vulnradar-app
+    # Docker's default is 10s, then SIGKILL. The app stops accepting on SIGTERM,
+    # finishes what it has (up to 30s, see
+    # lib/database/boot/graceful-shutdown.ts) and only then closes the database,
+    # so anything shorter cuts running scans on every deploy.
+    stop_grace_period: 40s
     # The explicit `environment:` map below only forwards the variables named
     # in it, which was 11 of the ~48 the app actually reads: everything else
     # an operator set in .env (OAuth client ids, AI provider keys, Browserbase,
@@ -116,6 +121,12 @@ services:
       # SMTP (optional, for emails). The host, credentials, sender and EHLO
       # name come from .env through env_file.
       SMTP_PORT: ${SMTP_PORT:-587}
+      # The same value `ports:` binds below. Compose has no way to compare two
+      # strings, so the app decides from this: on the loopback quick start with
+      # a plain-http localhost URL it runs with ALLOW_INSECURE_HTTP=1 (see
+      # localPlainHttpApplies in lib/server/http-front.mjs), and with 0.0.0.0
+      # and no TRUSTED_PROXY_CIDR it logs a warning at boot.
+      HOST_BIND: ${HOST_BIND:-127.0.0.1}
       # SUPPORT_EMAIL reaches the server (outgoing email) through env_file,
       # and the client through the NEXT_PUBLIC_SUPPORT_EMAIL build arg above:
       # both read the same SUPPORT_EMAIL from your .env, so setting it once

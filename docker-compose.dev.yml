@@ -6,13 +6,10 @@
 # architecture docs (app/docs/architecture), kept in sync with those.
 #
 # Quick start:
-#   1. Copy .env.example to .env and fill in values, including a real
-#      NEXT_PUBLIC_TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY pair from
-#      https://dash.cloudflare.com/?to=/:account/turnstile if you want to
-#      exercise the CAPTCHA locally (the default keys in .env.example are
-#      Cloudflare's "always passes" test keys).
+#   1. Copy .env.example to .env and fill in values
 #   2. docker compose -f docker-compose.dev.yml up -d --build
-#   3. docker compose -f docker-compose.dev.yml exec app npm run db:create
+#
+# The schema creates itself on first boot.
 #
 # For the production path (pull the published image), use docker-compose.yml
 # instead.
@@ -40,17 +37,25 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # The same set as docker-compose.yml, and tests/repo/compose-parity.test.ts
+      # keeps it that way: a NEXT_PUBLIC_* value only reaches the browser bundle
+      # if it is passed here.
       args:
+        NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
+        NEXT_PUBLIC_DISCORD_INVITE_URL: ${NEXT_PUBLIC_DISCORD_INVITE_URL:-}
+        NEXT_PUBLIC_CHROME_WEB_STORE_URL: ${NEXT_PUBLIC_CHROME_WEB_STORE_URL:-}
+        NEXT_PUBLIC_FIREFOX_ADDON_URL: ${NEXT_PUBLIC_FIREFOX_ADDON_URL:-}
     container_name: vulnradar-app-dev
+    stop_grace_period: 40s
     # Same shape as docker-compose.yml: env_file forwards the whole .env
     # (SMTP, Turnstile, OAuth, support address and the rest), and the map
     # below only sets what compose derives itself or defaults, taking
     # precedence where both define a key. The map used to list a
     # `NAME: ${NAME:-}` line per optional variable instead, which forwarded
-    # only those few and turned every unset one into an empty string. For the
-    # CAPTCHA, set real dev keys in .env or keep the .env.example test keys,
-    # which always pass.
+    # only those few and turned every unset one into an empty string.
     env_file:
       - path: .env
         required: false
@@ -63,6 +68,7 @@ services:
       # on the startup env validation instead of failing here with a name.
       API_KEY_ENCRYPTION_KEY: ${API_KEY_ENCRYPTION_KEY:?Set API_KEY_ENCRYPTION_KEY in .env to 64 hex chars. Generate one with the node command at the top of docker-compose.yml.}
       SMTP_PORT: ${SMTP_PORT:-587}
+      HOST_BIND: ${HOST_BIND:-127.0.0.1}
     volumes:
       # Mirrors docker-compose.yml's avatar_data / backup_data volumes: keeps
       # uploaded profile pictures and database backups out of the
