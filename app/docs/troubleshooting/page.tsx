@@ -9,6 +9,18 @@ import {
   CONFIG_CRAWL_PAGE_FETCH_TIMEOUT_MS,
 } from "@/lib/config/config-values";
 import { SETTINGS_REGISTRY } from "@/lib/config/registry";
+import {
+  API_KEY_LIMIT_MESSAGE,
+  BULK_STOPPED_MESSAGE,
+  DAILY_LIMIT_MESSAGE,
+  bulkDeadlineMessage,
+} from "@/lib/scanner/failure-messages";
+import {
+  SCANNER_UA,
+  SCANNER_UA_ACTIVE_PROBE,
+  SCANNER_UA_AUTHENTICATED,
+  SCANNER_UA_PRODUCT,
+} from "@/lib/scanner/user-agent";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "../docs-toc-spy";
 import {
@@ -25,6 +37,7 @@ const tocItems: TocItem[] = [
   { id: "errors", label: "Failure messages, and what to do" },
   { id: "timeouts", label: "Timeouts" },
   { id: "blocked", label: "Targets we refuse to scan" },
+  { id: "recognising-traffic", label: `Recognising ${APP_NAME} traffic` },
   { id: "zero-findings", label: "A scan with no findings" },
   { id: "incomplete", label: "Partial results" },
   { id: "robots", label: "robots.txt and crawling" },
@@ -169,16 +182,56 @@ export default function TroubleshootingPage() {
                 "An operator stopped it from the scanner queue, usually because it was stuck. Run it again.",
             },
             {
+              message: DAILY_LIMIT_MESSAGE,
+              cause:
+                "Your daily scan allowance ran out part-way through a batch, and the URLs after that point were turned away. It resets at 00:00 UTC: run the rest then, or upgrade.",
+            },
+            {
+              message: API_KEY_LIMIT_MESSAGE,
+              cause:
+                "The API key's own daily request limit ran out part-way through a batch, which is separate from the account's scans per day. Run the rest after the reset, or use a key with a higher limit.",
+            },
+            {
+              message: BULK_STOPPED_MESSAGE,
+              cause:
+                "The batch ended early for a reason other than its time limit, so this URL never started. Submit the URLs it did not reach again.",
+            },
+            {
+              message: bulkDeadlineMessage(CONFIG_BULK_SCAN_TIMEOUT_SECONDS),
+              cause:
+                "A bulk batch works through its URLs one at a time and has a time limit for the whole batch. URLs it had not reached by then never started. Submit them again in a smaller batch.",
+            },
+            {
+              message: "Scan failed to start.",
+              cause:
+                "The scan was accepted but its job could not be started. Run it again; if it repeats, open a support ticket with the URL and roughly when you ran it.",
+            },
+            {
+              message: "An unexpected error occurred during the scan.",
+              cause:
+                "The scanner broke while the scan was running, which is not about your site. Retry once; if it repeats on the same URL, open a support ticket.",
+            },
+            {
+              message: "An unexpected error occurred during the crawl scan.",
+              cause:
+                "The same failure during a crawl. Retry once; if it repeats on the same site, open a support ticket.",
+            },
+            {
+              message: "The scan ran past its time limit and was stopped.",
+              cause:
+                "The watchdog fired and the scan did not record which limit it hit. See timeouts below.",
+            },
+            {
               message:
                 "This scan did not run because a daily scan limit was reached. Nothing was scanned.",
               cause:
-                "A bulk batch ran into your daily scan allowance or your API key's daily limit part-way through. The URLs after that point were turned away.",
+                "Seen on older scans. The same cause as the daily scan limit rows above.",
             },
             {
               message:
                 "This scan did not run: the batch it belonged to stopped before reaching it.",
               cause:
-                "A bulk batch works through its URLs one at a time and has a time limit for the whole batch. URLs it had not reached by then never started. Submit them again in a smaller batch.",
+                "Seen on older scans. The same cause as the bulk batch rows above.",
             },
             {
               message: `Scan exceeded the ${CONFIG_SCAN_TIMEOUT_SECONDS}s time limit.`,
@@ -297,27 +350,50 @@ export default function TroubleshootingPage() {
           </p>
         </DocsSubSection>
 
-        <DocsSubSection title="Blocked by an operator">
+        <DocsSubSection title="Blocked by staff or by the domain's owner">
           <p className="text-sm leading-relaxed text-muted-foreground">
-            An operator can blocklist specific hosts, domains or IP ranges. The
-            response is{" "}
+            Both kinds of block give the same response:{" "}
             <em>
               This target cannot be scanned, with a note that the domain has
               been restricted for security, privacy or compliance reasons
             </em>
-            . If you own the domain and believe it was blocked in error, open a
-            support ticket; the block is a deliberate operator decision, so
-            retrying will not clear it.
+            . Retrying will not clear either one. What clears it depends on who
+            put it there:
           </p>
+          <ul className="list-disc space-y-2 pl-6 text-sm text-muted-foreground">
+            <li>
+              <strong className="text-foreground">A staff block</strong> is a
+              deliberate operator decision about specific hosts, domains or IP
+              ranges. Owning the domain does not lift it: the domain&rsquo;s
+              Manage page shows the block with no control to remove it. If you
+              believe it is a mistake, open a support ticket.
+            </li>
+            <li>
+              <strong className="text-foreground">An owner block</strong> comes
+              from the verified owner of the domain, and covers that domain and
+              every host beneath it. If that owner is you, lift it with Allow
+              scanning on the domain&rsquo;s Manage page, or{" "}
+              <InlineCode>DELETE /domains/{"{id}"}/block</InlineCode>. If it is
+              not you, only the site&rsquo;s owner can. See{" "}
+              <Link
+                href="/docs/sharing#domain-owner-controls"
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                site-owner controls
+              </Link>
+              .
+            </li>
+          </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="Active probing on an unverified domain">
+        <DocsSubSection title="Active probes and port sweeps on an unverified domain">
           <p className="text-sm leading-relaxed text-muted-foreground">
-            Active probes send real payloads at a target, so they only run
-            against a domain you have proved you own. Asking for them on an
-            unverified domain is refused outright rather than silently
-            downgraded to a passive scan. Verify the domain first, or run the
-            scan without active probes.
+            Active probes send real payloads at a target, and{" "}
+            <InlineCode>portScan</InlineCode> opens connections to its ports, so
+            both only run against a domain you have proved you own. Asking for
+            either on an unverified domain is refused outright rather than
+            silently downgraded to a passive scan. Verify the domain first, or
+            run the scan without them.
           </p>
         </DocsSubSection>
 
@@ -335,6 +411,66 @@ export default function TroubleshootingPage() {
             .
           </p>
         </DocsSubSection>
+      </DocsSection>
+
+      <DocsSection
+        id="recognising-traffic"
+        title={`Recognising ${APP_NAME} traffic`}
+      >
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Every HTTP request {APP_NAME} sends to a scan target carries a
+          User-Agent containing <InlineCode>{SCANNER_UA_PRODUCT}</InlineCode>,
+          so one contains-match rule covers the page fetch and every check that
+          follows it. The rest of the string says what the request is doing.
+        </p>
+        <DocsTable
+          caption="The User-Agent sent to the target, by kind of request"
+          columns={[
+            { key: "request", header: "Request" },
+            {
+              key: "agent",
+              header: "User-Agent",
+              className: "font-mono w-full",
+            },
+          ]}
+          data={[
+            {
+              request: "Page fetch: URL, crawl and bulk scans",
+              agent: `${SCANNER_UA_PRODUCT} (Security Scanner)`,
+            },
+            {
+              request:
+                "The checks after it: TLS, robots.txt, exposed files, CORS and methods",
+              agent: SCANNER_UA,
+            },
+            {
+              request: "Crawl discovery",
+              agent: `${SCANNER_UA_PRODUCT} (Crawler)`,
+            },
+            {
+              request: "Login of an authenticated scan",
+              agent: SCANNER_UA_AUTHENTICATED,
+            },
+            {
+              request: "Active probes",
+              agent: SCANNER_UA_ACTIVE_PROBE,
+            },
+            {
+              request: "Demo scan",
+              agent: `${SCANNER_UA_PRODUCT} (Security Scanner - Demo)`,
+            },
+          ]}
+        />
+        <DocsCallout variant="warning" title="A User-Agent proves nothing">
+          <p>
+            Anyone can send this string, so use it to filter logs or let scans
+            through, never as proof a request came from {APP_NAME}. The hosted
+            service does not publish its scan IP addresses, so there is no IP
+            allowlist to add; a self-hosted instance scans from your own
+            address. The port sweep opens raw TCP connections and sends no
+            User-Agent at all, which is one reason it needs a verified domain.
+          </p>
+        </DocsCallout>
       </DocsSection>
 
       <DocsSection id="zero-findings" title="A scan with no findings">
@@ -394,8 +530,14 @@ export default function TroubleshootingPage() {
             If a firewall or bot-protection layer answers instead of your
             application, the scan completes successfully against the block page,
             not your site. The tell is a very short report with an unexpected
-            status code or a tiny response body. Allowlist the scanner, or scan
-            from a self-hosted instance inside your perimeter.
+            status code or a tiny response body. Let{" "}
+            <a
+              href="#recognising-traffic"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              the scanner&rsquo;s User-Agent
+            </a>{" "}
+            through, or scan from a self-hosted instance inside your perimeter.
           </p>
         </DocsCallout>
       </DocsSection>

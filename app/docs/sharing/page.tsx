@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { verificationRecordName } from "@/lib/domains/verification";
 import type { TocItem } from "@/components/docs/docs-types";
+import { DocsPublicByDefault } from "@/components/docs/docs-public-by-default";
 import { DocsTocSpy } from "../docs-toc-spy";
 import {
   DocsHero,
@@ -13,12 +15,17 @@ import {
 } from "@/components/docs";
 
 const tocItems: TocItem[] = [
+  { id: "who-can-see", label: "Who can see what" },
   { id: "overview", label: "Overview" },
   { id: "share-links", label: "Sharing a scan" },
   { id: "public-scans", label: "The Public Scans directory" },
   { id: "redaction", label: "What a viewer can see" },
   { id: "host-reports", label: "Per-host reports" },
   { id: "assets", label: "Assets and attack surface" },
+  {
+    id: "domain-owner-controls",
+    label: "Verified domains and site-owner controls",
+  },
   { id: "badges", label: "Security badges" },
   { id: "compare", label: "Comparing two scans" },
 ];
@@ -38,6 +45,38 @@ export default function SharingDocsPage() {
           { value: "30", label: "Scans per host trend" },
         ]}
       />
+
+      <DocsSection id="who-can-see" title="Who can see what">
+        <DocsPublicByDefault />
+        <DocsTable
+          caption="The three public surfaces of a scan, who can reach each one, and what controls it"
+          columns={[
+            { key: "surface", header: "Surface" },
+            { key: "who", header: "Who can reach it" },
+            { key: "control", header: "What controls it", className: "w-full" },
+          ]}
+          data={[
+            {
+              surface: "Share link",
+              who: "Only people you give the URL to. No account needed.",
+              control:
+                "Created from the scan's menu and revoked there or on the Shared reports page.",
+            },
+            {
+              surface: "Public Scans directory",
+              who: "Anyone, browsable. On by default for a new share link.",
+              control:
+                "Profile > Privacy > List new shares in the Public Scans directory, or the listing toggle on one link.",
+            },
+            {
+              surface: "Host page, /host/<hostname>",
+              who: "Anyone, no account. On by default.",
+              control:
+                "Profile > Privacy > Scans are public by default, or Keep this scan private on the scan form.",
+            },
+          ]}
+        />
+      </DocsSection>
 
       <DocsSection id="overview" title="Overview">
         <div className="max-w-[68ch] space-y-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
@@ -258,8 +297,9 @@ export default function SharingDocsPage() {
           <p>
             Every writer of the reputation cache skips a non-public scan, and
             flipping a scan from public to private deletes its cached row
-            outright. An authenticated scan is always private, so it never lands
-            here. A host nobody has publicly scanned comes back as{" "}
+            outright. An authenticated scan lands here only when its own request
+            asks for that, which on the scan form means Keep this scan private
+            was left off. A host nobody has publicly scanned comes back as{" "}
             <InlineCode>known: false</InlineCode>, and a bare IP is rejected as
             an invalid hostname.
           </p>
@@ -330,6 +370,93 @@ export default function SharingDocsPage() {
             view of the assets you own and monitor.
           </p>
         </DocsSubSection>
+      </DocsSection>
+
+      <DocsSection
+        id="domain-owner-controls"
+        title="Verified domains and site-owner controls"
+      >
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Anyone can point {APP_NAME} at your site and leave the result public,
+          so owning the domain comes with a say over those reports. Ownership is
+          proved with DNS: add the domain on the{" "}
+          <Link
+            href="/attack-surface"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Attack surface
+          </Link>{" "}
+          page, publish the TXT record it shows you (for example.com, at{" "}
+          <InlineCode>{verificationRecordName("example.com")}</InlineCode>), and
+          verify. A verified apex covers every subdomain beneath it.
+        </p>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Open <strong className="text-foreground">Manage</strong> on the
+          verified domain. It lists every scan of that domain a stranger could
+          already read, whoever ran it: scans marked public and scans with a
+          share link. A private scan someone else ran is not listed, and the
+          list does not say who ran anything except to flag your own.
+        </p>
+
+        <DocsTable
+          caption="What each site-owner control does and what it leaves alone"
+          columns={[
+            { key: "control", header: "Control" },
+            { key: "does", header: "What it does", className: "w-[52%]" },
+            { key: "leaves", header: "What it leaves alone" },
+          ]}
+          data={[
+            {
+              control: "Unpublish",
+              does: "For one scan or all of them: clears the public flag and removes the snapshot it produced from /host/<hostname>.",
+              leaves:
+                "The report stays in its owner's private history. A live share link keeps working, and it is the share link that puts a scan in the Public Scans directory, so revoke that too.",
+            },
+            {
+              control: "Revoke share links",
+              does: "Every /shared/<token> link for the scan stops working for everyone holding it, and the scan drops off the Public Scans directory.",
+              leaves:
+                "The scan is not deleted and can be shared again later. This does not change what the host page shows.",
+            },
+            {
+              control: "Block scanning",
+              does: "Refuses every new scan of the domain and of any host beneath it, from every account, including yours.",
+              leaves:
+                "Existing results are untouched, so unpublish those separately. Allow scanning on the same page lifts it, or DELETE /domains/{id}/block.",
+            },
+          ]}
+        />
+
+        <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
+          <li>
+            <strong className="text-foreground">
+              Who holds these controls:
+            </strong>{" "}
+            the account that verified the domain. A teammate who can see a
+            team-shared domain cannot use them, because they reach into scans
+            other accounts ran.
+          </li>
+          <li>
+            <strong className="text-foreground">
+              You control exposure, not other people&apos;s data:
+            </strong>{" "}
+            a domain owner cannot delete a scan another account ran. It stays in
+            that account&apos;s history, out of public view.
+          </li>
+        </ul>
+
+        <DocsCallout
+          variant="warning"
+          title="A staff block cannot be lifted here"
+        >
+          <p>
+            If staff blocked the domain, Manage shows the block with no way to
+            lift it, and <InlineCode>DELETE /domains/{"{id}"}/block</InlineCode>{" "}
+            answers <InlineCode>409</InlineCode>. Proving you own a domain is
+            not an answer to why staff stopped it being scanned, so open a
+            support ticket if you think it is a mistake.
+          </p>
+        </DocsCallout>
       </DocsSection>
 
       <DocsSection id="badges" title="Security badges">

@@ -5,6 +5,10 @@ import { PLANS, PRODUCTS } from "@/lib/billing/catalog";
 import { AI_CREDIT_TIERS } from "@/lib/billing/ai-credit-catalog";
 import { GITHUB_CREDIT_TIERS } from "@/lib/billing/github-credit-catalog";
 import { BROWSERBASE_CREDIT_TIERS } from "@/lib/billing/browserbase-credit-catalog";
+import {
+  CONFIG_AI_USAGE_WINDOW_HOURS,
+  CONFIG_GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS,
+} from "@/lib/config/config-values";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "../docs-toc-spy";
 import {
@@ -87,6 +91,11 @@ export default function BillingDocsPage() {
   const planRows = LIMIT_ROWS.map((row) => {
     const cells: Record<string, string> = { limit: row.label };
     for (const plan of PLANS) cells[plan.id] = limitLabel(plan.limits[row.key]);
+    // Free has no repo-review token budget but does get a trial run, so
+    // "Not included" told people a feature they could use was closed to them.
+    if (row.key === "githubReviewTokensPerWindow") {
+      cells.free = `One trial review per ${CONFIG_GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS} hours`;
+    }
     return cells;
   });
 
@@ -186,6 +195,17 @@ export default function BillingDocsPage() {
           </Link>{" "}
           page.
         </p>
+
+        <DocsSubSection id="reading" title="Reading this table">
+          <ul className="list-disc space-y-2 pl-6 text-sm leading-relaxed text-muted-foreground">
+            <li>Scans and API requests per day reset at 00:00 UTC.</li>
+            <li>
+              AI tokens and repo-review tokens use a fixed window of{" "}
+              {CONFIG_AI_USAGE_WINDOW_HOURS} hours.
+            </li>
+            <li>Live-browser minutes reset each calendar month.</li>
+          </ul>
+        </DocsSubSection>
 
         <DocsSubSection title="Monthly or yearly">
           <p className="text-sm leading-relaxed text-muted-foreground">

@@ -15,7 +15,9 @@ import {
   EXACT_CHECK_CATEGORY_COUNT,
 } from "@/lib/config/check-stats.generated";
 import { COMMON_PORT_COUNT } from "@/lib/scanner/port-scan";
+import { PLANS } from "@/lib/billing/catalog";
 import type { TocItem } from "@/components/docs/docs-types";
+import { DocsPublicByDefault } from "@/components/docs/docs-public-by-default";
 import { DocsTocSpy } from "./docs-toc-spy";
 import {
   DocsHero,
@@ -40,6 +42,11 @@ const tocItems: TocItem[] = [
 // deciding whether this is worth their time, not integrating yet, and the old
 // step 1 ("create an account") asked them to sign up before they had seen
 // anything run.
+const API_KEY_ALLOWANCE = PLANS.map(
+  (plan) =>
+    `${plan.limits.apiKeys === -1 ? "unlimited" : plan.limits.apiKeys} on ${plan.name}`,
+).join(", ");
+
 const quickStartSteps: Step[] = [
   {
     step: 1,
@@ -56,20 +63,25 @@ const quickStartSteps: Step[] = [
   {
     step: 3,
     title: "Generate an API key",
-    description:
-      "Profile, then API Keys, then Generate New Key. The raw key is shown once and never again. How many active keys you may hold is set by your plan: 1 on Free, 3 on Core Supporter, 10 on Pro Supporter, unlimited on Elite Supporter.",
+    description: `Profile > Developer > API Keys, then Create key. The raw key is shown once and never again. How many active keys you may hold is set by your plan: ${API_KEY_ALLOWANCE}.`,
   },
   {
     step: 4,
-    title: "Send the first scan",
+    title: "Start the scan",
     description:
-      "POST the target to /api/v3/scan with your key as a Bearer token. A bare hostname works: https:// is prepended for you.",
+      "POST the target to /api/v3/scan with your key as a Bearer token. A bare hostname works: https:// is prepended for you. The answer comes straight back with a scanId and the status running, and the scan carries on in the background.",
   },
   {
     step: 5,
+    title: "Poll until it finishes",
+    description:
+      "GET /api/v3/scan/status/12345 with the same key every 2 to 5 seconds, using the scanId you got back. Stop when status is completed or failed.",
+  },
+  {
+    step: 6,
     title: "Read the findings",
     description:
-      "Each finding carries a stable id, a severity, the evidence that triggered it, and fix steps with a copyable snippet.",
+      "A completed response carries result. Each entry in result.findings has a stable id, a severity, the evidence that triggered it, and fix steps with a copyable snippet.",
   },
 ];
 
@@ -84,7 +96,33 @@ export default function DocsPage() {
   const curlExample = `curl -X POST "${APP_URL}/api/v3/scan" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"url": "example.com", "portScan": true}'`;
+  -d '{"url": "example.com"}'`;
+
+  const startResponse = `{
+  "scanId": 12345,
+  "status": "running"
+}`;
+
+  const pollExample = `curl "${APP_URL}/api/v3/scan/status/12345" \\
+  -H "Authorization: Bearer YOUR_API_KEY"`;
+
+  const completedResponse = `{
+  "status": "completed",
+  "result": {
+    "url": "https://example.com",
+    "summary": { "critical": 0, "high": 1, "medium": 0, "low": 0, "info": 0, "total": 1 },
+    "findings": [
+      {
+        "id": "hsts-missing--9f2c1a",
+        "title": "Missing HTTP Strict Transport Security (HSTS)",
+        "severity": "high",
+        "category": "headers",
+        "evidence": "Header 'Strict-Transport-Security' is not present in the response.",
+        "fixSteps": ["..."]
+      }
+    ]
+  }
+}`;
 
   return (
     <div className="space-y-12 sm:space-y-16">
@@ -123,12 +161,22 @@ export default function DocsPage() {
           <div className="min-w-0">
             <DocsSteps steps={quickStartSteps} />
           </div>
-          <div className="min-w-0">
-            <CodeBlock code={curlExample} language="bash" />
-            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-              <InlineCode>portScan</InlineCode> is optional. Leave it out and
-              only the web checks run. Full request and response shapes are on
-              the{" "}
+          {/* Sibling blocks, because a DocsSteps description is a plain string
+              and cannot hold code. */}
+          <div className="min-w-0 space-y-3">
+            <CodeBlock code={curlExample} filename="Start the scan" />
+            <CodeBlock code={startResponse} filename="Response" />
+            <CodeBlock code={pollExample} filename="Poll until it finishes" />
+            <CodeBlock
+              code={completedResponse}
+              filename="Read the findings (trimmed)"
+            />
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Add <InlineCode>&quot;portScan&quot;: true</InlineCode> for the
+              port sweep. It needs a verified domain: a request that sets it for
+              a domain you have not verified is refused with a{" "}
+              <InlineCode>403</InlineCode>. Full request and response shapes are
+              on the{" "}
               <Link
                 href="/docs/api"
                 className="text-primary underline-offset-2 hover:underline"
@@ -139,6 +187,7 @@ export default function DocsPage() {
             </p>
           </div>
         </div>
+        <DocsPublicByDefault />
       </DocsSection>
 
       <DocsSection id="documentation" title="The documentation set">
@@ -277,7 +326,8 @@ export default function DocsPage() {
             >
               legal pages
             </Link>
-            .
+            . These docs are in English only. The app, the sign-up email and the
+            Vera assistant follow your account language.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline" size="sm">

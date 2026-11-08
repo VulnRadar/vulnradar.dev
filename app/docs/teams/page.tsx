@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "../docs-toc-spy";
 import {
@@ -283,8 +284,11 @@ export default function TeamsPage() {
             <InlineCode>DELETE /api/v3/teams/members</InlineCode> removes a
             member (by <InlineCode>userId</InlineCode>) or cancels a pending
             invite (by <InlineCode>inviteId</InlineCode>). A non-owner removing
-            their own <InlineCode>userId</InlineCode> leaves the team; the owner
-            cannot leave and must transfer or delete instead.
+            their own <InlineCode>userId</InlineCode> leaves the team. The owner
+            cannot leave. There is no ownership transfer: to hand a team over,
+            delete it (members&apos; shared scans return to their owners as
+            personal scans) or ask support. Plan for this when choosing who
+            creates the team.
           </li>
         </ul>
 
@@ -370,9 +374,23 @@ export default function TeamsPage() {
           recent 50), never their personal scans. Both the requester and the
           target must be members of the team.{" "}
           <InlineCode>GET /api/v3/teams/teammates</InlineCode> returns everyone
-          you share any team with, deduped across your teams, and is what
-          populates the assignee picker when you hand a remediation item to a
-          teammate.
+          you share any team with, deduped across your teams.
+        </p>
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          The assignee field on a finding suggests your teammates&apos; names as
+          a convenience. It is a private label: remediation status, notes and
+          assignees are visible only to you, and teammates are not notified.
+        </p>
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          A teammate reading a shared report can look up any finding on its own
+          page in the{" "}
+          <Link
+            href="/checks"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            check catalogue
+          </Link>
+          , which has the explanation and the fix steps.
         </p>
       </DocsSection>
 
@@ -386,7 +404,8 @@ export default function TeamsPage() {
           endpoints for both (<InlineCode>GET /api/v3/webhooks</InlineCode> and{" "}
           <InlineCode>GET /api/v3/domains</InlineCode>) union your own rows with
           any row whose team you belong to, so shared and personal resources
-          come back together.
+          come back together. A teammate with read-only access sees a
+          team-scoped webhook&apos;s host, never its full URL.
         </p>
       </DocsSection>
 

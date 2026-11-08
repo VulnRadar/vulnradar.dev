@@ -139,6 +139,7 @@ const tocItems: TocItem[] = [
   { id: "rescans", label: "Surviving rescans", level: 2 },
   { id: "bulk", label: "Bulk actions", level: 2 },
   { id: "remediation-api", label: "Remediation API", level: 2 },
+  { id: "false-positives", label: "False positives" },
   { id: "tickets", label: "Support tickets" },
   { id: "open-ticket", label: "Opening a ticket", level: 2 },
   { id: "categories-statuses", label: "Categories and statuses", level: 2 },
@@ -182,7 +183,14 @@ export default function TriageDocsPage() {
             tunes the global detection confidence model; remediation records
             what <em>you</em> have done about the finding and nothing else. The
             two controls sit next to each other on an open finding but never
-            touch the same data.
+            touch the same data. What each verdict changes is under{" "}
+            <a
+              href="#false-positives"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              False positives
+            </a>
+            .
           </p>
           <p>
             The HTTP endpoints below live under{" "}
@@ -265,6 +273,17 @@ export default function TriageDocsPage() {
               finding, then re-confirms against the API on open, so a change
               made in another tab or session shows up rather than being silently
               overwritten.
+            </p>
+          </DocsCallout>
+          <DocsCallout
+            variant="warning"
+            title="Remediation is a personal checklist, not a team task board"
+          >
+            <p>
+              Status, notes and assignees are visible only to you, and whoever
+              you name as assignee is not notified. To hand a finding to
+              someone, share the scan with the team and put their name in the
+              scan&apos;s note, or use a support ticket or a webhook.
             </p>
           </DocsCallout>
         </DocsSubSection>
@@ -378,6 +397,68 @@ remediation key = (user_id, finding_id, finding_url)`}
           />
           <EndpointCard {...remediationEndpoint} />
         </DocsSubSection>
+      </DocsSection>
+
+      <DocsSection id="false-positives" title="False positives">
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          An open finding on your own scan offers three verdicts about whether
+          the scanner got it right. Read what the check actually looks for
+          first: every check has a page in the{" "}
+          <Link
+            href="/checks"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            check catalogue
+          </Link>
+          .
+        </p>
+        <DocsTable
+          caption="The three verdicts and what each one changes"
+          columns={[
+            { key: "verdict", header: "Verdict" },
+            { key: "views", header: "Your views and exports" },
+            { key: "score", header: "Scan score" },
+            { key: "alerts", header: "Regression alerts" },
+            { key: "accuracy", header: "Global accuracy" },
+          ]}
+          data={[
+            {
+              verdict: "False positive",
+              views: "Hidden",
+              score: "Recomputed without it",
+              alerts: "Excluded",
+              accuracy: "Counts against the check",
+            },
+            {
+              verdict: "Confirmed",
+              views: "Stays",
+              score: "Unchanged",
+              alerts: "Still counted",
+              accuracy: "Counts for the check",
+            },
+            {
+              verdict: "Not applicable",
+              views: "Stays",
+              score: "Unchanged",
+              alerts: "Still counted",
+              accuracy: "Counts in the check's total",
+            },
+          ]}
+        />
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          <InlineCode>Accepted risk</InlineCode> and{" "}
+          <InlineCode>Won&apos;t fix</InlineCode> are different in kind: they
+          are remediation statuses, and they say the finding is real and you
+          have decided not to act on it. The finding stays in your views, your
+          exports and your score, the check&apos;s accuracy figure is not
+          touched, and it only becomes a SARIF suppression if you ask for one
+          with <InlineCode>applyTriage=true</InlineCode>. Use false positive
+          when the scanner was wrong, not when the fix is not worth doing.
+        </p>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          The verdict buttons call <InlineCode>POST /scan/feedback</InlineCode>,
+          which takes a signed-in session only, with no API key equivalent.
+        </p>
       </DocsSection>
 
       <DocsSection id="tickets" title="Support tickets">

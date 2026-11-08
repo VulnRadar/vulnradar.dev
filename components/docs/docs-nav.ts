@@ -38,6 +38,11 @@ export const DOCS_NAV: NavSection[] = [
     title: `Using ${APP_NAME}`,
     items: [
       {
+        href: "/docs/scanning",
+        label: "Scanning a Site",
+        summary: "Quick, Deep and Bulk, the result panels, and signing in",
+      },
+      {
         href: "/docs/scheduled-scans",
         label: "Scheduled Scans",
         summary: "Recurring scans on a schedule, with regression alerts",
@@ -85,7 +90,7 @@ export const DOCS_NAV: NavSection[] = [
       {
         href: "/docs/ai",
         label: "AI Features",
-        summary: "Vera chat, AI verification, summaries, and BYOK keys",
+        summary: "Vera chat, verification, summaries, repo review, BYOK keys",
       },
     ],
   },

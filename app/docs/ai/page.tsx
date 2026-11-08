@@ -28,6 +28,7 @@ const tocItems: TocItem[] = [
   { id: "verify", label: "Finding verification" },
   { id: "summary", label: "Scan summaries" },
   { id: "autotag", label: "Auto-tags" },
+  { id: "github-review", label: "GitHub repo review" },
   { id: "byok", label: "Bring your own key" },
   { id: "budgets", label: "Token budgets" },
   { id: "credits", label: "AI credits" },
@@ -42,13 +43,13 @@ export default function AiDocsPage() {
         id="top"
         badge="AI"
         title="AI Features"
-        description={`${APP_NAME}'s AI is optional and layered on top of a deterministic scanner. Four things use it: the Vera chat assistant, per-finding verification, whole-scan summaries, and auto-tags. Every one resolves the same provider (your own key first, ${APP_NAME}'s managed AI otherwise) and every one degrades to a clean no-op when no AI endpoint is configured.`}
+        description={`${APP_NAME}'s AI is optional and layered on top of a scanner whose URL scans are deterministic. Five things use it: the Vera chat assistant, per-finding verification, whole-scan summaries, auto-tags, and GitHub repo review. Every one resolves the same provider (your own key first, ${APP_NAME}'s managed AI otherwise) and every one degrades to a clean no-op when no AI endpoint is configured.`}
         stats={[
           {
             value: String(AI_MODEL_CATALOG.length),
             label: "supported providers",
           },
-          { value: "4", label: "features use AI" },
+          { value: "5", label: "features use AI" },
           { value: "AES-256-GCM", label: "your key, encrypted at rest" },
         ]}
       />
@@ -56,13 +57,15 @@ export default function AiDocsPage() {
       <DocsSection id="overview" title="Overview">
         <div className="max-w-[68ch] space-y-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
           <p>
-            Detection in {APP_NAME} is deterministic: the same URL yields the
+            Detection on a URL scan is deterministic: the same URL yields the
             same findings and the same stable IDs, with no model in the loop. AI
             sits on top of that as a set of opt-in conveniences, never as the
-            thing that decides whether a finding exists.
+            thing that decides whether a finding exists. GitHub repo review is
+            the one exception, because there the model reads the source and
+            makes that call itself.
           </p>
           <p>
-            Four features call a language model:{" "}
+            Five features call a language model:{" "}
             <a
               href="#vera"
               className="text-primary underline-offset-2 hover:underline"
@@ -83,12 +86,19 @@ export default function AiDocsPage() {
             >
               scan summaries
             </a>
-            , and{" "}
+            ,{" "}
             <a
               href="#autotag"
               className="text-primary underline-offset-2 hover:underline"
             >
               auto-tags
+            </a>
+            , and{" "}
+            <a
+              href="#github-review"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              GitHub repo review
             </a>
             . They all resolve a provider the same way: a user&rsquo;s own key
             if one is configured, otherwise the deployment&rsquo;s managed AI.
@@ -118,8 +128,9 @@ export default function AiDocsPage() {
           the docs, admin, and live-browser pages). It answers questions about{" "}
           {APP_NAME} and about securing a website: scan findings and how to fix
           them, API usage, self-hosting, headers, TLS, cookies and the like. It
-          declines anything else. Sending a message requires being signed in;
-          the widget shows a sign-in gate otherwise.
+          declines anything else. It answers in your account language. Sending a
+          message requires being signed in; the widget shows a sign-in gate
+          otherwise.
         </p>
 
         <DocsSubSection title="It reads the app's own knowledge">
@@ -427,6 +438,48 @@ curl -sS -X POST "${APP_URL}/api/v3/history/SCAN_PUBLIC_ID/summary?regenerate=tr
         </ul>
       </DocsSection>
 
+      <DocsSection id="github-review" title="GitHub repo review">
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Scanning a connected repo has two passes, and only one of them is
+          deterministic. The secret scan is pattern matching. The AI code review
+          is not: the model reads the repo&rsquo;s source in batches and decides
+          which findings to report, so two runs over the same commit can differ.
+        </p>
+        <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
+          <li>
+            <strong className="text-foreground">Labelled</strong>: every finding
+            from this pass carries the detection method{" "}
+            <InlineCode>AI code review</InlineCode> and the confidence score the
+            model gave it, so you can tell it apart from a pattern match and
+            sort on it.
+          </li>
+          <li>
+            <strong className="text-foreground">Metered separately</strong>: it
+            draws on the repo-review tokens in your plan (
+            <InlineCode>githubReviewTokensPerWindow</InlineCode>, the
+            repo-review row on{" "}
+            <Link
+              href="/docs/billing#plans"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Plans and Billing
+            </Link>
+            ), not the AI tokens the features above use. Your own key bypasses
+            the cap.
+          </li>
+        </ul>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          What it looks for and how a run works is on{" "}
+          <Link
+            href="/docs/github#ai-review"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            GitHub Scanning
+          </Link>
+          .
+        </p>
+      </DocsSection>
+
       <DocsSection id="byok" title="Bring your own key">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           Profile &gt; AI settings offers three modes, backed by{" "}
@@ -636,6 +689,10 @@ curl -sS -X POST "${APP_URL}/api/v3/history/SCAN_PUBLIC_ID/summary?regenerate=tr
               feature: "Auto-tags",
               sees: "Only finding titles, categories, and severities. Never full evidence.",
             },
+            {
+              feature: "GitHub repo review",
+              sees: "Batches of the repository's source files, and whether the repo is public or private.",
+            },
           ]}
         />
 
@@ -664,10 +721,11 @@ curl -sS -X POST "${APP_URL}/api/v3/history/SCAN_PUBLIC_ID/summary?regenerate=tr
 
         <DocsCallout variant="warning" title="AI can be wrong">
           <p>
-            Model output is a convenience, not the source of truth. The
-            findings, IDs, and severities come from the deterministic scanner;
-            verify anything critical against the finding itself rather than the
-            summary or the verdict.
+            Model output is a convenience, not the source of truth. On a URL
+            scan the findings, IDs, and severities come from the deterministic
+            scanner; verify anything critical against the finding itself rather
+            than the summary or the verdict. A finding tagged AI code review is
+            the model&rsquo;s own judgement, so check it against the code.
           </p>
         </DocsCallout>
       </DocsSection>

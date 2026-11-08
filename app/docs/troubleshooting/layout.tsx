@@ -10,7 +10,7 @@ const DESCRIPTION =
   "Why a scan failed, timed out, was refused, or returned nothing: what each scan status and error message means, and what to do about it.";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Troubleshooting Scans: Failures, Timeouts, Empty Results",
+  title: "Troubleshooting Scans: Failures and Empty Results",
   description: DESCRIPTION,
   path: "/docs/troubleshooting",
   keywords: ["scan failed", "scan timeout", "no findings", "blocked target"],

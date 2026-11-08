@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { APP_NAME } from "@/lib/config/constants";
 import type { TocItem } from "@/components/docs/docs-types";
+import { DocsPublicByDefault } from "@/components/docs/docs-public-by-default";
 import { DocsTocSpy } from "../docs-toc-spy";
 import {
   DocsHero,
@@ -67,9 +68,10 @@ export default function AccountSecurityDocsPage() {
             , split across four tabs:{" "}
             <strong className="text-foreground">Security</strong> (password,
             two-step verification, sessions),{" "}
-            <strong className="text-foreground">Connections</strong> (social
-            logins), <strong className="text-foreground">Notifications</strong>{" "}
-            (which emails you get), and{" "}
+            <strong className="text-foreground">Social</strong> (linked sign-in
+            providers),{" "}
+            <strong className="text-foreground">Notifications</strong> (which
+            emails you get), and{" "}
             <strong className="text-foreground">Privacy</strong> (data export,
             scan visibility, account deletion). Changing anything sensitive asks
             for your current password again, so a hijacked session alone cannot
@@ -248,11 +250,12 @@ export default function AccountSecurityDocsPage() {
 
         <DocsSubSection id="sign-out-everywhere" title="Sign out everywhere">
           <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-            The danger-zone button at the bottom of the Security tab ends every
-            session on every device, including the one you are using. Reach for
-            it if you think someone else has access: it drops you back at the
-            sign-in page and forces your password (and 2FA) again everywhere. If
-            Session Alerts are on, you also get an email confirming it happened.
+            The Sign out everywhere button sits at the top right of Active
+            sessions on Profile &gt; Security. It ends every session on every
+            device, including the one you are using. Reach for it if you think
+            someone else has access: it drops you back at the sign-in page and
+            forces your password (and 2FA) again everywhere. If Revoked sessions
+            emails are on, you also get one confirming it happened.
           </p>
         </DocsSubSection>
       </DocsSection>
@@ -270,10 +273,8 @@ export default function AccountSecurityDocsPage() {
           <li>
             <strong className="text-foreground">Link a provider</strong> to an
             account you already have from{" "}
-            <strong className="text-foreground">
-              Profile &gt; Connections
-            </strong>
-            . Linking Google or GitHub lets you use that button next time in
+            <strong className="text-foreground">Profile &gt; Social</strong>.
+            Linking Google or GitHub lets you use that button next time in
             addition to your password. Discord has its own connect flow on the
             same tab.
           </li>
@@ -310,7 +311,9 @@ export default function AccountSecurityDocsPage() {
           <strong className="text-foreground">
             Profile &gt; Notifications
           </strong>
-          . The security-related categories are the ones worth leaving on.
+          . The security-related categories are the ones worth leaving on. The
+          sign-up verification email goes out in your account language; the
+          emails below are in English for now.
         </p>
 
         <DocsTable
@@ -322,29 +325,29 @@ export default function AccountSecurityDocsPage() {
           ]}
           data={[
             {
-              category: "Security Alerts",
+              category: "Security alerts",
               tells:
                 "Unusual activity and account-compromise warnings. This is how you find out about access you did not grant, so it stays on regardless.",
               default: "Always on",
             },
             {
-              category: "Login Alerts",
+              category: "New sign-ins",
               tells: "A sign-in from a new device or location.",
               default: "On",
             },
             {
-              category: "Password Changes",
+              category: "Password changes",
               tells: "Your password was changed or a reset was requested.",
               default: "On",
             },
             {
-              category: "2FA Changes",
+              category: "Two-step verification changes",
               tells:
                 "Two-step verification was turned on, off, or its backup codes were regenerated.",
               default: "On",
             },
             {
-              category: "Session Alerts",
+              category: "Revoked sessions",
               tells: "Sessions were revoked, including a sign-out-everywhere.",
               default: "On",
             },
@@ -425,6 +428,7 @@ export default function AccountSecurityDocsPage() {
         </DocsSubSection>
 
         <DocsSubSection id="scan-privacy" title="Scan and share privacy">
+          <DocsPublicByDefault />
           <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
             Two independent defaults on the Privacy tab control how visible your
             scanning is. Both have per-scan and per-share overrides, so a
@@ -436,8 +440,9 @@ export default function AccountSecurityDocsPage() {
               default a completed scan writes a snapshot to a public page at{" "}
               <InlineCode>/host/&lt;hostname&gt;</InlineCode>. Turn off{" "}
               <InlineCode>Scans are public by default</InlineCode> to keep new
-              scans private unless you say otherwise, either per scan on the
-              scan form or from a scan&apos;s own menu afterwards.
+              scans private unless you say otherwise, either with{" "}
+              <InlineCode>Keep this scan private</InlineCode> on the scan form
+              or from a scan&apos;s own menu afterwards.
             </li>
             <li>
               <strong className="text-foreground">
@@ -453,7 +458,7 @@ export default function AccountSecurityDocsPage() {
               </Link>{" "}
               directory. Turn off{" "}
               <InlineCode>
-                List new shares in Public Scans by default
+                List new shares in the Public Scans directory
               </InlineCode>{" "}
               to keep new share links off that directory. The link still works
               for anyone you send it to, it just is not browsable by strangers.

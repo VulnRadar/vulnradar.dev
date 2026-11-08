@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import {
+  APP_NAME,
+  APP_REPO,
+  APP_URL,
+  APP_VERSION,
+} from "@/lib/config/constants";
 import {
   FRAMEWORKS,
   type FrameworkKey,
@@ -46,7 +51,7 @@ const reportEndpoint: Endpoint = {
       name: "includeSuppressed",
       type: "boolean",
       description:
-        "Include findings you marked a false positive. Off by default, so the export matches the dashboard.",
+        "Include findings you marked a false positive (see /docs/triage#false-positives). Off by default, so the export matches the dashboard.",
       default: "false",
     },
     {
@@ -66,16 +71,16 @@ const reportEndpoint: Endpoint = {
       "tool": {
         "driver": {
           "name": "${APP_NAME}",
-          "version": "3.x",
-          "rules": [ /* one entry per unique check id */ ]
+          "version": "${APP_VERSION}",
+          "rules": [ /* one entry per finding id (check id plus a hash of the scanned URL) */ ]
         }
       },
       "results": [
         {
-          "ruleId": "hsts-missing",
+          "ruleId": "hsts-missing--9f2c1a",
           "level": "warning",
           "message": { "text": "HSTS header missing. Evidence: ..." },
-          "partialFingerprints": { "vulnradarFindingId": "hsts-missing" },
+          "partialFingerprints": { "vulnradarFindingId": "hsts-missing--9f2c1a" },
           "properties": { "severity": "medium", "category": "headers" }
         }
       ]
@@ -87,7 +92,7 @@ const reportEndpoint: Endpoint = {
     'Content-Type and download name track the format: application/sarif+json (.sarif), application/pdf (.pdf), text/markdown (.md, and -compliance.md for the crosswalk), text/csv (.csv), application/json (.json). Every response sets Content-Disposition: attachment; filename="vulnradar-<host>.<ext>", where <host> is the scanned URL\'s hostname.',
     "Same auth and visibility as GET /history/{id}: a Bearer key with the scan:read scope, or a session cookie; the scan's owner or a team member with read access.",
     "The owner's report carries cross-rescan remediation status on each finding; a team-read viewer gets the stored findings as-is, because remediation state is private to the owner.",
-    "Your triage travels with the export. Findings you marked a false positive are left out unless you pass includeSuppressed=true, and summary is tallied from whatever is actually in the response, so the counts and the list always agree. Accepted-risk and won't-fix findings still count everywhere by default; applyTriage=true is what turns them into SARIF suppressions, and it is opt-in precisely because that is the switch that can stop a build failing.",
+    "Your triage travels with the export (see /docs/triage#false-positives). Findings you marked a false positive are left out unless you pass includeSuppressed=true, and summary is tallied from whatever is actually in the response, so the counts and the list always agree. Accepted-risk and won't-fix findings still count everywhere by default; applyTriage=true is what turns them into SARIF suppressions, and it is opt-in precisely because that is the switch that can stop a build failing.",
     "Both auth paths are throttled, just by different limiters. A Bearer request spends one of that key's daily requests and is recorded as usage. A session request spends from a per-user report-export bucket on the general API budget, because every format is built synchronously over the whole findings array and a signed-in user looping their largest export could otherwise stall the single Node process for everyone.",
     "format=pdf can be switched off per deployment (FEATURE_PDF_REPORTS). When it is off the route answers 403 before it looks the scan up; the other five formats are unaffected.",
   ],
@@ -257,6 +262,17 @@ export default function ReportsDocsPage() {
           response headers tell you what came back.
         </p>
         <EndpointCard {...reportEndpoint} />
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          What a false positive mark does, and how it differs from accepted risk
+          and won&apos;t fix, is on{" "}
+          <Link
+            href="/docs/triage#false-positives"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Triage &amp; Remediation
+          </Link>
+          .
+        </p>
       </DocsSection>
 
       <DocsSection id="formats" title="Report formats">
@@ -337,42 +353,68 @@ export default function ReportsDocsPage() {
           the JSON schema GitHub Code Scanning consumes natively. Critical and
           high map to <InlineCode>level: error</InlineCode>, medium to{" "}
           <InlineCode>warning</InlineCode>, low and info to{" "}
-          <InlineCode>note</InlineCode>. Each result carries a{" "}
-          <InlineCode>partialFingerprints.vulnradarFindingId</InlineCode> equal
-          to the stable check id, so re-running the scan updates the same alert
-          instead of opening a duplicate. When a finding has a real computed
-          CVSS score it is exported as{" "}
-          <InlineCode>security-severity</InlineCode>; otherwise a per-band
-          default is used.
+          <InlineCode>note</InlineCode>.
+        </p>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Each result&apos;s <InlineCode>ruleId</InlineCode> and{" "}
+          <InlineCode>partialFingerprints.vulnradarFindingId</InlineCode> are
+          equal to the finding id: the check id, two dashes, and a short hash of
+          the scanned URL. The check id is the part before the double dash, and
+          it has its own page in the{" "}
+          <Link
+            href="/checks"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            check catalogue
+          </Link>
+          . Re-running the scan updates the same alert instead of opening a
+          duplicate, and the same check on another URL is a separate alert. To
+          filter by check, match the <InlineCode>ruleId</InlineCode> prefix, for
+          example <InlineCode>hsts-missing--</InlineCode>.
+        </p>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          <InlineCode>security-severity</InlineCode> is a CVSS 3.1 base score
+          from a representative vector for the finding&apos;s severity, category
+          and detection method, not a per-instance assessment.
         </p>
 
-        <DocsSubSection title="Fetch a SARIF report with curl">
+        <DocsSubSection title="Upload it to GitHub Code Scanning">
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            The {APP_NAME} GitHub Action writes the SARIF file for you and names
+            it in its <InlineCode>sarif-file</InlineCode> output, so the
+            workflow only has to hand that to the official upload action. Store
+            the key as a repo secret and give the job the{" "}
+            <InlineCode>security-events: write</InlineCode> permission. The
+            findings appear on the Security tab, annotated against the target.
+          </p>
+          <CodeBlock
+            code={`- name: Scan with ${APP_NAME}
+  id: vulnradar
+  uses: ${APP_REPO}/.github/actions/scan-gate@v${APP_VERSION}
+  with:
+    url: https://your-staging-url.com
+    api-key: \${{ secrets.VULNRADAR_TOKEN }}
+
+- name: Upload to code scanning
+  # always(), so the findings still arrive when the gate fails the job.
+  if: \${{ always() && steps.vulnradar.outputs.sarif-file != '' }}
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: \${{ steps.vulnradar.outputs.sarif-file }}`}
+            language="yaml"
+          />
+        </DocsSubSection>
+
+        <DocsSubSection title="Without the Action: fetch it with curl">
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            Any other CI can pull the same file, and{" "}
+            <InlineCode>upload-sarif</InlineCode> takes it from there.
+          </p>
           <CodeBlock
             code={`curl -sS "${APP_URL}/api/v3/history/123/report?format=sarif" \\
   -H "Authorization: Bearer vr_live_YOUR_API_KEY" \\
   -o vulnradar.sarif`}
             language="bash"
-          />
-        </DocsSubSection>
-
-        <DocsSubSection title="Upload it to GitHub Code Scanning">
-          <p className="max-w-[68ch] text-sm text-muted-foreground">
-            Store the key as a repo secret, fetch the SARIF for a completed
-            scan, then hand it to the official upload action. The findings
-            appear on the Security tab, annotated against the target.
-          </p>
-          <CodeBlock
-            code={`- name: Fetch VulnRadar SARIF
-  run: |
-    curl -sS "${APP_URL}/api/v3/history/\${{ needs.scan.outputs.scan-id }}/report?format=sarif" \\
-      -H "Authorization: Bearer \${{ secrets.VULNRADAR_TOKEN }}" \\
-      -o vulnradar.sarif
-
-- name: Upload to code scanning
-  uses: github/codeql-action/upload-sarif@v3
-  with:
-    sarif_file: vulnradar.sarif`}
-            language="yaml"
           />
           <DocsCallout
             variant="info"

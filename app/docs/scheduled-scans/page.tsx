@@ -314,6 +314,18 @@ export default function ScheduledScansDocsPage() {
           ]}
         />
 
+        <DocsCallout variant="warning" title="Schedules share your quota">
+          <p>
+            Every scheduled run spends one scan from your daily allowance
+            (resets 00:00 UTC) and needs a free concurrent-scan slot. If you are
+            over quota or all slots are busy, that run is skipped and the
+            schedule tries again at its next slot; nothing is emailed. Rule of
+            thumb: runs per day = sum over schedules of (24 hourly, 4 for
+            6hourly, 1 daily); keep it under your plan&apos;s scans per day,
+            with headroom for manual scans.
+          </p>
+        </DocsCallout>
+
         <DocsSubSection title="How many you can keep">
           <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
             Separate from the frequency gate, each plan caps how many schedules
