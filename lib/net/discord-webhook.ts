@@ -2,9 +2,10 @@
  * What makes a URL a Discord webhook: one of Discord's hosts, and the
  * webhooks path under its API.
  *
- * The webhook type detector (lib/webhooks/detect-type.ts) and the scanner's
- * leaked-webhook pattern (lib/scanner/checks/code.ts) both ask this. Each
- * used to carry its own host list and its own path regex, so the versioned
+ * The webhook type detector (lib/webhooks/detect-type.ts), the scanner's
+ * leaked-webhook pattern (lib/scanner/checks/code.ts) and its
+ * discord-webhook-exposed check (lib/scanner/checks/content.ts) all ask this.
+ * Each used to carry its own host list and its own path regex, so the versioned
  * path had to be taught to them one at a time, and they disagreed on case:
  * the detector matched the path case-insensitively and the scanner matched
  * neither the host nor the path that way.
