@@ -1819,9 +1819,10 @@ const codeExamples: CodeExamples = {
     scan: `BASE="${APP_URL}/api/v3"
 AUTH="Authorization: Bearer YOUR_API_KEY"
 
-SCAN_ID=$(curl -sf -X POST "$BASE/scan" -H "$AUTH" \\
+started=$(curl -sS --fail-with-body --max-time 30 -X POST "$BASE/scan" -H "$AUTH" \\
   -H "Content-Type: application/json" \\
-  -d '{"url": "example.com", "portScan": true}' | jq -r .scanId)
+  -d '{"url": "example.com", "portScan": true}') || { echo "$started" >&2; exit 1; }
+SCAN_ID=$(jq -r .scanId <<<"$started")
 
 # Poll every 3 seconds and give up at the ${SCANNING.TIMEOUT_SECONDS} second scan timeout.
 # GET /scan/status does not use up any daily quota.
@@ -1830,9 +1831,10 @@ status=""
 until [ "$status" = completed ] || [ "$status" = failed ]; do
   [ "$SECONDS" -lt "$deadline" ] || { echo "scan timed out" >&2; exit 1; }
   sleep 3
-  job=$(curl -sf "$BASE/scan/status/$SCAN_ID" -H "$AUTH") || exit 1
+  job=$(curl -sS --fail-with-body --max-time 30 "$BASE/scan/status/$SCAN_ID" -H "$AUTH") || { echo "$job" >&2; exit 1; }
   status=$(jq -r .status <<<"$job")
 done
+[ "$status" = completed ] || { jq -r .error <<<"$job" >&2; exit 1; }
 
 echo "$job" | jq '.result.findings'`,
     history: `curl -X GET "${APP_URL}/api/v3/history" \\
@@ -1897,6 +1899,7 @@ started = requests.post(
     f"{BASE}/scan",
     headers=HEADERS,
     json={"url": "example.com", "portScan": True},
+    timeout=30,
 )
 if not started.ok:
     raise RuntimeError(started.text)
@@ -1908,7 +1911,7 @@ deadline = time.monotonic() + ${SCANNING.TIMEOUT_SECONDS}
 while True:
     if time.monotonic() > deadline:
         raise TimeoutError("Scan did not finish before the deadline")
-    res = requests.get(f"{BASE}/scan/status/{scan_id}", headers=HEADERS)
+    res = requests.get(f"{BASE}/scan/status/{scan_id}", headers=HEADERS, timeout=30)
     if res.status_code == 429:
         time.sleep(int(res.headers.get("Retry-After", "5")))
         continue
@@ -2140,8 +2143,8 @@ export default function APIDocsPage() {
       <DocsSection id="code-examples" title="Code Examples">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
           The same three calls in curl, JavaScript, and Python. Swap the
-          placeholder key and they run as-is. The Python tab uses plain{" "}
-          <InlineCode>requests</InlineCode>. The{" "}
+          placeholder key and they run as-is. The curl tab needs bash and jq.
+          The Python tab uses plain <InlineCode>requests</InlineCode>. The{" "}
           <InlineCode>vulnradar</InlineCode> package on PyPI targets the retired
           v2 API and does not work against v3 or v4; use{" "}
           <InlineCode>requests</InlineCode> until it is rebuilt. Starting a scan

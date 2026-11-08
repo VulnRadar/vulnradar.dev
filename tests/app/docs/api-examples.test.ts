@@ -22,6 +22,7 @@ describe("/docs/api code examples", () => {
     expect(js).toContain("deadline");
     expect(js).toContain("Retry-After");
     expect(js).not.toContain("for (;;)");
+    expect(js).toContain("SCANNING.TIMEOUT_SECONDS * 1000");
   });
 
   it("polls with a real until loop and jq in curl", () => {
@@ -29,6 +30,16 @@ describe("/docs/api code examples", () => {
     expect(curl).toContain("until [");
     expect(curl).toContain("jq -r .status");
     expect(curl).toContain("deadline");
+    expect(curl).toContain("SCANNING.TIMEOUT_SECONDS");
+  });
+
+  it("makes the curl sample fail on a refused create and a failed scan", () => {
+    const curl = sample("curl");
+    // A pipe into jq would report jq's exit status and hide curl's.
+    expect(curl).not.toContain("| jq -r .scanId");
+    expect(curl).toContain('|| { echo "$started" >&2; exit 1; }');
+    expect(curl).toContain('[ "$status" = completed ] || {');
+    expect(page.replace(/\s+/g, " ")).toContain("needs bash and jq");
   });
 
   it("uses plain requests for Python, never the retired SDK", () => {
@@ -37,6 +48,8 @@ describe("/docs/api code examples", () => {
     expect(py).toContain("time.sleep(2)");
     expect(py).toContain("deadline");
     expect(py).toContain('result["findings"]');
+    // requests has no default timeout, so a hung read would outlive the deadline.
+    expect(py.match(/timeout=30/g)).toHaveLength(2);
     expect(py).not.toContain("from vulnradar");
     expect(page).not.toContain("VulnRadar/Python-SDK");
     expect(page.replace(/\s+/g, " ")).toContain("targets the retired v2 API");
