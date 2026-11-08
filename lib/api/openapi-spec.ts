@@ -1286,7 +1286,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           tags: ["Webhooks"],
           summary: "Send a test payload",
           description:
-            "Deliver a one-off test payload to a webhook so you can confirm it is wired up. This does NOT edit the webhook: use PATCH /webhooks/{id} for that. The stored URL is re-validated against the private-address guard before the call, since DNS may have moved since registration. Needs write access. Session cookie auth.",
+            "Deliver a one-off test payload to a webhook so you can confirm it is wired up. This does NOT edit the webhook: use PATCH /webhooks/{id} for that. The stored URL is re-validated against the private-address guard before the call, since DNS may have moved since registration. Needs write access, and is limited per account and per destination. Session cookie auth.",
           security: [{ cookieAuth: [] }],
           requestBody: {
             required: true,
@@ -1300,11 +1300,23 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             "200": { description: "The test payload was delivered" },
             "400": {
               description:
-                "Missing id, the target is now blocked, or the endpoint refused the delivery. The body is { success: false, error } rather than a bare { error }.",
+                "Missing id, or the target is now refused. The body is { success: false, error } rather than a bare { error }, as it is for 429, 502 and 504.",
             },
             "401": { $ref: "#/components/responses/Unauthorized" },
-            "403": { description: "No write access to this webhook" },
+            "403": {
+              description:
+                "No write access to this webhook, or webhooks are disabled on this deployment",
+            },
             "404": { $ref: "#/components/responses/NotFound" },
+            "429": {
+              description:
+                "Too many test deliveries. Retry-After says when to try again.",
+            },
+            "502": {
+              description:
+                "The endpoint answered with an error, or could not be reached",
+            },
+            "504": { description: "The endpoint did not answer in time" },
           },
         },
         delete: {
@@ -1343,7 +1355,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           tags: ["Webhooks"],
           summary: "Edit, pause, or reassign a webhook",
           description:
-            "Update a webhook in place. Send at least one of active, url, name, type or teamId; an absent field is left alone. `active: false` pauses delivery without losing the id or the secret. Reassigning to a team is owner-only; the rest needs write access. Not to be confused with PATCH /webhooks, which sends a test payload. Session cookie auth.",
+            "Update a webhook in place. Send at least one of active, url, name, type or teamId; an absent field is left alone. `active: false` pauses delivery without losing the id or the secret. Changing teamId, url or type is owner-only; active and name need write access. Not to be confused with PATCH /webhooks, which sends a test payload. Session cookie auth.",
           security: [{ cookieAuth: [] }],
           requestBody: {
             required: true,

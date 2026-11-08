@@ -1548,12 +1548,13 @@ format=json       -> application/json            vulnradar-example.com.json`,
     path: "/webhooks",
     title: "List Webhooks",
     description:
-      "Your webhooks plus any assigned to a team you belong to. Team co-membership alone is enough to read them; all team roles can view.",
+      "Your webhooks plus any assigned to a team you belong to. Team co-membership alone is enough to read them; all team roles can view, but a teammate who cannot edit a webhook sees url_host instead of its full URL.",
     responseExample: `{
   "webhooks": [
     {
       "id": 3,
       "url": "https://hooks.example.com/vulnradar",
+      "url_host": "hooks.example.com",
       "name": "CI alerts",
       "type": "generic",
       "active": true,
@@ -1563,6 +1564,7 @@ format=json       -> application/json            vulnradar-example.com.json`,
   ]
 }`,
     notes: [
+      "url is null for a teammate without write access to the webhook, because a Discord or Slack webhook URL is the credential for posting to that channel. url_host names the host either way.",
       "The signing secret is never returned here. It is shown once when the webhook is created and once more when it is rotated, the same contract an API key's raw value has.",
       "Session cookie auth: an API key cannot reach the webhook routes.",
     ],
@@ -1623,18 +1625,29 @@ format=json       -> application/json            vulnradar-example.com.json`,
     notes: [
       "The two PATCH routes are easy to confuse: PATCH /webhooks with { id } in the body sends a test, PATCH /webhooks/{id} with the id in the path edits the resource.",
       "The stored URL is re-validated against the private-address guard before the call, since DNS may have moved since registration.",
-      "Failures come back as { success: false, error } with a 400, not the bare { error } most of this API uses. The error text includes the status and first 100 characters your endpoint returned, which is usually enough to diagnose it.",
+      "A failed test comes back as { success: false, error }, not the bare { error } most of this API uses. When your endpoint answered with an error status, the text names that status and the start of what it returned.",
       "Needs write access: a viewer-role co-member gets 403.",
+      "Limited per account and per destination. A 429 carries Retry-After.",
     ],
     errors: [
       {
         code: 400,
-        description:
-          "Missing id, the target is now blocked, or your endpoint refused the delivery",
+        description: "Missing id, or the target is now refused",
       },
       { code: 401, description: "Unauthorized" },
-      { code: 403, description: "No write access to this webhook" },
+      {
+        code: 403,
+        description:
+          "No write access to this webhook, or webhooks are disabled on this deployment",
+      },
       { code: 404, description: "Webhook not found" },
+      { code: 429, description: "Too many test deliveries" },
+      {
+        code: 502,
+        description:
+          "Your endpoint answered with an error, or could not be reached",
+      },
+      { code: 504, description: "Your endpoint did not answer in time" },
     ],
   },
   {
@@ -1666,8 +1679,8 @@ format=json       -> application/json            vulnradar-example.com.json`,
 }`,
     notes: [
       "active: false pauses delivery while keeping the id and the secret, which is what you want during an incident on the receiving side. Deleting and recreating changes both.",
-      "teamId is owner-only; the other fields need write access. A read-only co-member gets 403 because they legitimately know the webhook exists; a caller with no access at all gets 404.",
-      "A new url is re-validated the same way POST /webhooks validates it.",
+      "teamId, url and type are owner-only; active and name need write access. A read-only co-member gets 403 because they legitimately know the webhook exists; a caller with no access at all gets 404.",
+      "A new url is re-validated the same way POST /webhooks validates it. Sending url: null, or the url_host from GET, is refused.",
     ],
     errors: [
       {
