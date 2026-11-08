@@ -174,6 +174,26 @@ export async function POST(request: Request) {
     // the two limits admit and says where it stopped.
     const plan = await planGithubReview(selected.map((e) => e.size ?? 0));
 
+    // The free plan pays for a repo review with its trial or its credits. A
+    // repo with no AI batch under the per-run ceiling skips the reservation
+    // below, so nothing would claim the trial or spend a credit and the
+    // pattern scan would run free on every request, trial used or not. It
+    // gets the same 403 as an account with no credits instead, before any
+    // content is fetched and with nothing claimed or charged (owner decision
+    // D22). A paid plan keeps the pattern scan and the coverage note (D13).
+    if (plan.batchesWithinCap === 0 && preQuota.limitTokens === 0) {
+      return NextResponse.json(
+        {
+          error: `No file in this repository is small enough for one AI review batch under this server's per-run limit, so there is nothing for the AI review to read and the scan did not run. ${
+            preQuota.isFreeTrial
+              ? "Today's free GitHub AI review is still available for another repository."
+              : "Your GitHub review credits were not spent."
+          }`,
+        },
+        { status: 403 },
+      );
+    }
+
     // The reservation takes the plan's estimate out of the window and the
     // credit balance (or claims the free trial, atomically) before any content
     // is fetched or any AI call made, needing only the first batch's worst

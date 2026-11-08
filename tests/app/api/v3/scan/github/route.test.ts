@@ -759,6 +759,128 @@ describe("POST /api/v3/scan/github - the free plan's edge (owner decision D19, 2
     expect(mockReleaseFreeGithubReviewTrial).not.toHaveBeenCalled();
   });
 
+  // Owner decision D22: with no AI batch under the per-run ceiling there is
+  // no reservation, so nothing would claim the trial or spend a credit, and
+  // the pattern scan ran free every time. The free plan gets the zero-credit
+  // 403 instead, trial used or not; a paid plan keeps D13.
+  describe("no AI batch fits the per-run ceiling", () => {
+    const noBatchFits = () =>
+      mockPlanGithubReview.mockResolvedValue(
+        reviewPlan({
+          estimate: 0,
+          firstBatch: 0,
+          inputWithinCap: 0,
+          batchesWithinCap: 0,
+        }),
+      );
+
+    function expectRefusedBeforeContent() {
+      expect(mockReserveGithubReviewTokens).not.toHaveBeenCalled();
+      expect(mockFetchSelectedFiles).not.toHaveBeenCalled();
+      expect(mockRunPatternSecretsScan).not.toHaveBeenCalled();
+      expect(mockRunGithubAiReview).not.toHaveBeenCalled();
+      expect(mockReleaseFreeGithubReviewTrial).not.toHaveBeenCalled();
+      const saved = mockQuery.mock.calls.find(([sql]) =>
+        String(sql).includes("INSERT INTO scan_history"),
+      );
+      expect(saved).toBeUndefined();
+    }
+
+    it("trial unused: the same 403, the trial is not claimed and the message says it is still available", async () => {
+      noBatchFits();
+      mockCheckGithubReviewQuota.mockResolvedValue({
+        allowed: true,
+        usingOwnAi: false,
+        usedTokens: 0,
+        limitTokens: 0,
+        isFreeTrial: true,
+        creditBalance: 0,
+      });
+
+      const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+      expect(res.status).toBe(403);
+      const { error } = await res.json();
+      expect(error).toMatch(
+        /^No file in this repository is small enough for one AI review batch/,
+      );
+      expect(error).toMatch(/free GitHub AI review is still available/);
+      expectRefusedBeforeContent();
+    });
+
+    it.each([1, 39_999, 5_000_000])(
+      "trial used with %i credits: the same 403, and no credit is spent",
+      async (creditBalance) => {
+        noBatchFits();
+        freePlanTrialUsed(creditBalance);
+
+        const res = await POST(
+          postReq({ repoFullName: "octocat/hello-world" }),
+        );
+
+        expect(res.status).toBe(403);
+        const { error } = await res.json();
+        expect(error).toMatch(
+          /^No file in this repository is small enough for one AI review batch/,
+        );
+        expect(error).toMatch(/credits were not spent/);
+        expectRefusedBeforeContent();
+      },
+    );
+
+    it("trial used with zero credits: still the pre-check's 403, before GitHub is called", async () => {
+      noBatchFits();
+      freePlanTrialUsed(0);
+
+      const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+      expect(res.status).toBe(403);
+      expect((await res.json()).error).toMatch(/used today's free/);
+      expect(mockGetRepoInfo).not.toHaveBeenCalled();
+    });
+
+    it("one batch fits: the free plan is not refused here and goes to the reservation", async () => {
+      freePlanTrialUsed(40_000);
+      mockReserveGithubReviewTokens.mockResolvedValue({
+        allowed: true,
+        reservation: reservation({ budget: 40_000, creditCovered: true }),
+      });
+
+      const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+      expect(res.status).toBe(200);
+      expect(mockReserveGithubReviewTokens).toHaveBeenCalledTimes(1);
+    });
+
+    it.each<[string, Record<string, unknown>]>([
+      [
+        "a paid plan",
+        { allowed: true, usingOwnAi: false, usedTokens: 0, limitTokens: 1 },
+      ],
+      [
+        "an account with its own AI key",
+        { allowed: true, usingOwnAi: true, usedTokens: 0, limitTokens: -1 },
+      ],
+      [
+        "billing switched off",
+        { allowed: true, usingOwnAi: false, usedTokens: 0, limitTokens: -1 },
+      ],
+    ])("%s keeps the pattern scan (D13)", async (_label, quota) => {
+      noBatchFits();
+      mockCheckGithubReviewQuota.mockResolvedValue(quota);
+      mockRunGithubAiReview.mockResolvedValue(
+        aiRun({ stoppedAtRunCap: true, filesReviewed: 0, batchesReviewed: 0 }),
+      );
+
+      const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+      expect(res.status).toBe(200);
+      expect(mockRunPatternSecretsScan).toHaveBeenCalledTimes(1);
+      expect(mockReserveGithubReviewTokens).not.toHaveBeenCalled();
+      expect((await res.json()).aiReviewStoppedAtRunCap).toBe(true);
+    });
+  });
+
   it("a paid plan the gate refuses keeps the pattern scan and the allowance notice", async () => {
     mockReserveGithubReviewTokens.mockResolvedValue({
       allowed: false,
