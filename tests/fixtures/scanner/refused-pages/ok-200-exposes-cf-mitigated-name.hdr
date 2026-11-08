@@ -1,0 +1,9 @@
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+Server: cloudflare
+x-frame-options: SAMEORIGIN
+x-powered-by: Next.js
+Cache-Control: private, no-cache, no-store, max-age=0, must-revalidate
+Access-Control-Expose-Headers: cf-mitigated, Content-Disposition, x-country, x-er-id
+vary: Accept-Encoding
+cf-cache-status: DYNAMIC
