@@ -18,6 +18,7 @@
  */
 
 import { hostMatches, type HostSpec } from "@/lib/net/host-match";
+import { plainSlashView } from "./_plain-slashes";
 
 export { hostMatches };
 
@@ -55,9 +56,8 @@ const URL_CANDIDATE =
 
 /** Every absolute or protocol-relative http(s) URL in `body`. */
 export function urlRefs(body: string): UrlRef[] {
-  const text = body.includes("\\/") ? body.replace(/\\\//g, "/") : body;
   const refs: UrlRef[] = [];
-  for (const m of text.matchAll(URL_CANDIDATE)) {
+  for (const m of plainSlashView(body).text.matchAll(URL_CANDIDATE)) {
     refs.push({ host: m[1].toLowerCase(), path: m[2] ?? "" });
   }
   return refs;
