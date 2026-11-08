@@ -73,6 +73,12 @@ export function accountDraftFrom(user: AccountUser): AccountDraft {
  *
  * Email and plan are only ever sent by a role that may edit them, whatever
  * the draft holds, and a gifted plan is not edited here at all.
+ *
+ * The stored side is normalised the same way as the draft. Older rows can
+ * hold an address in mixed case or a name with a stray space, and the draft
+ * starts from that row: compared raw, an untouched address would go out as
+ * an email change, which the server writes, unverifies and announces to the
+ * old address, from a dialog opened to fix the name.
  */
 export function accountChanges(
   user: AccountUser,
@@ -81,10 +87,12 @@ export function accountChanges(
 ): AccountChanges {
   const changes: AccountChanges = {};
   const name = draft.name.trim();
-  if (name !== (user.name || "")) changes.name = name;
+  if (name !== (user.name || "").trim()) changes.name = name;
   if (canEditEmailAndPlan) {
     const email = draft.email.trim().toLowerCase();
-    if (email !== user.email) changes.email = email;
+    if (email !== (user.email || "").trim().toLowerCase()) {
+      changes.email = email;
+    }
     if (!user.gifted_plan && draft.plan !== (user.plan || "free")) {
       changes.plan = draft.plan;
     }
@@ -530,7 +538,9 @@ export function EditBadgesDialog({
             </div>
           ) : (
             <p className="text-xs text-muted-foreground">
-              Every badge has been awarded.
+              {allBadges.length > 0
+                ? "Every badge has been awarded."
+                : "The badge list has not loaded, so there is nothing to award here yet."}
             </p>
           )}
         </div>

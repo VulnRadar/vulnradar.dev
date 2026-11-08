@@ -162,6 +162,23 @@ describe("the account draft", () => {
     ).toEqual({});
   });
 
+  it("does not send back a stored value nobody touched", () => {
+    // Rows written before every path normalised them: an address in mixed
+    // case, a name with a trailing space. Sent back, the address would come
+    // in as an email change, which the server writes lowercased, unverifies
+    // and announces to the old address, all from a dialog opened to fix the
+    // name.
+    const legacy = { ...user, email: "Ada@Example.com", name: "Ada " };
+    expect(accountChanges(legacy, accountDraftFrom(legacy), true)).toEqual({});
+    expect(
+      accountChanges(
+        legacy,
+        { ...accountDraftFrom(legacy), name: "Grace" },
+        true,
+      ),
+    ).toEqual({ name: "Grace" });
+  });
+
   it("never sends email or plan for a role that cannot edit them", () => {
     expect(
       accountChanges(

@@ -420,6 +420,11 @@ export function UserDetailPanel({
   // the end instead of an email per field. update_email is not folded in: it
   // sends its own notice to the old and the new address, and the server sends
   // the old-address one whatever notifyUser says.
+  //
+  // A refusal part way through still sends the email for the writes before
+  // it. Those are on the account now, and the retry measures the draft
+  // against the refetched record, so it never sends them again: an email
+  // held back for the whole save to succeed would never go out for them.
   const saveAccountChanges = async (
     changes: AccountChanges,
     opts: AccountSaveOptions,
@@ -441,9 +446,13 @@ export function UserDetailPanel({
       steps.push(["update_name", { name: changes.name, notifyUser: false }]);
     if (changes.plan !== undefined)
       steps.push(["update_plan", { plan: changes.plan, notifyUser: false }]);
+    let outcome: SaveResult = { ok: true };
     for (const [action, extra] of steps) {
       const result = await onAction(u.id, action, extra);
-      if (!result.ok) return { ok: false, error: result.error };
+      if (!result.ok) {
+        outcome = { ok: false, error: result.error };
+        break;
+      }
       if (result.change && action !== "update_email")
         changesForEmail.push(result.change);
     }
@@ -453,7 +462,7 @@ export function UserDetailPanel({
         notifyUser: true,
       });
     }
-    return { ok: true };
+    return outcome;
   };
 
   // One summary toast for the whole batch, not one per badge: the first call
@@ -1065,7 +1074,10 @@ export function UserDetailPanel({
                 )}
 
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  {allBadges.length > 0 && (
+                  {/* The dialog is the only way to remove a badge, so an
+                      awarded one keeps it reachable when the catalogue did
+                      not load. */}
+                  {(allBadges.length > 0 || detail.badges.length > 0) && (
                     <Button
                       size="sm"
                       variant="outline"

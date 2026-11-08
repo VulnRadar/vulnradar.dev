@@ -293,6 +293,76 @@ describe("account changes always tell the user", () => {
     ).toBe(true);
   });
 
+  it("a change that went through before a later one was refused is still announced", async () => {
+    // A plan edit on a live Stripe subscription is refused (409) after the
+    // name in the same save has been written. The retry measures against the
+    // refetched record, so the name is never sent again: if this save did
+    // not announce it, nothing ever would.
+    const { render, calls } = setup({
+      result: (action) =>
+        action === "update_plan"
+          ? { ok: false, error: "Change the plan in Stripe" }
+          : { ok: true },
+    });
+    const account = open(
+      render,
+      labelled("Edit account"),
+      dialogs.EditAccountDialog,
+    );
+    let tree = account.render();
+    for (const [name, value] of [
+      ["name", "Grace"],
+      ["plan", "pro_supporter"],
+    ]) {
+      (
+        find(tree, (el) => el.props.name === name).props.onChange as (
+          e: unknown,
+        ) => void
+      )({ target: { value } });
+      tree = account.render();
+    }
+    expect(await editDialog(tree).onSave()).toEqual({
+      ok: false,
+      error: "Change the plan in Stripe",
+    });
+    expect(calls().map((c) => [c[1], c[2]])).toEqual([
+      ["update_name", { name: "Grace", notifyUser: false }],
+      ["update_plan", { plan: "pro_supporter", notifyUser: false }],
+      [
+        "notify_account_changes",
+        {
+          changes: [
+            { field: "update_name", oldValue: "before", newValue: "after" },
+          ],
+          notifyUser: true,
+        },
+      ],
+    ]);
+  });
+
+  it("a name edit on a mixed-case address saves without touching the address", async () => {
+    const { render, calls } = setup({ user: { email: "Ada@Example.com" } });
+    const account = open(
+      render,
+      labelled("Edit account"),
+      dialogs.EditAccountDialog,
+    );
+    let tree = account.render();
+    expect(editDialog(tree).canSave).toBe(false);
+    (
+      find(tree, (el) => el.props.name === "name").props.onChange as (
+        e: unknown,
+      ) => void
+    )({ target: { value: "Grace" } });
+    tree = account.render();
+    // No password step: nothing gated is in this save.
+    expect(await editDialog(tree).onSave()).toEqual({ ok: true });
+    expect(calls().map((c) => c[1])).toEqual([
+      "update_name",
+      "notify_account_changes",
+    ]);
+  });
+
   it("a failed save keeps the dialog open with the server's message", async () => {
     const { render } = setup({
       result: () => ({ ok: false, error: "Name is too long" }),
@@ -562,6 +632,14 @@ describe("badges", () => {
       error: "Badge not found",
     });
     expect(onBadgesChanged).not.toHaveBeenCalled();
+  });
+
+  it("an awarded badge can still be removed when the badge list failed to load", () => {
+    // The dialog is now the only way to remove one. The old chips were on
+    // the card whether or not the catalogue had loaded.
+    const { render, props } = setup();
+    (props as unknown as { allBadges: unknown[] }).allBadges = [];
+    expect(findAll(render(), buttonText("Edit badges"))).toHaveLength(1);
   });
 
   it("the card keeps Create Badge and Manage Badges and drops the old picker", () => {
