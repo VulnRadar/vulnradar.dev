@@ -129,6 +129,75 @@ describe("cancelSubscriptionsBeforeDeletion", () => {
     expect(cancel).not.toHaveBeenCalled();
   });
 
+  it("leaves a line naming what Stripe could not find, because the row is about to go", async () => {
+    const wrongMode = {
+      code: "resource_missing",
+      message: "No such subscription: a similar object exists in live mode",
+    };
+    queueBilling("sub_gone", "cus_gone");
+    list.mockRejectedValue(wrongMode);
+    retrieve.mockRejectedValue(wrongMode);
+
+    await expect(cancelSubscriptionsBeforeDeletion(7)).resolves.toBe(true);
+
+    expect(billingLogs()).toHaveLength(2);
+    expect(billingLogs()[0][1]).toEqual({
+      userId: 7,
+      stripeCustomerId: "cus_gone",
+    });
+    expect(billingLogs()[1][1]).toEqual({
+      userId: 7,
+      subscriptionId: "sub_gone",
+    });
+    expect(billingLogs()[1]).toContain(wrongMode);
+  });
+
+  it("reads every page of the customer's subscriptions before cancelling", async () => {
+    queueBilling(null, "cus_1");
+    list
+      .mockResolvedValueOnce({
+        data: [{ id: "sub_old", status: "incomplete_expired" }],
+        has_more: true,
+      })
+      .mockResolvedValueOnce({
+        data: [{ id: "sub_live", status: "active" }],
+        has_more: false,
+      });
+
+    await expect(cancelSubscriptionsBeforeDeletion(7)).resolves.toBe(true);
+
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(list).toHaveBeenLastCalledWith({
+      customer: "cus_1",
+      limit: 100,
+      starting_after: "sub_old",
+    });
+    expect(cancel.mock.calls.map((c) => c[0])).toEqual(["sub_live"]);
+  });
+
+  it("stops if Stripe says there is more but hands back an empty page", async () => {
+    queueBilling(null, "cus_1");
+    list.mockResolvedValue({ data: [], has_more: true });
+
+    await expect(cancelSubscriptionsBeforeDeletion(7)).resolves.toBe(true);
+
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses when a later page cannot be read, even though the first was", async () => {
+    queueBilling(null, "cus_1");
+    list
+      .mockResolvedValueOnce({
+        data: [{ id: "sub_1", status: "active" }],
+        has_more: true,
+      })
+      .mockRejectedValueOnce(new Error("timeout"));
+
+    await expect(cancelSubscriptionsBeforeDeletion(7)).resolves.toBe(false);
+
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
   it("accepts a subscription that ended between the read and the cancel", async () => {
     queueBilling("sub_1", null);
     retrieve.mockResolvedValue({ id: "sub_1", status: "active" });

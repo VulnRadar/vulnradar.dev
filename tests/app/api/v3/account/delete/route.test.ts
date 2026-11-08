@@ -325,6 +325,7 @@ describe("POST /api/v3/account/delete", () => {
     });
 
     it("deletes when the subscription no longer exists in Stripe", async () => {
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       const { cancel } = stripeWith({
         retrieve: vi.fn().mockRejectedValue({ code: "resource_missing" }),
       });
@@ -338,6 +339,7 @@ describe("POST /api/v3/account/delete", () => {
       expect(res.status).toBe(200);
       expect(cancel).not.toHaveBeenCalled();
       expect(mockClientQuery).toHaveBeenLastCalledWith("COMMIT");
+      errSpy.mockRestore();
     });
 
     it("never touches Stripe on a deployment with no billing configured", async () => {

@@ -1,17 +1,25 @@
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
 import { isMissingStripeResource } from "@/lib/billing/stripe-errors";
-import { logError } from "@/lib/logging/log";
+import { logError, type LogContext } from "@/lib/logging/log";
 
 /** Stripe statuses after which no further charge can happen. */
 const ENDED_SUBSCRIPTION_STATUSES = new Set(["canceled", "incomplete_expired"]);
 
-async function nullIfMissing<T>(call: Promise<T>): Promise<T | null> {
+async function nullIfMissing<T>(
+  call: Promise<T>,
+  ctx: LogContext,
+): Promise<T | null> {
   try {
     return await call;
   } catch (err) {
-    if (isMissingStripeResource(err)) return null;
-    throw err;
+    if (!isMissingStripeResource(err)) throw err;
+    // Not a refusal, but it gets a line: the row is about to go, so this is
+    // the last record of the id. Stripe's own message says whether the object
+    // is really gone or the key points at the wrong environment, which makes
+    // every object look gone while the real subscription keeps billing.
+    logError("billing", "Stripe has no record of this object", err, ctx);
+    return null;
   }
 }
 
@@ -60,18 +68,32 @@ export async function cancelSubscriptionsBeforeDeletion(
 
     const live = new Set<string>();
     if (customerId) {
-      const listed = await nullIfMissing(
-        stripe.subscriptions.list({ customer: customerId, limit: 100 }),
-      );
-      for (const subscription of listed?.data ?? []) {
-        if (!ENDED_SUBSCRIPTION_STATUSES.has(subscription.status)) {
-          live.add(subscription.id);
+      // The list carries ended rows too (an abandoned checkout leaves an
+      // incomplete_expired one), so a live subscription can sit past page one.
+      let startingAfter: string | undefined;
+      let hasMore = true;
+      while (hasMore) {
+        const page = await nullIfMissing(
+          stripe.subscriptions.list({
+            customer: customerId,
+            limit: 100,
+            ...(startingAfter ? { starting_after: startingAfter } : {}),
+          }),
+          { userId, stripeCustomerId: customerId },
+        );
+        for (const subscription of page?.data ?? []) {
+          if (!ENDED_SUBSCRIPTION_STATUSES.has(subscription.status)) {
+            live.add(subscription.id);
+          }
         }
+        startingAfter = page?.data[page.data.length - 1]?.id;
+        hasMore = !!page?.has_more && !!startingAfter;
       }
     }
     if (storedId && !live.has(storedId)) {
       const stored = await nullIfMissing(
         stripe.subscriptions.retrieve(storedId),
+        { userId, subscriptionId: storedId },
       );
       if (stored && !ENDED_SUBSCRIPTION_STATUSES.has(stored.status)) {
         live.add(stored.id);
@@ -79,7 +101,10 @@ export async function cancelSubscriptionsBeforeDeletion(
     }
 
     for (const id of live) {
-      await nullIfMissing(stripe.subscriptions.cancel(id));
+      await nullIfMissing(stripe.subscriptions.cancel(id), {
+        userId,
+        subscriptionId: id,
+      });
     }
     return true;
   } catch (err) {

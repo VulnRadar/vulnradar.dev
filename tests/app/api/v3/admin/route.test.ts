@@ -224,7 +224,6 @@ beforeAll(async () => {
   adminHash = await hashPassword(ADMIN_PASSWORD);
 }, 20000);
 
-/** requireStaff's own role lookup — must be queued first, before any other query. */
 function stripeForDelete(cancel: ReturnType<typeof vi.fn>) {
   mockGetStripe.mockReturnValue({
     subscriptions: {
@@ -235,6 +234,7 @@ function stripeForDelete(cancel: ReturnType<typeof vi.fn>) {
   });
 }
 
+/** requireStaff's own role lookup — must be queued first, before any other query. */
 function queueRole(role: string | null) {
   mockQuery.mockResolvedValueOnce({ rows: role ? [{ role }] : [] });
 }
@@ -1533,6 +1533,7 @@ describe("PATCH /api/v3/admin — delete_account transaction", () => {
   }, 20000);
 
   it("deletes when the subscription no longer exists in Stripe", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const cancel = vi.fn();
     mockGetStripe.mockReturnValue({
       subscriptions: {
@@ -1548,6 +1549,7 @@ describe("PATCH /api/v3/admin — delete_account transaction", () => {
     expect(res.status).toBe(200);
     expect(cancel).not.toHaveBeenCalled();
     expect(mockClientQuery.mock.calls[0][0]).toBe("BEGIN");
+    errSpy.mockRestore();
   }, 20000);
 
   it("deletes as before on a deployment with no billing configured", async () => {
