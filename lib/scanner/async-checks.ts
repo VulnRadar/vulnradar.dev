@@ -3368,7 +3368,7 @@ async function checkExposedFiles(
    */
   const looksLikeWebConfig = (body: string, contentType: string): boolean =>
     !/text\/html/i.test(contentType) &&
-    /^﻿?\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<configuration[\s>]/i.test(
+    /^\uFEFF?\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<configuration[\s>]/i.test(
       body,
     );
 
@@ -4832,6 +4832,7 @@ const STOCK_ROBOTS_PATHS = new Set([
   "/wp-admin",
   "/wp-login.php",
   "/cgi-bin",
+  "/web.config",
   "/cart",
   "/checkout",
   "/checkouts",

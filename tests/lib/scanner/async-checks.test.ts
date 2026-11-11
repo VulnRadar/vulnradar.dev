@@ -2233,6 +2233,16 @@ describe("checkRobotsTxt", () => {
       ).toEqual([]);
     });
 
+    it("stays quiet on the web.config line of Drupal's stock file", async () => {
+      expect(
+        await robots(
+          ["User-agent: *", "Disallow: /web.config", "Disallow: /admin/"].join(
+            "\n",
+          ),
+        ),
+      ).toEqual([]);
+    });
+
     it("stays quiet on Shopify's documented default", async () => {
       expect(
         await robots(
