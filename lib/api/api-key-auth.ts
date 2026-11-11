@@ -34,6 +34,10 @@ export type ApiKeyAuthResult =
  * Deliberately not here: charging the key's budget, and deciding between a
  * key and a session. Which routes charge and in what order differs per route
  * and is part of what each one means.
+ *
+ * Which API version and client the key was used with is recorded by
+ * validateApiKey itself, so it covers this path and the routes that still
+ * validate directly, metered or not.
  */
 export async function authenticateApiKey(
   request: Request,

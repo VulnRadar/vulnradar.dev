@@ -15,6 +15,12 @@ import {
 } from "@/lib/api/request-utils";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { logError } from "@/lib/logging/log";
+import {
+  currentApiClient,
+  currentApiVersion,
+  normalizeApiClient,
+} from "@/lib/database/request-context";
+import type { ApiVersion } from "@/lib/api/versions";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { newLoginEmail, apiKeyRotationEmail } from "@/lib/email/email";
 import {
@@ -668,9 +674,7 @@ async function findKeyUnderPreviousSecret(
 // disabled kept full API access: a user suspended for abuse could go on running
 // scans and reading or deleting their history with a key issued before the ban.
 // The account-state gate belongs here rather than at the ~15 Bearer call sites.
-export async function validateApiKey(
-  key: string,
-): Promise<KeyValidationResult | null> {
+async function lookupApiKey(key: string): Promise<KeyValidationResult | null> {
   const locator = computeKeyLocator(key);
   const [{ TERMS_UPDATED_AT: termsUpdatedAt }, featureEnabled] =
     await Promise.all([
@@ -846,6 +850,203 @@ export async function validateApiKey(
   }
 
   return null;
+}
+
+/**
+ * Every key-authenticated request comes through here, authenticateApiKey's
+ * included, which is why the version and client telemetry is recorded here
+ * and not beside the last_used_at write in checkRateLimit: the extension's
+ * steady traffic is reputation and auth/me, which are never metered, so a
+ * write that rode on the meter would never see an extension-only install.
+ *
+ * Only a request answered under versioned() knows its API version. Outside
+ * it (an unwrapped route, a script, a test calling this directly) there is
+ * nothing true to write, so nothing is.
+ */
+export async function validateApiKey(
+  key: string,
+): Promise<KeyValidationResult | null> {
+  const result = await lookupApiKey(key);
+  const apiVersion = currentApiVersion();
+  if (result && apiVersion) {
+    void recordKeyUsage(result.keyId, {
+      apiVersion,
+      client: currentApiClient(),
+    });
+  }
+  return result;
+}
+
+/**
+ * How long an unchanged version and client go unwritten. The columns answer
+ * "which keys still call v3" for a sunset months away, so a minute of lag
+ * costs nothing, and it keeps a polling client from turning every request
+ * into a row write.
+ */
+const KEY_USAGE_WRITE_INTERVAL_MS = 60 * 1000;
+
+/**
+ * The most keys the throttle remembers. Past it the least recently written
+ * key is forgotten, which costs that key one early write and nothing else.
+ */
+const KEY_USAGE_THROTTLE_MAX_KEYS = 10_000;
+
+interface KeyUsageWrite {
+  apiVersion: ApiVersion;
+  client: string | null;
+  writtenAt: number;
+}
+
+const lastKeyUsageWrite = new Map<number, KeyUsageWrite>();
+
+/**
+ * Store the API version and first-party client a key was just used with.
+ *
+ * At most one write per key per KEY_USAGE_WRITE_INTERVAL_MS, except that a
+ * change of version or client writes at once: the moment a key moves from v3
+ * to v4 is the fact the sunset review needs. The throttle is per process, so
+ * several instances each write on their own schedule, which is harmless for
+ * columns that only ever hold the latest value.
+ *
+ * Fire and forget. The returned promise never rejects and only exists so a
+ * test can wait for the write; a request never waits on it, and a failed
+ * write is logged and forgotten so the next request tries again.
+ *
+ * `client` is checked again here rather than trusted from the caller: it is
+ * client-controlled text that the admin panel shows, and a value outside
+ * normalizeApiClient's pattern is stored as NULL, never trimmed.
+ */
+export function recordKeyUsage(
+  keyId: number,
+  usage: { apiVersion: ApiVersion; client: string | null },
+): Promise<void> {
+  const client = normalizeApiClient(usage.client);
+  const now = Date.now();
+  const previous = lastKeyUsageWrite.get(keyId);
+  if (
+    previous &&
+    previous.apiVersion === usage.apiVersion &&
+    previous.client === client &&
+    now - previous.writtenAt < KEY_USAGE_WRITE_INTERVAL_MS
+  ) {
+    return Promise.resolve();
+  }
+
+  // Deleted and re-set so Map order stays least recently written first.
+  lastKeyUsageWrite.delete(keyId);
+  if (lastKeyUsageWrite.size >= KEY_USAGE_THROTTLE_MAX_KEYS) {
+    const oldest = lastKeyUsageWrite.keys().next().value;
+    if (oldest !== undefined) lastKeyUsageWrite.delete(oldest);
+  }
+  const write: KeyUsageWrite = {
+    apiVersion: usage.apiVersion,
+    client,
+    writtenAt: now,
+  };
+  lastKeyUsageWrite.set(keyId, write);
+
+  return pool
+    .query(
+      `UPDATE api_keys
+          SET last_used_api_version = $2, last_used_client = $3
+        WHERE id = $1`,
+      [keyId, usage.apiVersion, client],
+    )
+    .then(
+      () => undefined,
+      (err: unknown) => {
+        if (lastKeyUsageWrite.get(keyId) === write) {
+          lastKeyUsageWrite.delete(keyId);
+        }
+        logError(
+          "api-keys",
+          "could not record which API version a key was used with",
+          err,
+          { keyId },
+        );
+      },
+    );
+}
+
+/** Test-only: forget every throttled write. */
+export function __resetKeyUsageThrottle(): void {
+  lastKeyUsageWrite.clear();
+}
+
+export interface ApiKeyVersionUsage {
+  keyId: number;
+  keyPrefix: string;
+  keyName: string;
+  userId: number;
+  ownerEmail: string;
+  lastUsedApiVersion: ApiVersion | null;
+  lastUsedClient: string | null;
+  lastUsedAt: Date | null;
+}
+
+/**
+ * Live keys by the API version and client they last called with, for the
+ * admin panel and the review a month before the v3 sunset.
+ *
+ * Keys still on v3 come first, then keys not seen since the telemetry columns
+ * existed, then v4. Within each, a NULL client comes first: that is every
+ * pre-4.0 CLI, Action and extension build plus raw HTTP callers, the callers
+ * an update cannot reach. `only` narrows the list to one of the two lists
+ * the review reads.
+ *
+ * Coverage is keys that authenticate through validateApiKey under
+ * versioned(). An anonymous poller never names a key and is not counted.
+ */
+export async function listApiKeysByVersionUsage(
+  options: {
+    only?: "v3" | "no-client";
+    limit?: number;
+    offset?: number;
+  } = {},
+): Promise<ApiKeyVersionUsage[]> {
+  const limit = Math.min(Math.max(Math.trunc(options.limit ?? 100), 1), 500);
+  const offset = Math.max(Math.trunc(options.offset ?? 0), 0);
+
+  const result = await pool.query<{
+    key_id: number;
+    key_prefix: string;
+    name: string;
+    user_id: number;
+    email: string;
+    last_used_api_version: ApiVersion | null;
+    last_used_client: string | null;
+    last_used_at: Date | null;
+  }>(
+    `SELECT ak.id AS key_id, ak.key_prefix, ak.name, ak.user_id, u.email,
+            ak.last_used_api_version, ak.last_used_client, ak.last_used_at
+       FROM api_keys ak
+       JOIN users u ON u.id = ak.user_id
+      WHERE ak.revoked_at IS NULL
+        AND ($3::text IS NULL
+             OR ($3::text = 'v3' AND ak.last_used_api_version = 'v3')
+             OR ($3::text = 'no-client' AND ak.last_used_client IS NULL))
+      ORDER BY CASE ak.last_used_api_version
+                 WHEN 'v3' THEN 0
+                 WHEN 'v4' THEN 2
+                 ELSE 1
+               END,
+               (ak.last_used_client IS NULL) DESC,
+               ak.last_used_at DESC NULLS LAST,
+               ak.id
+      LIMIT $1 OFFSET $2`,
+    [limit, offset, options.only ?? null],
+  );
+
+  return result.rows.map((row) => ({
+    keyId: row.key_id,
+    keyPrefix: row.key_prefix,
+    keyName: row.name,
+    userId: row.user_id,
+    ownerEmail: row.email,
+    lastUsedApiVersion: row.last_used_api_version,
+    lastUsedClient: row.last_used_client,
+    lastUsedAt: row.last_used_at,
+  }));
 }
 
 const API_USAGE_WINDOW_MS = 24 * 60 * 60 * 1000;
