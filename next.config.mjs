@@ -188,11 +188,9 @@ const nextConfig = {
             key: "Origin-Agent-Cluster",
             value: "?1",
           },
-          {
-            // Added: missing Document-Policy header
-            key: "Document-Policy",
-            value: "force-load-at-top",
-          },
+          // No Document-Policy: force-load-at-top stopped Chromium scrolling
+          // to the URL fragment, so every #anchor deep link opened at the top
+          // of the page. See middleware.ts.
         ],
       },
     ];

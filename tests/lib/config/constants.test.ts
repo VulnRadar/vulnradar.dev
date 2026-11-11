@@ -8,6 +8,7 @@ import {
   API_CURRENT_VERSION,
 } from "@/lib/config/constants";
 import { PUBLIC_PATHS } from "@/lib/config/public-paths";
+import { isLegacyPublicApi } from "@/lib/api/route-registry";
 
 /**
  * The four functions in lib/config/constants.ts, as opposed to its several
@@ -116,14 +117,13 @@ describe("API.SCAN_DISCOVER_PROGRESS", () => {
   });
 });
 
-// The allowlist in lib/config/public-paths.ts is the middleware's only source
-// of "this route needs no session". It used to be built from the hardcoded
-// API_V3 map, so a version bump would have left the middleware allowing
-// /api/v3/... while the client asked for /api/v4/... and every public
-// endpoint 307'd logged-out visitors to /login. Now that it reads `API`, this
-// asserts the coupling rather than trusting it.
-describe("PUBLIC_PATHS tracks the API map", () => {
-  it("allowlists the versioned auth and public routes by reference", () => {
+// Which API routes need no session is the route registry's question now
+// (PUBLIC_PATHS holds pages only). While the v3 files have not moved, the
+// registry decides them with the 3.9.1 prefixes in LEGACY_PUBLIC_API, so this
+// asserts that the routes the web app calls signed out are still on it: a
+// missing one is answered with a 401 instead of the handler.
+describe("the API map's public routes stay anonymous", () => {
+  it("are on the legacy public list", () => {
     for (const route of [
       API.AUTH.LOGIN,
       API.AUTH.SIGNUP,
@@ -138,7 +138,8 @@ describe("PUBLIC_PATHS tracks the API map", () => {
       // English.
       API.ACCOUNT_LANGUAGE,
     ]) {
-      expect(PUBLIC_PATHS).toContain(route);
+      expect(isLegacyPublicApi(route), route).toBe(true);
+      expect(PUBLIC_PATHS).not.toContain(route);
     }
   });
 

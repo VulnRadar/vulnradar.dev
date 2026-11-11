@@ -45,10 +45,19 @@ function makeRequest(
   });
 }
 
+// An anonymous page request asks the app whether the registry maintenance
+// switch is on. Stubbed in every test so none of them reaches a server that
+// happens to be listening on this machine's port 3000.
+const configClient = vi.fn(async (_url?: unknown, _init?: unknown) =>
+  Response.json({ maintenance: false }),
+);
+
 beforeEach(() => {
   vi.stubEnv("DISABLE_CSP", "");
   vi.stubEnv("NODE_ENV", "test");
   vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://vulnradar.dev");
+  configClient.mockClear();
+  vi.stubGlobal("fetch", configClient);
 });
 
 afterEach(() => {
@@ -359,8 +368,11 @@ describe("middleware: public path / auth redirects", () => {
   );
 
   it("keeps the embeddable badge image endpoint public", () => {
-    const res = middleware(makeRequest("/api/v3/badge/site/abc123"));
-    expect(res.headers.get("location")).toBeNull();
+    for (const token of ["a".repeat(64), "abc"]) {
+      const res = middleware(makeRequest(`/api/v3/badge/${token}`));
+      expect(res.status).toBe(200);
+      expect(res.headers.get("location")).toBeNull();
+    }
   });
 
   it("does not redirect an unauthenticated request for /checkout/success", () => {
@@ -804,7 +816,7 @@ describe("middleware: maintenance break-glass", () => {
     "/api/v3/auth/login",
     "/admin",
     "/api/v3/admin",
-    "/api/v3/version",
+    "/api/version",
     "/_next/static/chunks/main.js",
   ])("leaves %s reachable", (path) => {
     vi.stubEnv("MAINTENANCE_MODE", "true");
@@ -973,18 +985,14 @@ describe("middleware: matcher", () => {
 
   it.each(["png", "svg", "webp"])(
     "gates a cookie-less request to an API path ending in .%s exactly as it gates the suffix-less path",
-    (suffix) => {
+    async (suffix) => {
       const plain = middleware(makeRequest("/api/v3/support-tickets/12"));
       const suffixed = middleware(
         makeRequest(`/api/v3/support-tickets/12.${suffix}`),
       );
+      expect(plain.status).toBe(401);
       expect(suffixed.status).toBe(plain.status);
-      const plainTarget = new URL(plain.headers.get("location") ?? "");
-      const suffixedTarget = new URL(suffixed.headers.get("location") ?? "");
-      expect(suffixedTarget.pathname).toBe(plainTarget.pathname);
-      expect(suffixedTarget.searchParams.get("redirect")).toBe(
-        `/api/v3/support-tickets/12.${suffix}`,
-      );
+      expect((await suffixed.json()).code).toBe((await plain.json()).code);
     },
   );
 
@@ -997,5 +1005,200 @@ describe("middleware: matcher", () => {
     );
     expect(res.status).toBe(503);
     expect(res.headers.get("Content-Type")).toContain("application/json");
+  });
+});
+
+/**
+ * Document-Policy: force-load-at-top stops Chromium from scrolling to the
+ * fragment on load, so every #anchor deep link in the docs, the changelog and
+ * the check pages opened at the top of the page. Neither copy of it may come
+ * back.
+ */
+describe("middleware: no Document-Policy", () => {
+  const nextConfigSource = readFileSync(
+    fileURLToPath(new URL("../next.config.mjs", import.meta.url)),
+    "utf8",
+  );
+
+  it("is not sent on a page or an API response", () => {
+    for (const path of ["/landing", "/docs/api#errors", "/api/v3/health"]) {
+      expect(middleware(makeRequest(path)).headers.get("Document-Policy")).toBe(
+        null,
+      );
+    }
+  });
+
+  it("is not declared in next.config.mjs either", () => {
+    const code = nextConfigSource.replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/Document-Policy/i);
+    expect(code).not.toMatch(/force-load-at-top/);
+  });
+});
+
+/**
+ * The two screenshot routes answer with image bytes and set their own
+ * `default-src 'none'; sandbox`. Headers middleware sets on its response win
+ * over a handler's (measured by the routing spike), so middleware sends that
+ * same policy on exactly those paths: the page CSP, which allows scripts, has
+ * no business on a response that is never meant to run as a document.
+ */
+describe("middleware: the screenshot routes keep their own CSP", () => {
+  const SANDBOX = "default-src 'none'; sandbox";
+  const read = (rel: string) =>
+    readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+
+  it("is the policy both handlers declare", () => {
+    for (const file of [
+      "../app/api/v3/scan/screenshot/[id]/route.ts",
+      "../app/api/v3/shared/[token]/screenshot/route.ts",
+    ]) {
+      expect(read(file)).toContain(`"Content-Security-Policy": "${SANDBOX}"`);
+    }
+  });
+
+  it.each([
+    "/api/v3/scan/screenshot/abc",
+    "/api/v3/shared/tok/screenshot",
+    "/api/internal/scan/screenshot/abc",
+    "/api/internal/shared/tok/screenshot",
+  ])("sends it on %s", (path) => {
+    const res = middleware(
+      makeRequest(path, { cookie: "vulnradar_session=abc123" }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Security-Policy")).toBe(SANDBOX);
+  });
+
+  it("keeps the page policy on the neighbouring routes", () => {
+    for (const path of [
+      "/api/v3/history/abc/screenshot",
+      "/api/v3/scan/screenshot",
+      "/api/v3/shared/tok",
+    ]) {
+      const res = middleware(
+        makeRequest(path, { cookie: "vulnradar_session=abc123" }),
+      );
+      expect(res.headers.get("Content-Security-Policy"), path).toContain(
+        "script-src",
+      );
+    }
+  });
+});
+
+/**
+ * The admin panel's MAINTENANCE_MODE switch is enforced by app/layout.tsx,
+ * which can only swap the page body: the response stayed 200 with each page's
+ * own title, canonical and robots, so a crawl during maintenance indexed the
+ * maintenance text as the real page. Middleware cannot read the registry (it
+ * compiles to the edge), so it asks the app over loopback and keeps the answer
+ * for a few seconds. A visitor with a session cookie still falls through to
+ * the layout, which lets staff in.
+ */
+describe("middleware: registry maintenance for anonymous pages", () => {
+  const HOUR = 60 * 60 * 1000;
+  // A clock that only moves forward, well past anything the earlier tests
+  // cached, so every step below is unambiguously stale or fresh.
+  let clock = Date.now() + 24 * HOUR;
+  let nowSpy: { mockRestore: () => void };
+
+  function capture() {
+    const pending: Promise<unknown>[] = [];
+    const event = {
+      waitUntil: (p: Promise<unknown>) => pending.push(p),
+    } as never;
+    return { event, settle: () => Promise.all(pending) };
+  }
+
+  async function primeFlag(on: boolean) {
+    configClient.mockImplementation(async () =>
+      Response.json({ maintenance: on }),
+    );
+    clock += HOUR;
+    const { event, settle } = capture();
+    middleware(makeRequest("/pricing"), event);
+    await settle();
+    clock += 1;
+  }
+
+  beforeEach(() => {
+    nowSpy = vi.spyOn(Date, "now").mockImplementation(() => clock);
+  });
+
+  afterEach(async () => {
+    await primeFlag(false);
+    nowSpy.mockRestore();
+    configClient.mockImplementation(async () =>
+      Response.json({ maintenance: false }),
+    );
+  });
+
+  it("answers an anonymous page with 503 and Retry-After while the switch is on", async () => {
+    await primeFlag(true);
+    const res = middleware(makeRequest("/pricing"));
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("300");
+    expect(res.headers.get("Content-Type")).toContain("text/html");
+    expect(res.headers.get("x-request-id")).toBeTruthy();
+  });
+
+  it("lets a request with a session cookie through to the layout's staff check", async () => {
+    await primeFlag(true);
+    const res = middleware(
+      makeRequest("/pricing", { cookie: "vulnradar_session=abc123" }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it.each([ROUTES.LOGIN, "/robots.txt", "/security.txt", "/admin"])(
+    "keeps %s reachable",
+    async (path) => {
+      await primeFlag(true);
+      expect(middleware(makeRequest(path)).status).not.toBe(503);
+    },
+  );
+
+  it("leaves API paths to their handlers", async () => {
+    await primeFlag(true);
+    expect(middleware(makeRequest("/api/v3/config/client")).status).toBe(200);
+  });
+
+  it("serves pages normally while the switch is off", async () => {
+    await primeFlag(false);
+    expect(middleware(makeRequest("/pricing")).status).toBe(200);
+  });
+
+  it("asks loopback with a fixed origin, never the request's Host", async () => {
+    vi.stubEnv("PORT", "");
+    clock += HOUR;
+    configClient.mockClear();
+    const { event, settle } = capture();
+    middleware(
+      makeRequest("/pricing", {
+        headers: { host: "evil.example", "x-forwarded-host": "evil.example" },
+      }),
+      event,
+    );
+    await settle();
+    expect(configClient).toHaveBeenCalledTimes(1);
+    const url = new URL(String(configClient.mock.calls[0][0]));
+    expect(url.origin).toBe("http://127.0.0.1:3000");
+    expect(url.pathname).toBe("/api/v3/config/client");
+  });
+
+  it("asks at most once per window and treats a failed answer as off", async () => {
+    await primeFlag(true);
+    configClient.mockImplementation(async () => {
+      throw new Error("connection refused");
+    });
+    configClient.mockClear();
+    clock += HOUR;
+    const { event, settle } = capture();
+    middleware(makeRequest("/pricing"), event);
+    middleware(makeRequest("/docs"), event);
+    await settle();
+    expect(configClient).toHaveBeenCalledTimes(1);
+    clock += 1;
+    expect(middleware(makeRequest("/pricing")).status).toBe(200);
+    expect(configClient).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,9 +1,24 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, type NextFetchEvent } from "next/server";
 import { PUBLIC_PATHS } from "./lib/config/public-paths";
 import { AUTH_SESSION_COOKIE_NAME, ROUTES, API } from "./lib/config/constants";
 import { SOCIAL_REDIRECTS } from "./lib/config/client-constants";
+import { CONFIG_API_SUPPORTED_VERSIONS } from "./lib/config/config-values";
 import { RETIRED_CHECK_REDIRECTS } from "./lib/seo/retired-checks";
 import { parseBearer } from "./lib/api/bearer";
+import { buildError, type ErrorSpace } from "./lib/api/error-envelope";
+import type { ErrorCode } from "./lib/api/error-codes";
+import { FROZEN } from "./lib/api/frozen-paths";
+import { aliasRewrite } from "./lib/api/rewrite";
+import {
+  INTERNAL_MAINTENANCE,
+  PREFIX,
+  isLegacyPublicApi,
+  matchTemplate,
+  matchV4,
+  resolveApiPath,
+  type Resolved,
+} from "./lib/api/route-registry";
+import { API_VERSION_HEADER, type ApiMarker } from "./lib/api/versions";
 import {
   MAX_REQUEST_BODY_BYTES,
   BODY_CARRYING_METHODS,
@@ -114,27 +129,17 @@ function maintenanceEnvEnabled(): boolean {
 }
 
 /**
- * Paths that stay reachable while the environment break-glass is on.
+ * Pages that stay reachable while maintenance is on.
  *
- * The health endpoint is the load-bearing one: a container orchestrator that
- * gets a 503 from its readiness probe restarts the container, so a
- * maintenance page that covered /api/v3/health would put the deployment into
- * a restart loop for as long as maintenance lasted.
- *
- * The rest is the route back in. /login and the auth API let a staff member
- * sign in, /admin and the admin API let them turn this off (or, since this
- * form is an environment variable, confirm the database is back before
- * removing it). /_next serves the chunks those two pages are made of, so
- * without it they render blank.
+ * The route back in: /login lets a staff member sign in, /admin lets them
+ * turn this off (or, since the break-glass form is an environment variable,
+ * confirm the database is back before removing it). /_next serves the chunks
+ * those two pages are made of, so without it they render blank. The API half
+ * of the list is the registry's (isApiMaintenanceAllowed).
  */
-const MAINTENANCE_ALWAYS_ALLOWED = [
-  "/api/v3/health",
-  "/api/v3/version",
-  "/api/security-txt",
+const MAINTENANCE_ALWAYS_ALLOWED_PAGES = [
   "/.well-known/security.txt",
   "/security.txt",
-  "/api/v3/auth",
-  "/api/v3/admin",
   "/login",
   "/admin",
   "/_next",
@@ -142,39 +147,139 @@ const MAINTENANCE_ALWAYS_ALLOWED = [
   "/robots.txt",
 ] as const;
 
-function isMaintenanceExempt(pathname: string): boolean {
-  return MAINTENANCE_ALWAYS_ALLOWED.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`),
-  );
+const MAINTENANCE_MESSAGE =
+  "This service is down for maintenance. Nothing has been lost, and it will be back shortly.";
+
+/** Seconds a client is asked to wait before trying a paused deployment again. */
+const MAINTENANCE_RETRY_AFTER = 300;
+
+function underSegment(path: string, prefix: string): boolean {
+  return path === prefix || path.startsWith(`${prefix}/`);
 }
 
 /**
- * The break-glass response. Hand-written HTML rather than a rewrite to a
- * page, because a rewrite renders through app/layout.tsx, and this path
+ * Whether an API request stays up during break-glass maintenance, judged on
+ * the path that decides it, so an old alias behaves exactly like its target.
+ *
+ * The health endpoint is the load-bearing row: a container orchestrator that
+ * gets a 503 from its readiness probe restarts the container, so a
+ * maintenance page that covered it would put the deployment into a restart
+ * loop for as long as maintenance lasted. It is one of the permalinks flagged
+ * `maintenance`, beside the three sign-in callbacks, the version and
+ * security.txt. The Stripe webhook and the unsubscribe link are not: they get
+ * the 503 and its Retry-After, which both senders honour by trying again.
+ *
+ * The auth and admin trees are the staff way back in. A legacy v3 path is
+ * judged by the same two segments under /api/v3, which is the 3.9.1 list.
+ */
+function isApiMaintenanceAllowed(r: Resolved, decisionPath: string): boolean {
+  if (r.kind === "permalink") return r.link.maintenance === true;
+  const base =
+    r.kind === "legacy-v3"
+      ? PREFIX.V3
+      : r.kind === "internal" || (r.kind === "alias" && r.target === "internal")
+        ? PREFIX.INTERNAL
+        : null;
+  if (base === null) return false;
+  const tail = decisionPath.slice(base.length);
+  return INTERNAL_MAINTENANCE.some((prefix) => underSegment(tail, prefix));
+}
+
+function isMaintenanceAllowed(r: Resolved, decisionPath: string): boolean {
+  return r.kind === "page"
+    ? MAINTENANCE_ALWAYS_ALLOWED_PAGES.some((p) =>
+        underSegment(decisionPath, p),
+      )
+    : isApiMaintenanceAllowed(r, decisionPath);
+}
+
+/**
+ * The maintenance page. Hand-written HTML rather than a rewrite to a page,
+ * because a rewrite renders through app/layout.tsx, and the break-glass form
  * exists precisely for the case where rendering is what is broken. Styled
  * inline for the same reason: it must not depend on a stylesheet chunk being
  * served.
  */
-function maintenanceBreakGlassResponse(pathname: string): NextResponse {
-  if (pathname.startsWith("/api/")) {
-    return NextResponse.json(
-      {
-        error:
-          "This service is down for maintenance. Nothing has been lost, and it will be back shortly.",
-        paused: true,
-      },
-      { status: 503, headers: { "Retry-After": "300" } },
-    );
-  }
+function maintenancePageResponse(): NextResponse {
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Down for maintenance</title></head><body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;color:#fafafa;font-family:ui-sans-serif,system-ui,sans-serif"><main style="max-width:28rem;padding:1rem;text-align:center"><p style="font-family:ui-monospace,monospace;font-size:3.75rem;font-weight:600;margin:0">503</p><h1 style="font-size:1.125rem;font-weight:600;margin:0.75rem 0">Down for maintenance</h1><p style="font-size:0.875rem;line-height:1.6;color:#a1a1aa;margin:0">This service is down for maintenance. Nothing has been lost, and it will be back shortly.</p></main></body></html>`;
   return new NextResponse(html, {
     status: 503,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "Retry-After": "300",
+      "Retry-After": String(MAINTENANCE_RETRY_AFTER),
       "Cache-Control": "no-store",
     },
   });
+}
+
+/**
+ * The admin panel's MAINTENANCE_MODE registry switch, as far as middleware can
+ * know it.
+ *
+ * app/layout.tsx enforces the switch by rendering the maintenance screen in
+ * place of the page, but a layout cannot change the status, so a crawl during
+ * maintenance read a 200 carrying that page's own title, canonical and
+ * robots, and indexed the maintenance text as the page. Only middleware can
+ * answer 503, and middleware cannot read the registry: it compiles to the
+ * edge bundle and the settings resolver imports node-postgres. Running
+ * middleware on the Node runtime instead would put the database pool in front
+ * of every request and invalidate what the routing spike measured about
+ * rewrites, so the switch is read the way any other client reads it, from the
+ * public client-config route, and kept for a few seconds.
+ *
+ * The answer is shared by every visitor, so it is fetched from a fixed
+ * origin: this server's own loopback port, never the request's Host or
+ * X-Forwarded-Host, which a client chooses. X-Forwarded-Proto is set because
+ * Next fills in "http" for a direct request and the plain-HTTP redirect above
+ * would otherwise answer the probe with a 301.
+ *
+ * Stale-while-revalidate: a request never waits for the probe. The first
+ * anonymous page after the cache goes stale starts one refresh (in flight at
+ * most once) and is answered from the previous value, so the switch takes
+ * effect within a few seconds and a slow or dead app server costs nothing but
+ * the 503. Any failure reads as off; the environment break-glass is the form
+ * for a database that is down, and the layout still gates the page body.
+ */
+const REGISTRY_MAINTENANCE_TTL_MS = 5_000;
+const REGISTRY_MAINTENANCE_TIMEOUT_MS = 2_000;
+
+let registryMaintenance: { on: boolean; checkedAt: number } | null = null;
+let registryMaintenanceProbe: Promise<void> | null = null;
+
+function refreshRegistryMaintenance(): Promise<void> {
+  if (registryMaintenanceProbe) return registryMaintenanceProbe;
+  const origin = `http://127.0.0.1:${process.env.PORT || "3000"}`;
+  registryMaintenanceProbe = (async () => {
+    let on = false;
+    try {
+      const res = await fetch(`${origin}${API.CONFIG_CLIENT}`, {
+        cache: "no-store",
+        headers: { "x-forwarded-proto": "https" },
+        signal: AbortSignal.timeout(REGISTRY_MAINTENANCE_TIMEOUT_MS),
+      });
+      if (res.ok) {
+        const body = (await res.json()) as { maintenance?: unknown } | null;
+        on = body?.maintenance === true;
+      }
+    } catch {
+      // Unreachable, slow or not JSON: off, as the comment above explains.
+    }
+    registryMaintenance = { on, checkedAt: Date.now() };
+  })().finally(() => {
+    registryMaintenanceProbe = null;
+  });
+  return registryMaintenanceProbe;
+}
+
+function registryMaintenanceOn(event: NextFetchEvent | undefined): boolean {
+  const cached = registryMaintenance;
+  const age = cached ? Date.now() - cached.checkedAt : Infinity;
+  // A negative age is a clock that went backwards; refresh rather than trust it.
+  if (age < 0 || age >= REGISTRY_MAINTENANCE_TTL_MS) {
+    const probe = refreshRegistryMaintenance();
+    event?.waitUntil(probe);
+  }
+  return cached?.on === true;
 }
 
 function buildSecurityHeaders(nonce: string): Record<string, string> {
@@ -307,8 +412,35 @@ function buildSecurityHeaders(nonce: string): Record<string, string> {
     // to bother with, on every response, forever. A deprecated header that
     // no browser reads is not a signal, it is bytes.
     "Origin-Agent-Cluster": "?1",
-    "Document-Policy": "force-load-at-top",
+    // No Document-Policy. It used to carry force-load-at-top, which tells
+    // Chromium not to scroll to the URL fragment on load, so every #anchor
+    // deep link (docs sections, changelog entries, check pages) opened at the
+    // top of the page.
   };
+}
+
+/**
+ * The two routes that answer with screenshot bytes declare
+ * `default-src 'none'; sandbox` themselves. A header middleware sets on its
+ * response wins over the handler's (the routing spike measured it for CSP and
+ * for x-request-id), so without this the page policy, which allows scripts,
+ * replaced the stricter one on a response that is never meant to run as a
+ * document. Sending the same value here makes the handler's policy the one
+ * that arrives. tests/middleware.test.ts checks it against both handlers.
+ */
+const SCREENSHOT_CSP = "default-src 'none'; sandbox";
+const SCREENSHOT_TAILS = ["/scan/screenshot/:id", "/shared/:token/screenshot"];
+
+function servesScreenshot(r: Resolved, decisionPath: string): boolean {
+  const base =
+    r.kind === "legacy-v3"
+      ? PREFIX.V3
+      : r.kind === "internal" || (r.kind === "alias" && r.target === "internal")
+        ? PREFIX.INTERNAL
+        : null;
+  if (base === null) return false;
+  const tail = decisionPath.slice(base.length);
+  return SCREENSHOT_TAILS.some((template) => matchTemplate(template, tail));
 }
 
 /**
@@ -324,19 +456,19 @@ function buildSecurityHeaders(nonce: string): Record<string, string> {
  * origin to compare against and never applies CORP, so the surface everyone
  * checks kept working while the one the docs show HTML for did not.
  *
- * Narrow on purpose: a single path segment under the badge prefix, which is
- * the token route and not /badge/scans or /badge/site, both of which are
- * session-authenticated JSON that has no business being embeddable.
+ * Narrow on purpose: the request has to have resolved to the badge
+ * permalink, whose row carries `corpCrossOrigin`. That row is a single
+ * segment under FROZEN.BADGE with `except: ["scans", "site"]`, so
+ * /badge/scans and /badge/site, both session-authenticated JSON that has no
+ * business being embeddable, never resolve to it. The prefix is the frozen
+ * one, not the API map's: the image URL lives in other people's pages and
+ * does not move with the API version.
  */
-function isEmbeddableBadgeImage(pathname: string): boolean {
-  const prefix = `${API.BADGE}/`;
-  if (!pathname.startsWith(prefix)) return false;
-  const segment = pathname.slice(prefix.length);
+function isEmbeddableBadgeImage(r: Resolved): boolean {
   return (
-    segment.length > 0 &&
-    !segment.includes("/") &&
-    segment !== "scans" &&
-    segment !== "site"
+    r.kind === "permalink" &&
+    r.link.corpCrossOrigin === true &&
+    r.path.startsWith(`${FROZEN.BADGE}/`)
   );
 }
 
@@ -383,40 +515,183 @@ function applySecurityHeaders(
   return response;
 }
 
-export function middleware(request: NextRequest) {
-  // A reverse proxy in front of this app (Cloudflare, nginx, Caddy -- see
-  // docker-compose.yml) is expected to redirect plain HTTP to HTTPS itself,
-  // but not every self-hosted deployment gets that configured. X-Forwarded-
-  // Proto reflects what the client actually connected with, trusted the
-  // same way requestSelfOrigin() below trusts it -- redirect here as a
-  // fallback whenever it says "http". A no-op for any proxy that already
-  // upgrades before forwarding.
-  //
-  // It is NOT a no-op for a direct request with no proxy at all, which this
-  // comment used to claim: Next.js's server fills in x-forwarded-proto itself
-  // (`??= "http"`) before middleware runs, so every direct plain-HTTP request
-  // is redirected. That includes the image's own HEALTHCHECK and compose's,
-  // which call http://localhost:3000/api/v3/health from inside the container:
-  // wget followed the 301 to https://localhost:3000, where nothing speaks
-  // TLS, and every install reported unhealthy. A health probe always connects
-  // directly, so the health endpoint is never redirected.
-  // ALLOW_INSECURE_HTTP=1 turns this off for a deployment that has no TLS at
-  // all (see the constant's own comment); without an opt-out, such an install
-  // was redirected to an https URL that nothing was listening on.
-  if (
-    !ALLOW_INSECURE_HTTP &&
-    request.nextUrl.pathname !== "/api/v3/health" &&
-    request.headers
-      .get("x-forwarded-proto")
-      ?.split(",")[0]
-      ?.trim()
-      .toLowerCase() === "http"
-  ) {
-    const httpsUrl = new URL(request.url);
-    httpsUrl.protocol = "https:";
-    return NextResponse.redirect(httpsUrl, 301);
+/**
+ * The space a resolved request belongs to, for the error envelope: v4 never
+ * carries the legacy `paused` key, and a v3 alias of a v4 operation is still
+ * a v3 caller.
+ */
+function errorSpaceOf(r: Resolved): ErrorSpace {
+  switch (r.kind) {
+    case "v4":
+      return "v4";
+    case "alias":
+      return r.target === "v4" ? "v3" : "internal";
+    case "legacy-v3":
+      return "v3";
+    case "internal":
+      return "internal";
+    case "permalink":
+      return "permalink";
+    default:
+      return "other";
   }
+}
 
+/**
+ * The trusted marker a handler reads to pick its response shape. A v3 alias
+ * of a v4 operation and a legacy v3 path are both v3 callers. Paths no route
+ * serves get "internal", which no projection reads; the point is that
+ * whatever the client sent is overwritten.
+ */
+function markerOf(r: Resolved): ApiMarker {
+  switch (r.kind) {
+    case "v4":
+      return "v4";
+    case "alias":
+      return r.target === "v4" ? "v3" : "internal";
+    case "legacy-v3":
+      return "v3";
+    case "permalink":
+      return "permalink";
+    default:
+      return "internal";
+  }
+}
+
+/** The tail of a legacy v3 path, relative to /api/v3. */
+function legacyTail(r: Resolved & { kind: "legacy-v3" }): string {
+  return r.path.slice(PREFIX.V3.length);
+}
+
+/**
+ * Whether a legacy v3 path is a v4 operation once its file moves, which is
+ * what decides the Bearer challenge on its 401: the credential it is missing
+ * is the same one. auth/me only with a Bearer, exactly as resolveApiPath
+ * splits it.
+ */
+function legacyIsV4Operation(
+  r: Resolved & { kind: "legacy-v3" },
+  bearer: boolean,
+): boolean {
+  const tail = legacyTail(r);
+  return matchV4(tail) !== null && (tail !== "/auth/me" || bearer);
+}
+
+/** The spaces a Bearer key belongs to: v4, its v3 aliases, and legacy v3. */
+function acceptsBearer(r: Resolved): boolean {
+  return (
+    r.kind === "v4" ||
+    r.kind === "legacy-v3" ||
+    (r.kind === "alias" && r.target === "v4")
+  );
+}
+
+/**
+ * Exact canonical paths only, so an adjacent path (webhooks/stripe/x,
+ * webhooks/123) is checked like any other. Each exemption authenticates the
+ * caller some other way, so the Origin header is not a useful signal there:
+ *
+ * - the Stripe webhook is signed with STRIPE_WEBHOOK_SECRET;
+ * - the Discord callback carries an HMAC-signed state token;
+ * - unsubscribe is the RFC 8058 One-Click endpoint named in the
+ *   List-Unsubscribe header of every message we send, so Gmail and Yahoo
+ *   POST to it from their own servers with no Origin and no cookie; its
+ *   credential is the unguessable token in the query string, and a
+ *   cross-site page that does not have it can do nothing with the route;
+ * - the version and security.txt are anonymous and read-only;
+ * - the demo scan is anonymous and limited by the caller's IP.
+ *
+ * A legacy v3 path is exempt when its tail is the exempt v4 operation, which
+ * is the 3.9.1 entry for /api/v3/demo-scan and what its alias will be.
+ */
+function isExemptFromCsrf(r: Resolved): boolean {
+  switch (r.kind) {
+    case "permalink":
+      return r.link.csrfExempt === true;
+    case "v4":
+      return r.route?.csrfExempt === true;
+    case "alias":
+      return r.target === "v4" && r.route?.csrfExempt === true;
+    case "legacy-v3":
+      return matchV4(legacyTail(r))?.csrfExempt === true;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Whether the middleware lets an API request through without demanding a
+ * credential. A routing hint, not authentication: the gate below only checks
+ * that a session cookie is present, and every handler that needs a user still
+ * calls getSession() itself.
+ */
+function isAnonymous(r: Resolved): boolean {
+  switch (r.kind) {
+    case "permalink":
+      return true;
+    case "v4":
+      return r.route?.bearer === "none";
+    case "internal":
+      return r.anonymous;
+    case "alias": {
+      if (r.target === "v4") return r.route?.bearer === "none";
+      const target = resolveApiPath(r.to, false, CONFIG_API_SUPPORTED_VERSIONS);
+      return target.kind === "internal" && target.anonymous;
+    }
+    case "legacy-v3":
+      return isLegacyPublicApi(r.path);
+    default:
+      return false;
+  }
+}
+
+/** auth/me in v4 answers a key and nothing else. */
+function requiresBearer(r: Resolved): boolean {
+  return (
+    (r.kind === "v4" || (r.kind === "alias" && r.target === "v4")) &&
+    r.route?.bearer === "required"
+  );
+}
+
+/**
+ * The web app navigates to a few API routes (GitHub and Discord connect, the
+ * OAuth starts), and a signed-out browser there should land on the login
+ * page, not on a JSON body. Only the spaces those routes live in.
+ */
+function redirectsNavigations(r: Resolved): boolean {
+  return (
+    r.kind === "internal" ||
+    r.kind === "legacy-v3" ||
+    (r.kind === "alias" && r.target === "internal")
+  );
+}
+
+function isNavigation(request: NextRequest): boolean {
+  return (
+    request.headers.get("sec-fetch-mode")?.toLowerCase() === "navigate" ||
+    request.headers.get("sec-fetch-dest")?.toLowerCase() === "document"
+  );
+}
+
+const UNRESERVED = /^[A-Za-z0-9._~-]$/;
+
+/**
+ * Decodes the percent-escapes of unreserved characters (RFC 3986 2.3), which
+ * mean the same as the character itself. The registry matches the raw
+ * pathname, and the router may serve /api/v3/%61dmin as /api/v3/admin, so
+ * without this an escaped spelling was judged as some other path: the
+ * maintenance allowlist missed it and an alias would have been decided on a
+ * target the router never serves. Reserved escapes (%2F and the rest) stay
+ * as they are, because decoding one changes what the path is.
+ */
+function normalizeUnreservedEscapes(pathname: string): string {
+  return pathname.replace(/%([0-9A-Fa-f]{2})/g, (escape, hex: string) => {
+    const char = String.fromCharCode(Number.parseInt(hex, 16));
+    return UNRESERVED.test(char) ? char : escape;
+  });
+}
+
+export function middleware(request: NextRequest, event?: NextFetchEvent) {
   // This used to only be enforced at next.config.mjs build time, which a
   // pre-built Docker image started with a new env var would never
   // re-trigger. Middleware re-evaluates on every request in production, so
@@ -440,7 +715,95 @@ export function middleware(request: NextRequest) {
   // The forwarded REQUEST header below is how it reaches Node route
   // handlers -- middleware runs on the Edge runtime, so there is no shared
   // AsyncLocalStorage to hand it over in (see lib/database/request-context.ts).
+  // Minted before anything can answer, so every response carries it.
   const requestId = crypto.randomUUID();
+  const finish = (response: NextResponse) =>
+    applySecurityHeaders(response, nonce, requestId);
+
+  // Normalize pathname: remove trailing slash except for root '/'
+  const { pathname: rawPathname } = request.nextUrl;
+  const trimmed =
+    rawPathname.endsWith("/") && rawPathname !== "/"
+      ? rawPathname.slice(0, -1)
+      : rawPathname;
+  const pathname = trimmed.startsWith("/api/")
+    ? normalizeUnreservedEscapes(trimmed)
+    : trimmed;
+
+  // Which space the path belongs to, and the path that decides it: an alias
+  // is judged as its target, so an old URL can never be treated differently
+  // from the route it reaches. Every rule below reads `r` and
+  // `decisionPath`, never a hand-written prefix. The same reader the route
+  // handlers use for the Authorization header, so middleware and a handler
+  // never disagree about whether this is a key call.
+  const bearer = parseBearer(request.headers.get("authorization")) !== null;
+  const r = resolveApiPath(pathname, bearer, CONFIG_API_SUPPORTED_VERSIONS);
+  const decisionPath = r.kind === "alias" ? r.to : pathname;
+  const isApi = r.kind !== "page";
+  const space = errorSpaceOf(r);
+  const fail = (
+    status: number,
+    code: ErrorCode,
+    message: string,
+    extra: { retryAfter?: number; bearerChallenge?: boolean } = {},
+  ) =>
+    finish(
+      buildError({
+        version: space,
+        status,
+        code,
+        message,
+        requestId,
+        ...extra,
+      }),
+    );
+
+  // A reverse proxy in front of this app (Cloudflare, nginx, Caddy -- see
+  // docker-compose.yml) is expected to redirect plain HTTP to HTTPS itself,
+  // but not every self-hosted deployment gets that configured. X-Forwarded-
+  // Proto reflects what the client actually connected with, trusted the
+  // same way requestSelfOrigin() below trusts it -- redirect here as a
+  // fallback whenever it says "http". A no-op for any proxy that already
+  // upgrades before forwarding.
+  //
+  // It is NOT a no-op for a direct request with no proxy at all, which this
+  // comment used to claim: Next.js's server fills in x-forwarded-proto itself
+  // (`??= "http"`) before middleware runs, so every direct plain-HTTP request
+  // is redirected. That includes the image's own HEALTHCHECK and compose's,
+  // which call the health endpoint over plain HTTP from inside the container:
+  // wget followed the 301 to https://localhost:3000, where nothing speaks
+  // TLS, and every install reported unhealthy. A health probe always connects
+  // directly, so the permalink flagged plainHttpExempt is never redirected.
+  // ALLOW_INSECURE_HTTP=1 turns this off for a deployment that has no TLS at
+  // all (see the constant's own comment); without an opt-out, such an install
+  // was redirected to an https URL that nothing was listening on.
+  //
+  // An API write is refused rather than redirected. A client that follows a
+  // 301 re-sends a POST as a GET without its body, or not at all, and the
+  // credentials and body have already crossed the network in the clear, so
+  // the honest answer is a JSON 403 that says what to change.
+  if (
+    !ALLOW_INSECURE_HTTP &&
+    !(r.kind === "permalink" && r.link.plainHttpExempt) &&
+    request.headers
+      .get("x-forwarded-proto")
+      ?.split(",")[0]
+      ?.trim()
+      .toLowerCase() === "http"
+  ) {
+    const method = request.method.toUpperCase();
+    if (isApi && method !== "GET" && method !== "HEAD") {
+      return fail(
+        403,
+        "FORBIDDEN",
+        "HTTPS required. Send this request to the https:// address of this server.",
+      );
+    }
+    const httpsUrl = new URL(request.url);
+    httpsUrl.protocol = "https:";
+    return finish(NextResponse.redirect(httpsUrl, 301));
+  }
+
   // Server Components (app/layout.tsx) read this back via headers() from
   // next/headers to nonce the one raw inline <script> the app renders
   // itself. Requires rewriting the *request* headers, not just the
@@ -460,31 +823,63 @@ export function middleware(request: NextRequest) {
   // nonced; the four without are two ld+json blocks, the app's own inline
   // script, and Cloudflare's edge-injected email-decode.js (the case the
   // sha256 entry in scriptSrc exists for).
-  const nextWithNonce = () =>
-    NextResponse.next({ request: { headers: requestHeaders } });
 
-  // Normalize pathname: remove trailing slash except for root '/'
-  const { pathname: rawPathname } = request.nextUrl;
-  const pathname =
-    rawPathname.endsWith("/") && rawPathname !== "/"
-      ? rawPathname.slice(0, -1)
-      : rawPathname;
   // app/layout.tsx reads this back to decide whether the database-backed
-  // maintenance gate applies to the page being rendered.
-  requestHeaders.set(PATHNAME_HEADER, pathname);
+  // maintenance gate applies to the page being rendered. For an alias it is
+  // the canonical path, the one every rule here was decided on.
+  requestHeaders.set(PATHNAME_HEADER, decisionPath);
 
-  // Break-glass maintenance, before anything that could touch the app.
-  // Deliberately ahead of the body-size and CSRF checks: a deployment in this
-  // state should be answering exactly one thing on every non-exempt path.
-  if (maintenanceEnvEnabled() && !isMaintenanceExempt(pathname)) {
-    return applySecurityHeaders(
-      maintenanceBreakGlassResponse(pathname),
-      nonce,
-      requestId,
-    );
-  }
+  // The version marker selects a response shape and nothing else. Set (never
+  // appended) on every API request, so a client-sent value is overwritten,
+  // and deleted on every page request: next.config.mjs rewrites
+  // /security.txt into /api, so a page-kind request can still reach an API
+  // handler and must not carry a value the client chose there either.
+  if (isApi) requestHeaders.set(API_VERSION_HEADER, markerOf(r));
+  else requestHeaders.delete(API_VERSION_HEADER);
+
+  // Outside v4, its aliases and the legacy v3 paths no handler reads a key,
+  // so the header is dropped before any of them runs. That turns "internal
+  // routes never take a Bearer" from a convention into something a route
+  // cannot get wrong.
+  if (!acceptsBearer(r)) requestHeaders.delete("authorization");
+
+  const passThrough = () => {
+    const response =
+      r.kind === "alias"
+        ? aliasRewrite(request, decisionPath, {
+            request: { headers: requestHeaders },
+          })
+        : NextResponse.next({ request: { headers: requestHeaders } });
+    finish(response);
+    if (isEmbeddableBadgeImage(r)) {
+      response.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
+    }
+    if (servesScreenshot(r, decisionPath)) {
+      response.headers.set("Content-Security-Policy", SCREENSHOT_CSP);
+    }
+    return response;
+  };
 
   const sessionCookie = request.cookies.get(AUTH_SESSION_COOKIE_NAME);
+
+  // Maintenance, before anything that could touch the app. Deliberately
+  // ahead of the body-size and CSRF checks: a deployment in this state
+  // should be answering exactly one thing on every path that is not the way
+  // back in.
+  //
+  // The environment break-glass covers everything; the registry switch
+  // covers anonymous pages, which is what a crawler is, and leaves anyone
+  // with a session cookie to the layout's staff check.
+  if (
+    !isMaintenanceAllowed(r, decisionPath) &&
+    (maintenanceEnvEnabled() ||
+      (!isApi && !sessionCookie && registryMaintenanceOn(event)))
+  ) {
+    if (!isApi) return finish(maintenancePageResponse());
+    return fail(503, "SERVICE_PAUSED", MAINTENANCE_MESSAGE, {
+      retryAfter: MAINTENANCE_RETRY_AFTER,
+    });
+  }
 
   // Request-body ceiling for the whole API surface. The 1 MiB cap was written
   // down as a security property of this API but was only ever enforced inside
@@ -502,10 +897,7 @@ export function middleware(request: NextRequest) {
   // client picks: dropping the header does not remove the cap parseBody-backed
   // routes still apply, and an unbounded chunked upload is bounded by the
   // reverse proxy every deployment doc puts in front of this app.
-  if (
-    pathname.startsWith("/api/") &&
-    BODY_CARRYING_METHODS.has(request.method.toUpperCase())
-  ) {
+  if (isApi && BODY_CARRYING_METHODS.has(request.method.toUpperCase())) {
     const declaredLength = Number.parseInt(
       request.headers.get("content-length") ?? "",
       10,
@@ -514,15 +906,10 @@ export function middleware(request: NextRequest) {
       Number.isFinite(declaredLength) &&
       declaredLength > MAX_REQUEST_BODY_BYTES
     ) {
-      return applySecurityHeaders(
-        NextResponse.json(
-          {
-            error: `Request body exceeds the ${MAX_REQUEST_BODY_BYTES} byte limit.`,
-          },
-          { status: 413 },
-        ),
-        nonce,
-        requestId,
+      return fail(
+        413,
+        "PAYLOAD_TOO_LARGE",
+        `Request body exceeds the ${MAX_REQUEST_BODY_BYTES} byte limit.`,
       );
     }
   }
@@ -541,200 +928,159 @@ export function middleware(request: NextRequest) {
   // 307, not 308: the destination is somebody else's URL and an account can
   // move. Browsers cache a permanent redirect indefinitely, which would
   // outlive our ability to change it.
-  const socialPathname =
-    pathname.length > 1 && pathname.endsWith("/")
-      ? pathname.slice(0, -1)
-      : pathname;
-  const socialTarget = SOCIAL_REDIRECTS[socialPathname];
+  const socialTarget = SOCIAL_REDIRECTS[pathname];
   if (socialTarget) {
-    return applySecurityHeaders(
-      NextResponse.redirect(socialTarget, 307),
-      nonce,
-      requestId,
-    );
+    return finish(NextResponse.redirect(socialTarget, 307));
   }
 
   // A check page this release removed. 301, unlike the short links above:
   // the old URL is gone for good and search engines should move its standing
   // to the target. Own-origin target, so there is nothing to move later.
-  const retiredCheck = socialPathname.startsWith("/checks/")
-    ? Object.hasOwn(RETIRED_CHECK_REDIRECTS, socialPathname.slice(8))
-      ? RETIRED_CHECK_REDIRECTS[socialPathname.slice(8)]
+  const retiredCheck = pathname.startsWith("/checks/")
+    ? Object.hasOwn(RETIRED_CHECK_REDIRECTS, pathname.slice(8))
+      ? RETIRED_CHECK_REDIRECTS[pathname.slice(8)]
       : undefined
     : undefined;
   if (retiredCheck) {
-    return applySecurityHeaders(
+    return finish(
       NextResponse.redirect(new URL(retiredCheck, request.url), 301),
-      nonce,
-      requestId,
     );
   }
 
-  // Check if path is public (exact match for "/" and "/landing", startsWith for others)
-  const isPublicPath = PUBLIC_PATHS.some((p) => {
-    if (p === ROUTES.HOME || p === ROUTES.LANDING) {
-      return pathname === p;
-    }
-    return pathname.startsWith(p);
-  });
-
-  // The same reader the route handlers use, so middleware and a handler never
-  // disagree about whether this is a key call: `bearer <key>` is one to both.
-  const hasBearerToken =
-    parseBearer(request.headers.get("authorization")) !== null;
-
-  // csrf: enforce CSRF for state-changing requests to the API
-  // surface. We require that the request carries an Origin /
-  // Referer header matching the app's own origin AND a
-  // Sec-Fetch-Site header (when present) that is "same-origin" or
-  // "same-site". Without this, a malicious site can submit
-  // cross-origin POSTs against VulnRadar on behalf of an
-  // authenticated user.
+  // csrf: enforce CSRF for state-changing requests to every API path,
+  // whatever its space and whether or not a route exists there yet, so a
+  // prefix is protected before its first file lands. We require that the
+  // request carries an Origin / Referer header matching the app's own origin
+  // AND a Sec-Fetch-Site header (when present) that is "same-origin" or
+  // "same-site". Without this, a malicious site can submit cross-origin POSTs
+  // against VulnRadar on behalf of an authenticated user.
   //
-  // IMPORTANT: this runs BEFORE the isPublicPath return below, and that
+  // IMPORTANT: this runs BEFORE the anonymous-path pass below, and that
   // ordering is the point. It used to sit after it, which made PUBLIC_PATHS
   // the real exemption list rather than the deliberately narrow
   // isExemptFromCsrf() one: POST /api/v3/auth/login was exempt, so a
   // cross-site text/plain form could post valid JSON to it and log a victim
   // into the attacker's account, and POST /api/v3/badge/site (session
-  // authenticated, under the "/api/v3/badge" prefix) was exempt with it
-  // (AUDIT-012#auth-04). Nothing in PUBLIC_PATHS needs the exemption: every
+  // authenticated, under the public badge prefix) was exempt with it
+  // (AUDIT-012#auth-04). Nothing anonymous needs the exemption: every
   // same-origin fetch from this app carries an Origin header.
   //
-  // IMPORTANT: the CSRF check also runs BEFORE the Bearer bypass below.
+  // IMPORTANT: the CSRF check also runs BEFORE the Bearer pass below.
   // A fake "Authorization: Bearer anything" header must not suppress
-  // Origin validation for session-authenticated routes (AUDIT-005#csrf-01).
-  // enforceCsrf() is Bearer-aware: true API clients (Bearer + no Origin)
-  // are exempted inside that function, not here.
-  //
-  // Webhooks from Stripe and Discord are exempt because they sign their
-  // payloads (see app/api/v3/webhooks/stripe/route.ts and
-  // app/api/v3/auth/discord/callback/route.ts). The exempt list
-  // below is intentionally narrow: a signature or a bearer secret in the
-  // URL is the trust boundary for those endpoints, not the Origin header.
-  if (pathname.startsWith("/api/v3/") && !isExemptFromCsrf(pathname)) {
-    const csrfResponse = enforceCsrf(request, hasBearerToken);
-    if (csrfResponse) {
-      return applySecurityHeaders(csrfResponse, nonce, requestId);
-    }
+  // Origin validation for session-authenticated routes (AUDIT-005#csrf-01),
+  // and outside v4, its aliases and legacy v3 a Bearer waives nothing at all.
+  if (isApi && !isExemptFromCsrf(r)) {
+    const refusal = enforceCsrf(request, bearer && acceptsBearer(r));
+    if (refusal) return fail(403, "CSRF_REJECTED", refusal);
   }
 
-  // Allow public paths
-  if (isPublicPath) {
-    // If logged in and trying to access login/signup, redirect to dashboard
-    if (
-      sessionCookie &&
-      (pathname === ROUTES.LOGIN || pathname === ROUTES.SIGNUP)
-    ) {
-      return applySecurityHeaders(
-        NextResponse.redirect(new URL(ROUTES.DASHBOARD, request.url)),
-        nonce,
-        requestId,
-      );
-    }
-    const publicResponse = applySecurityHeaders(
-      nextWithNonce(),
-      nonce,
-      requestId,
-    );
-    if (isEmbeddableBadgeImage(pathname)) {
-      publicResponse.headers.set(
-        "Cross-Origin-Resource-Policy",
-        "cross-origin",
-      );
-    }
-    // A protected page bounces an anonymous visitor (and a crawler following
-    // a footer link) to /login?redirect=<path>. Each of those is the login
-    // page again under another URL. The header keeps them out of the index
-    // while the clean /login stays in it; robots.txt used to Disallow them,
-    // which only made Search Console list them as blocked.
-    if (
-      (pathname === ROUTES.LOGIN || pathname === ROUTES.SIGNUP) &&
-      request.nextUrl.searchParams.has("redirect")
-    ) {
-      publicResponse.headers.set("X-Robots-Tag", "noindex");
-    }
-    // Shared reports and per-host pages describe somebody's site, and robots.txt
-    // no longer blocks them so that their noindex can be read. The header
-    // carries it for every crawler, including the ones that get page metadata
-    // streamed into the body, and covers their generated preview images too.
-    // Link-preview bots ignore it, so a pasted report still unfurls.
-    if (pathname.startsWith("/shared/") || pathname.startsWith("/host/")) {
-      publicResponse.headers.set("X-Robots-Tag", "noindex, nofollow");
-    }
-    return publicResponse;
-  }
-
-  // Bearer token requests bypass the session-cookie redirect only —
-  // API key auth is handled inside each route handler.
-  if (hasBearerToken && pathname.startsWith("/api/v3/")) {
-    return applySecurityHeaders(nextWithNonce(), nonce, requestId);
-  }
-
-  // Protect everything else - redirect to login if no session
-  if (!sessionCookie) {
-    const loginUrl = new URL(ROUTES.LOGIN, request.url);
-    // Preserve the original destination so we can redirect back after login
-    const intended = pathname + request.nextUrl.search;
-    if (intended && intended !== ROUTES.DASHBOARD) {
-      loginUrl.searchParams.set("redirect", intended);
-    }
-    return applySecurityHeaders(
-      NextResponse.redirect(loginUrl),
-      nonce,
-      requestId,
+  // After CSRF, so a cross-site write to a made-up version is still refused
+  // first. /api/v4 answers this until it is switched on.
+  if (r.kind === "unsupported-version") {
+    return fail(
+      404,
+      "UNSUPPORTED_API_VERSION",
+      `API version ${r.version} is not served by this instance.`,
     );
   }
 
-  return applySecurityHeaders(nextWithNonce(), nonce, requestId);
+  if (!isApi) {
+    // Check if path is public (exact match for "/" and "/landing", startsWith for others)
+    const isPublicPath = PUBLIC_PATHS.some((p) => {
+      if (p === ROUTES.HOME || p === ROUTES.LANDING) {
+        return pathname === p;
+      }
+      return pathname.startsWith(p);
+    });
+
+    if (isPublicPath) {
+      // If logged in and trying to access login/signup, redirect to dashboard
+      if (
+        sessionCookie &&
+        (pathname === ROUTES.LOGIN || pathname === ROUTES.SIGNUP)
+      ) {
+        return finish(
+          NextResponse.redirect(new URL(ROUTES.DASHBOARD, request.url)),
+        );
+      }
+      const publicResponse = passThrough();
+      // A protected page bounces an anonymous visitor (and a crawler following
+      // a footer link) to /login?redirect=<path>. Each of those is the login
+      // page again under another URL. The header keeps them out of the index
+      // while the clean /login stays in it; robots.txt used to Disallow them,
+      // which only made Search Console list them as blocked.
+      if (
+        (pathname === ROUTES.LOGIN || pathname === ROUTES.SIGNUP) &&
+        request.nextUrl.searchParams.has("redirect")
+      ) {
+        publicResponse.headers.set("X-Robots-Tag", "noindex");
+      }
+      // Shared reports and per-host pages describe somebody's site, and robots.txt
+      // no longer blocks them so that their noindex can be read. The header
+      // carries it for every crawler, including the ones that get page metadata
+      // streamed into the body, and covers their generated preview images too.
+      // Link-preview bots ignore it, so a pasted report still unfurls.
+      if (pathname.startsWith("/shared/") || pathname.startsWith("/host/")) {
+        publicResponse.headers.set("X-Robots-Tag", "noindex, nofollow");
+      }
+      return publicResponse;
+    }
+
+    if (!sessionCookie) return loginRedirect(request, pathname, finish);
+    return passThrough();
+  }
+
+  // The API auth gate. It only asks whether a credential is present; whether
+  // it is valid is each handler's question. API key auth is handled inside
+  // each route handler, which is why a Bearer in the right space passes here.
+  if (
+    isAnonymous(r) ||
+    (bearer && acceptsBearer(r)) ||
+    (sessionCookie && !requiresBearer(r))
+  ) {
+    return passThrough();
+  }
+
+  // A credential-less API call is answered in JSON. It used to be a 307 to
+  // the login page, which fetch follows: res.ok came back true on the login
+  // HTML, res.json() threw, and a signed-out tab could not tell "not signed
+  // in" from "the server is broken".
+  if (redirectsNavigations(r) && isNavigation(request)) {
+    return loginRedirect(request, decisionPath, finish);
+  }
+  const challenge =
+    r.kind === "v4" ||
+    (r.kind === "alias" && r.target === "v4") ||
+    (r.kind === "legacy-v3" && legacyIsV4Operation(r, bearer));
+  return fail(401, "UNAUTHENTICATED", "Authentication required.", {
+    bearerChallenge: challenge,
+  });
 }
 
-/**
- * csrf: list of API paths exempt from the CSRF check. Exempt
- * endpoints authenticate the caller some other way (signed payload,
- * server-issued secret, etc.) so the Origin header is not a useful
- * signal. Keep this list narrow — every entry needs a clear
- * non-CSRF trust boundary.
- */
-function isExemptFromCsrf(pathname: string): boolean {
-  // Stripe webhooks: signed via STRIPE_WEBHOOK_SECRET. Exact path only --
-  // NOT a startsWith("/api/v3/webhooks/") prefix, which used to also exempt
-  // /api/v3/webhooks/route.ts and /api/v3/webhooks/[id]/route.ts, the
-  // user's own session-authenticated webhook list/edit/delete endpoints.
-  // Those have no signature to fall back on, so they need the CSRF check
-  // like every other session-authenticated route (AUDIT-010#security-03).
-  // Discord callback: signed via HMAC-signed state token.
-  // Demo scan / version / security-txt: unauthenticated or read-only.
-  //
-  // Unsubscribe: this is the RFC 8058 One-Click endpoint named in the
-  // List-Unsubscribe header of every outgoing message (lib/email/email.ts),
-  // so Gmail and Yahoo POST to it from their own servers with no Origin and
-  // no cookie. Its credential is the unguessable token in the query string,
-  // not the session cookie, which is exactly the case CSRF does not apply to:
-  // a cross-site page that does not have the token cannot do anything with
-  // this route. Blocking it would break one-click unsubscribe, which is a
-  // deliverability and compliance failure, not just a broken link.
-  return (
-    pathname === "/api/v3/webhooks/stripe" ||
-    pathname === "/api/v3/account/unsubscribe" ||
-    pathname === "/api/v3/auth/discord/callback" ||
-    pathname === "/api/v3/demo-scan" ||
-    pathname === "/api/v3/version" ||
-    pathname === "/api/security-txt" ||
-    pathname === "/.well-known/security.txt" ||
-    pathname === "/security.txt"
-  );
+/** 307 to /login, keeping the original destination to return to after it. */
+function loginRedirect(
+  request: NextRequest,
+  path: string,
+  finish: (response: NextResponse) => NextResponse,
+): NextResponse {
+  const loginUrl = new URL(ROUTES.LOGIN, request.url);
+  const intended = path + request.nextUrl.search;
+  if (intended && intended !== ROUTES.DASHBOARD) {
+    loginUrl.searchParams.set("redirect", intended);
+  }
+  return finish(NextResponse.redirect(loginUrl));
 }
 
 /**
  * csrf: enforce that mutating requests (POST / PUT / PATCH / DELETE)
  * to the API carry an Origin / Referer matching this app and (when
- * present) a same-site Sec-Fetch-Site. Returns a 403 response if
- * the check fails, or null if it passes.
+ * present) a same-site Sec-Fetch-Site. Returns why the check failed, or
+ * null if it passes.
  *
- * hasBearerToken: when true, true API clients (Bearer present, no Origin)
+ * bearerAllowed: when true, true API clients (Bearer present, no Origin)
  * are exempted. Browsers always include an Origin on cross-site requests,
  * so Bearer + Origin still goes through the full check (AUDIT-005#csrf-01).
+ * The caller passes true only in the spaces that accept a key.
  *
  * Self-hosters running curl-based integration tests can set
  * `process.env.SECURITY_ALLOW_NON_BROWSER_API=1` (development only)
@@ -742,8 +1088,8 @@ function isExemptFromCsrf(pathname: string): boolean {
  */
 function enforceCsrf(
   request: NextRequest,
-  hasBearerToken = false,
-): NextResponse | null {
+  bearerAllowed: boolean,
+): string | null {
   const method = request.method.toUpperCase();
   const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
   if (!MUTATING.has(method)) {
@@ -796,7 +1142,7 @@ function enforceCsrf(
   // a request with Bearer AND no Origin is a genuine non-browser API
   // call — exempt from CSRF. Bearer + Origin must still be validated
   // because a cross-site page could set a fake Bearer header.
-  if (!requestOrigin && hasBearerToken) {
+  if (!requestOrigin && bearerAllowed) {
     return null;
   }
 
@@ -805,7 +1151,7 @@ function enforceCsrf(
   // valid Bearer token (validated by the route handler), this is a
   // legitimate API call from the VulnRadar extension, not a CSRF forgery.
   if (
-    hasBearerToken &&
+    bearerAllowed &&
     requestOrigin &&
     (requestOrigin.startsWith("chrome-extension://") ||
       requestOrigin.startsWith("moz-extension://"))
@@ -814,13 +1160,9 @@ function enforceCsrf(
   }
 
   if (!requestOrigin) {
-    return NextResponse.json(
-      {
-        error:
-          "CSRF check failed: missing both Origin and Referer headers. " +
-          "Mutating requests must originate from this site.",
-      },
-      { status: 403 },
+    return (
+      "CSRF check failed: missing both Origin and Referer headers. " +
+      "Mutating requests must originate from this site."
     );
   }
 
@@ -828,22 +1170,12 @@ function enforceCsrf(
     (!!appOrigin && requestOrigin === appOrigin) ||
     (!!selfOrigin && requestOrigin === selfOrigin);
   if (!originMatchesApp) {
-    return NextResponse.json(
-      {
-        error: "CSRF check failed: request origin does not match this app.",
-      },
-      { status: 403 },
-    );
+    return "CSRF check failed: request origin does not match this app.";
   }
 
   const fetchSite = request.headers.get("sec-fetch-site")?.trim().toLowerCase();
   if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "same-site") {
-    return NextResponse.json(
-      {
-        error: `CSRF check failed: Sec-Fetch-Site is ${fetchSite}.`,
-      },
-      { status: 403 },
-    );
+    return `CSRF check failed: Sec-Fetch-Site is ${fetchSite}.`;
   }
 
   return null;

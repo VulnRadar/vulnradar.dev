@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import { NextRequest } from "next/server";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { ADMIN_TAB_DESCRIPTIONS } from "@/app/docs/administration/admin-tab-descriptions";
@@ -509,20 +510,14 @@ describe("the health check the operator pages describe", () => {
  * prose. The list was short of robots.txt and the web manifest, which the
  * middleware also leaves open, because nothing tied the sentences to the
  * allow-list. This checks one direction: everything the prose says stays
- * reachable is really in MAINTENANCE_ALWAYS_ALLOWED, and the prose names the
- * ones a reader would not guess.
+ * reachable really is answered by the middleware with the switch on, and the
+ * prose names the ones a reader would not guess. Asked of the middleware
+ * itself rather than of its source, because the API half of the list is the
+ * route registry's and no longer one array in middleware.ts.
  */
 describe("the maintenance break-glass list the operator pages describe", () => {
-  const middleware = read("middleware.ts");
-  const block =
-    /const MAINTENANCE_ALWAYS_ALLOWED = \[([\s\S]*?)\] as const;/.exec(
-      middleware,
-    )?.[1] ?? "";
-  const allowed = [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-
-  it("finds the allow-list", () => {
-    expect(allowed.length).toBeGreaterThan(5);
-  });
+  beforeEach(() => vi.stubEnv("MAINTENANCE_MODE", "true"));
+  afterEach(() => vi.unstubAllEnvs());
 
   it.each([
     "/api/v3/health",
@@ -531,11 +526,23 @@ describe("the maintenance break-glass list the operator pages describe", () => {
     "/manifest.webmanifest",
     "/login",
     "/admin",
-    "/api/v3/auth",
+    "/api/v3/auth/login",
     "/api/v3/admin",
-    "/_next",
-  ])("keeps %s open, as the prose says", (path) => {
-    expect(allowed).toContain(path);
+    "/_next/static/chunks/main.js",
+  ])("keeps %s open, as the prose says", async (path) => {
+    const { middleware } = await import("@/middleware");
+    const res = middleware(
+      new NextRequest(`https://vulnradar.dev${path}`, {
+        headers: { cookie: "vulnradar_session=abc" },
+      }),
+    );
+    expect(res.status).not.toBe(503);
+  });
+
+  it("pauses everything else, so the list above is not vacuous", async () => {
+    const { middleware } = await import("@/middleware");
+    const res = middleware(new NextRequest("https://vulnradar.dev/dashboard"));
+    expect(res.status).toBe(503);
   });
 
   it.each([

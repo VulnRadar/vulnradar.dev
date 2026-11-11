@@ -514,11 +514,15 @@ export const LEGACY_V3_TAILS: readonly string[] = [
 ];
 
 /**
- * The API entries of PUBLIC_PATHS in 3.9.1, verbatim, for the paths still
- * decided by the old rules. Each is a prefix: isLegacyPublicApi() is the
- * `startsWith` the middleware applied to the whole list, including the
- * over-broad ones ("/api/v3/badge" also covers badge/scans) that the exact
- * INTERNAL_ANONYMOUS list deliberately does not carry forward.
+ * The API entries PUBLIC_PATHS carried in 3.9.1, for the paths still decided
+ * by the old rules. This is the only copy: lib/config/public-paths.ts holds
+ * pages and nothing else. tests/repo/public-surface-diff.test.ts compares it
+ * with a frozen copy of the 3.9.1 list, which differs in two recorded entries
+ * (landing-contact is deleted, account/language was made public after 3.9.1).
+ * Each is a prefix: isLegacyPublicApi() is the `startsWith` the middleware
+ * applied to the whole list, including the over-broad ones ("/api/v3/badge"
+ * also covers badge/scans) that the exact INTERNAL_ANONYMOUS list
+ * deliberately does not carry forward.
  */
 export const LEGACY_PUBLIC_API: readonly string[] = [
   "/api/v3/auth/login",

@@ -170,7 +170,6 @@ const DEBT: Record<string, string> = {
   "lib/uploads/avatar-migration.ts": "stored avatar paths",
   "lib/uploads/avatar-storage.ts": "stored avatar paths",
   "lib/uploads/team-avatar-storage.ts": "stored team avatar paths",
-  "middleware.ts": "the path rules; mw-hardening moves them onto the registry",
   "scripts/_lib/_lib.app-enums.mjs": "report text naming route files",
   "scripts/_lib/_lib.check-cross-column.mjs": "report text naming route files",
   "scripts/_lib/_lib.encrypted-columns.mjs": "report text naming route files",

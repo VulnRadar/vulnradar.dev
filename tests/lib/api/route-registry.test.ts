@@ -614,13 +614,12 @@ describe("the legacy public list", () => {
     expect(isLegacyPublicApi("/api/v3/auth/me")).toBe(false);
   });
 
-  // Once the middleware work moves these entries out of PUBLIC_PATHS this has
-  // nothing left to compare against, and the registry is the only copy.
-  const current = PUBLIC_PATHS.filter((entry) => entry.startsWith("/api/"));
-  it.skipIf(current.length === 0)(
-    "is a verbatim copy of the API entries of PUBLIC_PATHS",
-    () => {
-      expect([...LEGACY_PUBLIC_API]).toEqual(current);
-    },
-  );
+  // PUBLIC_PATHS holds pages only now, so the registry is the only copy.
+  // tests/repo/public-surface-diff.test.ts compares it with the 3.9.1 list.
+  it("is the only copy: PUBLIC_PATHS has no API entry left", () => {
+    expect(LEGACY_PUBLIC_API.length).toBeGreaterThan(0);
+    expect(PUBLIC_PATHS.filter((entry) => entry.startsWith("/api/"))).toEqual(
+      [],
+    );
+  });
 });

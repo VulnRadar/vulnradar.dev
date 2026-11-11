@@ -1,30 +1,21 @@
-// `API` rather than the old API_V3 map: both listed the same routes, but
-// API_V3 spelled "/api/v3" out by hand while API builds every entry from
-// API_VERSION, so the allowlist now moves with the version instead of
-// silently pointing at the old one (AUDIT-014#hc-10).
-//
 // From client-constants, not constants: middleware.ts imports this module, so
 // whatever it pulls in is compiled into the edge bundle, and constants.ts is
 // the server superset that reads non-public environment variables
-// (AUDIT-012#fe-15). Both names it needs are declared there anyway.
-import { ROUTES, API, API_VERSION } from "./client-constants";
+// (AUDIT-012#fe-15).
+import { ROUTES } from "./client-constants";
 
 /**
- * A path under the CURRENT API version.
+ * Pages a signed-out visitor may open. Used by middleware and by client
+ * components that need to know whether the current page is public.
  *
- * Twenty entries below spelled "/api/v3" out by hand, which is the exact
- * problem this file's header says dropping API_V3 was meant to solve: on a
- * version bump the allowlist keeps pointing at the old prefix, every public
- * route stops being public, and middleware 307s anonymous visitors to /login.
- * Nothing fails at build time. Some entries have an API map entry and use it;
- * these are the ones that do not, so they get the version from the same
- * constant the map does.
- */
-const v = (path: string) => `/api/${API_VERSION}${path}`;
-
-/**
- * Public paths that don't require authentication
- * Used by middleware and client-side components to determine route access
+ * Pages only. The API paths that used to be listed here were prefixes
+ * ("/api/v3/badge" also made the session routes badge/scans and badge/site
+ * public), and middleware applied them before asking which space a path
+ * belonged to. Which API paths need no credential is the route registry's
+ * question (lib/api/route-registry.ts): exact templates for the new spaces,
+ * and LEGACY_PUBLIC_API, the 3.9.1 entries verbatim, for the v3 routes that
+ * have not moved yet. tests/lib/config/public-paths.test.ts keeps every
+ * "/api" string out of this list.
  */
 export const PUBLIC_PATHS = [
   // ─── Root & Landing ────────────────────────────────────────────
@@ -38,40 +29,6 @@ export const PUBLIC_PATHS = [
   ROUTES.FORGOT_PASSWORD,
   ROUTES.RESET_PASSWORD,
   ROUTES.VERIFY_EMAIL,
-
-  // ─── Authentication API Routes ─────────────────────────────────
-  API.AUTH.LOGIN,
-  API.AUTH.SIGNUP,
-  API.AUTH.FORGOT_PASSWORD,
-  API.AUTH.RESET_PASSWORD,
-  API.AUTH.ACCEPT_TOS,
-  API.AUTH.TWO_FA.VERIFY,
-  API.AUTH.VERIFY_EMAIL,
-  API.AUTH.RESEND_VERIFICATION,
-
-  // ─── Discord OAuth (must be public for OAuth flow) ─────────────
-  v("/auth/discord"),
-  v("/auth/discord/callback"),
-
-  // ─── Google/GitHub/Discord sign-in OAuth (must be public: hit by
-  // logged-out users, and /info is polled by the login/signup forms
-  // before any session exists) ────────────────────────────────────
-  v("/auth/oauth"),
-
-  // ─── Staff SSO / OIDC ──────────────────────────────────────────
-  // Same reasoning as the OAuth entry above, and it was missing entirely,
-  // which made the whole staff-SSO mechanism unreachable: all three halves
-  // are only ever hit WITHOUT a session. /info is polled by the logged-out
-  // login form (lib/hooks/use-staff-oidc.ts) to decide whether to render the
-  // "Sign in with SSO" link at all, the bare route is a top-level navigation
-  // that starts the flow, and /callback is where the IdP sends the browser
-  // back. Each one was 307'd to /login, so the link never rendered, the
-  // start URL bounced, and the authorization code was dropped. Prefix
-  // match covers /info and /callback.
-  v("/auth/staff-oidc"),
-
-  // ─── 2FA Email (needed for Discord login with email 2FA) ───────
-  v("/auth/2fa/email-send"),
 
   // ─── Legal Pages ───────────────────────────────────────────────
   // "/legal" (the bare index) was missing here -- only its sub-pages were
@@ -148,44 +105,7 @@ export const PUBLIC_PATHS = [
   "/llms.txt",
   "/llms-full.txt",
 
-  // ─── Public System Endpoints ───────────────────────────────────
-  // Readiness probe. Must be reachable without a session cookie or the
-  // container HEALTHCHECK and any upstream load balancer get a 307 to
-  // /login and mark the container down.
-  v("/health"),
-  "/api/version",
-  "/api/security-txt",
-  // IPv4 echo. Must be public: it is fetched credential-less (no session)
-  // from the IPv4-only host to observe the caller's own IPv4 for the session
-  // list. Without this it 307'd to /login and the capture silently no-op'd.
-  // It only ever returns the caller's own IP, so exposing it needs no auth.
-  v("/whoami-ip"),
-  // The language a visitor reads the site in. Public on purpose: it sets the
-  // cookie rendering reads (lib/i18n/request.ts) for everybody, and only
-  // writes users.locale when there IS a session, so a signed-out reader can
-  // still choose a language. Without this the switcher's PUT 307'd to /login,
-  // fetch followed it, res.ok was true on the login HTML, and the site stayed
-  // in English with nothing reported.
-  API.ACCOUNT_LANGUAGE,
-  // OpenAPI spec: a public API description tools import without a session
-  // (Postman, Insomnia, an explorer). Without this it 307'd to /login and
-  // those tools got the login page back instead of the JSON spec.
-  v("/openapi.json"),
-  // Two routes whose own headers say they need no auth, which was true of the
-  // handlers and not of the middleware in front of them. Both were absent
-  // here, so an anonymous request 307d to /login, fetch followed the
-  // redirect, res.ok was true on the login HTML, res.json() threw, and both
-  // hooks swallowed it. That is the same shape this file records having
-  // fixed four times already.
-  //
-  // The consequences were anonymous-only and therefore invisible while
-  // signed in. /pricing quoted the compiled catalogue instead of the
-  // admin-edited BILLING_* values, defeating the point of resolving them at
-  // runtime. And the demo page gates on the client config having loaded, so
-  // switching FEATURE_DEMO_MODE off did not hide the demo from logged-out
-  // visitors, which is the only audience it is shown to.
-  v("/billing/plan-limits"),
-  v("/config/client"),
+  // ─── Machine-readable files served from the app ─────────────────
   // security.txt: public per RFC 9116, must be reachable without
   // auth so security researchers + scanners can find our disclosure
   // contact. The middleware sees the request URL BEFORE the rewrite,
@@ -208,69 +128,22 @@ export const PUBLIC_PATHS = [
   // "include: - remote:", and GitLab fetched the login page instead.
   "/gitlab",
 
-  // ─── Stripe Webhooks (must be public for Stripe to call) ───────
-  v("/webhooks/stripe"),
-  v("/stripe/setup-webhook"),
-  v("/stripe/setup-products"),
-
   // ─── Shared Scan Reports ───────────────────────────────────────
   "/shared",
-  v("/shared"),
 
   // ─── Public Scans Directory ─────────────────────────────────────
-  // Unauthenticated by design (app/public-scans/page.tsx, app/api/v3/
-  // public-scans/route.ts) -- same class of bug as the /sitemap.xml and
-  // /robots.txt fix above: without these, a logged-out visitor (and
-  // Googlebot, since this page is in the sitemap) gets 307'd to /login
-  // before ever reaching a page whose entire point is to be public.
+  // Unauthenticated by design (app/public-scans/page.tsx) -- same class of
+  // bug as the /sitemap.xml and /robots.txt fix above: without it, a
+  // logged-out visitor (and Googlebot, since this page is in the sitemap)
+  // gets 307'd to /login before ever reaching a page whose entire point is to
+  // be public.
   ROUTES.PUBLIC_SCANS,
-  v("/public-scans"),
 
   // ─── Public Demo ───────────────────────────────────────────────
   ROUTES.DEMO,
-  API.DEMO_SCAN,
-
-  // ─── Public API Endpoints ──────────────────────────────────────
-  // The /contact page was listed above but its API was not, so a logged-out
-  // visitor's POST from components/contact/contact-form.tsx was 307'd to
-  // /login. A 307 preserves the method, so the browser re-POSTed to the
-  // /login page route, got a 405, and the form reported a generic failure.
-  // The route authenticates nobody by design: it rate-limits on the client
-  // IP and gates on Turnstile.
-  // /contact is the responsible-disclosure channel named in security.txt,
-  // so a researcher's report was landing nowhere.
-  API.CONTACT,
-
-  // ─── Public Badge Endpoints (v2) ────────────────────────────────
-  // The badge IMAGE and its redirect are embedded on third-party sites, so
-  // they are fetched by browsers that carry no session for this app and have
-  // to stay public. The /badge PAGE is not: ROUTES.BADGE used to be listed
-  // here too, but that page is a builder over the caller's OWN scan history
-  // (GET /api/v3/badge/scans is session-authenticated and returns an empty
-  // list without a session), so signed out it rendered a permanently empty
-  // page. It is private now, and app/badge/page.tsx renders the signed-in app
-  // header to match. This entry does NOT cover it: the page is "/badge" and
-  // this is v("/badge"), two different prefixes.
-  v("/badge"),
-
-  // ─── Public Avatar Files ────────────────────────────────────────
-  // Avatars already render on logged-out surfaces (shared scan reports)
-  // whether they're a Discord CDN URL, a Gravatar URL, or now a locally
-  // stored file served from here. See app/api/v3/avatar/[userId]/route.ts.
-  v("/avatar"),
-
-  // ─── Public Finding Types Endpoint ─────────────────────────────
-  API.FINDING_TYPES,
-
-  // ─── AI Support Chat ──────────────────────────────────────────
-  // /info is public so the widget can show provider name before sign-in.
-  // /chat, /context, /conversations require auth (checked inside each
-  // route via getSession() returning 401 JSON, not a middleware redirect).
-  v("/ai/info"),
 
   // ─── Email Unsubscribe (token-authenticated, no session needed) ──
   "/unsubscribe",
-  v("/account/unsubscribe"),
 
   // ─── Post-Checkout Confirmation ─────────────────────────────────
   // Stripe redirects here after a successful purchase; the page itself
@@ -290,23 +163,12 @@ export const PUBLIC_PATHS = [
   // failure: a staff invite is sent to somebody who does not have an
   // account yet, so bouncing them to /login is bouncing them to a form
   // they cannot pass. app/staff-invite/[token]/page.tsx is the page the
-  // emailed link points at and app/api/v3/auth/staff-invite/[token] is the
-  // route it reads the invite from; both are token-authenticated and
-  // neither looks at the session. Prefix match covers the [token] segment
-  // (AUDIT-012#authz-10).
+  // emailed link points at; it is token-authenticated and does not look at
+  // the session. Prefix match covers the [token] segment (AUDIT-012#authz-10).
   "/staff-invite",
-  v("/auth/staff-invite"),
 
   // ─── Public Host Reports ─────────────────────────────────────────
   // app/host/[hostname]/page.tsx is a public host-report lookup for any
   // hostname string, no session needed. Was missing here entirely.
   "/host",
-  // The page was allowlisted but its API was not, so the page loaded and
-  // then its own client-side fetch of /api/v3/host/[hostname] (and of the
-  // /trend child that feeds components/host/danger-score-trend.tsx) was
-  // 307'd to /login. fetch follows the redirect, so res.ok was true, the
-  // login page's HTML failed to parse as JSON, and every logged-out
-  // visitor and crawler saw "Could not load this host's report." Both
-  // routes document themselves as public. Prefix match covers /trend.
-  v("/host"),
 ];
