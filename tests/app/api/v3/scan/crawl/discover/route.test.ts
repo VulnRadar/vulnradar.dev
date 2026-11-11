@@ -158,6 +158,8 @@ describe("POST /api/v3/scan/crawl/discover: auth", () => {
     );
 
     expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("TERMS_ACCEPTANCE_REQUIRED");
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
   });
 
   it("accepts a valid API key and uses its userId for rate limiting", async () => {
@@ -192,11 +194,36 @@ describe("POST /api/v3/scan/crawl/discover: rate limiting", () => {
     const res = await POST(postRequest({ url: "https://example.com" }));
 
     expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("30");
+    expect((await res.json()).code).toBe("RATE_LIMITED");
     expect(mockSafeFetch).not.toHaveBeenCalled();
   });
 });
 
 describe("POST /api/v3/scan/crawl/discover: request validation", () => {
+  // `await request.json()` threw on each of these, and the route answered
+  // the caller's mistake with a 500.
+  it.each<[string, string]>([
+    ["malformed JSON", "{not json"],
+    ["the literal null", "null"],
+    ["an array", '["https://example.com"]'],
+    ["a string", '"https://example.com"'],
+    ["an empty body", ""],
+  ])("answers %s with a 400, not a 500", async (_label, body) => {
+    const res = await POST(
+      new NextRequest("http://localhost/api/v3/scan/crawl/discover", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      }),
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.code).toBe("INVALID_REQUEST");
+    expect(json.error).toBe("Invalid request body.");
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+  });
+
   it("rejects a missing URL", async () => {
     const res = await POST(postRequest({}));
     expect(res.status).toBe(400);

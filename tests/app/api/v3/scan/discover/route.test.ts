@@ -107,6 +107,7 @@ vi.mock("dns/promises", () => ({
 const mockFetch = vi.fn();
 
 const { POST } = await import("@/app/api/v3/scan/discover/route");
+const { getDiscoveryStage } = await import("@/lib/scanner/discovery-progress");
 
 function postRequest(body: unknown, headers: Record<string, string> = {}) {
   return new NextRequest("http://localhost/api/v3/scan/discover", {
@@ -233,6 +234,7 @@ describe("POST /api/v3/scan/discover - auth", () => {
     );
 
     expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("TERMS_ACCEPTANCE_REQUIRED");
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
@@ -270,6 +272,8 @@ describe("POST /api/v3/scan/discover - rate limiting", () => {
     const res = await POST(postRequest({ url: "https://example.com" }));
 
     expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("30");
+    expect((await res.json()).code).toBe("RATE_LIMITED");
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
@@ -279,6 +283,84 @@ describe("POST /api/v3/scan/discover - rate limiting", () => {
     expect(mockCheckRateLimit).toHaveBeenCalledWith(
       expect.objectContaining({ key: "discover:42" }),
     );
+  });
+
+  it("answers a forced refresh past the daily quota with DAILY_LIMIT, the rate-limit headers and a Retry-After", async () => {
+    mockIncrementDailyCountCapped.mockResolvedValue({
+      recorded: false,
+      count: 100,
+    });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", forceRefresh: true }),
+    );
+
+    expect(res.status).toBe(429);
+    const json = await res.json();
+    expect(json.code).toBe("DAILY_LIMIT");
+    expect(json.error).toContain("Daily scan limit reached");
+    expect(json).toMatchObject({ limit: 100, used: 100, remaining: 0 });
+    expect(res.headers.get("X-RateLimit-Limit")).toBe("100");
+    expect(res.headers.get("X-RateLimit-Remaining")).toBe("0");
+    const wait = Number(res.headers.get("Retry-After"));
+    expect(wait).toBeGreaterThanOrEqual(1);
+    expect(wait).toBeLessThanOrEqual(24 * 60 * 60);
+    // The reset is the next 00:00 UTC.
+    expect(new Date(json.resets_at).getUTCHours()).toBe(0);
+    expect(new Date(json.resets_at).getUTCMinutes()).toBe(0);
+  });
+});
+
+describe("POST /api/v3/scan/discover - progress token", () => {
+  const cachedRow = {
+    rows: [
+      {
+        subdomains: [],
+        cached_at: "2026-01-01T00:00:00Z",
+        expires_at: "2026-01-01T04:00:00Z",
+      },
+    ],
+  };
+
+  it.each(["requestId", "progressToken"])(
+    "reports progress under the token sent as %s",
+    async (field) => {
+      const token = `tok-${field}-${Math.random().toString(36).slice(2)}`;
+      mockQuery.mockResolvedValueOnce(cachedRow);
+
+      const res = await POST(
+        postRequest({ url: "https://example.com", [field]: token }),
+      );
+
+      expect(res.status).toBe(200);
+      expect(getDiscoveryStage(token)).toBe("done");
+    },
+  );
+
+  it("prefers progressToken when a body sends both, and ignores a non-string one", async () => {
+    const token = `tok-both-${Math.random().toString(36).slice(2)}`;
+    const legacy = `tok-legacy-${Math.random().toString(36).slice(2)}`;
+    mockQuery.mockResolvedValueOnce(cachedRow);
+    await POST(
+      postRequest({
+        url: "https://example.com",
+        progressToken: token,
+        requestId: legacy,
+      }),
+    );
+    expect(getDiscoveryStage(token)).toBe("done");
+    expect(getDiscoveryStage(legacy)).toBeNull();
+
+    const fallback = `tok-fallback-${Math.random().toString(36).slice(2)}`;
+    mockQuery.mockResolvedValueOnce(cachedRow);
+    await POST(
+      postRequest({
+        url: "https://example.com",
+        progressToken: 7,
+        requestId: fallback,
+      }),
+    );
+    expect(getDiscoveryStage(fallback)).toBe("done");
   });
 });
 
@@ -294,7 +376,26 @@ describe("POST /api/v3/scan/discover - input validation", () => {
 
     expect(res.status).toBe(400);
     const json = await res.json();
-    expect(json.error).toBe("Invalid request body");
+    expect(json.error).toBe("Invalid request body.");
+    expect(json.code).toBe("INVALID_REQUEST");
+  });
+
+  it.each<[string, string]>([
+    ["the literal null", "null"],
+    ["an array", "[]"],
+    ["a string", '"https://example.com"'],
+    ["an empty body", ""],
+  ])("answers %s as a malformed body, not a 500", async (_label, body) => {
+    const req = new NextRequest("http://localhost/api/v3/scan/discover", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("INVALID_REQUEST");
   });
 
   it("rejects a missing url", async () => {

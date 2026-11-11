@@ -113,9 +113,11 @@ describe("POST /api/v3/scan/verify: rate limiting", () => {
 
     const res = await POST(postRequest({ scanHistoryId: 10 }));
     expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("120");
     const json = await res.json();
     expect(json.error).toContain("Too many AI verification requests");
     expect(json.error).toContain("2 minute(s)");
+    expect(json.code).toBe("RATE_LIMITED");
     expect(mockQuery).not.toHaveBeenCalled();
     expect(mockRunAiVerification).not.toHaveBeenCalled();
 
@@ -158,8 +160,31 @@ describe("POST /api/v3/scan/verify: auth and validation", () => {
     );
     expect(res.status).toBe(401);
     const json = await res.json();
-    expect(json.error).toBe("Invalid API key.");
+    expect(json.error).toBe("Invalid or revoked API key.");
+    expect(json.code).toBe("INVALID_API_KEY");
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  // Every other key-authenticated route already refused this. Not gated on
+  // the API version: a gate v3 lacked would be a standing way around it.
+  it("refuses a key whose owner has not accepted the current Terms, before any work", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockValidateApiKey.mockResolvedValue({
+      userId: 77,
+      scopes: ["scan:write"],
+      needsTermsAcceptance: true,
+    });
+    const res = await POST(
+      postRequest(
+        { scanHistoryId: 1 },
+        { Authorization: "Bearer vr_live_terms" },
+      ),
+    );
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("TERMS_ACCEPTANCE_REQUIRED");
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockRunAiVerification).not.toHaveBeenCalled();
   });
 
   it("rejects an API key missing the scan:write scope", async () => {
@@ -236,10 +261,63 @@ describe("POST /api/v3/scan/verify: auth and validation", () => {
     expect(mockRunAiVerification).not.toHaveBeenCalled();
   });
 
-  it("rejects a missing scanHistoryId", async () => {
+  it("rejects a missing scanHistoryId, naming both spellings of the field", async () => {
     const res = await POST(postRequest({}));
     expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error).toContain("scanId");
+    expect(error).toContain("scanHistoryId");
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it.each<[string, unknown]>([
+    ["an empty string", ""],
+    ["whitespace", "   "],
+    ["an object", { id: 10 }],
+    ["a boolean", true],
+  ])("rejects a scan id that is %s", async (_label, scanHistoryId) => {
+    const res = await POST(postRequest({ scanHistoryId }));
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("accepts scanId, the v4 name, as the same field", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // ai config: none
+      .mockResolvedValueOnce({
+        rows: [{ id: 10, url: "https://example.com", findings: [] }],
+      })
+      .mockResolvedValueOnce({ rows: [{ findings: [] }] });
+
+    const publicId = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
+    const res = await POST(postRequest({ scanId: publicId }));
+    expect(res.status).toBe(200);
+    const [, params] = mockQuery.mock.calls[1];
+    expect(params).toEqual([publicId, null, 42]);
+  });
+
+  it("accepts a numeric scanId and resolves it through the numeric fallback", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ id: 10, url: "https://example.com", findings: [] }],
+      })
+      .mockResolvedValueOnce({ rows: [{ findings: [] }] });
+
+    const res = await POST(postRequest({ scanId: 10 }));
+    expect(res.status).toBe(200);
+    const [, params] = mockQuery.mock.calls[1];
+    expect(params).toEqual(["10", 10, 42]);
+  });
+
+  it("prefers scanHistoryId when a body sends both names", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await POST(postRequest({ scanHistoryId: 10, scanId: 11 }));
+    const [, params] = mockQuery.mock.calls[1];
+    expect(params).toEqual(["10", 10, 42]);
   });
 
   it("accepts an opaque public_id (a string) and resolves it, 404ing when not found", async () => {
@@ -366,15 +444,17 @@ describe("POST /api/v3/scan/verify: scan ownership and verification", () => {
     );
   });
 
-  it("does not catch a failure from the AI verification call: it propagates uncontrolled", async () => {
+  it("answers a failure from the AI verification call with the 500 envelope, not an unhandled throw", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({
       rows: [{ url: "https://example.com", findings: [] }],
     });
     mockRunAiVerification.mockRejectedValueOnce(new Error("AI provider down"));
 
-    await expect(POST(postRequest({ scanHistoryId: 10 }))).rejects.toThrow(
-      "AI provider down",
-    );
+    const res = await POST(postRequest({ scanHistoryId: 10 }));
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.code).toBe("INTERNAL_ERROR");
+    expect(JSON.stringify(body)).not.toContain("AI provider down");
   });
 });
 

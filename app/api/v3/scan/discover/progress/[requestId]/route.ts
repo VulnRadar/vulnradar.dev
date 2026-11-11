@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { parseBearer } from "@/lib/api/bearer";
-import { validateApiKey } from "@/lib/api/api-keys";
-import {
-  hasApiKeyScope,
-  apiKeyScopeErrorMessage,
-  API_KEY_SCOPES,
-} from "@/lib/api/api-key-scopes";
+import { authenticateApiKey } from "@/lib/api/api-key-auth";
+import { API_KEY_SCOPES } from "@/lib/api/api-key-scopes";
+import { withErrorHandling } from "@/lib/api/api-utils";
+import { versioned } from "@/lib/api/v4/wrap";
 import {
   DISCOVERY_STAGES,
   getDiscoveryStage,
@@ -18,25 +16,22 @@ import {
  * while the POST is still in flight; the POST's own response is unaffected
  * and remains the source of truth for the final result.
  */
-export async function GET(
+async function handler(
   request: NextRequest,
   { params }: { params: Promise<{ requestId: string }> },
 ) {
   const session = await getSession();
   if (!session) {
-    const bearerToken = parseBearer(request.headers.get("authorization"));
-    const key = bearerToken !== null ? await validateApiKey(bearerToken) : null;
-    if (!key) {
+    if (parseBearer(request.headers.get("authorization")) === null) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     // scoping: reading progress of an in-flight discovery request is a
-    // read, so it requires scan:read.
-    if (!hasApiKeyScope(key.scopes, API_KEY_SCOPES.SCAN_READ)) {
-      return NextResponse.json(
-        { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_READ) },
-        { status: 403 },
-      );
-    }
+    // read, so it requires scan:read. The Terms check is new here and holds
+    // on every version, like every other key-authenticated route's.
+    const key = await authenticateApiKey(request, {
+      scope: API_KEY_SCOPES.SCAN_READ,
+    });
+    if (!key.ok) return key.response;
   }
 
   const { requestId } = await params;
@@ -59,3 +54,8 @@ export async function GET(
     stagesTotal: DISCOVERY_STAGES.length,
   });
 }
+
+export const GET = versioned(
+  "scan.discoverProgress",
+  withErrorHandling(handler),
+);

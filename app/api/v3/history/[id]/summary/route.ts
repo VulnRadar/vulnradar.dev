@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { parseBearer } from "@/lib/api/bearer";
-import { validateApiKey } from "@/lib/api/api-keys";
-import {
-  hasApiKeyScope,
-  apiKeyScopeErrorMessage,
-  API_KEY_SCOPES,
-} from "@/lib/api/api-key-scopes";
+import { authenticateApiKey } from "@/lib/api/api-key-auth";
+import { API_KEY_SCOPES } from "@/lib/api/api-key-scopes";
+import { withErrorHandling } from "@/lib/api/api-utils";
+import { isPublicScanId, parseIdParam } from "@/lib/api/path-id";
+import { burstLimitedResponse } from "@/lib/api/rate-limit-response";
+import { versioned } from "@/lib/api/v4/wrap";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import pool from "@/lib/database/db";
 import { generateScanSummary } from "@/lib/ai/scan-summary";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
-import { scanNumericId } from "@/lib/history/resolve-scan";
 import type { ScanResult } from "@/lib/scanner/types";
 
 export const runtime = "nodejs";
@@ -31,7 +30,7 @@ export const maxDuration = 300;
  * only a UI button, so a CI pipeline or any other API client can generate
  * (and persist) a summary for a scan it owns without a browser session.
  */
-export async function POST(
+async function handler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -40,35 +39,31 @@ export async function POST(
   const session = await getSession();
   if (session) {
     userId = session.userId;
+  } else if (parseBearer(request.headers.get("Authorization")) !== null) {
+    // scoping: generating (and persisting) an AI summary onto a scan is
+    // part of the active scanning workflow, same reasoning scan/verify's
+    // and verify-batch's own scan:write requirement documents. The Terms
+    // check is new here and holds on every version, as on /scan/verify.
+    const key = await authenticateApiKey(request, {
+      scope: API_KEY_SCOPES.SCAN_WRITE,
+    });
+    if (!key.ok) return key.response;
+    userId = key.auth.userId;
   } else {
-    const bearerToken = parseBearer(request.headers.get("Authorization"));
-    if (bearerToken !== null) {
-      const keyResult = await validateApiKey(bearerToken);
-      if (!keyResult) {
-        return NextResponse.json(
-          { error: "Invalid API key." },
-          { status: 401 },
-        );
-      }
-      // scoping: generating (and persisting) an AI summary onto a scan is
-      // part of the active scanning workflow, same reasoning scan/verify's
-      // and verify-batch's own scan:write requirement documents.
-      if (!hasApiKeyScope(keyResult.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
-        return NextResponse.json(
-          { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE) },
-          { status: 403 },
-        );
-      }
-      userId = keyResult.userId;
-    } else {
-      return NextResponse.json(
-        { error: ERROR_MESSAGES.UNAUTHORIZED },
-        { status: 401 },
-      );
-    }
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.UNAUTHORIZED },
+      { status: 401 },
+    );
   }
 
   const { id } = await params;
+  // A path id is either the opaque public id or the legacy numeric one, and
+  // nothing else can name a row. Anything else is answered as the miss it
+  // is, before a query or an AI setting is read for it.
+  const numericId = parseIdParam(id);
+  if (numericId === null && !isPublicScanId(id)) {
+    return NextResponse.json({ error: "Scan not found." }, { status: 404 });
+  }
 
   // Check the user hasn't disabled AI, same check scan/verify/route.ts makes.
   try {
@@ -92,7 +87,7 @@ export async function POST(
     `SELECT id, url, scanned_at, duration, findings, summary, response_headers, result_meta, authenticated
      FROM scan_history
      WHERE (public_id = $1 OR ($2::bigint IS NOT NULL AND id = $2)) AND user_id = $3`,
-    [id, scanNumericId(id), userId],
+    [id, numericId, userId],
   );
 
   if (scanResult.rows.length === 0) {
@@ -126,11 +121,9 @@ export async function POST(
     ...RATE_LIMITS.aiSummary,
   });
   if (!rl.allowed) {
-    return NextResponse.json(
-      {
-        error: `Too many AI summary requests. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
-      },
-      { status: 429 },
+    return burstLimitedResponse(
+      rl,
+      `Too many AI summary requests. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
     );
   }
 
@@ -178,3 +171,5 @@ export async function POST(
 
   return NextResponse.json({ success: true, summary: summaryText });
 }
+
+export const POST = versioned("history.summarize", withErrorHandling(handler));

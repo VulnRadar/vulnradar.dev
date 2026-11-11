@@ -125,8 +125,29 @@ describe("POST /api/v3/history/[id]/summary: auth and validation", () => {
 
     expect(res.status).toBe(401);
     const json = await res.json();
-    expect(json.error).toBe("Invalid API key.");
+    expect(json.error).toBe("Invalid or revoked API key.");
+    expect(json.code).toBe("INVALID_API_KEY");
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  // New on this route in 4.0.0, and on v3 too.
+  it("refuses a key whose owner has not accepted the current Terms, before any work", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockValidateApiKey.mockResolvedValue({
+      userId: 77,
+      scopes: ["scan:write"],
+      needsTermsAcceptance: true,
+    });
+
+    const res = await POST(
+      postRequest("10", "", { Authorization: "Bearer vr_live_terms" }),
+      params(),
+    );
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("TERMS_ACCEPTANCE_REQUIRED");
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockGenerateScanSummary).not.toHaveBeenCalled();
   });
 
   it("rejects an API key missing the scan:write scope", async () => {
@@ -170,15 +191,13 @@ describe("POST /api/v3/history/[id]/summary: auth and validation", () => {
     );
   });
 
-  it("treats a non-numeric id as an opaque public_id and 404s when it resolves to nothing", async () => {
-    // No longer rejected up front: a non-numeric id is a valid public_id
-    // shape, so the route proceeds and the scan lookup (scoped to the user)
-    // simply finds nothing.
+  it("treats a public id as an opaque public_id and 404s when it resolves to nothing", async () => {
+    const publicId = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
     mockQuery
       .mockResolvedValueOnce({ rows: [] }) // ai config: none
       .mockResolvedValueOnce({ rows: [] }); // scan lookup by public_id: not found
 
-    const res = await POST(postRequest("nope-nope"), params("nope-nope"));
+    const res = await POST(postRequest(publicId), params(publicId));
 
     expect(res.status).toBe(404);
     expect(mockGenerateScanSummary).not.toHaveBeenCalled();
@@ -186,8 +205,22 @@ describe("POST /api/v3/history/[id]/summary: auth and validation", () => {
     const [sql, sqlParams] = mockQuery.mock.calls[1];
     expect(sql).toContain("public_id = $1");
     // Not an all-digits id, so the numeric fallback param is null.
-    expect(sqlParams).toEqual(["nope-nope", null, 42]);
+    expect(sqlParams).toEqual([publicId, null, 42]);
   });
+
+  // Number.parseInt-style reads served "12.png" as row 12 on other routes.
+  // Neither a public id nor a plain positive integer can name a row, so it is
+  // the miss it is, before a query or an AI setting is read.
+  it.each(["nope-nope", "12.png", "1e3", "012", "0", "-5", "2147483648"])(
+    "404s for the id %s without touching the database",
+    async (id) => {
+      const res = await POST(postRequest(id), params(id));
+
+      expect(res.status).toBe(404);
+      expect(mockQuery).not.toHaveBeenCalled();
+      expect(mockGenerateScanSummary).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("POST /api/v3/history/[id]/summary: AI-disabled setting", () => {
@@ -330,6 +363,8 @@ describe("POST /api/v3/history/[id]/summary: rate limiting", () => {
     const json = await res.json();
 
     expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
+    expect(json.code).toBe("RATE_LIMITED");
     expect(json.error).toContain("Too many AI summary requests");
     expect(json.error).toContain("2 minute(s)");
     expect(mockGenerateScanSummary).not.toHaveBeenCalled();

@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { parseBearer } from "@/lib/api/bearer";
-import { validateApiKey } from "@/lib/api/api-keys";
+import { authenticateApiKey } from "@/lib/api/api-key-auth";
+import { API_KEY_SCOPES } from "@/lib/api/api-key-scopes";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 import {
-  hasApiKeyScope,
-  apiKeyScopeErrorMessage,
-  API_KEY_SCOPES,
-} from "@/lib/api/api-key-scopes";
+  burstLimitedResponse,
+  rateLimitedResponse,
+} from "@/lib/api/rate-limit-response";
+import { versioned } from "@/lib/api/v4/wrap";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
   getDailyLimit,
@@ -32,7 +34,7 @@ import { scanningPausedResponse } from "@/lib/admin/service-state";
 // This route is only the request boundary: auth, rate limiting, input
 // validation, the SSRF guard, and the cache-hit fast path.
 
-export async function POST(request: NextRequest) {
+async function handler(request: NextRequest) {
   try {
     // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). Discovery is
     // recon rather than a stored scan, but it is live outbound traffic
@@ -41,49 +43,22 @@ export async function POST(request: NextRequest) {
     const paused = await scanningPausedResponse();
     if (paused) return paused;
 
-    let userId: number | null = null;
-    let _isApiKeyAuth = false;
+    let userId: number;
 
     // Try session auth first
     const session = await getSession();
     if (session) {
       userId = session.userId;
+    } else if (parseBearer(request.headers.get("authorization")) !== null) {
+      // scoping: subdomain discovery is scan-triggering work (external
+      // lookups + a scan-adjacent recon pass), so it requires scan:write.
+      const key = await authenticateApiKey(request, {
+        scope: API_KEY_SCOPES.SCAN_WRITE,
+      });
+      if (!key.ok) return key.response;
+      userId = key.auth.userId;
     } else {
-      // Try API key auth
-      const bearerToken = parseBearer(request.headers.get("authorization"));
-      if (bearerToken !== null) {
-        const keyData = await validateApiKey(bearerToken);
-        if (!keyData) {
-          return NextResponse.json(
-            { error: "Invalid or revoked API key." },
-            { status: 401 },
-          );
-        }
-
-        // Check if user needs to accept updated terms
-        if (keyData.needsTermsAcceptance) {
-          return NextResponse.json(
-            {
-              error:
-                "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
-            },
-            { status: 403 },
-          );
-        }
-
-        // scoping: subdomain discovery is scan-triggering work (external
-        // lookups + a scan-adjacent recon pass), so it requires scan:write.
-        if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
-          return NextResponse.json(
-            { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE) },
-            { status: 403 },
-          );
-        }
-
-        userId = keyData.userId;
-      } else {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const rl = await checkRateLimit({
@@ -91,24 +66,25 @@ export async function POST(request: NextRequest) {
       ...RATE_LIMITS.scan,
     });
     if (!rl.allowed) {
-      return NextResponse.json(
-        { error: "Rate limit reached. Please wait before discovering again." },
-        { status: 429 },
+      return burstLimitedResponse(
+        rl,
+        "Rate limit reached. Please wait before discovering again.",
       );
     }
 
-    let body;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { error: "Invalid request body" },
-        { status: 400 },
-      );
-    }
+    const parsed = await readJsonObject(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const { url } = body;
+    // The token the caller polls GET /scan/discover/progress/{token} with.
+    // `requestId` is its v3 name, which v4 also uses for the correlation id
+    // of every response, so `progressToken` is accepted as the same field.
     const requestId: string | undefined =
-      typeof body.requestId === "string" ? body.requestId : undefined;
+      typeof body.progressToken === "string"
+        ? body.progressToken
+        : typeof body.requestId === "string"
+          ? body.requestId
+          : undefined;
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
@@ -166,28 +142,31 @@ export async function POST(request: NextRequest) {
     // Check if force refresh is requested
     const forceRefresh = body.forceRefresh === true;
 
-    // billing: a forced refresh skips the cache and runs the full discovery
-    // engine, which is a 191-prefix DNS brute force plus DNS resolution of up
-    // to 1000 passive entries plus HTTP reachability probing. That is a large
-    // amount of compute and third-party egress, and it was charged to nobody:
-    // the hourly rate limit above was the only bound, so one account could
-    // aim roughly 200,000 DNS lookups a day at targets it does not own. A
-    // cache hit stays free, since it does no outbound work.
+    // billing: what is charged here is the forced refresh, and only that. It
+    // skips the cache and runs the full discovery engine: a 191-prefix DNS
+    // brute force, DNS resolution of up to 1000 passive entries, and HTTP
+    // reachability probing.
+    //
+    // A cache miss without forceRefresh runs that same engine and is NOT
+    // charged or plan-gated. It happens on the first discovery of a root
+    // domain and again each time its cache entry expires, so what bounds it
+    // is the hourly limiter above plus the per-domain cache, not the daily
+    // quota. Charging every engine run is a billing change and was left out
+    // of 4.0.0 on purpose. Only a cache hit is genuinely free of outbound
+    // work.
     if (forceRefresh) {
       // billing: the plan gate, which lived only in the browser.
       //
       // components/scanner/subdomain-discovery.tsx refuses the click below
       // pro_supporter and premium-upgrade-modal.tsx declares it as such, but
       // this route imported no plan module at all: a direct POST, or any API
-      // key with scan:write, ran the full engine on a free account. That is
-      // the most expensive outbound operation in the product, so the gate
-      // being client-side only meant the paywall was decorative.
+      // key with scan:write, forced a fresh run on a free account whenever it
+      // liked, cache or not.
       //
-      // Gated HERE rather than at the top of the route, deliberately. A cache
-      // hit does no outbound work and costs nothing, so reading an existing
-      // result stays available to everyone; it is the forced re-run that
-      // spends the DNS brute force and the third-party queries, which is the
-      // same line the daily charge below is drawn on.
+      // Gated HERE rather than at the top of the route, deliberately: a free
+      // account keeps both the cached result and the uncharged first run
+      // described above, and loses only the forced re-run, which is the line
+      // the daily charge below is drawn on too.
       //
       // requireRefreshPlan is the same helper the three sibling refresh routes
       // use (history/[id]/dns, ports, screenshot) and resolves to the same
@@ -199,12 +178,15 @@ export async function POST(request: NextRequest) {
       const dailyLimit = await getDailyLimit(userId);
       const charge = await incrementDailyCountCapped(userId, dailyLimit);
       if (!charge.recorded) {
-        return NextResponse.json(
+        return rateLimitedResponse(
           {
-            error:
-              "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
+            limit: dailyLimit,
+            used: charge.count,
+            remaining: 0,
+            resetsAt: nextUtcMidnight(),
           },
-          { status: 429 },
+          "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
+          { code: "DAILY_LIMIT" },
         );
       }
     }
@@ -239,3 +221,13 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+/** The daily quota's reset, the same instant canMakeRequest reports. */
+function nextUtcMidnight(): string {
+  const next = new Date();
+  next.setUTCDate(next.getUTCDate() + 1);
+  next.setUTCHours(0, 0, 0, 0);
+  return next.toISOString();
+}
+
+export const POST = versioned("scan.discover", withErrorHandling(handler));

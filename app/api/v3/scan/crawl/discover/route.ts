@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { parseBearer } from "@/lib/api/bearer";
-import { validateApiKey } from "@/lib/api/api-keys";
-import {
-  hasApiKeyScope,
-  apiKeyScopeErrorMessage,
-  API_KEY_SCOPES,
-} from "@/lib/api/api-key-scopes";
+import { authenticateApiKey } from "@/lib/api/api-key-auth";
+import { API_KEY_SCOPES } from "@/lib/api/api-key-scopes";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { burstLimitedResponse } from "@/lib/api/rate-limit-response";
+import { versioned } from "@/lib/api/v4/wrap";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { discoverPages } from "@/lib/scanner/crawl-discovery";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
@@ -22,7 +21,7 @@ import type {
 } from "@/lib/scanner/auth/types";
 import { scanningPausedResponse } from "@/lib/admin/service-state";
 
-export async function POST(request: NextRequest) {
+async function handler(request: NextRequest) {
   // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). This is the
   // page-discovery half of a crawl: it fetches and parses the target's pages,
   // so pausing the crawl scan while leaving this open would still send the
@@ -31,49 +30,20 @@ export async function POST(request: NextRequest) {
   if (paused) return paused;
 
   // Allow either session-based auth or API key (Bearer)
-  let userId: number | null = null;
-  let _isApiKeyAuth = false;
+  let userId: number;
 
   const session = await getSession();
   if (session) {
     userId = session.userId;
+  } else if (parseBearer(request.headers.get("authorization")) !== null) {
+    // scoping: crawling a site to discover pages is scan-triggering work,
+    // so it requires scan:write.
+    const key = await authenticateApiKey(request, {
+      scope: API_KEY_SCOPES.SCAN_WRITE,
+    });
+    if (!key.ok) return key.response;
+    userId = key.auth.userId;
   } else {
-    const bearerToken = parseBearer(request.headers.get("authorization"));
-    if (bearerToken !== null) {
-      const keyData = await validateApiKey(bearerToken);
-      if (!keyData) {
-        return NextResponse.json(
-          { error: "Invalid or revoked API key." },
-          { status: 401 },
-        );
-      }
-      if (keyData.needsTermsAcceptance) {
-        return NextResponse.json(
-          {
-            error:
-              "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
-          },
-          { status: 403 },
-        );
-      }
-      // scoping: crawling a site to discover pages is scan-triggering work,
-      // so it requires scan:write.
-      if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
-        return NextResponse.json(
-          { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE) },
-          { status: 403 },
-        );
-      }
-      userId = keyData.userId;
-    } else {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
-
-  // Both branches above either return early or assign userId; this guard only
-  // exists so TypeScript can treat it as a plain number from here on (the
-  // verified-domain check below takes one).
-  if (userId === null) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -82,14 +52,18 @@ export async function POST(request: NextRequest) {
     ...RATE_LIMITS.scan,
   });
   if (!rl.allowed) {
-    return NextResponse.json(
-      { error: "Rate limit reached. Please wait before trying again." },
-      { status: 429 },
+    return burstLimitedResponse(
+      rl,
+      "Rate limit reached. Please wait before trying again.",
     );
   }
 
-  const body = await request.json();
-  const url = body?.url;
+  // A body that is not a JSON object (empty, malformed, null, an array) is
+  // the caller's mistake and a 400. `await request.json()` made it a 500.
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
+  const url = body.url;
   if (!url || typeof url !== "string") {
     return NextResponse.json({ error: "URL is required" }, { status: 400 });
   }
@@ -232,3 +206,5 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ urls });
 }
+
+export const POST = versioned("scan.discoverCrawl", withErrorHandling(handler));

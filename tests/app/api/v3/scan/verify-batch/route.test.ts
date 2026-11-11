@@ -172,7 +172,30 @@ describe("POST /api/v3/scan/verify-batch: auth", () => {
     );
     expect(res.status).toBe(401);
     const json = await res.json();
-    expect(json.error).toBe("Invalid API key.");
+    expect(json.error).toBe("Invalid or revoked API key.");
+    expect(json.code).toBe("INVALID_API_KEY");
+  });
+
+  // New on this route in 4.0.0, and on v3 too: a gate one version lacks is a
+  // way around it.
+  it("refuses a key whose owner has not accepted the current Terms, before any work", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockValidateApiKey.mockResolvedValue({
+      userId: 5,
+      scopes: ["scan:write"],
+      needsTermsAcceptance: true,
+    });
+
+    const res = await POST(
+      postRequest(
+        { url: "https://example.com", findings },
+        { Authorization: "Bearer vr_live_terms" },
+      ),
+    );
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("TERMS_ACCEPTANCE_REQUIRED");
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+    expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
   });
 
   it("authenticates via a valid API key and uses its userId", async () => {
@@ -213,9 +236,11 @@ describe("POST /api/v3/scan/verify-batch: rate limiting", () => {
       postRequest({ url: "https://example.com", findings }),
     );
     expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("90");
     const json = await res.json();
     expect(json.error).toContain("Too many AI verification requests");
     expect(json.error).toContain("2 minute(s)");
+    expect(json.code).toBe("RATE_LIMITED");
     expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
 
     expect(mockCheckRateLimit).toHaveBeenCalledWith(
@@ -555,12 +580,16 @@ describe("POST /api/v3/scan/verify-batch: happy path", () => {
     });
   });
 
-  it("does not catch a failure from the AI verification call: it propagates uncontrolled", async () => {
+  it("answers a failure from the AI verification call with the 500 envelope, not an unhandled throw", async () => {
     mockVerifyFindingsBatch.mockRejectedValue(new Error("AI provider down"));
 
-    await expect(
-      POST(postRequest({ url: "https://example.com", findings })),
-    ).rejects.toThrow("AI provider down");
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings }),
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.code).toBe("INTERNAL_ERROR");
+    expect(JSON.stringify(body)).not.toContain("AI provider down");
   });
 });
 
