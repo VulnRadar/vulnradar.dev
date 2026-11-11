@@ -10,7 +10,10 @@ import {
   reverseCreditsForDispute,
   reversedCreditKinds,
 } from "@/lib/billing/credit-reversal-ledger";
-import { creditAiCreditPurchase } from "@/lib/billing/ai-usage";
+import {
+  creditAiCreditPurchase,
+  reverseAiCreditPurchase,
+} from "@/lib/billing/ai-usage";
 import { readDunningExemption } from "@/lib/billing/subscription-writes";
 import { syncPlanForRoleChange } from "@/lib/billing/staff-plan";
 import { getUserPlan } from "@/lib/rate-limiting/daily-limits";
@@ -176,6 +179,28 @@ describeIntegration(
 
       expect(await balance(user.id)).toBe(300);
       expect(await reversedCreditKinds(pi)).toEqual([]);
+    });
+
+    it("a dispute on a purchase a refund already reversed records that it took nothing, and a win restores nothing", async () => {
+      const user = await createUser();
+      const pi = unique("pi");
+      await creditAiCreditPurchase(pi, user.id, 400);
+      await reverseAiCreditPurchase(pi);
+
+      let recorded: unknown = null;
+      const reversals = await reverseCreditsForDispute(
+        pi,
+        { kind: "ai", userId: user.id, amount: 400 },
+        async (r) => {
+          recorded = r;
+        },
+      );
+
+      expect(reversals).toEqual([]);
+      expect(recorded).toEqual([]);
+      expect(await balance(user.id)).toBe(0);
+      expect(await restoreCreditsAfterDispute(pi, {})).toEqual([]);
+      expect(await reversedCreditKinds(pi)).toEqual(["ai"]);
     });
 
     it("a dispute on a purchase never credited records it, and a win grants the whole purchase", async () => {

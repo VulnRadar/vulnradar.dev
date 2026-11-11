@@ -137,7 +137,11 @@ export interface DisputeReversal {
  *
  * With nothing to reverse and a credit purchase to name, the purchase is
  * recorded as reversed, as for a refund, so the credit cannot land after the
- * dispute, and a win grants the whole of it.
+ * dispute, and a win grants the whole of it. When even that finds the row
+ * already there, a refund reversed the purchase before the dispute opened:
+ * `record` still runs, with nothing in it, so a later win knows there is
+ * nothing to give back rather than asking a person to restore credit the
+ * customer already has the money back for.
  */
 export async function reverseCreditsForDispute(
   paymentIntentId: string,
@@ -200,9 +204,10 @@ export async function reverseCreditsForDispute(
       }
     }
 
-    // Zero is recorded too: it is what tells a later win that this dispute
-    // was handled and there is simply nothing left to give back.
-    if (reversals.length > 0) await record(reversals);
+    // Zero is recorded too, and so is nothing at all for a purchase a refund
+    // already reversed: it is what tells a later win that this dispute was
+    // handled and there is simply nothing left to give back.
+    if (reversals.length > 0 || purchase) await record(reversals);
     await client.query("COMMIT");
     return reversals;
   } catch (err) {
@@ -224,12 +229,19 @@ const RESTORABLE_KEYS: Record<CreditKind, string> = {
   browserbase: "vulnradar_restorable_browserbase",
 };
 
+/**
+ * Present on every dispute the reversal recorded, including one with no
+ * amounts in it, so "recorded, nothing to restore" reads differently from
+ * "opened before anything was recorded".
+ */
+const RECORDED_KEY = "vulnradar_reversal_recorded";
+
 export type RestorableCredits = Partial<Record<CreditKind, number>>;
 
 export function restorableToMetadata(
   reversals: DisputeReversal[],
 ): Record<string, string> {
-  const metadata: Record<string, string> = {};
+  const metadata: Record<string, string> = { [RECORDED_KEY]: "1" };
   for (const r of reversals) {
     metadata[RESTORABLE_KEYS[r.kind]] = String(r.restorable);
   }
@@ -241,7 +253,7 @@ export function restorableFromMetadata(
   metadata: Stripe.Metadata | null | undefined,
 ): RestorableCredits | null {
   const restorable: RestorableCredits = {};
-  let found = false;
+  let found = metadata?.[RECORDED_KEY] !== undefined;
   for (const kind of KINDS) {
     const raw = metadata?.[RESTORABLE_KEYS[kind]];
     if (raw === undefined) continue;

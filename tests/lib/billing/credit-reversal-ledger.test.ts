@@ -141,12 +141,17 @@ describe("reverseCreditsForDispute", () => {
     // Zero is still written down, so a later win knows there is nothing owed.
     expect(record).toHaveBeenCalledWith(reversals);
     expect(restorableToMetadata(reversals)).toEqual({
+      vulnradar_reversal_recorded: "1",
       vulnradar_restorable_github: "0",
     });
   });
 
-  it("does not record a reversed purchase over one already in the ledger", async () => {
-    const record = vi.fn();
+  it("records an empty reversal when a refund already reversed the purchase, so a win restores nothing", async () => {
+    // Refunded first, disputed after. The ledger row is already reversed, so
+    // nothing is taken and no tombstone is written over it. Leaving the
+    // dispute with no record at all made a later win raise the "restore by
+    // hand" alert for credit the customer already had the money back for.
+    const record = vi.fn().mockResolvedValue(undefined);
 
     const reversals = await reverseCreditsForDispute(
       "pi_1",
@@ -155,8 +160,16 @@ describe("reverseCreditsForDispute", () => {
     );
 
     expect(reversals).toEqual([]);
-    expect(record).not.toHaveBeenCalled();
+    expect(record).toHaveBeenCalledWith([]);
+    expect(restorableFromMetadata(restorableToMetadata([]))).toEqual({});
     expect(mockClientQuery.mock.calls.at(-1)?.[0]).toBe("COMMIT");
+  });
+
+  it("writes nothing to Stripe for a dispute that is not about a credit purchase", async () => {
+    const record = vi.fn();
+
+    expect(await reverseCreditsForDispute("pi_sub", null, record)).toEqual([]);
+    expect(record).not.toHaveBeenCalled();
   });
 
   it("rolls back and releases the client when recording fails", async () => {
@@ -196,6 +209,12 @@ describe("restorable metadata", () => {
       ai: 4,
       browserbase: 60,
     });
+  });
+
+  it("reads a record with no amounts as nothing to restore, not as no record", () => {
+    expect(
+      restorableFromMetadata({ vulnradar_reversal_recorded: "1" }),
+    ).toEqual({});
   });
 
   it("is null for a dispute with no record, and ignores a value that is not a count", () => {

@@ -2540,7 +2540,13 @@ describe("POST /api/v3/webhooks/stripe: charge.dispute.created", () => {
     );
     expect(debit?.[1]).toEqual([200000, 42]);
     expect(mockDisputeUpdate).toHaveBeenCalledWith("dp_partial", {
-      metadata: { vulnradar_restorable_ai: "200000" },
+      metadata: {
+        vulnradar_reversal_recorded: "1",
+        vulnradar_restorable_ai: "200000",
+      },
+      // Stripe's default is to submit the evidence with any update, and a
+      // submission is final: a metadata write must never be one.
+      submit: false,
     });
     // The Stripe write happens before COMMIT: if it fails, the reversal rolls
     // back with it and the redelivery starts from the same balance.
@@ -2589,6 +2595,91 @@ describe("POST /api/v3/webhooks/stripe: charge.dispute.created", () => {
     errSpy.mockRestore();
   });
 
+  it("keeps the reversal when Stripe refuses the record outright, and tells an admin what a win owes", async () => {
+    // A restricted key without dispute write access gets a 403 on every
+    // redelivery. Rolling back on that left the credit unreversed for good.
+    withIdempotency("evt_dispute_refused");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (/UPDATE ai_credit_purchases SET refunded_at = NOW\(\)/.test(sql)) {
+        return { rows: [{ user_id: 42, amount: "1000000" }], rowCount: 1 };
+      }
+      if (/FOR UPDATE/.test(sql)) {
+        return { rows: [{ balance: "300000" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    mockDisputeUpdate.mockRejectedValue(
+      Object.assign(
+        new Error("The provided key does not have the required permissions"),
+        { type: "StripePermissionError", statusCode: 403 },
+      ),
+    );
+
+    const res = await POST(
+      disputeEvent("evt_dispute_refused", {
+        id: "dp_refused",
+        reason: "fraudulent",
+        amount: 500,
+        currency: "usd",
+        payment_intent: "pi_refused",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const statements = mockClientQuery.mock.calls.map(([sql]) => String(sql));
+    expect(statements).toContain("COMMIT");
+    expect(statements).not.toContain("ROLLBACK");
+    expect(mockSendAdminAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "stripe_dispute_reversal_unrecorded",
+        context: expect.objectContaining({
+          disputeId: "dp_refused",
+          restorable: "ai:300000",
+        }),
+      }),
+    );
+    errSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  it("still rolls back on a rate limit, which a redelivery gets past", async () => {
+    withIdempotency("evt_dispute_rate_limited");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (/UPDATE ai_credit_purchases SET refunded_at = NOW\(\)/.test(sql)) {
+        return { rows: [{ user_id: 42, amount: "1000000" }], rowCount: 1 };
+      }
+      if (/FOR UPDATE/.test(sql)) {
+        return { rows: [{ balance: "1000000" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    mockDisputeUpdate.mockRejectedValue(
+      Object.assign(new Error("Too many requests"), { statusCode: 429 }),
+    );
+    mockQuery.mockResolvedValue({ rows: [] }); // idempotency rollback
+
+    const res = await POST(
+      disputeEvent("evt_dispute_rate_limited", {
+        id: "dp_rate",
+        reason: "fraudulent",
+        amount: 500,
+        currency: "usd",
+        payment_intent: "pi_rate",
+      }),
+    );
+
+    expect(res.status).toBe(500);
+    const statements = mockClientQuery.mock.calls.map(([sql]) => String(sql));
+    expect(statements).toContain("ROLLBACK");
+    expect(mockSendAdminAlert).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: "stripe_dispute_reversal_unrecorded" }),
+    );
+    errSpy.mockRestore();
+  });
+
   it("records a dispute on a purchase that was never credited, so the credit cannot land afterwards and a win grants it", async () => {
     withIdempotency("evt_dispute_uncredited");
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -2621,7 +2712,11 @@ describe("POST /api/v3/webhooks/stripe: charge.dispute.created", () => {
     expect(String(tombstone?.[0])).toContain("refunded_at");
     expect(tombstone?.[1]).toEqual(["pi_uncredited", 42, 1_000_000]);
     expect(mockDisputeUpdate).toHaveBeenCalledWith("dp_uncredited", {
-      metadata: { vulnradar_restorable_ai: "1000000" },
+      metadata: {
+        vulnradar_reversal_recorded: "1",
+        vulnradar_restorable_ai: "1000000",
+      },
+      submit: false,
     });
     // Nothing came off a balance, so nobody is told credits were removed.
     expect(mockSendEmail).not.toHaveBeenCalled();
@@ -2769,6 +2864,28 @@ describe("POST /api/v3/webhooks/stripe: charge.dispute.closed", () => {
       expect.objectContaining({ event: "stripe_dispute_won_unrestored" }),
     );
     errSpy.mockRestore();
+  });
+
+  it("restores nothing and raises nothing for a won dispute on a purchase a refund had already reversed", async () => {
+    // Refunded, then disputed anyway. The dispute recorded that it took
+    // nothing; without that record the win asked an admin to restore credit
+    // the customer already had the money back for.
+    withIdempotency("evt_dispute_won_after_refund");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(
+      closedEvent("evt_dispute_won_after_refund", {
+        id: "dp_after_refund",
+        status: "won",
+        payment_intent: "pi_after_refund",
+        metadata: { vulnradar_reversal_recorded: "1" },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(restores()).toHaveLength(0);
+    expect(mockSendAdminAlert).not.toHaveBeenCalled();
+    logSpy.mockRestore();
   });
 });
 

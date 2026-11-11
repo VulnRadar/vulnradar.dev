@@ -233,6 +233,24 @@ async function creditChargeState(
   return fullyRefunded ? "refunded" : null;
 }
 
+/**
+ * A Stripe error a redelivery would get again, because the request itself
+ * was refused (a restricted key without the permission, a parameter Stripe
+ * will not take), as opposed to Stripe being unreachable, rate limiting, or a
+ * write conflict, which a later attempt gets past.
+ */
+function isRefusedStripeRequest(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const status = (err as { statusCode?: unknown }).statusCode;
+  return (
+    typeof status === "number" &&
+    status >= 400 &&
+    status < 500 &&
+    status !== 409 &&
+    status !== 429
+  );
+}
+
 /** The PaymentIntent's credit purchase, if it was one; one request. */
 async function creditPurchaseForPaymentIntent(
   stripe: Stripe,
@@ -1543,9 +1561,42 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
             disputePi,
             purchase,
             async (taken) => {
-              await stripe.disputes.update(dispute.id, {
-                metadata: restorableToMetadata(taken),
-              });
+              try {
+                await stripe.disputes.update(dispute.id, {
+                  metadata: restorableToMetadata(taken),
+                  // An update submits the dispute's evidence to the bank
+                  // unless told not to, and a submission is final: this
+                  // would answer every chargeback with an empty file.
+                  submit: false,
+                });
+              } catch (err) {
+                // Rolling back suits an outage, which the redelivery gets
+                // past. A refusal comes back on every redelivery, and rolling
+                // back on it would leave the credit unreversed for good, so
+                // the reversal stands and a person gets the amounts a win
+                // would have to give back.
+                if (!isRefusedStripeRequest(err)) throw err;
+                const context = {
+                  eventId: event.id,
+                  disputeId: dispute.id,
+                  paymentIntentId: disputePi,
+                  restorable:
+                    taken.map((r) => `${r.kind}:${r.restorable}`).join(",") ||
+                    "none",
+                };
+                logError(
+                  "stripe",
+                  "could not record on the dispute how much credit it reversed",
+                  err,
+                  context,
+                );
+                void sendAdminAlert({
+                  event: "stripe_dispute_reversal_unrecorded",
+                  severity: "warning",
+                  message: `Stripe refused the write that records on dispute ${dispute.id} how much credit it reversed (${context.restorable}). If the dispute is won, restore exactly that much by hand; "none" means there is nothing to restore.`,
+                  context,
+                });
+              }
             },
           );
           for (const r of reversals) {
@@ -1592,9 +1643,10 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
         const restorable = restorableFromMetadata(dispute.metadata);
         if (!restorable) {
-          // Opened before the amount was recorded. Guessing would mean
-          // restoring the whole purchase, credit the customer may already
-          // have spent, so a person decides.
+          // Opened before the amount was recorded, or Stripe refused the
+          // record when it opened. Guessing would mean restoring the whole
+          // purchase, credit the customer may already have spent, so a
+          // person decides.
           const kinds = await reversedCreditKinds(closedPi);
           if (kinds.length > 0) {
             const context = {
@@ -1612,7 +1664,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
             void sendAdminAlert({
               event: "stripe_dispute_won_unrestored",
               severity: "warning",
-              message: `Dispute ${dispute.id} was won, and the credits it reversed (${kinds.join(", ")}) were not restored because the dispute predates the record of how much was taken. Restore them by hand from the user's credit balances.`,
+              message: `Dispute ${dispute.id} was won, and the credits it reversed (${kinds.join(", ")}) were not restored because the dispute carries no record of how much was taken. Restore them by hand from the user's credit balances.`,
               context,
             });
           }
