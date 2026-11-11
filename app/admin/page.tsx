@@ -764,10 +764,15 @@ function AdminContent() {
         // show the list, and take the dead id out of the address bar so a
         // reload does not do it again. A failed reload keeps the record on
         // screen, which is still the last true thing known about it.
+        //
+        // Only the user parameter is removed, and the tab is left as the
+        // address bar has it: this callback can be the one created before
+        // ?tab=users was applied, and its activeTab would rewrite the tab
+        // back to the overview.
         showToast(outcome.message, "error");
         if (!refresh) {
           setSelectedUser(null);
-          updateUrlWithUser(null, activeTab);
+          setQueryParam("user", null, { replace: true });
         }
       }
       setDetailLoading(false);

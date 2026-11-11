@@ -130,7 +130,8 @@ describe("the page acts on a refusal", () => {
   it("toasts the message and clears ?user= instead of storing the body", () => {
     expect(body).toContain("loadUserDetail(");
     expect(body).toContain('showToast(outcome.message, "error")');
-    expect(body).toContain("updateUrlWithUser(null, activeTab)");
+    expect(body).toContain('setQueryParam("user", null, { replace: true })');
+    expect(body).not.toContain("updateUrlWithUser(null, activeTab)");
     expect(body.indexOf("setSelectedUser(outcome.detail)")).toBeLessThan(
       body.indexOf("showToast(outcome.message"),
     );
