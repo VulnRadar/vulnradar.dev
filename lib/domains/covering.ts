@@ -63,6 +63,30 @@ export function domainListCovers(
 }
 
 /**
+ * The first name in a CNAME chain that is outside the verified `zone`, or null
+ * when every hop stays inside it.
+ *
+ * `chain` is the aliases a host points through, in order, not including the
+ * host itself. Zone control covers the names under the zone, but a CNAME hands
+ * the answer to whoever runs the zone it points into, so the addresses at the
+ * end of an out-of-zone hop were chosen by someone else (a CDN, a SaaS, or a
+ * stranger's server). An intrusive scan of those addresses is not something
+ * verifying the zone authorized. Pure string work, like the rest of this file;
+ * lib/domains/target-proof.ts does the DNS.
+ */
+export function firstHopOutsideZone(
+  chain: readonly string[],
+  zone: string,
+): string | null {
+  const z = zone.toLowerCase().replace(/\.$/, "");
+  for (const raw of chain) {
+    const hop = raw.toLowerCase().replace(/\.$/, "");
+    if (hop !== z && !hop.endsWith(`.${z}`)) return hop;
+  }
+  return null;
+}
+
+/**
  * The hostname a user's typed scan target resolves to, or null.
  *
  * The scan form accepts what the API accepts: a bare hostname, a full URL with

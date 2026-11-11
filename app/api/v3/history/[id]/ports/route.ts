@@ -7,6 +7,8 @@ import {
   recordPortScan,
 } from "@/lib/scanner/port-scan";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
+import { proveTargetControl } from "@/lib/domains/target-proof";
+import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { getSetting } from "@/lib/config/runtime-config";
 import {
   resolveOwnedScan,
@@ -39,9 +41,13 @@ const PORT_SWEEP_ABORT_HEADROOM_MS = 8_000;
  * panel updates in place. Enforces the SAME verified-domain ownership gate the
  * scan-time sweep uses (lib/domains/scope.ts) -- port scanning from a shared
  * server against a domain the caller doesn't control is abuse, so an
- * unverified domain gets the same 403 (DOMAIN_NOT_VERIFIED). scanPorts is
- * best-effort, never throws, and refuses any internal/SSRF target as defence
- * in depth.
+ * unverified domain gets the same 403 (DOMAIN_NOT_VERIFIED). So does a host
+ * whose server never answered the target proof (lib/domains/target-proof.ts):
+ * owning the zone is not owning whatever address a name in it points at. The
+ * blocklist applies too, with the scan routes' 403 BLOCKED: a refresh is a
+ * sweep like any other, and a blocked or owner-blocked domain used to be swept
+ * through this route because it never asked. scanPorts is best-effort, never
+ * throws, and refuses any internal/SSRF target as defence in depth.
  *
  * Premium-gated (requireRefreshPlan), matching the subdomain panel's refresh
  * control: on the hosted SaaS a re-run is a paid feature, but a self-hosted
@@ -102,6 +108,19 @@ export async function POST(
     );
   }
 
+  const accessCheck = await checkAccessRules(scan.url);
+  if (!accessCheck.allowed) {
+    return NextResponse.json(
+      {
+        error: "This target cannot be scanned.",
+        details:
+          "This domain or IP address has been restricted from scanning for security, privacy, or compliance reasons. Access controls are enforced to protect sensitive infrastructure and user data. If you believe this is an error, please contact support.",
+        statusCode: "BLOCKED",
+      },
+      { status: 403 },
+    );
+  }
+
   // Reuse a fresh sweep for this host if the short TTL cache still has one;
   // otherwise re-run the sweep and record it for the next refresh in the window.
   let portScan = readPortScan(hostname);
@@ -114,9 +133,21 @@ export async function POST(
     // after the sweep's own deadline, so scanPorts still returns whatever it
     // collected rather than being cut off mid-run.
     const sweepDeadlineMs = await getSetting("PORT_SCAN_OVERALL_DEADLINE_MS");
+    // The proof runs here rather than inside scanPorts so a refusal can be a
+    // 403 with the reason (what to serve, and where) instead of the generic
+    // "could not run" below. Only a fresh sweep needs it: a cached result
+    // sends nothing to the target.
+    const proved = await proveTargetControl(hostname, userId);
+    if (!proved.ok) {
+      return NextResponse.json(
+        { error: proved.reason, statusCode: proved.code },
+        { status: 403 },
+      );
+    }
     const fresh = await scanPorts(
       hostname,
       AbortSignal.timeout(sweepDeadlineMs + PORT_SWEEP_ABORT_HEADROOM_MS),
+      { proof: proved.target },
     );
     if (!fresh) {
       return NextResponse.json(

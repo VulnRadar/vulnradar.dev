@@ -14,7 +14,14 @@
 //   2. the caller has proven ownership of the target domain -- the SAME
 //      verified-domain gate the active probes use (isUrlOwnedByUser, enforced
 //      in app/api/v3/scan/route.ts and .../scan/crawl/route.ts). An unverified
-//      domain gets the same 403 (DOMAIN_NOT_VERIFIED) active probing returns.
+//      domain gets the same 403 (DOMAIN_NOT_VERIFIED) active probing returns,
+//      AND
+//   3. the server the host resolves to has proven itself too
+//      (lib/domains/target-proof.ts). Owning a zone lets you point any name in
+//      it at any address, so zone ownership alone made this a sweep of
+//      whatever server the caller named. scanPorts enforces this one itself:
+//      without a proof, or a user id to obtain one for, it sweeps nothing,
+//      and with one it connects to the proven address only.
 //
 // ── Safety inside scanPorts (defence in depth) ──────────────────────────────
 // Even for an owned domain, scanPorts refuses to touch anything internal:
@@ -32,11 +39,12 @@
 //
 // ── Bounds (never a full 65535 sweep) ───────────────────────────────────────
 // A full sweep is slow, noisy, and abuse-heavy from a shared host. This scans
-// a curated ~130-port set with hard bounds: capped concurrency, a short
-// per-port connect timeout, and an overall wall-clock deadline. It is
-// best-effort and never throws -- a failure or timeout just yields fewer (or
-// no) open ports, never a failed scan. A larger/configurable range is a
-// possible follow-up, deliberately not built here.
+// the curated COMMON_PORTS set (COMMON_PORT_COUNT is its size; the number is
+// not restated here, where it went stale) with hard bounds: capped
+// concurrency, a short per-port connect timeout, and an overall wall-clock
+// deadline. It is best-effort and never throws -- a failure or timeout just
+// yields fewer (or no) open ports, never a failed scan. A larger/configurable
+// range is a possible follow-up, deliberately not built here.
 // ════════════════════════════════════════════════════════════════════════════
 
 import * as net from "node:net";
@@ -45,6 +53,7 @@ import { CONFIG_PORT_SCAN_CACHE_TTL_MS } from "@/lib/config/config-values";
 import { isPrivateHostname, isPrivateIP } from "./safe-fetch";
 import { generateId } from "./_helpers";
 import type { Vulnerability } from "./types";
+import type { ProvenTarget } from "@/lib/domains/target-proof";
 
 /** One open port found by the sweep. `state` is always "open" -- closed and
  *  filtered ports are simply omitted, never listed. `banner` is present only
@@ -419,29 +428,71 @@ function probePort(
 }
 
 /**
+ * What authorizes one sweep: a proof the caller already obtained (and will
+ * reuse for the rest of the run), or the user to obtain one for here.
+ */
+export type PortSweepAuthorization =
+  { proof: ProvenTarget } | { userId: number };
+
+/**
+ * The one address this sweep may connect to, or null when nothing is
+ * authorized. Imported lazily for the same reason as the settings resolver
+ * above: target-proof reaches the database, and banner.ts imports this module
+ * for resolveSafePublicIp alone.
+ */
+async function authorizedSweepIp(
+  host: string,
+  authorization: PortSweepAuthorization | undefined,
+  signal: AbortSignal,
+): Promise<string | null> {
+  if (!authorization) return null;
+  const { isProvenTarget, proveTargetControl } =
+    await import("@/lib/domains/target-proof");
+  let ip: string;
+  if ("proof" in authorization) {
+    const { proof } = authorization;
+    if (!isProvenTarget(proof) || proof.host !== host) return null;
+    ip = proof.ip;
+  } else {
+    const proved = await proveTargetControl(host, authorization.userId, {
+      signal,
+    });
+    if (!proved.ok) return null;
+    ip = proved.target.ip;
+  }
+  // The proof already refused internal addresses; this keeps the sweep's own
+  // guarantee independent of how the proof was reached.
+  return isPrivateIP(ip) ? null : ip;
+}
+
+/**
  * Sweep the curated COMMON_PORTS on `host`, best-effort and bounded. Returns
- * null when the target is unsafe/unresolvable (nothing was scanned), or a
- * PortScanResult (with a possibly-empty `open` list) when the sweep ran. Never
- * throws. `signal` cancels the sweep (a cancelled scan abandons it).
+ * null when the target is unsafe/unresolvable or the sweep is not authorized
+ * (nothing was scanned), or a PortScanResult (with a possibly-empty `open`
+ * list) when the sweep ran. Never throws. `signal` cancels the sweep (a
+ * cancelled scan abandons it).
  *
- * The ownership gate that authorizes this at all lives in the scan routes; by
- * the time this runs the caller has proven domain ownership. The checks here
- * are the internal-range/SSRF defence in depth that apply even to an owned
- * domain (see resolveSafePublicIp).
+ * The routes still apply the verified-domain gate first so they can answer
+ * 403. `authorization` is the part this function enforces: the sweep
+ * connects to the address a target proof pinned, and to nothing when there
+ * is no proof (see lib/domains/target-proof.ts). The internal-range checks in
+ * resolveSafePublicIp apply on top, even to a proven target.
  */
 export async function scanPorts(
   host: string,
   signal: AbortSignal,
+  authorization?: PortSweepAuthorization,
 ): Promise<PortScanResult | null> {
   const cleanHost = host.trim().toLowerCase();
   if (!cleanHost || signal.aborted) return null;
 
-  const targetIp = await resolveSafePublicIp(cleanHost);
+  if (!(await resolveSafePublicIp(cleanHost)) || signal.aborted) return null;
+  const targetIp = await authorizedSweepIp(cleanHost, authorization, signal);
   if (!targetIp || signal.aborted) return null;
 
   // Resolved once for the whole sweep, not per port: every probe in one sweep
-  // must agree on the bounds, and re-resolving 130 times would be pointless
-  // churn against the settings cache.
+  // must agree on the bounds, and re-resolving once per port would be
+  // pointless churn against the settings cache.
   const tuning = await resolvePortScanTuning();
 
   // Hard overall deadline: an internal controller aborts every in-flight and

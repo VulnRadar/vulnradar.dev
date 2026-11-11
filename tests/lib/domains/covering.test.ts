@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   coveringDomainCandidates,
   domainListCovers,
+  firstHopOutsideZone,
   hostFromScanTarget,
 } from "@/lib/domains/covering";
 
@@ -127,5 +128,51 @@ describe("hostFromScanTarget", () => {
     // the WRONG host against the verified list and could arm the toggle for a
     // domain the account does not own.
     expect(hostFromScanTarget("not a url at all")).not.toBe("example.com");
+  });
+});
+
+/**
+ * The CNAME half of the target proof (gap-domain-verification-active-gating-1).
+ * A name inside the zone that is an alias for a name outside it answers with
+ * addresses someone else chose, so the first hop that leaves is the refusal.
+ */
+describe("firstHopOutsideZone", () => {
+  it("returns null for a host with no aliases", () => {
+    expect(firstHopOutsideZone([], "example.com")).toBeNull();
+  });
+
+  it("returns null when every hop stays inside the zone", () => {
+    expect(
+      firstHopOutsideZone(
+        ["lb.example.com", "edge.lb.example.com"],
+        "example.com",
+      ),
+    ).toBeNull();
+  });
+
+  it("treats the zone apex itself as inside", () => {
+    expect(firstHopOutsideZone(["example.com"], "example.com")).toBeNull();
+  });
+
+  it("names the first hop that leaves the zone", () => {
+    expect(
+      firstHopOutsideZone(
+        ["lb.example.com", "shop.victim.example.net", "edge.cdn.test"],
+        "example.com",
+      ),
+    ).toBe("shop.victim.example.net");
+  });
+
+  it("does not count a look-alike suffix as inside", () => {
+    expect(firstHopOutsideZone(["notexample.com"], "example.com")).toBe(
+      "notexample.com",
+    );
+    expect(firstHopOutsideZone(["example.com.evil.test"], "example.com")).toBe(
+      "example.com.evil.test",
+    );
+  });
+
+  it("ignores case and a trailing root dot on either side", () => {
+    expect(firstHopOutsideZone(["LB.Example.COM."], "example.com.")).toBeNull();
   });
 });

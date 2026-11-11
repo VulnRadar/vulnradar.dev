@@ -54,6 +54,23 @@ vi.mock("@/lib/domains/scope", () => ({
   isUrlOwnedByUser: (...a: unknown[]) => mockIsUrlOwnedByUser(...a),
 }));
 
+const mockCheckAccessRules = vi.fn();
+vi.mock("@/lib/scanner/access-rules", () => ({
+  checkAccessRules: (...a: unknown[]) => mockCheckAccessRules(...a),
+}));
+
+const mockProveTargetControl = vi.fn();
+vi.mock("@/lib/domains/target-proof", () => ({
+  proveTargetControl: (...a: unknown[]) => mockProveTargetControl(...a),
+}));
+
+const provenTarget = {
+  host: "example.com",
+  ip: "93.184.216.34",
+  domainId: 3,
+  domain: "example.com",
+};
+
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
   default: { query: (...a: unknown[]) => mockQuery(...a) },
@@ -73,7 +90,7 @@ function params(id = "10") {
 const fakePortScan = {
   host: "example.com",
   scannedAt: "2026-01-01T00:00:00.000Z",
-  portsScanned: 130,
+  portsScanned: 145,
   open: [],
   closed: [],
 };
@@ -92,6 +109,10 @@ beforeEach(() => {
   mockReadPortScan.mockReset().mockReturnValue(undefined);
   mockRecordPortScan.mockReset();
   mockIsUrlOwnedByUser.mockReset().mockResolvedValue(true);
+  mockCheckAccessRules.mockReset().mockResolvedValue({ allowed: true });
+  mockProveTargetControl
+    .mockReset()
+    .mockResolvedValue({ ok: true, target: provenTarget });
   mockQuery.mockReset().mockResolvedValue({ rows: [] });
 });
 
@@ -168,6 +189,57 @@ describe("POST /api/v3/history/[id]/ports - verified-domain gate", () => {
     const json = await res.json();
     expect(json.statusCode).toBe("DOMAIN_NOT_VERIFIED");
     expect(mockScanPorts).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * gap-domain-verification-active-gating-1 and -5. Owning the zone is not
+ * owning the server, and a refresh is a sweep like any other: the blocklist
+ * applies, and the address swept is the one that proved itself.
+ */
+describe("POST /api/v3/history/[id]/ports - blocklist and target proof", () => {
+  it("403s a blocked target with the BLOCKED body and never sweeps", async () => {
+    mockCheckAccessRules.mockResolvedValue({
+      allowed: false,
+      ruleType: "blacklist",
+    });
+
+    const res = await POST(req(), params());
+
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.statusCode).toBe("BLOCKED");
+    expect(mockCheckAccessRules).toHaveBeenCalledWith("https://example.com");
+    expect(mockScanPorts).not.toHaveBeenCalled();
+    expect(mockProveTargetControl).not.toHaveBeenCalled();
+  });
+
+  it("403s DOMAIN_NOT_VERIFIED with the reason when the server never proved itself", async () => {
+    mockProveTargetControl.mockResolvedValue({
+      ok: false,
+      code: "DOMAIN_NOT_VERIFIED",
+      reason: "Serve the token first.",
+    });
+
+    const res = await POST(req(), params());
+
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.statusCode).toBe("DOMAIN_NOT_VERIFIED");
+    expect(json.error).toContain("Serve the token first.");
+    expect(mockProveTargetControl).toHaveBeenCalledWith("example.com", 42);
+    expect(mockScanPorts).not.toHaveBeenCalled();
+  });
+
+  it("hands the proof to the sweep so it connects to the proven address only", async () => {
+    const res = await POST(req(), params());
+
+    expect(res.status).toBe(200);
+    expect(mockScanPorts).toHaveBeenCalledWith(
+      "example.com",
+      expect.any(AbortSignal),
+      { proof: provenTarget },
+    );
   });
 });
 
