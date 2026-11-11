@@ -35,13 +35,17 @@ function isFormulaCell(value: string): boolean {
 }
 
 /**
- * CSV-quote a value when it contains a comma, quote, or newline, and
+ * CSV-quote a value when it contains a comma, quote, or line break, and
  * neutralise spreadsheet formula injection by prefixing a single quote,
  * which every major spreadsheet reads as "the rest of this cell is text".
+ *
+ * A bare carriage return counts as a line break: Excel and most parsers end
+ * the row on it, so an unquoted one moved the rest of the cell into the next
+ * row's first column, where the formula check above never looked.
  */
 export function escapeCsv(value: string): string {
   const cell = isFormulaCell(value) ? `'${value}` : value;
-  if (cell.includes(",") || cell.includes('"') || cell.includes("\n")) {
+  if (/[",\r\n]/.test(cell)) {
     return `"${cell.replace(/"/g, '""')}"`;
   }
   return cell;

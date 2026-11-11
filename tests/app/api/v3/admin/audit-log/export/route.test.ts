@@ -252,6 +252,36 @@ describe("GET /api/v3/admin/audit-log/export", () => {
     expect(lines[2]).not.toContain("null");
   });
 
+  // A display name is typed by the account holder, and the export is opened
+  // by an admin in a spreadsheet. Quoting alone does not stop a formula: the
+  // spreadsheet strips the quotes and evaluates what is inside.
+  it("neutralises a cell a spreadsheet would run as a formula", async () => {
+    withAdmin();
+    queuePages([
+      {
+        ...sampleRows[0],
+        target_name: "=1+1",
+        target_email: "@SUM(A1)",
+        details: '=HYPERLINK("http://evil.example","x")',
+      },
+    ]);
+
+    const text = await body(await GET(getRequest("?format=csv")));
+    const row = text.split("\r\n")[1];
+
+    expect(row).toContain(",'@SUM(A1),'=1+1,");
+    expect(row).toContain('"\'=HYPERLINK(""http://evil.example"",""x"")"');
+    expect(row).not.toMatch(/(^|,)=/);
+    expect(row).not.toMatch(/(^|,)@/);
+  });
+
+  it("quotes a value that holds a bare carriage return", async () => {
+    withAdmin();
+    queuePages([{ ...sampleRows[0], details: "first\rsecond" }]);
+    const text = await body(await GET(getRequest("?format=csv")));
+    expect(text).toContain('"first\rsecond"');
+  });
+
   it("records the export itself to admin_audit_log with the row count and format", async () => {
     withAdmin(7, "admin");
     queuePages(sampleRows);

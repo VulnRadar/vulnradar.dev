@@ -21,6 +21,18 @@ describe("escapeCsv", () => {
     expect(escapeCsv("line\nbreak")).toBe('"line\nbreak"');
   });
 
+  it("quotes a bare carriage return, which is a row break to a CSV reader", () => {
+    // Unquoted, a lone CR splits the row in two in Excel and in most
+    // parsers, so the rest of the cell lands in the next row's first column.
+    expect(escapeCsv("first\rsecond")).toBe('"first\rsecond"');
+    expect(escapeCsv("windows\r\nline")).toBe('"windows\r\nline"');
+  });
+
+  it("neutralises the two formula shapes the audit-log export carries", () => {
+    expect(escapeCsv("=1+1")).toBe("'=1+1");
+    expect(escapeCsv("@SUM(A1)")).toBe("'@SUM(A1)");
+  });
+
   it("neutralises a cell a spreadsheet would evaluate as a formula", () => {
     // Quoting alone does not help: the spreadsheet strips the quotes and
     // evaluates what is inside.

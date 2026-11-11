@@ -4,6 +4,7 @@ import { requirePermission, logAction } from "@/lib/auth/authorization";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getClientIp } from "@/lib/api/request-utils";
 import { APP_SLUG } from "@/lib/config/constants";
+import { escapeCsv } from "@/lib/ui/download";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,13 +37,15 @@ const CSV_COLUMNS: readonly (keyof AuditExportRow)[] = [
   "details",
 ];
 
-/** RFC 4180 field quoting: quote (and escape embedded quotes) only when
- * the value contains a comma, quote, or newline -- matches every other
- * plain-value CSV writer in this codebase's conventions. */
+/**
+ * The app's one CSV cell writer. A local RFC 4180 quoter used to sit here,
+ * and quoting does not stop a spreadsheet evaluating `=1+1` once it strips
+ * the quotes, so a display name an account holder typed ran as a formula on
+ * the machine of the admin who opened the export.
+ */
 function csvField(value: unknown): string {
   if (value === null || value === undefined) return "";
-  const s = String(value);
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return escapeCsv(String(value));
 }
 
 function csvRows(rows: AuditExportRow[]): string {
