@@ -552,6 +552,81 @@ describe("saveAutoTags", () => {
   });
 });
 
+/**
+ * On a caller's transaction a failed INSERT aborts the whole transaction, so
+ * the caller's COMMIT silently became a ROLLBACK of the scan's completion
+ * while this logged "non-fatal". ref: bug-db-8
+ */
+describe("saveAutoTags on a transactional client", () => {
+  function fakeClient(failOn?: (sql: string) => boolean) {
+    const sent: string[] = [];
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        sent.push(String(sql).trim().split("\n")[0].trim());
+        if (failOn?.(String(sql))) throw new Error(`failed: ${sent.at(-1)}`);
+        return { rows: [], rowCount: 1 };
+      }),
+    };
+    return {
+      client: client as unknown as Parameters<typeof saveAutoTags>[3],
+      sent,
+    };
+  }
+
+  it("wraps the INSERT in a savepoint and releases it", async () => {
+    const { client, sent } = fakeClient();
+    await saveAutoTags(5, 42, []);
+    mockQuery.mockClear();
+
+    await expect(saveAutoTags(5, 42, [], client)).resolves.toEqual(["Clean"]);
+
+    expect(sent).toEqual([
+      "SAVEPOINT auto_tags_insert",
+      "INSERT INTO scan_tags (scan_id, user_id, tag, source)",
+      "RELEASE SAVEPOINT auto_tags_insert",
+    ]);
+    // The cached rules lookup stays on the shared pool, never the client.
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("rolls back to the savepoint, not the transaction, when the INSERT fails", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { client, sent } = fakeClient((sql) =>
+      sql.includes("INSERT INTO scan_tags"),
+    );
+
+    await expect(saveAutoTags(5, 42, [], client)).resolves.toEqual(["Clean"]);
+
+    expect(sent).toEqual([
+      "SAVEPOINT auto_tags_insert",
+      "INSERT INTO scan_tags (scan_id, user_id, tag, source)",
+      "ROLLBACK TO SAVEPOINT auto_tags_insert",
+    ]);
+    expect(errSpy).toHaveBeenCalledTimes(1);
+    errSpy.mockRestore();
+  });
+
+  it("rethrows when the savepoint cannot be restored, so the caller does not commit a dead transaction", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { client } = fakeClient(
+      (sql) =>
+        sql.includes("INSERT INTO scan_tags") ||
+        sql.startsWith("ROLLBACK TO SAVEPOINT"),
+    );
+
+    await expect(saveAutoTags(5, 42, [], client)).rejects.toThrow(
+      /ROLLBACK TO SAVEPOINT/,
+    );
+    errSpy.mockRestore();
+  });
+
+  it("takes no savepoint on the shared pool, which is not inside a transaction", async () => {
+    await saveAutoTags(5, 42, []);
+    const statements = mockQuery.mock.calls.map(([sql]) => String(sql));
+    expect(statements.some((sql) => sql.includes("SAVEPOINT"))).toBe(false);
+  });
+});
+
 describe("maybeSuggestAiTag", () => {
   it("is a no-op when the tags are not exactly ['Needs Hardening']", async () => {
     await maybeSuggestAiTag(5, 42, ["Clean"], []);

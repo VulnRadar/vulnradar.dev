@@ -29,6 +29,8 @@ import {
 } from "@/lib/tags/auto-tags";
 import { getSettings } from "@/lib/config/runtime-config";
 import { logError } from "@/lib/logging/log";
+import { globalSingleton } from "@/lib/runtime/global-singleton";
+import { redactSensitiveResponseHeaders } from "./response-headers";
 import {
   SCAN_INTERRUPTED_MESSAGE,
   SCAN_STALE_MESSAGE,
@@ -42,7 +44,17 @@ export class ScanCancelledError extends Error {
   }
 }
 
-const cancelledScans = new Set<number>();
+/**
+ * Scans flagged for cancellation. On globalThis rather than at module scope:
+ * Next bundles this file once per runtime layer, so the cancel route and the
+ * job it was cancelling could each hold their own Set, and a cancelled
+ * scheduled scan kept running because the flag landed in a copy the job never
+ * read.
+ */
+const cancelledScans = globalSingleton(
+  "vulnradar.scanJobs.cancelledScans",
+  () => new Set<number>(),
+);
 
 /**
  * Per-scan AbortControllers, lazily created by `getCancelSignal`. Separate
@@ -51,8 +63,12 @@ const cancelledScans = new Set<number>();
  * nothing for a request already in flight (e.g. an active-probe form
  * submission mid-request when cancellation is requested). A signal aborts
  * that request itself instead of only stopping the next one from starting.
+ * Shared across bundle copies for the same reason as the Set.
  */
-const cancelControllers = new Map<number, AbortController>();
+const cancelControllers = globalSingleton(
+  "vulnradar.scanJobs.cancelControllers",
+  () => new Map<number, AbortController>(),
+);
 
 /**
  * How long a cancellation flag lives when nothing clears it.
@@ -396,6 +412,14 @@ export async function finalizeScanSuccess(
   // warm-up must not stop a finished scan from being committed.
   await loadPromotedRules().catch(() => {});
 
+  // Every caller already redacts, and this is the one statement that writes
+  // the column for a job scan, so it redacts again rather than trusting that.
+  // A caller that forgot would otherwise store the target's Set-Cookie and
+  // Authorization values for the whole retention window, and the host
+  // reputation cache below would copy them on. Idempotent: a value already
+  // replaced stays replaced.
+  const responseHeaders = redactSensitiveResponseHeaders(data.responseHeaders);
+
   // The status-flip UPDATE and the auto-tags INSERT run on the same
   // client inside one transaction so they commit atomically -- see
   // saveAutoTags' own doc comment (lib/tags/auto-tags.ts) for the race
@@ -451,7 +475,7 @@ export async function finalizeScanSuccess(
         JSON.stringify(data.summary),
         data.duration,
         data.scannedAt,
-        JSON.stringify(data.responseHeaders),
+        JSON.stringify(responseHeaders),
         JSON.stringify(data.resultMeta),
         scanId,
         data.authenticated ?? null,
@@ -464,9 +488,10 @@ export async function finalizeScanSuccess(
       // Auto tags (lib/tags/auto-tags.ts), unlike host_reputation below:
       // not gated on isPublic/url -- they're personal to the user's own
       // scan record, not the public reputation cache, so a private scan
-      // still gets tagged. saveAutoTags never throws (catches and logs
-      // internally), so a tag-save failure can't abort this transaction
-      // or stop the scan from completing. Captured so the AI follow-up
+      // still gets tagged. On a transactional client saveAutoTags runs its
+      // INSERT under a savepoint and rolls back only to that on failure, so
+      // a rejected tag write leaves the status flip above intact instead of
+      // aborting the transaction it shares. Captured so the AI follow-up
       // below can decide whether it's worth firing, once this transaction
       // has actually committed -- see that call's own comment for why it
       // must not happen any earlier than that.
@@ -478,7 +503,18 @@ export async function finalizeScanSuccess(
       );
     }
 
-    await client.query("COMMIT");
+    // A COMMIT on a transaction an earlier statement aborted does not reject:
+    // Postgres answers it with ROLLBACK and node-postgres resolves. Reading
+    // the command is the only way to know the completion was thrown away.
+    // Throwing sends the job to its own failure path, which records the scan
+    // as failed; returning true here reported a success the row never got,
+    // and the scan sat at running until the stale sweep closed it.
+    const commit = await client.query("COMMIT");
+    if (commit?.command === "ROLLBACK") {
+      throw new Error(
+        "The scan's completion was rolled back by the database instead of committed.",
+      );
+    }
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     throw err;
@@ -528,7 +564,7 @@ export async function finalizeScanSuccess(
         low: number;
         info: number;
       }>,
-      responseHeaders: data.responseHeaders,
+      responseHeaders,
       scanId,
       scannedAt: data.scannedAt,
       resultMeta: data.resultMeta,
@@ -568,6 +604,13 @@ export interface FailedScanDetail {
  * and nulling `current_category` erased it. The column's old value is read in
  * the same statement, so there is no second round trip on a database that is
  * likely to be struggling.
+ *
+ * Duration is counted from `started_at` only for a row that was `running`. A
+ * row still `pending` never ran: its `started_at` is when it was queued (a
+ * bulk batch reserves every row up front), so the same arithmetic recorded the
+ * queue wait, and History showed a scan that never started as having taken
+ * half an hour. In the SET list `status` is still the old value, which is what
+ * makes the CASE read the state the row was closed from.
  */
 export async function recordScanFailure(
   scanId: number,
@@ -593,10 +636,13 @@ export async function recordScanFailure(
                 ELSE '{}'::jsonb
               END,
          current_category = NULL,
-         duration = COALESCE(
-           (EXTRACT(EPOCH FROM (NOW() - started_at)) * 1000)::INTEGER,
-           duration
-         )
+         duration = CASE
+           WHEN status = 'running' THEN COALESCE(
+             (EXTRACT(EPOCH FROM (NOW() - started_at)) * 1000)::INTEGER,
+             duration
+           )
+           ELSE 0
+         END
      WHERE id = $2 AND status IN ('pending', 'running')
      RETURNING id, user_id, source, categories_completed, categories_total,
                result_meta->>'timedOutIn' AS timed_out_in`,
@@ -698,16 +744,32 @@ function logRecordFailure(
  * so without this a queued scan that later failed reported its queue wait as
  * scan time. For a single scan the two timestamps are a few milliseconds
  * apart, so nothing else changes.
+ *
+ * Returns false when the UPDATE ran and found no pending row: the scan was
+ * cancelled (or otherwise closed) while it waited, and the caller must not
+ * start it. The in-memory cancel flag cannot say this on its own, because it
+ * expires after CANCEL_FLAG_TTL_MS and a queued bulk row can wait longer, so
+ * a cancelled row whose flag had lapsed was scanned in full anyway.
+ *
+ * A rejected UPDATE still resolves, to true. Nothing is known about the row
+ * then, and refusing to run would leave it pending for the stale sweep to
+ * find half an hour later; running keeps what this did before the return
+ * value existed, and every terminal write is guarded on status, so a row
+ * that really was cancelled keeps its cancellation. The failure is logged.
  */
-export async function markScanRunning(scanId: number): Promise<void> {
-  await pool
-    .query(
+export async function markScanRunning(scanId: number): Promise<boolean> {
+  try {
+    const result = await pool.query(
       `UPDATE scan_history
        SET status = 'running', started_at = NOW()
        WHERE id = $1 AND status = 'pending'`,
       [scanId],
-    )
-    .catch(() => {});
+    );
+    return (result.rowCount ?? 0) > 0;
+  } catch (err) {
+    logError("scan", "could not mark a scan as running", err, { scanId });
+    return true;
+  }
 }
 
 /**
@@ -820,10 +882,14 @@ export async function sweepStaleScans(
             failure_kind = $3::text,
             scanned_at = NOW(),
             current_category = NULL,
-            duration = COALESCE(
-              (EXTRACT(EPOCH FROM (NOW() - sh.started_at)) * 1000)::INTEGER,
-              sh.duration
-            )
+            -- A pending row never ran; see recordScanFailure.
+            duration = CASE
+              WHEN sh.status = 'running' THEN COALESCE(
+                (EXTRACT(EPOCH FROM (NOW() - sh.started_at)) * 1000)::INTEGER,
+                sh.duration
+              )
+              ELSE 0
+            END
        FROM stale
       WHERE sh.id = stale.id
         AND sh.status IN ('pending', 'running')

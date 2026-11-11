@@ -76,6 +76,11 @@ const { invalidatePromotedRulesCache } = await import("@/lib/tags/auto-tags");
  * tests) fall through to mockClientQuery's default mockResolvedValue, same
  * reasoning -- their return value is never read either.
  */
+/** The first line of a statement, trimmed: enough to name it in an order. */
+function sqlHead(sql: unknown): string {
+  return String(sql).trim().split("\n")[0].trim();
+}
+
 function mockUpdateResult(result: { rows: unknown[]; rowCount: number }) {
   mockClientQuery.mockResolvedValueOnce({}); // BEGIN
   mockClientQuery.mockResolvedValueOnce(result); // UPDATE ... RETURNING ...
@@ -537,16 +542,22 @@ describe("finalizeScanSuccess", () => {
       resultMeta: {},
     });
 
-    // BEGIN, UPDATE, tags INSERT, COMMIT -- all on the same client, so the
-    // INSERT commits atomically with the status flip.
-    expect(mockClientQuery).toHaveBeenCalledTimes(4);
-    const [tagsSql, tagsParams] = mockClientQuery.mock.calls[2];
-    expect(tagsSql).toContain("INSERT INTO scan_tags");
+    // BEGIN, UPDATE, then the tags INSERT under its own savepoint, then
+    // COMMIT -- all on the same client, so the INSERT commits atomically with
+    // the status flip.
+    expect(mockClientQuery.mock.calls.map(([sql]) => sqlHead(sql))).toEqual([
+      "BEGIN",
+      "UPDATE scan_history",
+      "SAVEPOINT auto_tags_insert",
+      "INSERT INTO scan_tags (scan_id, user_id, tag, source)",
+      "RELEASE SAVEPOINT auto_tags_insert",
+      "COMMIT",
+    ]);
+    const [tagsSql, tagsParams] = mockClientQuery.mock.calls[3];
     expect(tagsSql).toContain("'auto'");
     expect(tagsParams).toContain(5); // scanId
     expect(tagsParams).toContain(42); // user_id from RETURNING
     expect(tagsParams).toContain("Critical Exposure");
-    expect(mockClientQuery.mock.calls[3][0]).toBe("COMMIT");
   });
 
   it("loads the promoted auto-tag rules BEFORE it takes a pool connection", async () => {
@@ -676,13 +687,21 @@ describe("finalizeScanSuccess", () => {
     expect(mockRelease).toHaveBeenCalledTimes(1);
   });
 
-  it("commits even when saveAutoTags' own INSERT fails (it catches internally and never throws)", async () => {
+  // A failed statement aborts a Postgres transaction, so swallowing the tag
+  // INSERT's error was not enough: the COMMIT that followed became a ROLLBACK
+  // and took the status flip with it, while this returned true. ref: bug-db-8
+  it("rolls back only the tags when their INSERT fails, and still commits the completion", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mockUpdateResult({
       rows: [{ id: 5, url: "https://example.com", user_id: 42 }],
       rowCount: 1,
     });
-    // 3rd client.query call (index 2) is the tags INSERT -- make it reject.
-    mockClientQuery.mockRejectedValueOnce(new Error("unique violation"));
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("INSERT INTO scan_tags")) {
+        throw new Error('new row violates check constraint "no_clean"');
+      }
+      return { rows: [], rowCount: 0 };
+    });
 
     const applied = await finalizeScanSuccess(5, {
       summary: { critical: 1 },
@@ -693,13 +712,113 @@ describe("finalizeScanSuccess", () => {
       resultMeta: {},
     });
 
-    // The scan still completes -- a tag-save failure is non-fatal and must
-    // not roll back the status flip.
     expect(applied).toBe(true);
-    const commitCall = mockClientQuery.mock.calls.find(
-      ([sql]) => sql === "COMMIT",
+    expect(mockClientQuery.mock.calls.map(([sql]) => sqlHead(sql))).toEqual([
+      "BEGIN",
+      "UPDATE scan_history",
+      "SAVEPOINT auto_tags_insert",
+      "INSERT INTO scan_tags (scan_id, user_id, tag, source)",
+      "ROLLBACK TO SAVEPOINT auto_tags_insert",
+      "COMMIT",
+    ]);
+    errSpy.mockRestore();
+  });
+
+  it("fails loudly, rather than reporting success, when the database turned the COMMIT into a ROLLBACK", async () => {
+    mockUpdateResult({ rows: [{ id: 5 }], rowCount: 1 });
+    mockClientQuery.mockImplementation(async (sql: string) =>
+      sql === "COMMIT"
+        ? { command: "ROLLBACK", rows: [], rowCount: null }
+        : { rows: [], rowCount: 0 },
     );
-    expect(commitCall).toBeDefined();
+
+    // Thrown, so the job's own catch records the scan as failed. Returning
+    // false would read as "already closed" and leave the row running.
+    await expect(
+      finalizeScanSuccess(5, {
+        summary: {},
+        findings: [],
+        duration: 1,
+        scannedAt: "2026-01-01T00:00:00.000Z",
+        responseHeaders: {},
+        resultMeta: {},
+      }),
+    ).rejects.toThrow(/rolled back/);
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+    // Nothing after a completion that never happened.
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("rolls the whole transaction back when even the savepoint cannot be restored", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockUpdateResult({
+      rows: [{ id: 5, url: "https://example.com", user_id: 42 }],
+      rowCount: 1,
+    });
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("INSERT INTO scan_tags")) {
+        throw new Error("tags failed");
+      }
+      if (String(sql).startsWith("ROLLBACK TO SAVEPOINT")) {
+        throw new Error("connection terminated");
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    await expect(
+      finalizeScanSuccess(5, {
+        summary: { critical: 1 },
+        findings: [{ id: "a", severity: "critical", title: "SQL Injection" }],
+        duration: 1234,
+        scannedAt: "2026-01-01T00:00:00.000Z",
+        responseHeaders: {},
+        resultMeta: {},
+      }),
+    ).rejects.toThrow("connection terminated");
+    const sent = mockClientQuery.mock.calls.map(([sql]) => sqlHead(sql));
+    expect(sent).not.toContain("COMMIT");
+    expect(sent[sent.length - 1]).toBe("ROLLBACK");
+    errSpy.mockRestore();
+  });
+
+  // The executors redact before they call this, and nothing tested that the
+  // value reaching the column was redacted, so dropping the call would have
+  // stored the target's session cookies unnoticed. ref: tests-8
+  it("persists the response headers with secrets redacted, whatever the caller passed", async () => {
+    mockUpdateResult({
+      rows: [{ id: 5, url: "https://www.example.com/", user_id: null }],
+      rowCount: 1,
+    });
+
+    await finalizeScanSuccess(5, {
+      summary: {},
+      findings: [],
+      duration: 1,
+      scannedAt: "2026-01-01T00:00:00.000Z",
+      responseHeaders: {
+        "Set-Cookie": "session=abc123; HttpOnly",
+        authorization: "Bearer live-token",
+        "X-CSRF-Token": "csrf-value",
+        server: "nginx",
+      },
+      resultMeta: {},
+    });
+
+    const [, params] = mockClientQuery.mock.calls[1];
+    const stored = JSON.parse(params[5] as string);
+    expect(stored).toEqual({
+      "Set-Cookie": "[redacted]",
+      authorization: "[redacted]",
+      "X-CSRF-Token": "[redacted]",
+      server: "nginx",
+    });
+    expect(params[5]).not.toContain("abc123");
+    expect(params[5]).not.toContain("live-token");
+
+    // The public host reputation cache gets the same redacted copy.
+    const [upsertSql, upsertParams] = mockQuery.mock.calls[0];
+    expect(upsertSql).toContain("INSERT INTO host_reputation");
+    expect(upsertParams[6]).toBe(params[5]);
   });
 });
 
@@ -832,18 +951,54 @@ describe("recordScanFailure", () => {
 });
 
 describe("markScanRunning", () => {
-  it("flips a pending row to running", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 3 }], rowCount: 1 });
-    await markScanRunning(3);
+  it("flips a pending row to running and says it did", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    await expect(markScanRunning(3)).resolves.toBe(true);
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("status = 'running'");
     expect(sql).toContain("status = 'pending'");
     expect(params).toEqual([3]);
   });
 
-  it("swallows a query failure instead of throwing", async () => {
-    mockQuery.mockRejectedValueOnce(new Error("db down"));
-    await expect(markScanRunning(3)).resolves.toBeUndefined();
+  // A queued bulk row cancelled after its 20-minute cancel flag lapsed was
+  // still scanned in full: nothing told the runner the row was closed.
+  // ref: bug-scan-13
+  it("reports false when no pending row was there to flip", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    await expect(markScanRunning(3)).resolves.toBe(false);
+  });
+
+  it("does not throw on a query failure, logs it, and lets the scan run", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const boom = new Error("db down");
+    mockQuery.mockRejectedValueOnce(boom);
+    await expect(markScanRunning(3)).resolves.toBe(true);
+    expect(errSpy).toHaveBeenCalledTimes(1);
+    expect(errSpy.mock.calls[0]).toContain(boom);
+    errSpy.mockRestore();
+  });
+});
+
+/**
+ * A row closed while still pending never ran, and its started_at is when it
+ * was queued, so deriving duration from it recorded the queue wait as scan
+ * time. History showed a bulk row that never started as having taken half an
+ * hour. ref: bug-scan-15
+ */
+describe("duration of a scan closed before it ran", () => {
+  const RUNNING_ONLY =
+    /duration = CASE\s+WHEN (sh\.)?status = 'running' THEN COALESCE\(\s+\(EXTRACT\(EPOCH FROM \(NOW\(\) - (sh\.)?started_at\)\) \* 1000\)::INTEGER,\s+(sh\.)?duration\s+\)\s+ELSE 0\s+END/;
+
+  it("recordScanFailure counts from started_at only for a running row", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 9 }], rowCount: 1 });
+    await recordScanFailure(9, "Not run", "internal");
+    expect(mockQuery.mock.calls[0][0]).toMatch(RUNNING_ONLY);
+  });
+
+  it("sweepStaleScans counts from started_at only for a running row", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    await sweepStaleScans("periodic");
+    expect(mockQuery.mock.calls[0][0]).toMatch(RUNNING_ONLY);
   });
 });
 

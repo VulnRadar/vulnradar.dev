@@ -88,6 +88,7 @@ import type { Pool, PoolClient } from "pg";
 import type { Category, Severity, Vulnerability } from "@/lib/scanner/types";
 import pool from "@/lib/database/db";
 import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
+import { globalSingleton } from "@/lib/runtime/global-singleton";
 
 interface AutoTagRule {
   tag: string;
@@ -601,6 +602,9 @@ export const RESERVED_AUTO_TAG_NAMES: ReadonlySet<string> = new Set(
  */
 const MAX_AUTO_TAGS = 6;
 
+/** Savepoint saveAutoTags takes on a caller's transaction. */
+const AUTO_TAGS_SAVEPOINT = "auto_tags_insert";
+
 function findingQualifies(finding: Vulnerability, rule: AutoTagRule): boolean {
   const matchesCwe =
     Boolean(finding.cwe) && (rule.cwes?.includes(finding.cwe!) ?? false);
@@ -669,10 +673,9 @@ export function computeAutoTags(
   // twice against MAX_AUTO_TAGS, show as a duplicate chip, and build a
   // scan_tags INSERT with two VALUES rows for the same (scan_id, tag) --
   // Postgres rejects that outright ("ON CONFLICT DO NOTHING command
-  // cannot affect row a second time"), aborting the whole transaction
-  // saveAutoTags shares with the scan's own completion UPDATE (see that
-  // function's comment), silently leaving the scan stuck at
-  // pending/running forever with its real results discarded.
+  // cannot affect row a second time"), and the scan would lose every one
+  // of its auto tags (saveAutoTags rolls back to its savepoint; see that
+  // function's comment).
   return [...new Set(tags)].slice(0, MAX_AUTO_TAGS);
 }
 
@@ -699,10 +702,14 @@ export function computeAutoTags(
  * rule takes effect on the very next scan instead of waiting out the TTL,
  * and lets removing a rule (deletePromotedRule) stop it tagging at once.
  * It clears this process's cache only; another process serves its copy
- * until the TTL runs out.
+ * until the TTL runs out. Within one process the cache sits on globalThis, so
+ * the promotion route's invalidation reaches the copy of this module the scan
+ * jobs were bundled with, not only its own.
  */
 const DB_RULES_CACHE_TTL_MS = 5 * 60 * 1000;
-let dbRulesCache: { rules: AutoTagRule[]; loadedAt: number } | null = null;
+const dbRules = globalSingleton<{
+  cache: { rules: AutoTagRule[]; loadedAt: number } | null;
+}>("vulnradar.autoTags.promotedRules", () => ({ cache: null }));
 
 interface PromotedAutoTagRuleRow {
   tag: string;
@@ -723,8 +730,9 @@ interface PromotedAutoTagRuleRow {
  */
 export async function loadPromotedRules(): Promise<AutoTagRule[]> {
   const now = Date.now();
-  if (dbRulesCache && now - dbRulesCache.loadedAt < DB_RULES_CACHE_TTL_MS) {
-    return dbRulesCache.rules;
+  const cached = dbRules.cache;
+  if (cached && now - cached.loadedAt < DB_RULES_CACHE_TTL_MS) {
+    return cached.rules;
   }
   try {
     const result = await pool.query<PromotedAutoTagRuleRow>(
@@ -740,7 +748,7 @@ export async function loadPromotedRules(): Promise<AutoTagRule[]> {
       minSeverity: row.min_severity,
       minCount: row.min_count ?? undefined,
     }));
-    dbRulesCache = { rules, loadedAt: now };
+    dbRules.cache = { rules, loadedAt: now };
     return rules;
   } catch (err) {
     console.error(
@@ -749,19 +757,20 @@ export async function loadPromotedRules(): Promise<AutoTagRule[]> {
     );
     // Serve the last good cache over a transient DB hiccup rather than
     // silently dropping every promoted rule for one bad request.
-    return dbRulesCache?.rules ?? [];
+    return dbRules.cache?.rules ?? [];
   }
 }
 
 /** Forces the next loadPromotedRules() call to hit the DB instead of the cache. Called right after a rule is inserted (the promotion route) or deleted (lib/tags/promoted-rules.ts). */
 export function invalidatePromotedRulesCache(): void {
-  dbRulesCache = null;
+  dbRules.cache = null;
 }
 
 /**
- * Compute and persist a scan's auto tags. Safe to call unawaited (never
- * throws -- logs and swallows, matching upsertHostReputation's contract in
- * lib/scanner/host-reputation.ts) or to await directly when the caller
+ * Compute and persist a scan's auto tags. On the shared pool it is safe to
+ * call unawaited (never throws -- logs and swallows, matching
+ * upsertHostReputation's contract in lib/scanner/host-reputation.ts; the
+ * transactional case is below) or to await directly when the caller
  * wants the write to land before it responds. Returns the tags it computed
  * (and attempted to save) so a caller can decide whether to also kick off
  * maybeSuggestAiTag below -- returned even if the INSERT itself failed,
@@ -794,6 +803,15 @@ export function invalidatePromotedRulesCache(): void {
  * nothing to reconcile against on a second call. `ON CONFLICT DO NOTHING`
  * still guards the rare double-call (e.g. a retried request) from erroring
  * on the UNIQUE(scan_id, tag) constraint.
+ *
+ * Any executor other than the shared pool must be a client inside an open
+ * transaction, and the INSERT then runs under a savepoint. Swallowing the
+ * error was not enough there: a failed statement aborts the whole
+ * transaction, so the caller's COMMIT quietly became a ROLLBACK and took the
+ * scan's completion with it while this reported nothing worse than a log
+ * line. Rolling back to the savepoint undoes the tags alone and leaves the
+ * transaction usable. If even that fails the transaction cannot be saved, and
+ * the error is rethrown so the caller rolls back knowingly.
  */
 export async function saveAutoTags(
   scanId: number,
@@ -817,6 +835,8 @@ export async function saveAutoTags(
     params.push(scanId, userId, tag);
   });
 
+  const inTransaction = executor !== pool;
+  if (inTransaction) await executor.query(`SAVEPOINT ${AUTO_TAGS_SAVEPOINT}`);
   try {
     await executor.query(
       `INSERT INTO scan_tags (scan_id, user_id, tag, source)
@@ -825,10 +845,17 @@ export async function saveAutoTags(
       params,
     );
   } catch (err) {
+    if (inTransaction) {
+      await executor.query(`ROLLBACK TO SAVEPOINT ${AUTO_TAGS_SAVEPOINT}`);
+    }
     console.error(
       `[${APP_NAME}] Failed to save auto tags (non-fatal):`,
       err instanceof Error ? err.message : err,
     );
+    return tags;
+  }
+  if (inTransaction) {
+    await executor.query(`RELEASE SAVEPOINT ${AUTO_TAGS_SAVEPOINT}`);
   }
 
   return tags;
