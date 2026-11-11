@@ -73,7 +73,7 @@
     "type": "header",
     "title": "MX Record Missing",
     "category": "dns",
-    "severity": "medium",
+    "severity": "low",
     "description": "No MX record exists for this domain. Domains that send or receive email must have an MX record. Without it, mail delivery to this domain fails and email spoofing countermeasures (SPF/DMARC) lack a target.",
     "evidence": "DNS-level finding for `dns-mx-missing` against {{domain}}.",
     "riskImpact": "Without MX records, inbound mail to this domain bounces. If the domain is used to send mail without an MX record, receiving servers may treat it as a red flag and mark mail as spam.",
