@@ -184,7 +184,9 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
 
   // A password field with no usable autocomplete token. The legacy check sees
   // the absent attribute, the PageCheck sees the absent attribute and the
-  // wrong value (off, username, and so on), so the legacy one is the subset.
+  // wrong value (off, username, and so on), so for password fields the legacy
+  // one is the subset. The legacy check also reads card-number fields, which
+  // no PageCheck covers, so a page with only a card field still gets it.
   "autocomplete-sensitive": "password-autocomplete",
   "page-password-field-autocomplete-wrong": "password-autocomplete",
 
