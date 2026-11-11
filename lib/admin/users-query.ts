@@ -115,7 +115,12 @@ export const USER_SORT_COLUMNS: Record<string, string> = {
 };
 
 export function userOrderBy(sort: string | null, dir: string | null): string {
-  const expr = sort ? USER_SORT_COLUMNS[sort] : undefined;
+  // Own keys only: a plain object answers "toString" or "constructor" with a
+  // function, and its source text landed in the ORDER BY.
+  const expr =
+    sort && Object.hasOwn(USER_SORT_COLUMNS, sort)
+      ? USER_SORT_COLUMNS[sort]
+      : undefined;
   // Tie-break on id so paging is stable when two rows share a sort value.
   return expr
     ? `${expr} ${dir === "asc" ? "ASC" : "DESC"}, u.id DESC`

@@ -128,4 +128,18 @@ describe("userOrderBy", () => {
       "u.created_at DESC, u.id DESC",
     );
   });
+
+  // The map is a plain object, so indexing it with a name Object.prototype
+  // carries returned a function, and its source text was interpolated into
+  // the ORDER BY: ?sort=toString answered 500 with Postgres complaining about
+  // "function toString() { [native code] }".
+  it.each([
+    "toString",
+    "constructor",
+    "__proto__",
+    "hasOwnProperty",
+    "valueOf",
+  ])("treats the inherited name %s as unknown", (sort) => {
+    expect(userOrderBy(sort, "asc")).toBe("u.created_at DESC");
+  });
 });
