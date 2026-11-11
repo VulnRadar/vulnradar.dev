@@ -182,7 +182,9 @@ export async function generateScanSummary(
         // Recorded for admin cost visibility, never charged: the summary is
         // free and unmetered, which is what this file and the route above it
         // have always said. Omitting the argument used to mean the opposite.
-        await recordAiTokens(userId, tokensUsed);
+        // Its own kind, so it never counts against the verification
+        // allowance either.
+        await recordAiTokens(userId, tokensUsed, undefined, false, "summary");
       } catch (err) {
         console.error(
           "[AI-SCAN-SUMMARY] Failed to record token usage (non-fatal):",

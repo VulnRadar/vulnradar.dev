@@ -500,7 +500,13 @@ describe("generateScanSummary: unified AI usage token accounting", () => {
 
     await generateScanSummary(makeResult([makeFinding("f1")]), 1, false);
 
-    expect(mockRecordAiTokens).toHaveBeenCalledWith(1, 420);
+    expect(mockRecordAiTokens).toHaveBeenCalledWith(
+      1,
+      420,
+      undefined,
+      false,
+      "summary",
+    );
   });
 
   it("records real token usage from the native Anthropic adapter", async () => {
@@ -516,7 +522,13 @@ describe("generateScanSummary: unified AI usage token accounting", () => {
 
     await generateScanSummary(makeResult([]), 1, false);
 
-    expect(mockRecordAiTokens).toHaveBeenCalledWith(1, 580);
+    expect(mockRecordAiTokens).toHaveBeenCalledWith(
+      1,
+      580,
+      undefined,
+      false,
+      "summary",
+    );
   });
 
   it("does not record usage when the caller is using their own AI key", async () => {

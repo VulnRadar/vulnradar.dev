@@ -636,7 +636,9 @@ export async function POST(req: Request) {
       // the operator can see what chat costs. Never charges credits.
       const tokens = usageTokens ?? estimateTokens(inputChars + chars);
       try {
-        await recordAiTokens(userId, tokens, undefined, false);
+        // Its own kind: chat is free, so it must not count against the
+        // verification allowance the quota check reads.
+        await recordAiTokens(userId, tokens, undefined, false, "chat");
       } catch (err) {
         console.error(
           "[AI chat] Failed to record token usage (non-fatal):",

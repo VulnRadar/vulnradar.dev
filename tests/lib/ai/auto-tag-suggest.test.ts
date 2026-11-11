@@ -454,7 +454,13 @@ describe("generateAutoTagSuggestions: token accounting (free, but still recorded
 
     await generateAutoTagSuggestions([makeFinding()], 7);
 
-    expect(mockRecordAiTokens).toHaveBeenCalledWith(7, 60);
+    expect(mockRecordAiTokens).toHaveBeenCalledWith(
+      7,
+      60,
+      undefined,
+      false,
+      "tag",
+    );
   });
 
   it("never records usage for a bring-your-own-key user", async () => {

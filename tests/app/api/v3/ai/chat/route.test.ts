@@ -566,7 +566,13 @@ describe("POST /api/v3/ai/chat: usage", () => {
       }),
     );
     await (await ask("hi")).text();
-    expect(mockRecordAiTokens).toHaveBeenCalledWith(42, 120, undefined, false);
+    expect(mockRecordAiTokens).toHaveBeenCalledWith(
+      42,
+      120,
+      undefined,
+      false,
+      "chat",
+    );
   });
 
   it("falls back to an estimate when the provider reports no usage", async () => {

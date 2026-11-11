@@ -351,7 +351,9 @@ export async function generateAutoTagSuggestions(
           // Recorded for admin cost visibility, never charged. This runs on its
           // own after a scan with no user action, so charging for it took money
           // for something the user did not ask for and could not see.
-          await recordAiTokens(userId, tokensUsed);
+          // Its own kind, so it never counts against the verification
+          // allowance either.
+          await recordAiTokens(userId, tokensUsed, undefined, false, "tag");
         } catch (err) {
           console.error(
             "[AI-AUTO-TAG-SUGGEST] Failed to record token usage (non-fatal):",
