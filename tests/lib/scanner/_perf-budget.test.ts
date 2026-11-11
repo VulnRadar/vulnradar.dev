@@ -211,6 +211,22 @@ const SHAPES: Record<string, string> = {
   unterminatedIframe: rep('<iframe src="https://x.com/a"'),
   // form-formnovalidate-bypass
   unterminatedButton: rep("<button formnovalidate "),
+  // document-cookie-access: a name literal that never closes
+  unterminatedCookieLiteral: rep("document.cookie.match(/auth_token=("),
+  unterminatedCookieString: rep('document.cookie = "session'),
+  // inline-event-handlers: an opening quote with no partner anywhere
+  unterminatedHandlerQuote: rep("<a onclick='"),
+  // html-injection-patterns: a closed title and an open script, repeated
+  titleThenScript: rep("</title >   <script async "),
+  imgOnerrorUnterminated: rep("<img src=x onerror="),
+  // iframe-allow-scripts-allow-same-origin: a srcdoc that never ends
+  unterminatedSrcdocIframe: rep(
+    '<iframe sandbox="allow-scripts allow-same-origin" srcdoc="',
+  ),
+  // cdn-fallback-missing: a CDN script tag whose window is all fallback-ish
+  cdnScriptThenFallbackNoise: rep(
+    '<script src="https://unpkg.com/x"></script>window. || typeof ',
+  ),
   // sql-injection-patterns: a SQL verb that never reaches its WHERE/VALUES
   sqlVerbNoTail: rep('<script>q = "SELECT * FROM users '),
   sqlVerbPlain: rep("SELECT * FROM "),

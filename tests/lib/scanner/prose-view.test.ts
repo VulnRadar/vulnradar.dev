@@ -37,7 +37,7 @@ const SNIPPETS = [
   `sessionStorage.setItem("password", form.password.value);`,
   `window.addEventListener("message", function (e) { run(e.data); });`,
   `parent.postMessage(secretData, "*");`,
-  `navigator.clipboard.writeText(text);`,
+  `navigator.clipboard.readText().then(paste);`,
   `navigator.geolocation.getCurrentPosition(onPosition);`,
   `navigator.mediaDevices.getUserMedia({ video: true });`,
   `new WebSocket("ws://feed.example.com/live");`,
