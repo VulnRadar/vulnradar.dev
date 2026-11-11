@@ -1,5 +1,11 @@
+"use client";
+
 import { cn } from "@/lib/ui/utils";
 import { focus } from "@/lib/ui/animations";
+import {
+  useRadioGroupKeys,
+  type RadioItemProps,
+} from "@/lib/hooks/use-radio-group-keys";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { CATEGORIES, type ContactCategory } from "./contact-types";
 
@@ -29,8 +35,10 @@ interface ContactCategorySelectorProps {
  * contact-types.ts has always declared and no one has ever rendered finally
  * doing a job.
  *
- * Behaviour is unchanged: same role="radio" per option, same aria-checked,
- * same tab order, same 44px minimum target.
+ * Same role="radio" per option, same aria-checked, same 44px minimum target.
+ * The keyboard is a radio group's now (useRadioGroupKeys): the group is one
+ * tab stop and the arrows move between options. Every option used to be its
+ * own tab stop, so reaching the form meant tabbing through all nine.
  */
 export function ContactCategorySelector({
   selected,
@@ -38,6 +46,13 @@ export function ContactCategorySelector({
 }: ContactCategorySelectorProps) {
   const lead = CATEGORIES.find((c) => c.id === LEAD_CATEGORY_ID);
   const rest = CATEGORIES.filter((c) => c.id !== LEAD_CATEGORY_ID);
+  // Page order, which is the order the arrows walk.
+  const ordered = lead ? [lead, ...rest] : rest;
+  const { getRadioProps } = useRadioGroupKeys({
+    values: ordered.map((c) => c.id),
+    selected,
+    onSelect,
+  });
 
   return (
     <section>
@@ -58,6 +73,7 @@ export function ContactCategorySelector({
             category={lead}
             selected={selected === lead.id}
             onSelect={onSelect}
+            radioProps={getRadioProps(lead.id)}
             emphasis
           />
         )}
@@ -72,6 +88,7 @@ export function ContactCategorySelector({
               category={cat}
               selected={selected === cat.id}
               onSelect={onSelect}
+              radioProps={getRadioProps(cat.id)}
               className="border-t border-border even:border-l"
             />
           ))}
@@ -85,12 +102,14 @@ function CategoryOption({
   category,
   selected,
   onSelect,
+  radioProps,
   emphasis,
   className,
 }: {
   category: ContactCategory;
   selected: boolean;
   onSelect: (id: string) => void;
+  radioProps: RadioItemProps;
   /** The lead row: description always visible, heavier label. */
   emphasis?: boolean;
   className?: string;
@@ -102,6 +121,7 @@ function CategoryOption({
       type="button"
       role="radio"
       aria-checked={selected}
+      {...radioProps}
       onClick={() => onSelect(category.id)}
       className={cn(
         // min-h-11 rather than padding alone: the compact cells hide their

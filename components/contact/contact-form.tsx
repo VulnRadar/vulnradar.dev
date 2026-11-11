@@ -14,6 +14,12 @@ import {
 import { CATEGORIES, STAFF_ROLES } from "./contact-types";
 import { TurnstileWidget } from "@/components/shared/turnstile-widget";
 import { InlineAlert } from "@/components/shared/inline-alert";
+import { SECURITY_ACK_HOURS } from "@/lib/security/response-times";
+import {
+  DEFAULT_CONTACT_LIMITS,
+  type ContactLimits,
+} from "@/lib/support/contact-limits";
+import { pluralize } from "@/lib/ui/plural";
 
 /* The select and the textarea are drawn by hand rather than by the Input
    primitive, so they have to match it: rounded-md, not rounded-lg (this form
@@ -78,16 +84,45 @@ function CategoryNote({
   );
 }
 
+/**
+ * A staff application is sent as one message with the role, Discord name and
+ * availability written above what the applicant typed, and the server holds
+ * that whole text to the message limit. Built in one place so the textarea's
+ * own limit can leave room for it.
+ */
+export function staffApplicationMessage(
+  roleLabel: string | undefined,
+  discord: string,
+  availability: string,
+  details: string,
+): string {
+  return [
+    `Role: ${roleLabel}`,
+    `Discord: ${discord || "Not provided"}`,
+    `Availability: ${availability || "Not provided"}`,
+    "",
+    "--- Details ---",
+    details,
+  ].join("\n");
+}
+
 interface ContactFormProps {
   category: string;
   onSuccess: () => void;
   onError: (error: string) => void;
+  /**
+   * The limits the contact route enforces. The message limit is an admin
+   * setting, so the page passes the live value; the default is only the
+   * setting's own default.
+   */
+  limits?: ContactLimits;
 }
 
 export function ContactForm({
   category,
   onSuccess,
   onError,
+  limits = DEFAULT_CONTACT_LIMITS,
 }: ContactFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -123,6 +158,14 @@ export function ContactForm({
     fetchUser();
   }, []);
 
+  const isStaff = category === "staff_application";
+  const staffRoleLabel = STAFF_ROLES.find((r) => r.id === staffRole)?.label;
+  // The room the staff header lines take out of the message limit.
+  const messageOverhead = isStaff
+    ? staffApplicationMessage(staffRoleLabel, discord, availability, "").length
+    : 0;
+  const messageMax = Math.max(0, limits.message - messageOverhead);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -144,19 +187,11 @@ export function ContactForm({
     setIsSubmitting(true);
     setError(null);
 
-    const isStaff = category === "staff_application";
     const finalSubject = isStaff
-      ? `Staff Application: ${STAFF_ROLES.find((r) => r.id === staffRole)?.label}`
+      ? `Staff Application: ${staffRoleLabel}`
       : subject;
     const finalMessage = isStaff
-      ? [
-          `Role: ${STAFF_ROLES.find((r) => r.id === staffRole)?.label}`,
-          `Discord: ${discord || "Not provided"}`,
-          `Availability: ${availability || "Not provided"}`,
-          "",
-          "--- Details ---",
-          message,
-        ].join("\n")
+      ? staffApplicationMessage(staffRoleLabel, discord, availability, message)
       : message;
 
     try {
@@ -226,6 +261,8 @@ export function ContactForm({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Your name"
+                autoComplete="name"
+                maxLength={limits.name}
                 required
               />
             </div>
@@ -242,6 +279,7 @@ export function ContactForm({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
+                autoComplete="email"
                 required
                 disabled={emailLocked}
               />
@@ -323,6 +361,7 @@ export function ContactForm({
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="Brief summary of your message"
+                maxLength={limits.subject}
                 required
               />
             </div>
@@ -343,15 +382,26 @@ export function ContactForm({
               onChange={(e) => setMessage(e.target.value)}
               placeholder={getPlaceholder(category)}
               rows={5}
+              maxLength={messageMax}
+              aria-describedby="contact-message-count"
               required
               className={`${FIELD_CLASS} resize-none leading-relaxed`}
             />
+            {/* Not a live region: announcing every keystroke would drown out
+                the text being typed. It is read with the field instead. */}
+            <p
+              id="contact-message-count"
+              className="text-[11px] text-muted-foreground text-right tabular-nums"
+            >
+              {message.length} of {pluralize(messageMax, "character")}
+            </p>
           </div>
 
           {category === "security" && (
             <CategoryNote tone="warning">
-              Security reports jump the queue. We aim to acknowledge inside 24
-              hours and will tell you what we did about it.
+              Security reports jump the queue. We aim to acknowledge inside{" "}
+              {pluralize(SECURITY_ACK_HOURS, "hour")} and will tell you what we
+              did about it.
             </CategoryNote>
           )}
 
