@@ -557,6 +557,13 @@ export default async function PrivacyPage() {
             </>,
             <>
               <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                vulnradar_step_up
+              </code>
+              : short-lived (10 minutes), set when an account that has no
+              password confirms a security change with a code from its email.
+            </>,
+            <>
+              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
                 vr_oauth_nonce
               </code>
               : short-lived, set while an OAuth sign-in (Google, GitHub, or
