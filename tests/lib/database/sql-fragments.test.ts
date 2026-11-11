@@ -205,13 +205,13 @@ describe("the boot schema builds its expression indexes from these exact strings
 
   it("indexes PUBLIC_HOST_SQL, newest first, for public completed scans only", () => {
     expect(sql).toContain(
-      `CREATE INDEX IF NOT EXISTS idx_scan_history_public_host\n          ON scan_history ((${PUBLIC_HOST_SQL}), scanned_at DESC)\n          WHERE is_public = true AND status = 'completed'`,
+      `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_scan_history_public_host\n          ON scan_history ((${PUBLIC_HOST_SQL}), scanned_at DESC)\n          WHERE is_public = true AND status = 'completed'`,
     );
   });
 
   it("indexes URL_ORIGIN_PATH_SQL, newest first, for public completed scans only", () => {
     expect(sql).toContain(
-      `CREATE INDEX IF NOT EXISTS idx_scan_history_public_origin_path\n          ON scan_history ((${URL_ORIGIN_PATH_SQL}), scanned_at DESC)\n          WHERE is_public = true AND status = 'completed'`,
+      `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_scan_history_public_origin_path\n          ON scan_history ((${URL_ORIGIN_PATH_SQL}), scanned_at DESC)\n          WHERE is_public = true AND status = 'completed'`,
     );
   });
 

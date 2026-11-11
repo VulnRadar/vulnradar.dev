@@ -22,9 +22,11 @@
 import type { Pool } from "pg";
 import type { AuditAction } from "@/lib/admin/audit-actions";
 import { SETTINGS_REGISTRY, isSecretSetting } from "@/lib/config/registry";
+import { withBootClient } from "@/lib/database/boot/apply-boot-schema";
 import { DEFAULT_BADGES_SQL } from "@/lib/database/schema/seeds.mjs";
 import { logError } from "@/lib/logging/log";
 import { parsedFormOf } from "@/lib/scanner/canonical-url";
+import { AI_FEEDBACK_NOTE } from "@/lib/scanner/feedback-source";
 import {
   FREQUENCIES,
   SCHEDULE_FREQUENCIES,
@@ -32,6 +34,22 @@ import {
   isScheduleFrequency,
 } from "@/lib/scanner/schedule-timing";
 
+/**
+ * What the backfills below run their own SQL on: the boot's dedicated client
+ * (see withBootClient), or a pool when one is called on its own.
+ */
+type BackfillExecutor = Pick<Pool, "query">;
+
+/**
+ * The four that walk whole tables (scan_history, admin_audit_log,
+ * scheduled_scans, scan_finding_feedback) run on the boot's own connection,
+ * with its ten-minute statement timeout and five-second lock timeout, rather
+ * than under the app pool's 30 seconds (ops-10): on a large scan_history the
+ * URL rewrite was cancelled part way at every boot. Everything before them is
+ * a handful of small queries, and most of it goes through a helper module
+ * that uses the app pool itself, so it stays on the pool rather than holding
+ * a third connection (the advisory lock holds one) while it waits for one.
+ */
 export async function runBootBackfills(
   pool: Pool,
   appName: string,
@@ -42,9 +60,51 @@ export async function runBootBackfills(
   await reconcileStaffPlans(appName);
   await seedDefaultBadges(pool, appName);
   await backfillWebhookSecrets(appName);
-  await backfillSubDailyScheduleSlots(pool, appName);
-  await canonicalizeStoredScanUrls(pool);
-  await redactSecretSettingAuditRows(pool);
+  await withBootClient(pool, async (executor) => {
+    await backfillSubDailyScheduleSlots(executor, appName);
+    await canonicalizeStoredScanUrls(executor);
+    await redactSecretSettingAuditRows(executor);
+    await backfillAiFeedbackSource(executor);
+  }).catch((err) => {
+    logError(
+      "db",
+      "Could not open the boot connection for the table backfills (non-fatal)",
+      err,
+    );
+  });
+}
+
+/**
+ * Mark the AI verifier's feedback rows as AI (owner decision T2).
+ *
+ * scan_finding_feedback.source defaults to 'human', which is right for every
+ * row a person wrote and wrong for the ones the verifier pre-filled, about
+ * 3,456 in production. Those are recognisable by the exact note the verifier
+ * writes, and only by it: a person who then clicks a verdict overwrites the
+ * note, which is what makes that row theirs, so it stays human.
+ *
+ * Runs on every boot rather than once, so rows the verifier writes before it
+ * sets source itself are picked up by the next boot. IS DISTINCT FROM keeps a
+ * boot with nothing to fix from rewriting a single row.
+ */
+export async function backfillAiFeedbackSource(
+  executor: BackfillExecutor,
+): Promise<void> {
+  try {
+    await executor.query(
+      `UPDATE scan_finding_feedback
+          SET source = 'ai'
+        WHERE notes = $1
+          AND source IS DISTINCT FROM 'ai'`,
+      [AI_FEEDBACK_NOTE],
+    );
+  } catch (err) {
+    logError(
+      "scan",
+      "Failed to mark AI-written scan feedback as AI (non-fatal)",
+      err,
+    );
+  }
 }
 
 /** Read from the registry, so a setting marked secret later is covered too. */
@@ -85,7 +145,9 @@ const SECRET_SETTING_AUDIT_REWRITES: ReadonlyArray<{
  * its pattern are bracket expressions, so no backslash has to survive being
  * quoted twice. Idempotent: a rewritten row no longer starts with the prefix.
  */
-export async function redactSecretSettingAuditRows(pool: Pool): Promise<void> {
+export async function redactSecretSettingAuditRows(
+  pool: BackfillExecutor,
+): Promise<void> {
   try {
     for (const rewrite of SECRET_SETTING_AUDIT_REWRITES) {
       await pool.query(
@@ -121,7 +183,9 @@ const SCAN_URL_PAGE = 500;
  * rewritten row no longer matches, and one the parser refuses is left as it
  * is because nothing was ever fetched from it.
  */
-export async function canonicalizeStoredScanUrls(pool: Pool): Promise<void> {
+export async function canonicalizeStoredScanUrls(
+  pool: BackfillExecutor,
+): Promise<void> {
   try {
     let afterId = 0;
     for (;;) {
@@ -230,7 +294,7 @@ const BOOTSTRAP_AUDIT_ACTION: AuditAction = "set_role";
  * (pre_staff_plan) every other staff promotion uses.
  */
 export async function bootstrapSuperAdmin(
-  pool: Pool,
+  pool: BackfillExecutor,
   appName: string,
 ): Promise<void> {
   try {
@@ -300,7 +364,10 @@ async function reconcileStaffPlans(appName: string): Promise<void> {
 }
 
 /** The default badge set, shared with `npm run db:create`. */
-async function seedDefaultBadges(pool: Pool, appName: string): Promise<void> {
+async function seedDefaultBadges(
+  pool: BackfillExecutor,
+  appName: string,
+): Promise<void> {
   try {
     await pool.query(DEFAULT_BADGES_SQL);
     console.log(`[${appName}] Default badges seeded.`);
@@ -363,7 +430,7 @@ interface SubDailyScheduleRow {
  * one and nothing is written.
  */
 export async function backfillSubDailyScheduleSlots(
-  pool: Pool,
+  pool: BackfillExecutor,
   appName: string,
 ): Promise<void> {
   try {

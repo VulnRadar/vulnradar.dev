@@ -304,13 +304,27 @@ describe("redactSecretSettingAuditRows", () => {
     expect(console.error).toHaveBeenCalled();
   });
 
-  it("is wired into the boot sequence", async () => {
+  it("is wired into the boot sequence, on the boot's own connection", async () => {
     const { pool, query } = auditPool();
+    const clientQuery = vi.fn(async (_config: { text: string }) => ({
+      rows: [],
+      rowCount: 0,
+    }));
+    const release = vi.fn();
+    Object.assign(pool, {
+      connect: async () => ({ query: clientQuery, release }),
+    });
     await runBootBackfills(pool, "App");
 
     expect(
-      query.mock.calls.some(([sql]) => sql.includes("UPDATE admin_audit_log")),
+      clientQuery.mock.calls.some(([config]) =>
+        config.text.includes("UPDATE admin_audit_log"),
+      ),
     ).toBe(true);
+    expect(
+      query.mock.calls.some(([sql]) => sql.includes("UPDATE admin_audit_log")),
+    ).toBe(false);
+    expect(release).toHaveBeenCalledWith(true);
   });
 });
 

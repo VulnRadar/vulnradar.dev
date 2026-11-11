@@ -1548,6 +1548,103 @@ export const upgrade = {
       column: "last_used_client",
       definition: "VARCHAR(64)",
     },
+    // ── 4.0.0 columns, each matching its boot step in the "4.0.0 COLUMNS"
+    // block of lib/database/schema/02-features.mjs, which has the reasons.
+    // An email change waiting for the new address to be confirmed.
+    { table: "users", column: "pending_email", definition: "VARCHAR(255)" },
+    { table: "users", column: "pending_email_token", definition: "TEXT" },
+    // Which AI feature spent the tokens.
+    {
+      table: "ai_usage",
+      column: "kind",
+      definition: "VARCHAR(20) NOT NULL DEFAULT 'verify'",
+    },
+    // What the scheduler last did with a schedule, and the scan it runs.
+    {
+      table: "scheduled_scans",
+      column: "last_outcome",
+      definition: "VARCHAR(30)",
+    },
+    {
+      table: "scheduled_scans",
+      column: "last_outcome_reason",
+      definition: "TEXT",
+    },
+    {
+      table: "scheduled_scans",
+      column: "skipped_streak",
+      definition: "SMALLINT NOT NULL DEFAULT 0",
+    },
+    { table: "scheduled_scans", column: "is_public", definition: "BOOLEAN" },
+    {
+      table: "scheduled_scans",
+      column: "mode",
+      definition: "VARCHAR(10) NOT NULL DEFAULT 'quick'",
+    },
+    { table: "scheduled_scans", column: "scanners", definition: "JSONB" },
+    {
+      table: "scheduled_scans",
+      column: "port_scan",
+      definition: "BOOLEAN NOT NULL DEFAULT false",
+    },
+    {
+      table: "scheduled_scans",
+      column: "capture_screenshot",
+      definition: "BOOLEAN NOT NULL DEFAULT false",
+    },
+    // Which events a webhook gets, and its failure streak.
+    {
+      table: "webhooks",
+      column: "events",
+      definition:
+        "TEXT[] NOT NULL DEFAULT ARRAY['scan.completed', 'scan.regressed']::text[]",
+    },
+    { table: "webhooks", column: "min_severity", definition: "VARCHAR(10)" },
+    {
+      table: "webhooks",
+      column: "consecutive_failures",
+      definition: "INTEGER NOT NULL DEFAULT 0",
+    },
+    { table: "webhooks", column: "last_failure_at", definition: "TIMESTAMPTZ" },
+    {
+      table: "webhooks",
+      column: "paused_by_system",
+      definition: "BOOLEAN NOT NULL DEFAULT false",
+    },
+    // The crawl a per-page history row belongs to.
+    {
+      table: "scan_history",
+      column: "crawl_parent_id",
+      definition: "INTEGER REFERENCES scan_history(id) ON DELETE SET NULL",
+    },
+    // Who wrote a feedback row, and what the AI verifier said and saw. The
+    // AI rows are marked at the boot that follows every migration.
+    {
+      table: "scan_finding_feedback",
+      column: "source",
+      definition: "TEXT NOT NULL DEFAULT 'human'",
+    },
+    { table: "scan_finding_feedback", column: "ai_reason", definition: "TEXT" },
+    {
+      table: "scan_finding_feedback",
+      column: "ai_probe_status",
+      definition: "TEXT",
+    },
+    // The addresses a domain resolved to when it was verified.
+    { table: "domains", column: "verified_addresses", definition: "TEXT[]" },
+    // An optional API key expiry, and when its owner was warned.
+    { table: "api_keys", column: "expires_at", definition: "TIMESTAMPTZ" },
+    {
+      table: "api_keys",
+      column: "expiry_warning_sent_at",
+      definition: "TIMESTAMPTZ",
+    },
+    // What a mailed code is for.
+    {
+      table: "email_2fa_codes",
+      column: "purpose",
+      definition: "TEXT NOT NULL DEFAULT 'login'",
+    },
   ],
 
   // AUDIT-011#drift-17: five columns a v2.0.0 database has that nothing ever
@@ -2053,6 +2150,22 @@ export const upgrade = {
       columns: "assigned_to, last_message_at DESC",
       where: "assigned_to IS NOT NULL",
     },
+    // 4.0.0: the per-kind AI usage key, and the crawl page rows' parent.
+    // Plain builds here: the migrator runs in one transaction, which
+    // CONCURRENTLY cannot. The boot builds the scan_history one
+    // concurrently on a database that skipped the migrator.
+    {
+      name: "idx_ai_usage_user_window_kind",
+      table: "ai_usage",
+      columns: "user_id, window_start, kind",
+      unique: true,
+    },
+    {
+      name: "idx_scan_history_crawl_parent_id",
+      table: "scan_history",
+      columns: "crawl_parent_id",
+      where: "crawl_parent_id IS NOT NULL",
+    },
   ],
 
   // Redundant indexes that a v2.0.0 database already has (AUDIT-013
@@ -2394,7 +2507,11 @@ export const downgrade = {
     "AI call again until re-promoted. Also DELETES every AI chat event " +
     "and every thumbs up or down on an AI reply (ai_chat_events, " +
     "ai_message_feedback), every scan's failure_kind, and the API version " +
-    "and client each key was last used with. Re-adds the five unused v2.0.0 " +
+    "and client each key was last used with. Also DELETES a pending email " +
+    "change, each schedule's last outcome and stored scan settings, each " +
+    "webhook's event filter and failure streak, the link from a crawl's " +
+    "page rows to the crawl, every API key expiry, and what a mailed code " +
+    "was for. Re-adds the five unused v2.0.0 " +
     "columns the upgrade dropped (AUDIT-011 drift-17), empty, so the " +
     "result is a true v2.0.0 shape.",
 
@@ -2527,6 +2644,28 @@ export const downgrade = {
     { table: "email_verification_tokens", column: "email" },
     { table: "api_keys", column: "last_used_api_version" },
     { table: "api_keys", column: "last_used_client" },
+    // The 4.0.0 columns. ai_usage.kind, the scan_finding_feedback columns and
+    // domains.verified_addresses go with their tables in dropTables above;
+    // the two new indexes go with their table and column.
+    { table: "users", column: "pending_email" },
+    { table: "users", column: "pending_email_token" },
+    { table: "scheduled_scans", column: "last_outcome" },
+    { table: "scheduled_scans", column: "last_outcome_reason" },
+    { table: "scheduled_scans", column: "skipped_streak" },
+    { table: "scheduled_scans", column: "is_public" },
+    { table: "scheduled_scans", column: "mode" },
+    { table: "scheduled_scans", column: "scanners" },
+    { table: "scheduled_scans", column: "port_scan" },
+    { table: "scheduled_scans", column: "capture_screenshot" },
+    { table: "webhooks", column: "events" },
+    { table: "webhooks", column: "min_severity" },
+    { table: "webhooks", column: "consecutive_failures" },
+    { table: "webhooks", column: "last_failure_at" },
+    { table: "webhooks", column: "paused_by_system" },
+    { table: "scan_history", column: "crawl_parent_id" },
+    { table: "api_keys", column: "expires_at" },
+    { table: "api_keys", column: "expiry_warning_sent_at" },
+    { table: "email_2fa_codes", column: "purpose" },
   ],
 
   // AUDIT-011#drift-17: the five dead columns the upgrade drops existed at

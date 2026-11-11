@@ -61,22 +61,38 @@ type Step = {
  * silently skip the seven trigger steps, which is exactly the coverage this
  * file exists to provide.
  *
- * Every guard in the schema is a `SELECT EXISTS (...)`, and no DDL statement
- * starts with SELECT, so the shape is enough to tell them apart. Matching on
- * the catalog name alone would misfire: the github_review_usage window
- * migration is real DDL that mentions information_schema.columns inside a DO
- * block.
+ * Every guard, every "already applied" probe and every index-state check the
+ * runner asks is a SELECT, and no DDL statement starts with one, so the shape
+ * is enough to tell them apart. A probe answers with no `applied` and an index
+ * check with no `state`, which is what a fresh database says. Matching on the
+ * catalog name alone would misfire: the github_review_usage window migration
+ * is real DDL that mentions information_schema.columns inside a DO block.
+ *
+ * The boot path runs on a connection of its own with its timeouts SET first,
+ * so the fake hands out a client too, and the SETs (session settings, not
+ * schema) are left out of the record.
  */
 function recordingExecutor() {
   const queries: string[] = [];
-  const query = async (sql: string) => {
-    if (/^\s*SELECT\s+EXISTS/i.test(sql)) {
-      return { rows: [{ e: /information_schema\.columns/i.test(sql) }] };
+  const query = async (input: string | { text: string }) => {
+    const sql = typeof input === "string" ? input : input.text;
+    if (/^\s*SELECT\b/i.test(sql)) {
+      return {
+        rows: [
+          {
+            e:
+              /^\s*SELECT\s+EXISTS/i.test(sql) &&
+              /information_schema\.columns/i.test(sql),
+          },
+        ],
+      };
     }
+    if (/^\s*SET\s/i.test(sql)) return { rows: [] };
     queries.push(sql);
     return { rows: [] };
   };
-  return { queries, executor: { query } };
+  const connect = async () => ({ query, release: () => {} });
+  return { queries, executor: { query, connect } };
 }
 
 /** Collapse whitespace so two spellings of the same statement compare equal. */
