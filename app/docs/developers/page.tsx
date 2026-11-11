@@ -856,7 +856,7 @@ npm run lint:fix    # oxlint --fix, then eslint --fix`}
   npm run typecheck &&
   npm run test:coverage &&
   npm run build:knowledge &&
-  git diff --exit-code --ignore-matching-lines='compiled from' -- lib/ai lib/config/check-stats.generated.ts`}
+  git diff --exit-code --ignore-matching-lines='compiled from' -- lib/ai lib/config/check-stats.generated.ts lib/seo/check-page-ids.generated.ts`}
             />
             CI additionally runs: Integration (needs Postgres), Extension,
             Build, Self-host smoke test.
