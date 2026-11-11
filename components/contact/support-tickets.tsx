@@ -57,6 +57,7 @@ import {
   shareLabel,
   type NewTicketDraft,
   type ShareLists,
+  type ShareRunResult,
 } from "@/components/contact/support-ticket-dialog-logic";
 
 interface TicketListItem {
@@ -167,6 +168,8 @@ export function SupportTickets() {
   const { me, isLoading } = useAuth();
 
   const [tickets, setTickets] = useState<TicketListItem[] | null>(null);
+  /** The server's page size, set only when it had more tickets than that. */
+  const [truncatedAt, setTruncatedAt] = useState<number | null>(null);
   const [view, setView] = useState<"list" | "thread">("list");
   const [thread, setThread] = useState<Thread | null>(null);
   /** The ticket the thread pane is showing, kept even when the fetch fails so
@@ -213,6 +216,9 @@ export function SupportTickets() {
       if (!res.ok) throw new Error("Could not load your tickets.");
       const data = await res.json();
       setTickets(data.tickets ?? []);
+      setTruncatedAt(
+        data.truncated && typeof data.limit === "number" ? data.limit : null,
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load your tickets.");
       setTickets([]);
@@ -502,6 +508,12 @@ export function SupportTickets() {
                 </button>
               ))}
             </div>
+          )}
+          {tickets !== null && tickets.length > 0 && truncatedAt !== null && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Showing your {truncatedAt} most recently active tickets. Older
+              ones are kept, but not listed here.
+            </p>
           )}
         </div>
       )}
@@ -886,6 +898,35 @@ type ShareLoad =
   | { status: "error"; message: string }
   | ({ status: "ready" } & ShareLists);
 
+/** The staged ids that still name a row in the lists. */
+export function keepListedStage(
+  staged: { added: ReadonlySet<number>; removed: ReadonlySet<number> },
+  lists: ShareLists,
+): { added: Set<number>; removed: Set<number> } {
+  const eligible = new Set(lists.eligible.map((e) => e.userId));
+  const shared = new Set(lists.shares.map((s) => s.userId));
+  return {
+    added: new Set([...staged.added].filter((id) => eligible.has(id))),
+    removed: new Set([...staged.removed].filter((id) => shared.has(id))),
+  };
+}
+
+/**
+ * Names the skipped adds whose person dropped out of the lists, which the
+ * failure message only counted. The op that failed is already named there.
+ */
+export function droppedShareSentence(
+  run: ShareRunResult,
+  kept: { added: ReadonlySet<number> },
+): string | null {
+  const gone = run.skipped.filter(
+    (op) => op.kind === "add" && !kept.added.has(op.userId),
+  );
+  if (gone.length === 0) return null;
+  const who = gone.map((op) => op.label).join(", ");
+  return `Not shared with ${who}, who ${gone.length === 1 ? "is" : "are"} no longer on your team.`;
+}
+
 /**
  * Who can see a ticket. Add and Remove are staged here and sent together by
  * Save, which is also the confirmation that taking someone's access away
@@ -947,10 +988,26 @@ export function ShareTicketDialog({
         const message = shareFailureMessage(run);
         if (message === null) return;
         const left = remainingStaged(run);
-        setAdded(left.added);
-        setRemoved(left.removed);
-        await loadLists();
-        return message;
+        const fresh = await fetchShares(ticketId);
+        if (!fresh.ok) {
+          setAdded(left.added);
+          setRemoved(left.removed);
+          setLoad({ status: "error", message: fresh.error });
+          return message;
+        }
+        setLoad({
+          status: "ready",
+          shares: fresh.shares,
+          eligible: fresh.eligible,
+        });
+        // A stage for someone the reloaded lists no longer show has no row to
+        // undo it from, and planShareOps skips it, so the next Save sent
+        // nothing and closed as if it had saved.
+        const kept = keepListedStage(left, fresh);
+        setAdded(kept.added);
+        setRemoved(kept.removed);
+        const dropped = droppedShareSentence(run, kept);
+        return dropped ? `${message} ${dropped}` : message;
       }}
     >
       {load.status === "loading" && (
