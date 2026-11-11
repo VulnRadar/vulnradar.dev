@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { SUCCESS_MESSAGES } from "@/lib/config/constants";
 import { publicScanErrorMessage } from "@/lib/api/scan-error-message";
+import { MAX_OFFSET } from "@/lib/history/paging";
 
 // GET now also resolves the caller's plan retention setting live via
 // lib/config/runtime-config's getSettings(), which issues its own
@@ -49,6 +50,7 @@ const mockValidateApiKey = vi.fn();
 const mockCheckApiKeyRateLimit = vi.fn();
 const mockRecordUsage = vi.fn();
 vi.mock("@/lib/api/api-keys", () => ({
+  UNLIMITED_API_KEY_DAILY_LIMIT: 999999,
   validateApiKey: (...args: unknown[]) => mockValidateApiKey(...args),
   checkRateLimit: (...args: unknown[]) => mockCheckApiKeyRateLimit(...args),
   recordUsage: (...args: unknown[]) => mockRecordUsage(...args),
@@ -118,7 +120,9 @@ describe("GET /api/v3/history", () => {
     // GET also asks for the true account total, so the client cannot present
     // the capped page size as the total (AUDIT-014#magic-02: the delete-all
     // confirmation understated what the unbounded DELETE actually removes).
-    mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: 412 }] });
+    mockBusinessQuery.mockResolvedValueOnce({
+      rows: [{ total: 412, matched: 412 }],
+    });
 
     const res = await GET(getRequest());
     const json = await res.json();
@@ -146,7 +150,9 @@ describe("GET /api/v3/history", () => {
     mockBusinessQuery.mockResolvedValueOnce({
       rows: [{ id: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4", url: "https://a.test" }],
     });
-    mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: 1 }] });
+    mockBusinessQuery.mockResolvedValueOnce({
+      rows: [{ total: 1, matched: 1 }],
+    });
 
     const res = await GET(getRequest());
     const json = await res.json();
@@ -186,7 +192,9 @@ describe("GET /api/v3/history", () => {
           { id: "ok", url: "https://c.test", status: "completed" },
         ],
       });
-      mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: 3 }] });
+      mockBusinessQuery.mockResolvedValueOnce({
+        rows: [{ total: 3, matched: 3 }],
+      });
 
       const res = await GET(getRequest());
       const json = await res.json();
@@ -273,6 +281,69 @@ describe("GET /api/v3/history", () => {
     expect(mockRecordUsage).toHaveBeenCalledWith(3);
   });
 
+  describe("the key's request budget on a successful read", () => {
+    function primeKeyCall(limit: number, used: number, remaining: number) {
+      mockValidateApiKey.mockResolvedValue({
+        keyId: 3,
+        userId: 7,
+        dailyLimit: limit,
+        needsTermsAcceptance: false,
+      });
+      mockCheckApiKeyRateLimit.mockResolvedValue({
+        allowed: true,
+        limit,
+        used,
+        remaining,
+        resetsAt: "2026-02-01T00:00:00.000Z",
+      });
+      mockBusinessQuery.mockResolvedValueOnce({
+        rows: [{ plan: "free", role: "user" }],
+      });
+      mockBusinessQuery.mockResolvedValueOnce({ rows: [] });
+    }
+
+    it("reports what the key has left in X-RateLimit-* on the 200", async () => {
+      primeKeyCall(50, 7, 43);
+
+      const res = await GET(
+        getRequest({ authorization: "Bearer vr_live_testkey" }),
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("X-RateLimit-Limit")).toBe("50");
+      expect(res.headers.get("X-RateLimit-Remaining")).toBe("43");
+      expect(res.headers.get("X-RateLimit-Used")).toBe("7");
+      expect(res.headers.get("X-RateLimit-Reset")).toBe(
+        "2026-02-01T00:00:00.000Z",
+      );
+      expect(res.headers.get("X-RateLimit-Policy")).toBe("daily");
+    });
+
+    it("leaves Limit and Remaining out for an unlimited key instead of sending the stand-in", async () => {
+      primeKeyCall(999999, 120, 999879);
+
+      const res = await GET(
+        getRequest({ authorization: "Bearer vr_live_testkey" }),
+      );
+
+      expect(res.headers.get("X-RateLimit-Limit")).toBeNull();
+      expect(res.headers.get("X-RateLimit-Remaining")).toBeNull();
+      expect(res.headers.get("X-RateLimit-Used")).toBe("120");
+    });
+
+    it("sends none of them to a session caller, who has no key budget", async () => {
+      mockBusinessQuery.mockResolvedValueOnce({
+        rows: [{ plan: "free", role: "user" }],
+      });
+      mockBusinessQuery.mockResolvedValueOnce({ rows: [] });
+
+      const res = await GET(getRequest());
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("X-RateLimit-Used")).toBeNull();
+    });
+  });
+
   // Pagination. Before this, the list was hard-capped at HISTORY_LIST_MAX_ROWS
   // and reported `truncated: true` with no way to ask for the next page: an
   // account with more scans than the cap simply could not reach the older ones
@@ -283,7 +354,9 @@ describe("GET /api/v3/history", () => {
         rows: [{ plan: "free", role: "user" }],
       });
       mockBusinessQuery.mockResolvedValueOnce({ rows });
-      mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: total }] });
+      mockBusinessQuery.mockResolvedValueOnce({
+        rows: [{ total, matched: total }],
+      });
     }
 
     function pagedRequest(query: string) {
@@ -334,6 +407,30 @@ describe("GET /api/v3/history", () => {
       }
     });
 
+    it("clamps an offset no database could take instead of failing the request", async () => {
+      // 1e21 serialises in exponent form and the other two are past int8, so
+      // each reached Postgres as a value it refused: a 500 for what is a
+      // client's out-of-range number.
+      for (const huge of [
+        "1e21",
+        "9223372036854775808",
+        "99999999999999999999",
+      ]) {
+        mockBusinessQuery.mockReset();
+        primeOnePage([], 5);
+
+        const res = await GET(pagedRequest(`offset=${huge}`));
+        const json = await res.json();
+
+        expect(res.status, `offset=${huge}`).toBe(200);
+        expect(json.offset, `offset=${huge}`).toBe(MAX_OFFSET);
+        const [, params] = mockBusinessQuery.mock.calls[1];
+        expect(paging(params as unknown[])[1], `offset=${huge}`).toBe(
+          MAX_OFFSET,
+        );
+      }
+    });
+
     it("truncated means 'there are rows after this page', not 'the cap was hit'", async () => {
       // Last page: offset 100 + 43 rows returned == the 143 total, so there is
       // nothing after it even though a previous page was full.
@@ -380,14 +477,13 @@ describe("GET /api/v3/history", () => {
       });
     }
 
-    /** [plan lookup, list, account total, filtered count]. */
+    /** [plan lookup, list, one count statement answering total and matched]. */
     function primeFiltered(rows: unknown[], total: number, matched: number) {
       mockBusinessQuery.mockResolvedValueOnce({
         rows: [{ plan: "free", role: "user" }],
       });
       mockBusinessQuery.mockResolvedValueOnce({ rows });
-      mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: total }] });
-      mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: matched }] });
+      mockBusinessQuery.mockResolvedValueOnce({ rows: [{ total, matched }] });
     }
 
     it("filters on the URL in SQL, still scoped to the caller's own rows", async () => {
@@ -478,7 +574,9 @@ describe("GET /api/v3/history", () => {
           rows: [{ plan: "free", role: "user" }],
         });
         mockBusinessQuery.mockResolvedValueOnce({ rows: [] });
-        mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: 5 }] });
+        mockBusinessQuery.mockResolvedValueOnce({
+          rows: [{ total: 5, matched: 5 }],
+        });
 
         const res = await GET(filteredRequest(`q=${blank}`));
         const json = await res.json();
@@ -504,14 +602,49 @@ describe("GET /api/v3/history", () => {
       expect(json.total).toBe(412);
       expect(json.matched).toBe(3);
 
-      // The account total is counted without the filter...
-      const [, totalParams] = mockBusinessQuery.mock.calls[2];
-      expect(totalParams).toEqual([7]);
-      // ...and the matched count with it.
-      const [matchedSql, matchedParams] = mockBusinessQuery.mock.calls[3];
-      expect(matchedSql).toContain("COUNT(*)");
-      expect(matchedSql).toContain("sh.url ILIKE $2");
-      expect(matchedParams).toEqual([7, "%shop%"]);
+      // One statement answers both. The account total counts the rows the
+      // base clause keeps, so the filter is not in its WHERE...
+      expect(mockBusinessQuery.mock.calls).toHaveLength(3);
+      const [countSql, countParams] = mockBusinessQuery.mock.calls[2];
+      const [whereClause] = countSql.split("FILTER");
+      expect(whereClause).toContain("COUNT(*)::int AS total");
+      const afterFrom = countSql.slice(countSql.indexOf("FROM scan_history"));
+      expect(afterFrom).not.toContain("ILIKE");
+      // ...and `matched` is the same rows narrowed by it.
+      expect(countSql).toContain("COUNT(*) FILTER (WHERE sh.url ILIKE $2");
+      expect(countParams).toEqual([7, "%shop%"]);
+    });
+
+    it("issues the list and the count together, before either has answered", async () => {
+      const order: string[] = [];
+      mockBusinessQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes("FROM users")) return { rows: [{ plan: "free" }] };
+        const kind = sql.includes("FILTER") ? "count" : "list";
+        order.push(`${kind}:start`);
+        await Promise.resolve();
+        order.push(`${kind}:end`);
+        return kind === "count"
+          ? { rows: [{ total: 1, matched: 1 }] }
+          : { rows: [] };
+      });
+
+      await GET(filteredRequest("q=shop"));
+
+      expect(order).toEqual([
+        "list:start",
+        "count:start",
+        "list:end",
+        "count:end",
+      ]);
+    });
+
+    it("pages the list in a stable order: newest first, id breaking ties", async () => {
+      primeFiltered([], 5, 5);
+
+      await GET(filteredRequest("limit=2"));
+
+      const [listSql] = mockBusinessQuery.mock.calls[1];
+      expect(listSql).toContain("ORDER BY sh.scanned_at DESC, sh.id DESC");
     });
 
     it("sets matched to total when nothing is filtered", async () => {
@@ -519,13 +652,36 @@ describe("GET /api/v3/history", () => {
         rows: [{ plan: "free", role: "user" }],
       });
       mockBusinessQuery.mockResolvedValueOnce({ rows: [] });
-      mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: 412 }] });
+      mockBusinessQuery.mockResolvedValueOnce({
+        rows: [{ total: 412, matched: 412 }],
+      });
 
       const res = await GET(getRequest());
       const json = await res.json();
 
       expect(json.total).toBe(412);
       expect(json.matched).toBe(412);
+    });
+
+    it("degrades to the page size when the count fails, rather than failing the list", async () => {
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      mockBusinessQuery.mockResolvedValueOnce({
+        rows: [{ plan: "free", role: "user" }],
+      });
+      mockBusinessQuery.mockResolvedValueOnce({
+        rows: [{ id: "a" }, { id: "b" }],
+      });
+      mockBusinessQuery.mockRejectedValueOnce(new Error("count timed out"));
+
+      const res = await GET(filteredRequest("q=shop&offset=10"));
+      const json = await res.json();
+      spy.mockRestore();
+
+      expect(res.status).toBe(200);
+      expect(json.scans).toHaveLength(2);
+      expect(json.total).toBe(2);
+      expect(json.matched).toBe(12);
+      expect(json.truncated).toBe(false);
     });
 
     it("pages against the filtered set: truncated follows matched, not the account total", async () => {
@@ -567,11 +723,11 @@ describe("GET /api/v3/history", () => {
       expect(sql).toContain("sh.scanned_at > NOW()");
       // [userId, retentionDays, pattern, limit, offset]
       expect(params).toEqual([7, 30, "%shop%", 100, 0]);
-      // The filtered count carries the same window, so `matched` cannot count
-      // rows the list would never return.
-      const [matchedSql, matchedParams] = mockBusinessQuery.mock.calls[3];
-      expect(matchedSql).toContain("sh.scanned_at > NOW()");
-      expect(matchedParams).toEqual([7, 30, "%shop%"]);
+      // The count carries the same window, so `matched` cannot count rows the
+      // list would never return.
+      const [countSql, countParams] = mockBusinessQuery.mock.calls[2];
+      expect(countSql).toContain("sh.scanned_at > NOW()");
+      expect(countParams).toEqual([7, 30, "%shop%"]);
     });
   });
 

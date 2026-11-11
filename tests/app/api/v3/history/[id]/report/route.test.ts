@@ -6,6 +6,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 
+// api-utils (ApiResponse.fail) pulls in the session helpers, which open the
+// pg pool at module load.
+vi.mock("@/lib/database/db", () => ({
+  default: { query: vi.fn(async () => ({ rows: [] })) },
+}));
+
 const mockGetSession = vi.fn();
 vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
 
@@ -13,6 +19,7 @@ const mockValidateApiKey = vi.fn();
 const mockCheckRateLimit = vi.fn();
 const mockRecordUsage = vi.fn();
 vi.mock("@/lib/api/api-keys", () => ({
+  UNLIMITED_API_KEY_DAILY_LIMIT: 999999,
   validateApiKey: (...a: unknown[]) => mockValidateApiKey(...a),
   checkRateLimit: (...a: unknown[]) => mockCheckRateLimit(...a),
   recordUsage: (...a: unknown[]) => mockRecordUsage(...a),
@@ -361,5 +368,58 @@ describe("GET /api/v3/history/[id]/report", () => {
     });
     const res = await GET(req("sarif", "Bearer vr_live_x"), params);
     expect(res.status).toBe(403);
+  });
+
+  it("names the 429 RATE_LIMITED and sends Retry-After on the session path", async () => {
+    mockSessionRateLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 120,
+    });
+
+    const res = await GET(req("sarif"), params);
+    const json = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("120");
+    expect(json.code).toBe("RATE_LIMITED");
+    expect(json.error).toContain("Too many report exports");
+  });
+
+  it("reports the key's remaining budget on a key-authenticated download", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 3,
+      userId: 7,
+      dailyLimit: 100,
+      needsTermsAcceptance: false,
+    });
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: true,
+      limit: 100,
+      used: 4,
+      remaining: 96,
+      resetsAt: "2026-02-01T00:00:00.000Z",
+    });
+
+    const res = await GET(req("csv", "Bearer vr_live_x"), params);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-RateLimit-Limit")).toBe("100");
+    expect(res.headers.get("X-RateLimit-Remaining")).toBe("96");
+    expect(res.headers.get("Content-Type")).toContain("text/csv");
+  });
+
+  it("gives a key behind on the Terms the one shared message", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 3,
+      userId: 7,
+      dailyLimit: 100,
+      needsTermsAcceptance: true,
+    });
+
+    const res = await GET(req("sarif", "Bearer vr_live_x"), params);
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.code).toBe("TERMS_ACCEPTANCE_REQUIRED");
   });
 });

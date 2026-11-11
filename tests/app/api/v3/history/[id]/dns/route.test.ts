@@ -107,8 +107,25 @@ describe("POST /api/v3/history/[id]/dns - premium plan gate (BUG 3)", () => {
     expect(res.status).toBe(402);
     const json = await res.json();
     expect(json.statusCode).toBe("UPGRADE_REQUIRED");
+    expect(json.code).toBe("UPGRADE_REQUIRED");
     expect(mockResolveDnsRecords).not.toHaveBeenCalled();
     expect(mockCheckRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("429s a refresh over the limiter with Retry-After and a code", async () => {
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 42,
+    });
+
+    const res = await POST(req(), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("42");
+    expect(json.code).toBe("RATE_LIMITED");
+    expect(mockResolveDnsRecords).not.toHaveBeenCalled();
   });
 
   it("402s a plan below Pro (core_supporter)", async () => {

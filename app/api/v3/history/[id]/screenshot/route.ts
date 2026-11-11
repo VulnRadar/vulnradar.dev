@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { burstLimitedResponse } from "@/lib/api/rate-limit-response";
 import { captureAndStoreScreenshot } from "@/lib/scanner/page-screenshot";
 import { checkBrowserbaseQuota } from "@/lib/billing/browserbase-usage";
 import {
@@ -54,9 +55,9 @@ export async function POST(
     ...RATE_LIMITS.scan,
   });
   if (!rl.allowed) {
-    return NextResponse.json(
-      { error: "Rate limit reached. Please wait before refreshing again." },
-      { status: 429 },
+    return burstLimitedResponse(
+      rl,
+      "Rate limit reached. Please wait before refreshing again.",
     );
   }
 
@@ -76,6 +77,7 @@ export async function POST(
           quota.message ||
           "Your live-browser minutes for this period are used up, so a screenshot cannot be captured right now.",
         statusCode: "BROWSER_QUOTA_EXHAUSTED",
+        code: "BROWSER_QUOTA_EXHAUSTED",
       },
       { status: 402 },
     );

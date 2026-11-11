@@ -79,6 +79,7 @@ export async function requireRefreshPlan(
         error:
           "Refreshing this capture is a premium feature. Upgrade to Pro Supporter or higher to re-run it.",
         statusCode: "UPGRADE_REQUIRED",
+        code: "UPGRADE_REQUIRED",
       },
       { status: 402 },
     ),
