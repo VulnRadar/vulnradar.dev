@@ -118,6 +118,8 @@ describe("upsertHostReputation", () => {
       url: "https://www.example.com/some/path",
       findings: [
         { severity: "critical", title: "SQL Injection" } as Vulnerability,
+        { severity: "info", title: "Server banner" } as Vulnerability,
+        { severity: "info", title: "Robots file" } as Vulnerability,
       ],
       summary: { critical: 1, high: 0, medium: 0, low: 0, info: 2 },
       scanId: 55,
@@ -139,6 +141,40 @@ describe("upsertHostReputation", () => {
     });
     expect(params[3]).toBe("2026-01-01T00:00:00.000Z");
     expect(params[4]).toBe(55);
+  });
+
+  // execute-scan applies the scanning account's false-positive verdicts to the
+  // summary and to the grading keys in resultMeta. This row is public, so a
+  // free account marking a phishing host's critical false positive and
+  // rescanning must not get it shown as clean here.
+  it("describes every finding, whatever the scanning account's own summary and grade say", async () => {
+    await upsertHostReputation({
+      url: "https://phish.example/",
+      findings: [
+        { id: "x--1", severity: "critical", title: "SQL Injection" },
+      ] as Vulnerability[],
+      summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+      scanId: 56,
+      scannedAt: "2026-01-01T00:00:00.000Z",
+      resultMeta: {
+        checksRun: 300,
+        dangerScore: 0,
+        siteGrade: "A+",
+        safetyRating: "safe",
+        engineConfidence: 97,
+        diffAgainst: { previousScanId: 41, newIds: [], fixedIds: ["x--1"] },
+      },
+    });
+
+    const [, params] = mockQuery.mock.calls[0];
+    expect(JSON.parse(params[2]).critical).toBe(1);
+    expect(params[1]).toBeGreaterThan(0);
+    const meta = JSON.parse(params[7]);
+    expect(meta.siteGrade).toBe("F");
+    expect(meta.safetyRating).toBe("unsafe");
+    expect(meta.dangerScore).toBe(params[1]);
+    expect(meta.checksRun).toBe(300);
+    expect(meta).not.toHaveProperty("diffAgainst");
   });
 
   it("defaults missing severity fields to 0", async () => {

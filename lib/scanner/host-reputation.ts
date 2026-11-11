@@ -32,7 +32,14 @@ import {
 } from "./safety-rating";
 import { computeAutoTags } from "@/lib/tags/auto-tags";
 import { APP_NAME } from "@/lib/config/constants";
+import {
+  resultMetaIsIncomplete,
+  scoreFindings,
+  scoreMeta,
+} from "./score-findings";
 import type { Vulnerability } from "./types";
+
+const NO_SUPPRESSION: ReadonlySet<string> = new Set();
 
 export interface SeverityCounts {
   critical: number;
@@ -110,7 +117,14 @@ export interface UpsertHostReputationParams {
    * or the account that ran it is deleted.
    */
   findings: Vulnerability[];
-  summary: Partial<SeverityCounts>;
+  /**
+   * The scan's own summary. Not used for the row: since execute-scan applies
+   * the owner's false-positive verdicts at finalise, the summary (like the
+   * dangerScore, siteGrade, safetyRating and engineConfidence in
+   * `resultMeta`) is the scanning account's private view, and this row is
+   * public. Everything it shows is computed from `findings` here instead.
+   */
+  summary?: Partial<SeverityCounts>;
   /** Same shape as scan_history.response_headers; optional since not every caller has it handy. */
   responseHeaders?: Record<string, string> | null;
   /** The scan_history row this result came from, for the deep link. Null if unavailable. */
@@ -144,7 +158,6 @@ export async function upsertHostReputation(
   const {
     url,
     findings,
-    summary,
     responseHeaders,
     scanId,
     scannedAt,
@@ -155,14 +168,24 @@ export async function upsertHostReputation(
   const host = normalizeHostForReputation(url);
   if (!host) return;
 
-  const severityCounts: SeverityCounts = {
-    critical: summary.critical ?? 0,
-    high: summary.high ?? 0,
-    medium: summary.medium ?? 0,
-    low: summary.low ?? 0,
-    info: summary.info ?? 0,
+  // From the findings, never from the caller's summary or resultMeta: those
+  // carry the scanning account's own false-positive verdicts, and letting
+  // them into this row is how a free account scanning a phishing host,
+  // marking its findings false positive and rescanning used to make the
+  // extension and /host call it safe. A verified owner's verdicts reach the
+  // row through recomputeScanScore instead, which checks that first.
+  const severityCounts = countSeverities(findings);
+  const score = scoreFindings(findings, NO_SUPPRESSION, {
+    incomplete: resultMetaIsIncomplete(resultMeta),
+  });
+  const dangerScore = score.dangerScore;
+  const publicMeta: Record<string, unknown> = {
+    ...resultMeta,
+    ...scoreMeta(score),
   };
-  const dangerScore = getDangerScore(findings);
+  // diffAgainst names the scanning account's own previous scan and what
+  // changed since it, which is nobody else's business.
+  delete publicMeta.diffAgainst;
   // Same taxonomy a scan owner's own auto-tags come from (lib/tags/
   // auto-tags.ts), run against the same findings this row is about to
   // store. Base rules only, no admin-promoted rules or the AI fallback --
@@ -196,7 +219,7 @@ export async function upsertHostReputation(
         scanId,
         JSON.stringify(findings),
         responseHeaders ? JSON.stringify(responseHeaders) : null,
-        JSON.stringify(resultMeta ?? {}),
+        JSON.stringify(publicMeta),
         authenticated ?? false,
         url,
         JSON.stringify(autoTags),

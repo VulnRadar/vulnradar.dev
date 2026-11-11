@@ -368,7 +368,7 @@ describe("executeScan: the watchdog", () => {
     );
     // The row is terminal: the guarded completion matches nothing.
     installDefaultQueryMock((sql) =>
-      sql.includes("status = 'completed'")
+      sql.includes("SET status = 'completed'")
         ? { rows: [], rowCount: 0 }
         : undefined,
     );
@@ -405,7 +405,7 @@ describe("executeScan: the watchdog", () => {
       return { findings: [], incomplete: [] };
     });
     installDefaultQueryMock((sql) =>
-      sql.includes("status = 'completed'")
+      sql.includes("SET status = 'completed'")
         ? { rows: [], rowCount: 0 }
         : undefined,
     );
@@ -420,7 +420,7 @@ describe("executeScan: the watchdog", () => {
     mockSafeFetch.mockResolvedValue(okPage());
     cleanChecks();
     installDefaultQueryMock((sql) =>
-      sql.includes("status = 'completed'")
+      sql.includes("SET status = 'completed'")
         ? { rows: [], rowCount: 0 }
         : undefined,
     );

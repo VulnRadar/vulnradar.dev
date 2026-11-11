@@ -14,6 +14,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { getDangerScore } from "@/lib/scanner/safety-rating";
 import { computeAutoTags } from "@/lib/tags/auto-tags";
 import { HUMAN_FEEDBACK_SQL } from "@/lib/scanner/feedback-source";
+import { scoreFindings } from "@/lib/scanner/score-findings";
 import type { Vulnerability } from "@/lib/scanner/types";
 
 const mockQuery = vi.fn();
@@ -108,8 +109,43 @@ describe("recomputeScanScore", () => {
       info: 0,
       total: 2,
     });
-    expect(JSON.parse(updateParams[1] as string)).toBe(expectedDangerScore);
+    expect(JSON.parse(updateParams[1] as string).dangerScore).toBe(
+      expectedDangerScore,
+    );
     expect(updateParams[2]).toBe(123);
+    expect(updateParams[3]).toBe(2);
+  });
+
+  // bug-scan-5: the grade on the card and the badge is result_meta.siteGrade,
+  // and the recompute used to leave it at F while the score improved.
+  it("rewrites the grade, the safety rating and the engine confidence with the score", async () => {
+    const findings = [finding("crit-1", "critical"), finding("low-1", "low")];
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          url: URL_OF_SCAN,
+          findings,
+          result_meta: { siteGrade: "F", incomplete: ["dns"] },
+        },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ finding_id: "crit-1" }] });
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    await recomputeScanScore(123, 42);
+
+    const active = [findings[1]] as unknown as Vulnerability[];
+    const expected = scoreFindings(active, new Set(), { incomplete: true });
+    const [update] = callsMatching("UPDATE scan_history");
+    const [sql, params] = update as [string, unknown[]];
+    expect(sql).toContain("COALESCE(result_meta, '{}'::jsonb) || $2::jsonb");
+    expect(JSON.parse(params[1] as string)).toEqual({
+      dangerScore: expected.dangerScore,
+      siteGrade: expected.siteGrade,
+      safetyRating: expected.safetyRating,
+      engineConfidence: expected.engineConfidence,
+    });
+    expect(expected.siteGrade).not.toBe("F");
   });
 
   it("scopes the false-positive lookup to the caller", async () => {
@@ -216,6 +252,13 @@ describe("recomputeScanScore", () => {
     });
     expect(JSON.parse(repParams[2] as string)).toEqual(active);
     expect(JSON.parse(repParams[3] as string)).toEqual(computeAutoTags(active));
+    // The row's letter follows, so /host does not show F next to a score of 2.
+    expect(repSql).toContain(
+      "result_meta = COALESCE(result_meta, '{}'::jsonb) || $6::jsonb",
+    );
+    expect(JSON.parse(repParams[5] as string).siteGrade).toBe(
+      scoreFindings(active, new Set()).siteGrade,
+    );
   });
 
   it("skips the ownership lookup for an IP-literal scan, which has no reputation row", async () => {

@@ -17,7 +17,7 @@ import {
 } from "./engine";
 import { startAsyncPhase } from "./async-phase";
 import { classifyRedirect } from "./scan-target-classify";
-import { parsedFormOf } from "./canonical-url";
+import { canonicalScanUrl } from "./_helpers";
 import { BOT_CHALLENGE_INCOMPLETE, detectBotChallenge } from "./bot-challenge";
 import { detectUnusablePage } from "./response-classifier";
 import { SCANNER_UA } from "./user-agent";
@@ -47,7 +47,10 @@ import {
 } from "./target-failure";
 import type { Category, Vulnerability } from "./types";
 import { SEVERITY_PRIORITY } from "@/lib/config/constants";
-import { summarizeFindings } from "./severity-summary";
+import pool from "@/lib/database/db";
+import { scoreFindings, scoreMeta } from "./score-findings";
+import { getFalsePositiveIds } from "./remediation-store";
+import { diffFindingsByKey } from "./finding-diff";
 import { getSettings } from "@/lib/config/runtime-config";
 import { logError } from "@/lib/logging/log";
 import { runWithScanId } from "@/lib/database/request-context";
@@ -73,8 +76,6 @@ import {
 import { safeFetch } from "./safe-fetch";
 import { safeReadBody } from "./read-bounded-body";
 import { redactSensitiveResponseHeaders } from "./response-headers";
-import { getDangerScore, getEngineConfidence } from "./safety-rating";
-import { getSiteGrade } from "./site-grade";
 import { checkSourceMapSourcesExposed } from "./checks/content";
 import { getCheckDef, buildVulnerabilityFromEvidence } from "./registry";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
@@ -114,10 +115,19 @@ export const SUPPORTED_PROTOCOLS = [
   "mongodb:",
 ];
 
+/**
+ * The address a scan is stored and fetched under: the parsed, canonical href
+ * (canonicalScanUrl), never the string as typed. The raw input used to be
+ * stored whenever it parsed, so whatever text a URL could carry rode into
+ * every surface that reads scan_history.url, the AI summary prompt included,
+ * and "Example.com" and "example.com/" were two baselines for one site. A
+ * string the parser refuses comes back as it was, so the route's validation
+ * still sees what was sent and rejects it.
+ */
 export function normalizeUrl(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) return trimmed;
-  return parsedFormOf(
+  return canonicalScanUrl(
     /^[a-z]+:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`,
   );
 }
@@ -232,6 +242,66 @@ export function executeScan(params: ExecuteScanParams): Promise<void> {
   return runWithScanId(params.scanId, () => runScan(params));
 }
 
+/**
+ * Whether markScanRunning flipped the row from pending to running. It is
+ * becoming a boolean (scan-jobs-lifecycle); until then it resolves to nothing,
+ * which counts as claimed, exactly what the scan did before. Only an explicit
+ * false stops it.
+ */
+function rowWasClaimed(result: boolean | void): boolean {
+  return result !== false;
+}
+
+/**
+ * The owner's view of what changed since their previous completed scan of the
+ * same URL, stored on the scan so the result can say "new since last scan"
+ * without diffing on every render. The same previous-scan lookup the
+ * regression alert makes (lib/scanner/regression-alert.ts), by finding id.
+ * Null for a first scan, and on any failure: a missing line is fine, a failed
+ * scan is not.
+ */
+async function diffAgainstPreviousScan(
+  userId: number,
+  url: string,
+  scanId: number,
+  findings: Vulnerability[],
+): Promise<{
+  previousScanId: number;
+  newIds: string[];
+  fixedIds: string[];
+} | null> {
+  try {
+    const result = await pool.query<{ id: number; findings: unknown }>(
+      `SELECT id, findings FROM scan_history
+       WHERE user_id = $1 AND url = $2 AND id != $3 AND status = 'completed'
+       ORDER BY scanned_at DESC
+       LIMIT 1`,
+      [userId, url, scanId],
+    );
+    const row = result.rows[0];
+    if (!row || typeof row.id !== "number") return null;
+    const raw =
+      typeof row.findings === "string"
+        ? JSON.parse(row.findings)
+        : row.findings;
+    const previous = Array.isArray(raw) ? (raw as Vulnerability[]) : [];
+    const { added, removed } = diffFindingsByKey(previous, findings, (f) =>
+      String(f.id),
+    );
+    return {
+      previousScanId: row.id,
+      newIds: added.map((f) => f.id),
+      fixedIds: removed.map((f) => f.id),
+    };
+  } catch (err) {
+    logError("scan", "could not diff against the previous scan", err, {
+      scanId,
+      userId,
+    });
+    return null;
+  }
+}
+
 async function runScan(params: ExecuteScanParams): Promise<void> {
   const {
     scanId,
@@ -289,7 +359,12 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
   const cancelSignal = getCancelSignal(scanId);
 
   try {
-    await markScanRunning(scanId);
+    // A row that is no longer pending (cancelled while it queued, or already
+    // closed by the sweep) must not be scanned. The in-memory cancel flag
+    // used to be the only thing that stopped it, and that expires, so a bulk
+    // row cancelled early in a long batch still sent the target the
+    // scanner's whole request set once its turn came.
+    if (!rowWasClaimed(await markScanRunning(scanId))) return;
 
     // Opt-in page screenshot: kicked off here so the (expensive, metered)
     // BrowserBase capture runs concurrently with the rest of the scan, then
@@ -811,24 +886,32 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
     // rather than being threaded through every Vulnerability literal).
     findings = attachCvssScores(findings);
 
-    const summary = summarizeFindings(findings);
-
-    const dangerScore = getDangerScore(findings);
-    // Whole-site A+ to F letter, the vocabulary every free peer grades on.
-    // Stored rather than recomputed per render so the public host report and
-    // the badge agree with the scan record even if the mapping is ever
-    // retuned. A scan from before this existed simply has no siteGrade, and
-    // getSiteGrade(findings) reproduces it. ref: AUDIT-014#comp-03
-    const siteGrade = getSiteGrade(findings);
     const incomplete = [
       ...asyncResult.incomplete,
       ...(syncResult.checksErrored > 0 ? [PAGE_CHECKS_INCOMPLETE] : []),
       ...(pageBlocked ? [BOT_CHALLENGE_INCOMPLETE] : []),
       ...(pageUnreachable ? [PAGE_UNREACHABLE_INCOMPLETE] : []),
     ];
-    const engineConfidence = getEngineConfidence(
+
+    // The owner's false-positive verdicts apply here, at finalise, not only on
+    // the scan the verdict was given on: a critical they ruled out on Monday
+    // used to be back in Tuesday's headline, grade, dashboard and scheduled
+    // email. Every finding stays in the row; scoreFindings decides what
+    // counts. The grade, the danger score, the safety rating and the engine
+    // confidence are stored rather than recomputed per render so the badge
+    // and the record agree even if a mapping is retuned (AUDIT-014#comp-03),
+    // and safetyRating is stored so the badge never has to parse the findings
+    // to colour itself. A failed verdict read counts everything.
+    const suppressedIds = await getFalsePositiveIds(authedUserId);
+    const score = scoreFindings(findings, suppressedIds, {
+      incomplete: asyncResult.timedOut || incomplete.length > 0,
+    });
+    const summary = score.summary;
+    const diffAgainst = await diffAgainstPreviousScan(
+      authedUserId,
+      normalizedUrl,
+      scanId,
       findings,
-      asyncResult.timedOut || incomplete.length > 0,
     );
 
     // SSL/TLS letter grade, computed inside checkTLSCert during the TLS branch
@@ -924,9 +1007,8 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
               erroredChecks: syncResult.erroredChecks,
             }
           : {}),
-        dangerScore,
-        siteGrade,
-        engineConfidence,
+        ...scoreMeta(score),
+        ...(diffAgainst ? { diffAgainst } : {}),
         ...(sslGrade ? { sslGrade } : {}),
         ...(dnsRecords ? { dnsRecords } : {}),
         ...(subdomains ? { subdomains } : {}),
@@ -992,6 +1074,25 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
         );
       }
       return;
+    }
+
+    // finalizeScanSuccess counts every finding into findings_count, which the
+    // list views read. When verdicts left some out, the column has to agree
+    // with summary.total or the same scan reads "5 findings" in History over a
+    // breakdown that sums to 4. Only on that path, and only while the row is
+    // still the completed one this scan wrote.
+    if (score.findingsCount !== findings.length) {
+      await pool
+        .query(
+          `UPDATE scan_history SET findings_count = $1
+            WHERE id = $2 AND status = 'completed'`,
+          [score.findingsCount, scanId],
+        )
+        .catch((err: unknown) =>
+          logError("scan", "could not store the active findings count", err, {
+            scanId,
+          }),
+        );
     }
 
     // Every notification this scan produces (scan-complete email,
