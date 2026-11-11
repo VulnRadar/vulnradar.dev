@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 /**
@@ -5,9 +6,10 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
  * listTrustedDevices (GET /api/v3/auth/trusted-devices) and
  * revokeTrustedDevice (DELETE /api/v3/auth/trusted-devices/[id]).
  *
- * findTrustedDevice/upsertTrustedDevice (the pre-existing 2FA-login
- * functions) are left untouched and untested here -- only the new
- * account-owner-facing surface is in scope.
+ * And the 2FA-login pair, findTrustedDevice and upsertTrustedDevice: a
+ * trusted-device token skips the second factor, so the table keeps only its
+ * SHA-256 and a database read is no longer a 2FA bypass for every account
+ * with a remembered browser.
  *
  * Mocked at the database boundary only, per tests/README.md.
  */
@@ -17,12 +19,18 @@ type Row = Record<string, unknown>;
 const queries: { sql: string; params: unknown[] }[] = [];
 let listRows: Row[] = [];
 let deleteRowCount = 0;
+let trustedFingerprints: string[] = [];
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   queries.push({ sql, params });
   const s = sql.trim();
   if (s.startsWith("SELECT id, device_fingerprint, device_name")) {
     return { rows: listRows };
+  }
+  if (s.startsWith("SELECT 1 FROM device_trust")) {
+    return {
+      rows: trustedFingerprints.includes(params[1] as string) ? [{}] : [],
+    };
   }
   if (s.startsWith("DELETE FROM device_trust WHERE id = $1 AND user_id = $2")) {
     return { rows: [], rowCount: deleteRowCount };
@@ -36,8 +44,15 @@ vi.mock("@/lib/database/db", () => ({
   },
 }));
 
-const { listTrustedDevices, revokeTrustedDevice } =
-  await import("@/lib/auth/device-trust");
+const {
+  findTrustedDevice,
+  listTrustedDevices,
+  revokeTrustedDevice,
+  upsertTrustedDevice,
+} = await import("@/lib/auth/device-trust");
+
+const sha256 = (value: string) =>
+  createHash("sha256").update(value).digest("hex");
 
 beforeEach(() => {
   mockQuery.mockClear();
@@ -109,5 +124,41 @@ describe("revokeTrustedDevice", () => {
     // affects zero rows rather than deleting someone else's device.
     const ok = await revokeTrustedDevice(42, 5);
     expect(ok).toBe(false);
+  });
+});
+
+describe("the trusted-device token is stored hashed", () => {
+  beforeEach(() => {
+    trustedFingerprints = [];
+  });
+
+  it("writes sha256 of the cookie value, never the value itself", async () => {
+    const cookie = await upsertTrustedDevice(42, null, "203.0.113.5", "ua");
+
+    const insert = queries.find((q) =>
+      q.sql.includes("INSERT INTO device_trust"),
+    )!;
+    expect(cookie).toMatch(/^[0-9a-f]{64}$/);
+    expect(insert.params[1]).toBe(sha256(cookie));
+    expect(insert.params).not.toContain(cookie);
+  });
+
+  it("looks the cookie up by its hash, so the stored value is not a credential", async () => {
+    const cookie = "a".repeat(64);
+    trustedFingerprints = [sha256(cookie)];
+
+    expect(await findTrustedDevice(42, cookie)).toBe(true);
+    // What a database read hands an attacker: the stored hash. Presented as a
+    // cookie it is hashed again and matches nothing.
+    expect(await findTrustedDevice(42, sha256(cookie))).toBe(false);
+    for (const q of queries.filter((x) => x.sql.includes("device_trust"))) {
+      expect(q.params).not.toContain(cookie);
+    }
+  });
+
+  it("refuses a rows-from-before value stored raw", async () => {
+    const legacy = "b".repeat(64);
+    trustedFingerprints = [legacy];
+    expect(await findTrustedDevice(42, legacy)).toBe(false);
   });
 });

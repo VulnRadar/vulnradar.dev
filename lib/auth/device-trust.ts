@@ -1,35 +1,44 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import pool from "@/lib/database/db";
 import { getSetting } from "@/lib/config/runtime-config";
 
 /**
  * auth: trusted-device helper.
  *
- * Replaces the previous client-side 32-bit `deviceId` hash with an
- * opaque 256-bit random token. The token is stored in the
- * `device_trust` table keyed by `(user_id, device_fingerprint)` and
- * is only valid while the row is present and unexpired.
+ * The cookie carries an opaque 256-bit random token; the `device_trust` row
+ * keyed by `(user_id, device_fingerprint)` holds only its SHA-256, and the
+ * token is valid while that row is present and unexpired. The token skips the
+ * second factor, so storing it raw (as this table did, unlike sessions) made a
+ * database read a 2FA bypass for every account with a remembered browser.
+ * Rows written before the hash hold the raw value, which no cookie hashes to,
+ * so they stop working at once and age out at their expires_at.
  */
+
+/** What device_trust.device_fingerprint holds for a cookie value. */
+export function hashDeviceFingerprint(cookieValue: string): string {
+  return createHash("sha256").update(cookieValue).digest("hex");
+}
 
 export async function findTrustedDevice(
   userId: number,
   deviceFingerprint: string,
 ): Promise<boolean> {
   if (!deviceFingerprint || deviceFingerprint.length < 32) return false;
+  const stored = hashDeviceFingerprint(deviceFingerprint);
   const result = await pool.query(
     `SELECT 1 FROM device_trust
        WHERE user_id = $1
          AND device_fingerprint = $2
          AND expires_at > NOW()
        LIMIT 1`,
-    [userId, deviceFingerprint],
+    [userId, stored],
   );
   if (result.rows.length === 0) return false;
   // Touch last_used_at so cleanup doesn't prematurely expire the row.
   await pool
     .query(
       "UPDATE device_trust SET last_used_at = NOW() WHERE user_id = $1 AND device_fingerprint = $2",
-      [userId, deviceFingerprint],
+      [userId, stored],
     )
     .catch(() => undefined);
   return true;
@@ -38,14 +47,11 @@ export async function findTrustedDevice(
 /**
  * List this user's own trusted devices (unexpired), most recently used
  * first. Used by GET /api/v3/auth/trusted-devices. Includes
- * `device_fingerprint` -- the exact value stored in the httpOnly
- * DEVICE_TRUST_COOKIE_NAME cookie and checked verbatim by
- * findTrustedDevice() above -- so the route can determine which row is
- * "this device" by comparing it server-side. Callers MUST strip that
- * field before sending the list to the client: it is a bearer credential
- * (skips a 2FA prompt at login), not a display id, and returning it in a
- * JSON response would let any XSS on the page mint a trusted-device
- * cookie for itself.
+ * `device_fingerprint`, the SHA-256 of the httpOnly DEVICE_TRUST_COOKIE_NAME
+ * cookie, so the route can find "this device" by comparing it with
+ * hashDeviceFingerprint(cookie) server-side. Callers still strip that field
+ * before sending the list to the client: it is no longer a credential, but
+ * it is not a display id either, and it names the row the cookie unlocks.
  */
 export async function listTrustedDevices(userId: number): Promise<
   Array<{
@@ -111,7 +117,15 @@ export async function upsertTrustedDevice(
            expires_at = EXCLUDED.expires_at,
            ip_address = EXCLUDED.ip_address,
            user_agent = EXCLUDED.user_agent`,
-    [userId, fingerprint, deviceName, ipAddress, userAgent, expiresAt],
+    [
+      userId,
+      hashDeviceFingerprint(fingerprint),
+      deviceName,
+      ipAddress,
+      userAgent,
+      expiresAt,
+    ],
   );
+  // The raw token goes only into the cookie.
   return fingerprint;
 }
