@@ -45,6 +45,37 @@ const EXPORT_MAX_SCANS = 10000;
  */
 const EXPORT_MAX_ROWS = 5000;
 
+/**
+ * An export stored before device_fingerprint left the device_trust projection
+ * still holds it, and that value is the "remember this device" cookie itself:
+ * whoever has it skips the second factor. Returns the stored text with every
+ * deviceTrust[].device_fingerprint removed, or null when there was none to
+ * remove (including text that is not an export at all).
+ */
+function scrubDeviceTrustTokens(stored: unknown): string | null {
+  if (typeof stored !== "string") return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stored);
+  } catch {
+    return null;
+  }
+  const devices = (parsed as { deviceTrust?: unknown } | null)?.deviceTrust;
+  if (!Array.isArray(devices)) return null;
+  let removed = false;
+  for (const device of devices) {
+    if (
+      device &&
+      typeof device === "object" &&
+      "device_fingerprint" in device
+    ) {
+      delete (device as Record<string, unknown>).device_fingerprint;
+      removed = true;
+    }
+  }
+  return removed ? JSON.stringify(parsed, null, 2) : null;
+}
+
 /** Run thunks in fixed-size batches, preserving input order in the result. */
 async function runInBatches<T>(
   tasks: (() => Promise<T>)[],
@@ -88,12 +119,29 @@ export async function GET() {
     );
     const canDownloadNew = new Date() >= cooldownEnd;
 
+    let data = result.rows[0].data;
+    const scrubbed = scrubDeviceTrustTokens(data);
+    if (scrubbed !== null) {
+      data = scrubbed;
+      // Written back so the token is gone from storage too, not only from
+      // this response. Best effort: the caller is owed the scrubbed copy
+      // whether or not the write lands.
+      await pool
+        .query(
+          `UPDATE data_requests SET data = $2 WHERE user_id = $1 AND downloaded_at IS NOT NULL`,
+          [session.userId, scrubbed],
+        )
+        .catch((err) =>
+          console.error("[data-request] Failed to scrub a stored export:", err),
+        );
+    }
+
     return NextResponse.json({
       hasData: true,
       canDownloadNew,
       lastDownloadAt: lastDownload.toISOString(),
       cooldownEndsAt: cooldownEnd.toISOString(),
-      data: result.rows[0].data,
+      data,
     });
   } catch (error) {
     return NextResponse.json({
@@ -338,11 +386,13 @@ export async function POST(_request: NextRequest) {
           [session.userId],
         ),
 
-      // Device Trust
+      // Device Trust. Never device_fingerprint: it is the raw value of the
+      // device trust cookie, so a copy of this file would skip the second
+      // factor on every device listed in it.
       () =>
         pool.query(
           `
-        SELECT id, device_fingerprint, device_name, ip_address, user_agent, 
+        SELECT id, device_name, ip_address, user_agent, 
                last_used_at, created_at, expires_at
         FROM device_trust WHERE user_id = $1 ORDER BY last_used_at DESC
       `,
