@@ -338,7 +338,9 @@ export default function BillingDocsPage() {
             If a credit purchase is fully refunded or charged back, the credits
             it bought are removed from the balance, floored at zero so a spent
             balance cannot go negative. A partial refund is recorded but does
-            not remove credits.
+            not remove credits. A refund that arrives before the credits do
+            stops them from being granted, and a dispute decided in your favour
+            gives back exactly the credits it took.
           </p>
         </DocsCallout>
       </DocsSection>
@@ -405,10 +407,12 @@ export default function BillingDocsPage() {
           Friday should not cost you your scheduled scans over the weekend.
         </p>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          If the retries eventually fail and Stripe ends the subscription, the
-          plan drops to free and a cancellation email goes out. If a retry
-          succeeds instead, the account goes straight back to active and a
-          receipt is recorded in your billing history. Update the card in the
+          The first failed renewal email says the card will be retried. If the
+          retry fails too, the subscription is cancelled at once, the plan drops
+          to free, and an email explains how to resubscribe from the pricing
+          page. Staff accounts and gifted plans are never cancelled this way. If
+          a retry succeeds instead, the account goes straight back to active and
+          a receipt is recorded in your billing history. Update the card in the
           Stripe billing portal from{" "}
           <InlineCode>Profile &rarr; Billing</InlineCode> to end the retry cycle
           early.
