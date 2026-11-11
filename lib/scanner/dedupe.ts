@@ -120,6 +120,13 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   "mixed-protocol-content": "mixed-content",
   "supply-chain-http-script-on-https": "mixed-content",
 
+  // A session cookie whose default name gives the framework away. The generic
+  // check and the PHP and Rails ones read the same Set-Cookie name, so a
+  // PHPSESSID or _app_session cookie was reported twice for one fact.
+  "cookie-name-disclosure": "framework-cookie-name",
+  "php-version-exposed-in-cookie": "framework-cookie-name",
+  "rails-version-exposure": "framework-cookie-name",
+
   // SQL error text rendered into the page.
   "sql-error-in-page": "sql-error-disclosure",
   "sql-error-exposure": "sql-error-disclosure",

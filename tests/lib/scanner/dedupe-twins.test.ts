@@ -62,6 +62,17 @@ describe("twin checks that report one fact are collapsed", () => {
     expect(findings).toHaveLength(3);
   });
 
+  it("reports a framework's default session cookie name once", () => {
+    for (const twin of [
+      "php-version-exposed-in-cookie",
+      "rails-version-exposure",
+    ]) {
+      const { findings, merged } = collapse(["cookie-name-disclosure", twin]);
+      expect(merged).toBe(1);
+      expect(findings).toHaveLength(1);
+    }
+  });
+
   it("collapses a third-party iframe without sandbox from both detectors", () => {
     const { findings, merged } = collapse([
       "iframe-third-party-without-sandbox",
