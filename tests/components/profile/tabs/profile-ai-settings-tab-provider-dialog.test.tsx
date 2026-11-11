@@ -42,6 +42,7 @@ const {
   aiProviderDraftFrom,
   aiProviderHasExistingKey,
   aiProviderRequestBody,
+  resetAiConfig,
   saveAiProvider,
   withDraftProvider,
 } = await import("@/components/profile/tabs/profile-ai-settings-tab");
@@ -259,6 +260,10 @@ describe("AiProviderDialog, rendered open", () => {
     expect(input![0]).toContain('type="password"');
     expect(input![0]).toMatch(/autocomplete="off"/i);
     expect(html).toContain('aria-label="Show API key"');
+    // The show/hide control is the Button primitive, not a hand-rolled one.
+    const toggle = html.match(/<button[^>]*aria-label="Show API key"[^>]*>/);
+    expect(toggle![0]).toContain("inline-flex");
+    expect(toggle![0]).toContain('type="button"');
   });
 
   it("asks for a key when nothing is stored", () => {
@@ -435,5 +440,36 @@ describe("closing the dialog", () => {
     expect(open).toBe(false);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(config).toEqual(saved());
+  });
+});
+
+// Removing the provider used to delete the row that also holds "AI off", and
+// the tab kept showing the switch off while the account had AI on again. The
+// tab now takes the switch from what the server says it kept.
+describe("after Reset to built-in AI", () => {
+  it("clears the provider and shows the switch the server kept", () => {
+    const next = resetAiConfig(saved({ aiDisabled: false }), true);
+    expect(next).toEqual({ ...unconfigured, aiDisabled: true });
+  });
+
+  it("keeps what the tab showed when the server sends no switch", () => {
+    expect(resetAiConfig(saved({ aiDisabled: true }), undefined)).toEqual({
+      ...unconfigured,
+      aiDisabled: true,
+    });
+    expect(resetAiConfig(null, undefined)).toEqual(unconfigured);
+  });
+
+  it("shows the empty provider summary, with no saved key", () => {
+    const html = renderToStaticMarkup(
+      <AiProviderSummary
+        config={resetAiConfig(saved(), true)}
+        onEdit={() => {}}
+        onReset={() => {}}
+        resetting={false}
+      />,
+    );
+    expect(html).toContain("No provider saved yet.");
+    expect(html).not.toContain("9xQz");
   });
 });

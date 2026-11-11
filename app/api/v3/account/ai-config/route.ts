@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { ApiResponse } from "@/lib/api/api-utils";
 import pool from "@/lib/database/db";
+import { clearAiProviderConfig } from "@/lib/ai/user-ai-config";
 import { encryptApiKey, decryptApiKey } from "@/lib/auth/crypto";
 import {
   getProviderCatalogEntry,
@@ -10,9 +12,7 @@ import {
 // GET /api/v3/account/ai-config — return current AI config for the user
 export async function GET() {
   const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return ApiResponse.unauthorized();
 
   try {
     const result = await pool.query(
@@ -58,9 +58,7 @@ export async function GET() {
 // PUT /api/v3/account/ai-config — save or update the user's AI config
 export async function PUT(req: Request) {
   const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return ApiResponse.unauthorized();
 
   let body: {
     useVulnradarAi?: boolean;
@@ -102,20 +100,9 @@ export async function PUT(req: Request) {
   }
 
   if (useVulnradarAi === true) {
-    // Switching back to VulnRadar AI — clear custom config
+    // Switching back to VulnRadar AI: the same reset DELETE makes.
     try {
-      await pool.query(
-        `INSERT INTO user_ai_configs (user_id, use_vulnradar_ai, provider, model_id, api_key_encrypted, base_url, updated_at)
-         VALUES ($1, TRUE, NULL, NULL, NULL, NULL, NOW())
-         ON CONFLICT (user_id) DO UPDATE SET
-           use_vulnradar_ai = TRUE,
-           provider = NULL,
-           model_id = NULL,
-           api_key_encrypted = NULL,
-           base_url = NULL,
-           updated_at = NOW()`,
-        [session.userId],
-      );
+      await clearAiProviderConfig(session.userId);
       return NextResponse.json({ success: true, useVulnradarAi: true });
     } catch (error) {
       console.error("AI config PUT (reset) error:", error);
@@ -208,18 +195,20 @@ export async function PUT(req: Request) {
   }
 }
 
-// DELETE /api/v3/account/ai-config — reset to VulnRadar default
+// DELETE /api/v3/account/ai-config — reset to VulnRadar default. Removes the
+// saved provider and keeps the account's AI on/off switch, which is returned
+// so the settings tab shows what is stored rather than what it assumed.
 export async function DELETE() {
   const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return ApiResponse.unauthorized();
 
   try {
-    await pool.query(`DELETE FROM user_ai_configs WHERE user_id = $1`, [
-      session.userId,
-    ]);
-    return NextResponse.json({ success: true, useVulnradarAi: true });
+    const { aiDisabled } = await clearAiProviderConfig(session.userId);
+    return NextResponse.json({
+      success: true,
+      useVulnradarAi: true,
+      aiDisabled,
+    });
   } catch (error) {
     console.error("AI config DELETE error:", error);
     return NextResponse.json(

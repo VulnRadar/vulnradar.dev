@@ -30,6 +30,7 @@ vi.mock("@/lib/auth", () => ({
 const { GET, PUT, DELETE } =
   await import("@/app/api/v3/account/ai-config/route");
 const { encryptApiKey } = await import("@/lib/auth/crypto");
+const { ERROR_MESSAGES } = await import("@/lib/config/constants");
 
 const ENCRYPTION_KEY = "b".repeat(64);
 let previousKey: string | undefined;
@@ -64,6 +65,21 @@ describe("GET /api/v3/account/ai-config", () => {
     const res = await GET();
     expect(res.status).toBe(401);
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  // A bare "Unauthorized" reached the settings tab as the whole message when
+  // a session expired, which said nothing about what to do.
+  it.each([
+    ["GET", () => GET()],
+    ["PUT", () => PUT(putRequest({ aiDisabled: true }))],
+    ["DELETE", () => DELETE()],
+  ])("%s answers 401 with the shared sign-in message", async (_m, call) => {
+    mockGetSession.mockResolvedValue(null);
+    const res = await call();
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.error).toBe(ERROR_MESSAGES.UNAUTHORIZED);
+    expect(json.code).toBe("UNAUTHENTICATED");
   });
 
   it("returns the VulnRadar-AI default when no row exists", async () => {
@@ -328,8 +344,70 @@ describe("DELETE /api/v3/account/ai-config", () => {
     const res = await DELETE();
     const json = await res.json();
     expect(res.status).toBe(200);
-    expect(json).toEqual({ success: true, useVulnradarAi: true });
+    expect(json).toEqual({
+      success: true,
+      useVulnradarAi: true,
+      aiDisabled: false,
+    });
     expect(mockQuery).toHaveBeenCalledWith(expect.any(String), [7]);
+  });
+
+  // Removing a provider used to delete the whole row, and the row is also
+  // where "AI off" lives, so an account that had switched AI off came back
+  // with it on and its findings went to the AI provider on the next scan,
+  // while the tab still showed the switch off. The row here is held by a
+  // small stand-in for the table; tests/integration/ai-config-reset.test.ts
+  // runs the same sequence against Postgres.
+  it("keeps the account's AI-off switch when the provider is removed", async () => {
+    const table = new Map<number, Record<string, unknown>>([
+      [
+        7,
+        {
+          use_vulnradar_ai: false,
+          ai_disabled: true,
+          provider: "openai",
+          model_id: "gpt-4o",
+          api_key_encrypted: encryptApiKey("sk-live-0000abcd"),
+          base_url: "https://api.openai.com/v1",
+          updated_at: "2026-11-01T00:00:00.000Z",
+        },
+      ],
+    ]);
+    mockQuery.mockImplementation(async (sql: string, params: unknown[]) => {
+      const userId = params[0] as number;
+      const row = table.get(userId);
+      if (/^\s*DELETE FROM user_ai_configs/.test(sql)) {
+        table.delete(userId);
+        return { rows: [] };
+      }
+      if (/^\s*UPDATE user_ai_configs/.test(sql)) {
+        if (!row) return { rows: [] };
+        Object.assign(row, {
+          use_vulnradar_ai: true,
+          provider: null,
+          model_id: null,
+          api_key_encrypted: null,
+          base_url: null,
+        });
+        return { rows: [{ ai_disabled: row.ai_disabled }] };
+      }
+      if (/^\s*SELECT/.test(sql)) return { rows: row ? [row] : [] };
+      throw new Error(`unexpected query: ${sql}`);
+    });
+
+    const del = await DELETE();
+    expect(del.status).toBe(200);
+    expect(await del.json()).toMatchObject({
+      success: true,
+      useVulnradarAi: true,
+      aiDisabled: true,
+    });
+
+    const json = await (await GET()).json();
+    expect(json.aiDisabled).toBe(true);
+    expect(json.useVulnradarAi).toBe(true);
+    expect(json.provider).toBeNull();
+    expect(json.apiKeyLast4).toBeNull();
   });
 
   it("returns 500 on a database error", async () => {

@@ -164,6 +164,28 @@ export async function saveAiProvider(
 }
 
 /**
+ * The config after "Reset to built-in AI". The provider is gone; the on/off
+ * switch is whatever the server says it kept, and only falls back to what the
+ * tab already showed when an older server sends nothing for it.
+ */
+export function resetAiConfig(
+  prev: AiConfig | null,
+  serverAiDisabled: unknown,
+): AiConfig {
+  return {
+    useVulnradarAi: true,
+    aiDisabled:
+      typeof serverAiDisabled === "boolean"
+        ? serverAiDisabled
+        : (prev?.aiDisabled ?? false),
+    provider: null,
+    modelId: null,
+    apiKeyLast4: null,
+    baseUrl: null,
+  };
+}
+
+/**
  * The own-provider block of the tab: what is saved, with the trigger that
  * opens AiProviderDialog. Nothing here is editable in place.
  *
@@ -370,18 +392,20 @@ export function AiProviderDialog({
                 autoCorrect="off"
                 spellCheck={false}
               />
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon"
                 onClick={() => setShowApiKeyText((v) => !v)}
-                className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors"
+                className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 aria-label={showApiKeyText ? "Hide API key" : "Show API key"}
               >
                 {showApiKeyText ? (
-                  <EyeOff className="h-4 w-4" aria-hidden="true" />
+                  <EyeOff aria-hidden="true" />
                 ) : (
-                  <Eye className="h-4 w-4" aria-hidden="true" />
+                  <Eye aria-hidden="true" />
                 )}
-              </button>
+              </Button>
             </div>
             {hasExistingKey && (
               <p className="text-xs text-muted-foreground">
@@ -502,19 +526,22 @@ export function ProfileAiSettingsTab({
       const res = await fetch(API.ACCOUNT_AI_CONFIG, {
         method: "DELETE",
       });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: unknown;
+        aiDisabled?: unknown;
+      };
       if (!res.ok) {
-        const data = await res.json();
-        setResetError(data.error || "Failed to reset AI config.");
+        setResetError(
+          typeof data.error === "string" && data.error
+            ? data.error
+            : "Failed to reset AI config.",
+        );
         return;
       }
-      setConfig((prev) => ({
-        useVulnradarAi: true,
-        aiDisabled: prev?.aiDisabled ?? false,
-        provider: null,
-        modelId: null,
-        apiKeyLast4: null,
-        baseUrl: null,
-      }));
+      setConfig((prev) => resetAiConfig(prev, data.aiDisabled));
+      if (typeof data.aiDisabled === "boolean") {
+        setAiDisabled(data.aiDisabled);
+      }
       setUseOwn(false);
       setSuccess(`Reset to ${APP_NAME} AI.`);
       setConfirmReset(false);
