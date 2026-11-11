@@ -425,7 +425,8 @@ describe("icon-only controls clear 44px on a phone", () => {
     "components/admin/features/ip-rules-manager.tsx",
     "components/admin/features/mass-email-manager.tsx",
     "components/admin/features/security-alerts-manager.tsx",
-    "components/admin/features/system-settings-manager.tsx",
+    // Not system-settings-manager.tsx: its one icon-only control was the
+    // save-error dismiss, which is now InlineAlert's (exempt, see above).
     "components/profile/tabs/developer/domains-section.tsx",
     "components/profile/tabs/developer/webhooks-section.tsx",
     "components/profile/tabs/developer/schedules-section.tsx",

@@ -43,6 +43,7 @@ import type { ToastState } from "@/components/admin/types";
 import { cn } from "@/lib/ui/utils";
 import { API } from "@/lib/config/client-constants";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";
+import { InlineAlert } from "@/components/shared/inline-alert";
 
 // Log views want second precision; the shared formatter defaults to minutes.
 const formatTimestamp = (iso: string) => formatAdminTimestamp(iso, true);
@@ -763,15 +764,18 @@ export function EmailLogsManager() {
                   </MetaField>
                 </dl>
 
+                {/* live="off": the stored outcome of a past send, part of
+                    the record being read, not something that just happened. */}
                 {viewLog.error_message && (
-                  <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3">
-                    <p className="text-[11px] uppercase tracking-wide text-destructive/80">
-                      What the mail server said
-                    </p>
-                    <p className="mt-1 font-mono text-xs text-destructive wrap-break-word">
+                  <InlineAlert
+                    tone="error"
+                    live="off"
+                    title="What the mail server said"
+                  >
+                    <p className="mt-1 font-mono text-xs wrap-break-word">
                       {viewLog.error_message}
                     </p>
-                  </div>
+                  </InlineAlert>
                 )}
 
                 <div className="space-y-2">

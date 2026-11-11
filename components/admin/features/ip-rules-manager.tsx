@@ -23,7 +23,6 @@ import {
   AlertTriangle,
   Ban,
   ShieldCheck,
-  X,
   ListChecks,
   PauseCircle,
   PlayCircle,
@@ -51,6 +50,7 @@ import { cn } from "@/lib/ui/utils";
 import { pluralize } from "@/lib/ui/plural";
 import { API } from "@/lib/config/client-constants";
 import { useConfirm } from "@/components/shared/use-confirm";
+import { InlineAlert } from "@/components/shared/inline-alert";
 
 /**
  * Expiry presets for a new rule. A temporary block is the normal case on this
@@ -608,29 +608,12 @@ export function IPRulesManager() {
       )}
 
       <div className="space-y-6">
+        {/* InlineAlert, so a failed Block is announced: the hand-rolled box
+            had no live role and a screen-reader admin heard nothing. */}
         {actionError && (
-          <div className="flex items-start gap-3 p-4 rounded-lg border border-destructive/30 bg-destructive/10">
-            <div className="p-2 rounded-lg bg-destructive/20 shrink-0">
-              <AlertTriangle
-                className="h-4 w-4 text-destructive"
-                aria-hidden="true"
-              />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-destructive">
-                {actionError}
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-11 w-11 sm:h-8 sm:w-8 p-0 shrink-0"
-              onClick={() => setActionError(null)}
-              aria-label="Dismiss"
-            >
-              <X className="h-3.5 w-3.5" aria-hidden="true" />
-            </Button>
-          </div>
+          <InlineAlert tone="error" onDismiss={() => setActionError(null)}>
+            {actionError}
+          </InlineAlert>
         )}
 
         {/* Stats. A skeleton while the first load is in flight: rendered

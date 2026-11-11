@@ -27,6 +27,7 @@ import {
 import { cn } from "@/lib/ui/utils";
 import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { InlineAlert } from "@/components/shared/inline-alert";
 import { API } from "@/lib/config/client-constants";
 
 interface UpdaterStatus {
@@ -290,24 +291,16 @@ export function UpdaterManager() {
           release is missing whatever security fixes that release carried, and
           in primary/5 it read as a friendly product announcement, the same
           tone this panel uses for "here is a link to the notes". */}
+      {/* live="off": a standing fact about this install, already true when
+          the tab opens, not the outcome of anything the admin just did. */}
       {behind && status && (
-        <div className="flex items-start gap-3 p-4 rounded-lg border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10">
-          <div className="p-2 rounded-md bg-[hsl(var(--warning))]/15 shrink-0">
-            <DownloadCloud
-              className="h-4 w-4 text-[hsl(var(--warning))]"
-              aria-hidden="true"
-            />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-foreground">
-              A new version is available:{" "}
-              <span className="font-mono tabular-nums">v{status.latest}</span>
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {status.message}
-            </p>
-          </div>
-        </div>
+        <InlineAlert tone="warning" live="off">
+          <p className="font-semibold">
+            A new version is available:{" "}
+            <span className="font-mono tabular-nums">v{status.latest}</span>
+          </p>
+          <p className="mt-0.5 text-foreground/90">{status.message}</p>
+        </InlineAlert>
       )}
 
       <Card className="border-border/50 bg-card/50 overflow-hidden">
@@ -343,17 +336,10 @@ export function UpdaterManager() {
 
         <CardContent className="p-4 sm:p-5 space-y-5">
           {!status && loadFailed && (
-            <div className="flex items-start gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive/10">
-              <LeadingIcon
-                line="sm"
-                icon={AlertTriangle}
-                className="text-destructive"
-              />
-              <p className="text-sm text-destructive">
-                Couldn&apos;t load updater status. Everything below is unknown,
-                not absent. Use Refresh to try again.
-              </p>
-            </div>
+            <InlineAlert tone="error">
+              Couldn&apos;t load updater status. Everything below is unknown,
+              not absent. Use Refresh to try again.
+            </InlineAlert>
           )}
           {/* All four of these used to render in the same plain font-medium,
               so "Not found" (tar missing means the updater cannot run at all)
@@ -525,20 +511,13 @@ export function UpdaterManager() {
             )}
 
             {job.status === "completed" && (
-              <div className="flex items-start gap-3 p-3 rounded-lg border border-[hsl(var(--success))]/20 bg-[hsl(var(--success))]/5">
-                <LeadingIcon
-                  line="sm"
-                  icon={CheckCircle2}
-                  className="text-[hsl(var(--success))]"
-                />
-                <p className="text-sm text-[hsl(var(--success))]">
-                  Update applied. Run{" "}
-                  <code className="font-mono text-xs px-1.5 py-0.5 rounded bg-background border border-border/60 text-foreground">
-                    npm run build
-                  </code>
-                  , then restart your server process, to run the new version.
-                </p>
-              </div>
+              <InlineAlert tone="success">
+                Update applied. Run{" "}
+                <code className="font-mono text-xs px-1.5 py-0.5 rounded-md bg-background border border-border/60 text-foreground">
+                  npm run build
+                </code>
+                , then restart your server process, to run the new version.
+              </InlineAlert>
             )}
             {/* The most dangerous message this panel can show, and it used to
                 wear the same quiet single-line callout as the success note
@@ -551,37 +530,23 @@ export function UpdaterManager() {
               job.steps?.some(
                 (s) => s.name === "copy" && s.status === "done",
               ) && (
-                <div className="flex items-start gap-3 p-4 rounded-lg border-2 border-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/10">
-                  <LeadingIcon
-                    line="sm"
-                    icon={AlertTriangle}
-                    size="lg"
-                    className="text-[hsl(var(--warning))]"
-                  />
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-[hsl(var(--warning))]">
-                      Do not restart the server: this install is half-updated
-                    </p>
-                    <p className="text-sm text-foreground/90 mt-1">
-                      Files were already copied onto this app&apos;s directory
-                      before this step failed, so the on-disk source is now a
-                      mix of old and new. Run &quot;Update now&quot; again first
-                      (copying is safe to repeat) so the install actually
-                      finishes, rather than restarting into a half-updated
-                      build.
-                    </p>
-                  </div>
-                </div>
+                <InlineAlert
+                  tone="warning"
+                  title="Do not restart the server: this install is half-updated"
+                >
+                  <p className="mt-1 text-foreground/90">
+                    Files were already copied onto this app&apos;s directory
+                    before this step failed, so the on-disk source is now a mix
+                    of old and new. Run &quot;Update now&quot; again first
+                    (copying is safe to repeat) so the install actually
+                    finishes, rather than restarting into a half-updated build.
+                  </p>
+                </InlineAlert>
               )}
             {job.status === "failed" && job.error && (
-              <div className="flex items-start gap-3 p-3 rounded-lg border border-destructive/20 bg-destructive/5">
-                <LeadingIcon
-                  line="sm"
-                  icon={XCircle}
-                  className="text-destructive"
-                />
-                <p className="text-sm text-destructive">{job.error}</p>
-              </div>
+              <InlineAlert tone="error">
+                <p className="wrap-break-word">{job.error}</p>
+              </InlineAlert>
             )}
 
             {job.log?.length > 0 && (

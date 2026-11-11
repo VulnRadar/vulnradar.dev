@@ -4,15 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  DatabaseBackup,
-  RefreshCw,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  HardDrive,
-  AlertTriangle,
-} from "lucide-react";
+import { DatabaseBackup, RefreshCw, Loader2, HardDrive } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
 import {
@@ -33,7 +25,7 @@ import {
   BACKUP_STALE_INTERVALS_WARN,
   BACKUP_STALE_INTERVALS_CRIT,
 } from "./health-overview-utils";
-import { LeadingIcon } from "@/components/shared/leading-icon";
+import { InlineAlert } from "@/components/shared/inline-alert";
 import { API } from "@/lib/config/client-constants";
 
 interface BackupJob {
@@ -285,17 +277,10 @@ export function BackupManager() {
 
         <CardContent className="p-4 sm:p-5 space-y-5">
           {!status && loadFailed && (
-            <div className="flex items-start gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive/10">
-              <LeadingIcon
-                line="sm"
-                icon={AlertTriangle}
-                className="text-destructive"
-              />
-              <p className="text-sm text-destructive">
-                Couldn&apos;t load backup status. The figures below are unknown,
-                not zero. Use Refresh to try again.
-              </p>
-            </div>
+            <InlineAlert tone="error">
+              Couldn&apos;t load backup status. The figures below are unknown,
+              not zero. Use Refresh to try again.
+            </InlineAlert>
           )}
           <div className="space-y-2.5">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
@@ -370,42 +355,13 @@ export function BackupManager() {
           </div>
 
           {showOutcome && (
-            <div
-              className={cn(
-                "flex items-start gap-3 p-3 rounded-lg border",
-                job.status === "success"
-                  ? "border-[hsl(var(--success))]/20 bg-[hsl(var(--success))]/5"
-                  : "border-destructive/20 bg-destructive/5",
-              )}
-            >
-              {job.status === "success" ? (
-                <LeadingIcon
-                  line="sm"
-                  icon={CheckCircle2}
-                  className="text-[hsl(var(--success))]"
-                />
-              ) : (
-                <LeadingIcon
-                  line="sm"
-                  icon={XCircle}
-                  className="text-destructive"
-                />
-              )}
-              <div className="flex-1 min-w-0">
-                <p
-                  className={cn(
-                    "text-sm",
-                    job.status === "success"
-                      ? "text-[hsl(var(--success))]"
-                      : "text-destructive",
-                  )}
-                >
-                  {job.status === "success"
-                    ? "Backup completed."
-                    : job.error || "Backup failed."}
-                </p>
-              </div>
-            </div>
+            <InlineAlert tone={job.status === "success" ? "success" : "error"}>
+              <p className="wrap-break-word">
+                {job.status === "success"
+                  ? "Backup completed."
+                  : job.error || "Backup failed."}
+              </p>
+            </InlineAlert>
           )}
 
           {job && job.log.length > 0 && (jobRunning || showOutcome) && (
