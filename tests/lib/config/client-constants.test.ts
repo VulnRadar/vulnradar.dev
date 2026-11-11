@@ -528,8 +528,12 @@ describe("per-scan history entries", () => {
         `app/api/v3/history/[id]${sub}/route.ts`,
       );
       expect(fs.existsSync(file), file).toBe(true);
+      // A route is either a plain handler or a versioned() export; both name
+      // the method as the exported binding.
       expect(fs.readFileSync(file, "utf8")).toMatch(
-        new RegExp(String.raw`export\s+async\s+function\s+${method}\b`),
+        new RegExp(
+          String.raw`export\s+(?:async\s+function\s+${method}\b|const\s+${method}\s*=)`,
+        ),
       );
     },
   );
