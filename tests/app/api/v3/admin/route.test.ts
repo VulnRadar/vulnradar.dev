@@ -1557,7 +1557,10 @@ describe("PATCH /api/v3/admin — delete_account transaction", () => {
     const res = await deleteTarget();
 
     expect(res.status).toBe(200);
-    expect(cancel).toHaveBeenCalledWith("sub_1");
+    expect(cancel).toHaveBeenCalledWith("sub_1", {
+      prorate: false,
+      invoice_now: false,
+    });
     expect(cancel.mock.invocationCallOrder[0]).toBeLessThan(
       mockClientQuery.mock.invocationCallOrder[0],
     );
@@ -2236,6 +2239,8 @@ describe("PATCH /api/v3/admin — spot checks across other actions (audit loggin
       String(c[0]).includes("DELETE FROM ai_usage"),
     );
     expect(deleteCall).toBeDefined();
+    // The allowance is the verification row; the free features' rows stay.
+    expect(String(deleteCall?.[0])).toContain("AND kind = 'verify'");
     expect(deleteCall?.[1]?.[0]).toBe(5);
     expect(deleteCall?.[1]?.[1]).toBeInstanceOf(Date);
     expect(mockLogAction).toHaveBeenCalledWith(

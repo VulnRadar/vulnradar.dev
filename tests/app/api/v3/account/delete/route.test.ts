@@ -300,7 +300,10 @@ describe("POST /api/v3/account/delete", () => {
 
       expect(res.status).toBe(200);
       expect(retrieve).toHaveBeenCalledWith("sub_1");
-      expect(cancel).toHaveBeenCalledWith("sub_1");
+      expect(cancel).toHaveBeenCalledWith("sub_1", {
+        prorate: false,
+        invoice_now: false,
+      });
       expect(mockClientQuery).toHaveBeenCalledWith("BEGIN");
       expect(cancel.mock.invocationCallOrder[0]).toBeLessThan(
         mockClientQuery.mock.invocationCallOrder[0],
