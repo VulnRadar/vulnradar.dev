@@ -19,6 +19,8 @@ import { startAsyncPhase } from "./async-phase";
 import { classifyRedirect } from "./scan-target-classify";
 import { parsedFormOf } from "./canonical-url";
 import { BOT_CHALLENGE_INCOMPLETE, detectBotChallenge } from "./bot-challenge";
+import { detectUnusablePage } from "./response-classifier";
+import { SCANNER_UA } from "./user-agent";
 import { readSslGrade } from "./ssl-grade";
 import { readThreatIntel } from "./reputation-lookup";
 import { readDnsRecords } from "./dns-records";
@@ -44,7 +46,7 @@ import {
   type PageUnreachable,
 } from "./target-failure";
 import type { Category, Vulnerability } from "./types";
-import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
+import { SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { summarizeFindings } from "./severity-summary";
 import { getSettings } from "@/lib/config/runtime-config";
 import { logError } from "@/lib/logging/log";
@@ -373,7 +375,7 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
         // Use safeFetch which validates the URL internally to prevent SSRF
         response = await safeFetch(safeUrl.href, {
           method: "GET",
-          headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
+          headers: { "User-Agent": SCANNER_UA },
           redirect: "follow",
           signal: AbortSignal.timeout(fetchTimeoutMs),
         });
@@ -498,9 +500,7 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
           // Use safeFetch which validates the URL internally to prevent SSRF
           response = await safeFetch(urlObj.href, {
             method: "GET",
-            headers: {
-              "User-Agent": `${APP_NAME}/1.0 (Security Scanner)`,
-            },
+            headers: { "User-Agent": SCANNER_UA },
             redirect: "follow",
             signal: requestSignal(fetchTimeoutMs, cancelSignal),
           });
@@ -563,19 +563,25 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
     });
     const redactedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
 
-    // The site answered with a bot challenge instead of its page
-    // (lib/scanner/bot-challenge.ts). Nothing that reads the response can say
-    // anything about the site, so it is skipped the same way a raw IP skips
-    // it, and the scan names the page as not checked rather than grading
-    // Cloudflare's interstitial. DNS, TLS and reputation still run, and still
-    // describe the real site.
-    const botChallenge =
+    // The site refused the scanner its page: a bot challenge, a load
+    // balancer's 403, a proof-of-work 503, or a redirect safeFetch would not
+    // follow (lib/scanner/response-classifier.ts). Nothing that reads that
+    // response says anything about the site, and grading it reported a WAF's
+    // missing headers as the site's own, so the page checks are skipped the
+    // same way a raw IP skips them and the scan names the page as not
+    // checked. DNS, TLS and reputation still run, and still describe the real
+    // site. A WebSocket target keeps the narrower bot-challenge test: its
+    // endpoint answering a plain GET with a refusal is the endpoint, not a
+    // gate in front of it.
+    const pageBlocked =
       response && !isRawIpTarget
-        ? detectBotChallenge(response.status, headers, responseBody)
+        ? protocolType === "http"
+          ? detectUnusablePage(response.status, headers, responseBody)
+          : detectBotChallenge(response.status, headers, responseBody)
         : null;
     const noPage =
-      isRawIpTarget || botChallenge !== null || pageUnreachable !== null;
-    const asyncScope = botChallenge || pageUnreachable ? "network" : "all";
+      isRawIpTarget || pageBlocked !== null || pageUnreachable !== null;
+    const asyncScope = pageBlocked || pageUnreachable ? "network" : "all";
 
     // Automatic subdomain discovery: kicked off here so it runs concurrently
     // with the rest of the scan. It resolves as soon as the per-domain cache
@@ -817,7 +823,7 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
     const incomplete = [
       ...asyncResult.incomplete,
       ...(syncResult.checksErrored > 0 ? [PAGE_CHECKS_INCOMPLETE] : []),
-      ...(botChallenge ? [BOT_CHALLENGE_INCOMPLETE] : []),
+      ...(pageBlocked ? [BOT_CHALLENGE_INCOMPLETE] : []),
       ...(pageUnreachable ? [PAGE_UNREACHABLE_INCOMPLETE] : []),
     ];
     const engineConfidence = getEngineConfidence(
@@ -936,6 +942,17 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
         // say the page was not checked and why instead of showing a scan that
         // looks complete.
         ...(pageUnreachable ? { pageUnreachable } : {}),
+        // What answered in place of the page, so the report can show the
+        // status and the server that refused the scanner rather than only
+        // that it did.
+        ...(pageBlocked && response
+          ? {
+              pageBlocked: {
+                status: response.status,
+                server: headers.get("server"),
+              },
+            }
+          : {}),
         // If the fetch followed a redirect to a different page (e.g. an
         // auth-gated page bouncing to /login), record what happened so the UI
         // can warn "this scan is of the page it landed on, not the one you

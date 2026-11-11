@@ -42,11 +42,7 @@ import {
   requestSignal,
 } from "./scan-jobs";
 import pool from "@/lib/database/db";
-import {
-  APP_NAME,
-  SEVERITY_PRIORITY,
-  DEFAULT_SCAN_NOTE,
-} from "@/lib/config/constants";
+import { SEVERITY_PRIORITY, DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
 import { summarizeFindings } from "./severity-summary";
 import { getSettings } from "@/lib/config/runtime-config";
 import { logError } from "@/lib/logging/log";
@@ -64,7 +60,12 @@ import {
   CRAWL_QUOTA_LIMIT_INCOMPLETE,
   CRAWL_TIME_LIMIT_INCOMPLETE,
 } from "./crawl-incomplete";
-import { BOT_CHALLENGE_INCOMPLETE, detectBotChallenge } from "./bot-challenge";
+import { BOT_CHALLENGE_INCOMPLETE } from "./bot-challenge";
+import {
+  classifyPageResponse,
+  detectUnusablePage,
+} from "./response-classifier";
+import { SCANNER_UA } from "./user-agent";
 import { canonicalPageUrl } from "./page-url";
 import type { ScanSessionBinding, ScanAuthReport } from "./auth/types";
 import { redactSensitiveResponseHeaders } from "./response-headers";
@@ -265,7 +266,7 @@ async function scanSingleUrl(
       urlObj.href,
       {
         method: "GET",
-        headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
+        headers: { "User-Agent": SCANNER_UA },
         redirect: "follow",
         signal: requestSignal(fetchTimeoutMs, cancelSignal),
       },
@@ -301,18 +302,29 @@ async function scanSingleUrl(
   // scanner: redact sensitive headers.
   const redactedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
 
-  // A bot challenge where the page should be (lib/scanner/bot-challenge.ts).
-  // Every check below would grade the challenge as this page, so none run and
-  // the page is reported as not checked, like one that could not be fetched.
-  if (detectBotChallenge(response.status, headers, responseBody)) {
+  // Something other than this page answered (lib/scanner/response-classifier
+  // .ts). Every check below would grade it as the page, so none run and the
+  // page is listed as not read, like one that could not be fetched.
+  //
+  // A bot challenge is a gate on the site, so it keeps marking the page's
+  // checks as not run. A plain refusal of one link (a 403 on an admin path, a
+  // 5xx on one route) is that page's answer, not the site's: it is listed
+  // with its status and adds nothing to `incomplete`, so one refused link
+  // among pages that were read does not mark the whole crawl as short.
+  if (detectUnusablePage(response.status, headers, responseBody)) {
+    const challenged =
+      classifyPageResponse(response.status, headers, responseBody).kind ===
+      "challenge";
     return {
       url,
       findings: [],
-      summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 },
+      summary: summarizeFindings([]),
       duration: Date.now() - startTime,
       responseHeaders: redactedHeaders,
-      incomplete: [BOT_CHALLENGE_INCOMPLETE],
-      unreachable: BOT_CHALLENGE_REASON,
+      incomplete: challenged ? [BOT_CHALLENGE_INCOMPLETE] : [],
+      unreachable: challenged
+        ? BOT_CHALLENGE_REASON
+        : `HTTP ${response.status}`,
     };
   }
 
@@ -477,11 +489,12 @@ export interface ExecuteCrawlScanParams {
  * before.
  */
 /**
- * Whether the site answers the scanner with a bot challenge instead of its
- * page. A fetch that fails outright is not a challenge: the page scans report
- * that failure themselves.
+ * Whether the site refuses the scanner its main page: a bot challenge, a
+ * refusal status, a 5xx or a redirect safeFetch would not follow. A fetch that
+ * fails outright is not a refusal: the page scans report that failure
+ * themselves.
  */
-async function isBehindBotChallenge(
+async function hostRefusesPage(
   url: string,
   fetchTimeoutMs: number,
   session?: ScanSessionBinding,
@@ -492,7 +505,7 @@ async function isBehindBotChallenge(
       url,
       {
         method: "GET",
-        headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
+        headers: { "User-Agent": SCANNER_UA },
         redirect: "follow",
         signal: requestSignal(fetchTimeoutMs, cancelSignal),
       },
@@ -500,7 +513,7 @@ async function isBehindBotChallenge(
       session,
     );
     const body = await safeReadBody(response, 32_768);
-    return detectBotChallenge(response.status, response.headers, body) !== null;
+    return detectUnusablePage(response.status, response.headers, body) !== null;
   } catch {
     return false;
   }
@@ -701,11 +714,11 @@ async function runCrawlScan(params: ExecuteCrawlScanParams): Promise<void> {
     // origin, so https-ness and the scanners filter are identical for each
     // one), plus the host-level branches that run exactly once.
     // The host-level branches start before any page is scanned, so they
-    // cannot learn from the page scans that the site answers with a bot
-    // challenge. Behind one, robots.txt, security.txt and the exposed-file
-    // probes all come back as the challenge, so one look at the main page
-    // decides whether those branches may use HTTP at all.
-    const hostChallenged = await isBehindBotChallenge(
+    // cannot learn from the page scans that the site refuses the scanner.
+    // Behind a challenge or a WAF's 403, robots.txt, security.txt and the
+    // exposed-file probes all come back as that refusal, so one look at the
+    // main page decides whether those branches may use HTTP at all.
+    const hostChallenged = await hostRefusesPage(
       normalizedMainUrl,
       fetchTimeoutMs,
       session,

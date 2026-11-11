@@ -29,7 +29,6 @@ import {
 } from "@/lib/teams/scan-teams";
 import pool from "@/lib/database/db";
 import {
-  APP_NAME,
   DEFAULT_SCAN_NOTE,
   ERROR_MESSAGES,
   SEVERITY_PRIORITY,
@@ -47,10 +46,9 @@ import {
   noPageChecks,
   runSyncChecksYielding,
 } from "@/lib/scanner/engine";
-import {
-  BOT_CHALLENGE_INCOMPLETE,
-  detectBotChallenge,
-} from "@/lib/scanner/bot-challenge";
+import { BOT_CHALLENGE_INCOMPLETE } from "@/lib/scanner/bot-challenge";
+import { detectUnusablePage } from "@/lib/scanner/response-classifier";
+import { SCANNER_UA_AUTHENTICATED } from "@/lib/scanner/user-agent";
 import { startAsyncPhase } from "@/lib/scanner/async-phase";
 import { normalizeUrl } from "@/lib/scanner/execute-scan";
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
@@ -432,15 +430,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     let responseBody = "";
     let headers: Headers;
     let finalScanUrl = url;
-    let botChallenge: string | null = null;
+    let pageBlocked: { status: number; server: string | null } | null = null;
     try {
       const response = await safeFetch(
         url,
         {
           method: "GET",
-          headers: {
-            "User-Agent": `${APP_NAME}/1.0 (Security Scanner; Authenticated)`,
-          },
+          headers: { "User-Agent": SCANNER_UA_AUTHENTICATED },
           redirect: "follow",
           signal: AbortSignal.timeout(fetchTimeoutMs),
         },
@@ -457,9 +453,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       );
       headers = response.headers;
       // The login got through, and the page behind it can still be a bot
-      // challenge (lib/scanner/bot-challenge.ts). Graded as the signed-in
-      // page, it would be reported as the site's own headers and markup.
-      botChallenge = detectBotChallenge(response.status, headers, responseBody);
+      // challenge, a WAF's refusal or a 5xx (lib/scanner/response-classifier
+      // .ts). Graded as the signed-in page, it would be reported as the
+      // site's own headers and markup.
+      if (detectUnusablePage(response.status, headers, responseBody)) {
+        pageBlocked = {
+          status: response.status,
+          server: headers.get("server"),
+        };
+      }
       // safeFetch restricts any redirect it follows to the same host (see its
       // own comment), so this is never a different site -- only a different
       // path/query on the one that was requested. Recorded separately from
@@ -508,7 +510,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // paid by everyone else sharing the process, which the paragraph directly
     // above that one spells out. This handler is already async - there is an
     // await eleven lines up - so the await is free.
-    const syncResult = botChallenge
+    const syncResult = pageBlocked
       ? noPageChecks()
       : await runSyncChecksYielding(
           url,
@@ -528,7 +530,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // never drawn as "Zero findings on this host. Every enabled check ran and
     // none of them fired." That is the one thing a scanner must never say
     // about a run it could not finish.
-    const asyncScope = botChallenge ? "network" : "all";
+    const asyncScope = pageBlocked ? "network" : "all";
     const { findings: asyncFindings, incomplete: asyncIncomplete } =
       await startAsyncPhase({
         url,
@@ -570,7 +572,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       ...asyncIncomplete,
       ...(session.lost ? ["authenticated-session"] : []),
       ...(syncResult.checksErrored > 0 ? [PAGE_CHECKS_INCOMPLETE] : []),
-      ...(botChallenge ? [BOT_CHALLENGE_INCOMPLETE] : []),
+      ...(pageBlocked ? [BOT_CHALLENGE_INCOMPLETE] : []),
     ];
 
     // Headline signals, same as a normal scan (getDangerScore/getEngineConfidence
@@ -593,6 +595,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       dangerScore,
       engineConfidence,
       ...(incomplete.length > 0 ? { incomplete } : {}),
+      // What answered in place of the signed-in page, as the single-page
+      // executor records it.
+      ...(pageBlocked ? { pageBlocked } : {}),
     };
 
     let scanHistoryId: number | null = null;

@@ -59,6 +59,8 @@ vi.mock("@/lib/scanner/access-rules", () => ({
 // safeFetch response above.
 
 const { POST } = await import("@/app/api/v3/demo-scan/route");
+const { userAgentOf } = await import("@/tests/lib/scanner/_user-agent-of");
+const { SCANNER_UA } = await import("@/lib/scanner/user-agent");
 
 /**
  * A hostname that never resolves. runAsyncChecks() is the real
@@ -291,6 +293,39 @@ describe("POST /api/v3/demo-scan - success shape", () => {
     expect(JSON.stringify(json.responseHeaders)).not.toContain("super-secret");
     // Everything else is still evidence and still reported.
     expect(json.responseHeaders["x-frame-options"]).toBe("DENY");
+  }, 20000);
+});
+
+describe("POST /api/v3/demo-scan - a page the site refused the scanner", () => {
+  it("does not grade a load balancer's 403 as the site, and says the page was not checked", async () => {
+    mockSafeFetch.mockImplementation(
+      async () =>
+        new Response("<html><title>403 Forbidden</title></html>", {
+          status: 403,
+          headers: { "content-type": "text/html", server: "awselb/2.0" },
+        }),
+    );
+
+    const res = await POST(postRequest({ url: DEAD_HOST }));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+
+    expect(json.incomplete).toContain("bot-challenge");
+    // The refusal's own missing headers are not reported as the site's.
+    const ids = (json.findings as { id: string }[]).map(
+      (f) => f.id.split("--")[0],
+    );
+    for (const pageCheck of ["hsts-missing", "csp-missing", "xcto-missing"]) {
+      expect(ids).not.toContain(pageCheck);
+    }
+  }, 20000);
+
+  it("fetches the page with the scanner's compatible User-Agent", async () => {
+    await POST(postRequest({ url: DEAD_HOST }));
+
+    expect(userAgentOf(mockSafeFetch.mock.calls[0][1] as RequestInit)).toBe(
+      SCANNER_UA,
+    );
   }, 20000);
 });
 

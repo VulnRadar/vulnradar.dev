@@ -99,11 +99,10 @@ vi.mock("@/lib/rate-limiting/concurrent-scans", () => ({
 // tests/app/api/v3/scan/route.test.ts.
 const mockValidateScanTarget = vi.fn();
 const mockCheckAccessRules = vi.fn();
+const mockSafeFetch = vi.fn();
 vi.mock("@/lib/scanner/safe-fetch", () => ({
   validateScanTarget: (...args: unknown[]) => mockValidateScanTarget(...args),
-  safeFetch: vi.fn(
-    async () => new Response("<html>ok</html>", { status: 200 }),
-  ),
+  safeFetch: (...args: unknown[]) => mockSafeFetch(...args),
 }));
 
 vi.mock("@/lib/scanner/access-rules", () => ({
@@ -160,6 +159,8 @@ vi.mock("@/lib/webhooks/scan-notifications", () => ({
 }));
 
 const { POST } = await import("@/app/api/v3/scan/authenticated/route");
+const { userAgentOf } = await import("@/tests/lib/scanner/_user-agent-of");
+const { SCANNER_UA_AUTHENTICATED } = await import("@/lib/scanner/user-agent");
 
 function postRequest(body: unknown): NextRequest {
   return new NextRequest("http://localhost/api/v3/scan/authenticated", {
@@ -180,6 +181,10 @@ beforeEach(() => {
   mockIsUrlOwnedByUser.mockResolvedValue(true);
   mockValidateScanTarget.mockReset();
   mockValidateScanTarget.mockResolvedValue({ safe: true });
+  mockSafeFetch.mockReset();
+  mockSafeFetch.mockImplementation(
+    async () => new Response("<html>ok</html>", { status: 200 }),
+  );
   mockCheckAccessRules.mockReset();
   mockCheckAccessRules.mockResolvedValue({ allowed: true });
   mockRunAsyncChecksDetailed.mockReset();
@@ -687,6 +692,62 @@ function persistedResultMeta(calls: unknown[][]): Record<string, unknown> {
   );
   return JSON.parse(String((insert![1] as unknown[])[10]));
 }
+
+describe("POST /api/v3/scan/authenticated - the page behind the login", () => {
+  it("does not grade a refusal served after the login as the signed-in page", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockSafeFetch.mockImplementation(
+      async () =>
+        new Response("<html><title>403 Forbidden</title></html>", {
+          status: 403,
+          headers: { "content-type": "text/html", server: "awselb/2.0" },
+        }),
+    );
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 950 }] });
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.checksRun).toBe(0);
+    expect(json.incomplete).toContain("bot-challenge");
+    expect(mockRunAsyncChecksDetailed.mock.calls[0][4]).toBe("network");
+    const meta = persistedResultMeta(mockQuery.mock.calls);
+    expect(meta.pageBlocked).toEqual({ status: 403, server: "awselb/2.0" });
+  });
+
+  it("records no block for a page it could grade", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 951 }] });
+
+    await POST(postRequest(FORM_AUTH_BODY));
+
+    expect(mockRunAsyncChecksDetailed.mock.calls[0][4]).toBe("all");
+    expect(persistedResultMeta(mockQuery.mock.calls).pageBlocked).toBe(
+      undefined,
+    );
+  });
+
+  it("fetches the page with the authenticated User-Agent, which says what it is doing", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 952 }] });
+
+    await POST(postRequest(FORM_AUTH_BODY));
+
+    expect(userAgentOf(mockSafeFetch.mock.calls[0][1] as RequestInit)).toBe(
+      SCANNER_UA_AUTHENTICATED,
+    );
+  });
+});
 
 describe("POST /api/v3/scan/authenticated - an unfinished scan cannot present as clean", () => {
   it("names the branches that did not finish, and does not read as clean, when the async layer comes back short", async () => {

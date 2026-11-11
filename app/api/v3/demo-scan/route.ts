@@ -5,13 +5,12 @@ import {
   noPageChecks,
   runSyncChecksYielding,
 } from "@/lib/scanner/engine";
-import {
-  BOT_CHALLENGE_INCOMPLETE,
-  detectBotChallenge,
-} from "@/lib/scanner/bot-challenge";
+import { BOT_CHALLENGE_INCOMPLETE } from "@/lib/scanner/bot-challenge";
+import { detectUnusablePage } from "@/lib/scanner/response-classifier";
+import { SCANNER_UA } from "@/lib/scanner/user-agent";
 import { startAsyncPhase } from "@/lib/scanner/async-phase";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
-import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
+import { SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { summarizeFindings } from "@/lib/scanner/severity-summary";
 import { getSettings } from "@/lib/config/runtime-config";
 import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
@@ -173,9 +172,7 @@ export async function POST(request: NextRequest) {
         urlObj.href,
         {
           method: "GET",
-          headers: {
-            "User-Agent": `${APP_NAME}/1.0 (Security Scanner - Demo)`,
-          },
+          headers: { "User-Agent": SCANNER_UA },
           redirect: "follow",
           signal: AbortSignal.timeout(fetchTimeoutMs),
         },
@@ -206,15 +203,16 @@ export async function POST(request: NextRequest) {
     });
     const reportedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
 
-    // A bot challenge in place of the page (lib/scanner/bot-challenge.ts):
-    // nothing read from it describes the site, so the page checks are skipped
-    // and the page is named as not checked, as in every other scan path.
-    const botChallenge = detectBotChallenge(
+    // A bot challenge, a WAF's refusal or a 5xx in place of the page
+    // (lib/scanner/response-classifier.ts): nothing read from it describes
+    // the site, so the page checks are skipped and the page is named as not
+    // checked, as in every other scan path.
+    const pageBlocked = detectUnusablePage(
       response.status,
       headers,
       responseBody,
     );
-    const asyncScope = botChallenge ? "network" : "all";
+    const asyncScope = pageBlocked ? "network" : "all";
 
     // Capped at the SAME resolved setting the body was READ with, rather
     // than at a second hardcoded literal. This used to re-cap at 1,000,000
@@ -235,7 +233,7 @@ export async function POST(request: NextRequest) {
     // page the redirect landed on, and deduplication: a visitor trying the
     // product saw a different, noisier verdict than the one an account gets
     // for the same URL.
-    const syncResult = botChallenge
+    const syncResult = pageBlocked
       ? noPageChecks()
       : await runSyncChecksYielding(
           url,
@@ -284,7 +282,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (syncResult.checksErrored > 0) incomplete.push(PAGE_CHECKS_INCOMPLETE);
-    if (botChallenge) incomplete.push(BOT_CHALLENGE_INCOMPLETE);
+    if (pageBlocked) incomplete.push(BOT_CHALLENGE_INCOMPLETE);
 
     const findings = dedupeScanFindings([...syncFindings, ...asyncFindings]);
     findings.sort(
