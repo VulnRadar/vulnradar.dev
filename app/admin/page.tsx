@@ -54,6 +54,7 @@ import {
   type UserListFilters,
 } from "@/components/admin/users/user-filters";
 import { useAuth } from "@/components/providers/auth-provider";
+import { meHasPassword } from "@/components/admin/shared/admin-reauth-dialog";
 import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
 import { resolveAdminGate } from "@/lib/admin/admin-gate";
 import {
@@ -1635,6 +1636,7 @@ function AdminContent() {
                   actionLoading={actionLoading}
                   callerRole={callerRole}
                   callerId={me?.userId ?? null}
+                  callerHasPassword={meHasPassword(me)}
                   allBadges={allBadges}
                   onBadgesChanged={(awardedIds, revokedIds) => {
                     setSelectedUser((prev) => {

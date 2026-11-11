@@ -14,7 +14,7 @@ import {
 } from "@/lib/auth/permissions-client";
 import { hashPassword } from "@/lib/auth/auth";
 import { issueResetLinkToken } from "@/lib/auth/password-reset-token";
-import { verifyReauthPassword } from "@/lib/auth/reauth";
+import { reauthRefusal, verifyReauthPassword } from "@/lib/auth/reauth";
 import { analyzePassword } from "@/lib/auth/password-strength";
 import { startImpersonation } from "@/lib/auth/impersonation";
 import { revokeStoredGithubToken } from "@/lib/github/github-connections";
@@ -771,8 +771,9 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
     // through Google/GitHub/Discord (lib/auth/auth.ts's createOAuthUser
     // leaves the hash NULL) could not perform ANY password-gated admin
     // action and was told its password was incorrect. verifyReauthPassword
-    // applies the repo-wide rule instead: with no password on the account,
-    // the signed-in session is the re-auth signal.
+    // applies the repo-wide rule instead: an account with no password
+    // confirms with the code mailed to its address, and the step-up cookie
+    // that leaves behind is what passes here. Its session alone does not.
     const reauth = await verifyReauthPassword(
       session.userId,
       body.currentAdminPassword,
@@ -782,17 +783,16 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
       },
     );
     // Only a password that was supplied and wrong stays counted. A right one,
-    // an OAuth-only account with none, or a request that sent none (400 from
-    // the helper) made no guess.
-    if (reauth.ok || reauth.status === 400) {
+    // a request that sent none (400 from the helper) or an account with no
+    // password that has not confirmed by email yet made no guess.
+    if (reauth.ok || reauth.status === 400 || reauth.stepUp) {
       await refundRateLimitAttempt(reauthKey, reservedBefore);
     }
-    // Pinned to 403 for both the missing and the wrong case, which is what
-    // this route has always returned and what the panel's re-auth dialog
-    // branches on (verifyReauthPassword itself distinguishes 400/403).
-    if (!reauth.ok) {
-      return NextResponse.json({ error: reauth.error }, { status: 403 });
-    }
+    // 403 for both the missing and the wrong password, which is what this
+    // route has always returned. A missing step-up is a 403 too, with
+    // `stepUp: true` so the panel offers the mailed code instead of a
+    // password field the account has nothing to type into.
+    if (!reauth.ok) return reauthRefusal(reauth, 403, 403);
   }
 
   switch (action) {

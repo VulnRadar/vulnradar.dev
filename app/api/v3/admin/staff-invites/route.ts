@@ -7,7 +7,7 @@ import {
   isSuperAdminRole,
 } from "@/lib/auth/authorization";
 import { getClientIp } from "@/lib/api/request-utils";
-import { verifyReauthPassword } from "@/lib/auth/reauth";
+import { reauthRefusal, verifyReauthPassword } from "@/lib/auth/reauth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { sendEmail, staffInviteEmail } from "@/lib/email/email";
 import {
@@ -113,9 +113,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       wrong: "Password is incorrect.",
     },
   );
-  if (!reauth.ok) {
-    return ApiResponse.forbidden(reauth.error);
-  }
+  // 403 for a missing or wrong password, as this route has always answered,
+  // and `stepUp: true` on the 403 for an account that has not confirmed by
+  // email yet, so the invite dialog knows to offer the mailed code.
+  if (!reauth.ok) return reauthRefusal(reauth, 403, 403);
 
   // getUserByEmail, the lookup the invite page answers hasAccount with. It
   // compares LOWER(email), as the unique index does: `email = $1` missed a

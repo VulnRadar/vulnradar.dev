@@ -21,8 +21,8 @@ const { harness, find, findAll, textOf, labelled, ofType } =
   await import("./_hook-harness");
 const { UserDetailPanel, GatedActionCard } =
   await import("@/components/admin/users/user-detail-panel");
-const { AdminPasswordConfirmDialog } =
-  await import("@/components/admin/shared");
+const { AdminReauthDialog } =
+  await import("@/components/admin/shared/admin-reauth-dialog");
 const { InlineAlert } = await import("@/components/shared/inline-alert");
 const { Button } = await import("@/components/ui/button");
 const { Input } = await import("@/components/ui/input");
@@ -155,7 +155,7 @@ describe("a moderator viewing an admin", () => {
     (
       find(first, buttonByText("Disable account")).props.onClick as () => void
     )();
-    const dialog = find(again(), ofType(AdminPasswordConfirmDialog)).props as {
+    const dialog = find(again(), ofType(AdminReauthDialog)).props as {
       open: boolean;
     };
     expect(dialog.open).toBe(false);
@@ -187,7 +187,7 @@ describe("a moderator viewing a regular user", () => {
       (el) => el.props.action === "force_logout_all",
     )!;
     (logoutAll.props.onClick as () => void)();
-    const dialog = find(again(), ofType(AdminPasswordConfirmDialog)).props as {
+    const dialog = find(again(), ofType(AdminReauthDialog)).props as {
       open: boolean;
     };
     expect(dialog.open).toBe(true);
@@ -301,7 +301,7 @@ describe("Force Logout All", () => {
       )!;
       (card.props.onClick as () => void)();
       return (
-        find(render(), ofType(AdminPasswordConfirmDialog)).props as {
+        find(render(), ofType(AdminReauthDialog)).props as {
           description: string;
         }
       ).description;

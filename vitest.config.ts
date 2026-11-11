@@ -515,6 +515,16 @@ export default defineConfig({
           functions: 95,
           branches: 95,
         },
+        "app/api/v3/admin/updater/apply/route.ts": {
+          // 42.85 / 44.18 / 33.33 / 28.57 actual. The suite covers the
+          // re-auth gate only (stepUp for an account with no password, 403
+          // for a missing or wrong one); the job start and the GET poll are
+          // lib/updater's own suites' ground.
+          lines: 40,
+          statements: 40,
+          functions: 30,
+          branches: 25,
+        },
         "app/api/v3/assets/route.ts": {
           // 97.87 / 98 / 100 / 68.75 actual. The uncovered branch is
           // the RETENTION_SETTING_KEYS[userPlan] ?? fallback-to-free arm for

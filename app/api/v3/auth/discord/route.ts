@@ -12,7 +12,7 @@ import {
 } from "@/lib/auth/discord-state";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
-import { verifyReauthPassword } from "@/lib/auth/reauth";
+import { reauthRefusal, verifyReauthPassword } from "@/lib/auth/reauth";
 import { getClientIp } from "@/lib/api/request-utils";
 import { ApiResponse } from "@/lib/api/api-utils";
 import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
@@ -165,12 +165,9 @@ export async function POST(request: Request) {
     missing: CONFIRM_PASSWORD_FIRST,
     wrong: "That password is not correct.",
   });
-  if (!reauth.ok) {
-    return NextResponse.json(
-      { error: reauth.error },
-      { status: reauth.status },
-    );
-  }
+  // The helper's own statuses (400 missing, 403 wrong), with `stepUp: true`
+  // on the 403 an account with no password gets until it confirms by email.
+  if (!reauth.ok) return reauthRefusal(reauth);
 
   const authUrl = await authorizeUrl(
     request,

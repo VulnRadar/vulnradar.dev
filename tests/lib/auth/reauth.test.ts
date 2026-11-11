@@ -189,3 +189,46 @@ it("fails closed on a session whose user row is gone", async () => {
     error: MESSAGES.wrong,
   });
 });
+
+/**
+ * Each route that moved onto the helper kept the statuses it always answered,
+ * and every one of them now carries `stepUp: true` on a missing step-up. Five
+ * of the callers built their own response from `{ error }` alone, which is
+ * what left an account with no password looking at a password field.
+ */
+describe("reauthRefusal", () => {
+  const { reauthRefusal } = reauth;
+  const stepUp = {
+    ok: false as const,
+    status: 403 as const,
+    error: "Confirm it is you with a code from your email first.",
+    stepUp: true as const,
+  };
+  const missing = { ok: false as const, status: 400 as const, error: "m" };
+  const wrong = { ok: false as const, status: 403 as const, error: "w" };
+
+  it("answers a missing step-up with 403 and stepUp, whatever the route's pair", async () => {
+    for (const res of [
+      reauthRefusal(stepUp),
+      reauthRefusal(stepUp, 401),
+      reauthRefusal(stepUp, 403, 403),
+      reauthRefusal(stepUp, 400, 400),
+    ]) {
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.stepUp).toBe(true);
+      expect(json.error).toBe(stepUp.error);
+    }
+  });
+
+  it("keeps each route's own statuses for a missing and a wrong password", async () => {
+    expect(reauthRefusal(missing).status).toBe(400);
+    expect(reauthRefusal(wrong).status).toBe(403);
+    expect(reauthRefusal(wrong, 401).status).toBe(401);
+    // The admin routes answer both with 403.
+    expect(reauthRefusal(missing, 403, 403).status).toBe(403);
+    // Account deletion answers both with 400.
+    expect(reauthRefusal(wrong, 400, 400).status).toBe(400);
+    expect((await reauthRefusal(wrong).json()).stepUp).toBeUndefined();
+  });
+});

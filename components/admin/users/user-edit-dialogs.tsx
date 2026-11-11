@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EditDialog, KEEP_OPEN } from "@/components/shared/edit-dialog";
 import { LeadingIcon } from "@/components/shared/leading-icon";
-import { AdminPasswordConfirmDialog } from "@/components/admin/shared";
+import { AdminReauthDialog } from "@/components/admin/shared/admin-reauth-dialog";
 import type { BadgeDef, UserDetail } from "@/components/admin/types";
 import { STAFF_ROLES, STAFF_ROLE_LABELS } from "@/lib/config/client-constants";
 import { PLANS, getPlanById } from "@/lib/billing/catalog";
@@ -35,7 +35,10 @@ export interface AccountChanges {
 }
 
 export interface AccountSaveOptions {
-  /** The caller's own password, for the gated writes (email, role). */
+  /**
+   * The caller's own password, for the gated writes (email, role). Undefined
+   * for a caller with no password, who confirmed with an emailed code.
+   */
   password?: string;
   notifyUser: boolean;
 }
@@ -174,12 +177,15 @@ function NotifyCheckbox({
 export function EditAccountDialog({
   user,
   canEditEmailAndPlan,
+  hasPassword = true,
   onSave,
   onClose,
 }: {
   user: AccountUser;
   /** perms.canManageStaff: email and plan are admin-only. */
   canEditEmailAndPlan: boolean;
+  /** meHasPassword(me) for the caller: how the gated email change confirms. */
+  hasPassword?: boolean;
   onSave: SaveAccountChanges;
   onClose: () => void;
 }) {
@@ -211,7 +217,7 @@ export function EditAccountDialog({
         onSave={() => {
           // Changing an account's email redirects every future password
           // reset, so it is password-gated on the server. The dialog stays
-          // open under the password prompt and closes when that save does.
+          // open under the re-auth prompt and closes when that save does.
           if (changes.email !== undefined) {
             setConfirming(true);
             return KEEP_OPEN;
@@ -307,8 +313,8 @@ export function EditAccountDialog({
               className="text-muted-foreground"
             />
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Changes are logged in the audit log. An email change asks for your
-              password first. Plan changes take effect immediately.
+              Changes are logged in the audit log. An email change asks you to
+              confirm it is you first. Plan changes take effect immediately.
             </p>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -318,12 +324,13 @@ export function EditAccountDialog({
         </div>
       </EditDialog>
 
-      <AdminPasswordConfirmDialog
+      <AdminReauthDialog
         open={confirming}
         onOpenChange={setConfirming}
         title="Confirm Account Changes"
-        description={`Re-enter your password to save these changes to ${who}'s account.`}
+        description={`Save these changes to ${who}'s account.`}
         confirmLabel="Save Changes"
+        hasPassword={hasPassword}
         onConfirm={async (password) => {
           const result = await onSave(
             accountChanges(user, draft, canEditEmailAndPlan),
@@ -342,10 +349,13 @@ export function EditAccountDialog({
 
 export function ChangeStaffRoleDialog({
   user,
+  hasPassword = true,
   onSave,
   onClose,
 }: {
   user: Pick<AccountUser, "name" | "email" | "role">;
+  /** meHasPassword(me) for the caller: how the gated role change confirms. */
+  hasPassword?: boolean;
   onSave: SaveAccountChanges;
   onClose: () => void;
 }) {
@@ -394,12 +404,13 @@ export function ChangeStaffRoleDialog({
         <NotifyCheckbox checked={notifyUser} onChange={setNotifyUser} />
       </EditDialog>
 
-      <AdminPasswordConfirmDialog
+      <AdminReauthDialog
         open={confirming}
         onOpenChange={setConfirming}
         title="Confirm Role Change"
-        description={`Re-enter your password to make ${who} ${STAFF_ROLE_LABELS[role] || role}.`}
+        description={`Make ${who} ${STAFF_ROLE_LABELS[role] || role}.`}
         confirmLabel="Change role"
+        hasPassword={hasPassword}
         onConfirm={async (password) => {
           const result = await onSave({ role }, { password, notifyUser });
           if (result.ok) {

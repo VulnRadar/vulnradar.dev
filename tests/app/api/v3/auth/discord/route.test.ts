@@ -248,7 +248,10 @@ describe("/api/v3/auth/discord", () => {
     const res = await POST(discordPost());
 
     expect(res.status).toBe(403);
-    expect((await res.json()).url).toBeUndefined();
+    const json = await res.json();
+    expect(json.url).toBeUndefined();
+    // What tells the profile screen to offer the mailed code.
+    expect(json.stepUp).toBe(true);
   });
 
   it("takes a password-less account's empty post once it has stepped up", async () => {

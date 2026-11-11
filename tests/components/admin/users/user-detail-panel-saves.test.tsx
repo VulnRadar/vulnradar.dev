@@ -23,15 +23,16 @@ vi.mock("react", async (importOriginal) => {
 
 const { harness, find, findAll, textOf, labelled, ofType } =
   await import("./_hook-harness");
-const { UserDetailPanel } =
+const { UserDetailPanel, GatedActionCard } =
   await import("@/components/admin/users/user-detail-panel");
 const dialogs = await import("@/components/admin/users/user-edit-dialogs");
 const { EditDialog, KEEP_OPEN } =
   await import("@/components/shared/edit-dialog");
 const { editCloseDecision, runEditSubmit } =
   await import("@/components/shared/edit-dialog-outcome");
-const { AdminPasswordConfirmDialog, AdminMobileTocTrigger } =
-  await import("@/components/admin/shared");
+const { AdminMobileTocTrigger } = await import("@/components/admin/shared");
+const { AdminReauthDialog } =
+  await import("@/components/admin/shared/admin-reauth-dialog");
 const { Button } = await import("@/components/ui/button");
 
 type PanelProps = Parameters<typeof UserDetailPanel>[0];
@@ -91,6 +92,7 @@ function setup(
   opts: {
     callerRole?: string;
     callerId?: number | null;
+    callerHasPassword?: boolean;
     user?: Record<string, unknown>;
     result?: (action: string) => { ok: boolean; error?: string };
   } = {},
@@ -109,6 +111,7 @@ function setup(
     onAction,
     callerRole: opts.callerRole ?? "super_admin",
     callerId: opts.callerId === undefined ? 2 : opts.callerId,
+    callerHasPassword: opts.callerHasPassword,
     onRefresh,
     allBadges: [BEE, OWL],
     onBadgesChanged,
@@ -187,7 +190,7 @@ describe("account changes always tell the user", () => {
     tree = account.render();
     expect(editDialog(tree).onSave()).toBe(KEEP_OPEN);
     tree = account.render();
-    const pw = find(tree, ofType(AdminPasswordConfirmDialog)).props as {
+    const pw = find(tree, ofType(AdminReauthDialog)).props as {
       open: boolean;
       onConfirm: (p: string) => Promise<{ ok: boolean }>;
     };
@@ -277,7 +280,7 @@ describe("account changes always tell the user", () => {
     }
     editDialog(tree).onSave();
     tree = h.render(props);
-    const pw = find(tree, ofType(AdminPasswordConfirmDialog)).props as {
+    const pw = find(tree, ofType(AdminReauthDialog)).props as {
       onConfirm: (p: string) => Promise<{ ok: boolean; error?: string }>;
     };
     expect(await pw.onConfirm("wrong")).toEqual({
@@ -290,7 +293,7 @@ describe("account changes always tell the user", () => {
     tree = h.render(props);
     expect(
       (
-        find(tree, ofType(AdminPasswordConfirmDialog)).props as {
+        find(tree, ofType(AdminReauthDialog)).props as {
           open: boolean;
         }
       ).open,
@@ -555,7 +558,7 @@ describe("staff role", () => {
     expect(editDialog(tree).onSave()).toBe(KEEP_OPEN);
     expect(calls()).toHaveLength(0);
     tree = role.render();
-    const pw = find(tree, ofType(AdminPasswordConfirmDialog)).props as {
+    const pw = find(tree, ofType(AdminReauthDialog)).props as {
       open: boolean;
       onConfirm: (p: string) => Promise<{ ok: boolean }>;
     };
@@ -604,7 +607,7 @@ describe("staff role", () => {
     editDialog(tree).onSave();
     tree = role.render();
     await (
-      find(tree, ofType(AdminPasswordConfirmDialog)).props as {
+      find(tree, ofType(AdminReauthDialog)).props as {
         onConfirm: (p: string) => Promise<unknown>;
       }
     ).onConfirm("pw");
@@ -786,6 +789,94 @@ describe("admin notes", () => {
     expect(pencil.props.className).toMatch(/\bsm:h-7 sm:w-7\b/);
     click(tree, labelled("Edit note"));
     expect(findAll(render(), labelled("Edit note text"))).toHaveLength(0);
+  });
+});
+
+/**
+ * A staff account created through Google, GitHub or Discord has no password.
+ * The server asks it for the code mailed to its address (lib/auth/reauth.ts)
+ * and refuses with `stepUp: true` until it has one, so every password-gated
+ * action in this panel showed it a password field it had nothing to type into
+ * and ended in a refusal. The panel now gives it the step-up dialog, and the
+ * request carries no password.
+ */
+describe("a staff account with no password", () => {
+  type Reauth = {
+    open: boolean;
+    hasPassword: boolean;
+    onConfirm: (p: string | undefined) => Promise<{ ok: boolean }>;
+  };
+
+  it("confirms a support action by email and sends no password", async () => {
+    const { render, calls } = setup({ callerHasPassword: false });
+    const first = render();
+    const logoutAll = findAll(first, ofType(GatedActionCard)).find(
+      (el) => el.props.action === "force_logout_all",
+    )!;
+    (logoutAll.props.onClick as () => void)();
+    const dialog = find(render(), ofType(AdminReauthDialog)).props as Reauth;
+    expect(dialog.open).toBe(true);
+    expect(dialog.hasPassword).toBe(false);
+    expect(await dialog.onConfirm(undefined)).toMatchObject({ ok: true });
+    const sent = calls().find((c) => c[1] === "force_logout_all")!;
+    expect(sent[2]).not.toHaveProperty("currentAdminPassword");
+  });
+
+  it("confirms an email change by email and sends no password", async () => {
+    const { render, calls } = setup({ callerHasPassword: false });
+    const account = open(
+      render,
+      labelled("Edit account"),
+      dialogs.EditAccountDialog,
+    );
+    let tree = account.render();
+    (
+      find(tree, (el) => el.props.name === "email").props.onChange as (
+        e: unknown,
+      ) => void
+    )({ target: { value: "grace@example.com" } });
+    tree = account.render();
+    expect(editDialog(tree).onSave()).toBe(KEEP_OPEN);
+    tree = account.render();
+    const dialog = find(tree, ofType(AdminReauthDialog)).props as Reauth;
+    expect(dialog.hasPassword).toBe(false);
+    await dialog.onConfirm(undefined);
+    const email = calls().find((c) => c[1] === "update_email")!;
+    expect(email[2]).toEqual({ email: "grace@example.com", notifyUser: true });
+  });
+
+  it("confirms a role change by email and sends no password", async () => {
+    const { render, calls } = setup({ callerHasPassword: false });
+    const role = open(
+      render,
+      buttonText("Change role"),
+      dialogs.ChangeStaffRoleDialog,
+    );
+    let tree = role.render();
+    (
+      find(tree, (el) => el.props.name === "role").props.onChange as (
+        e: unknown,
+      ) => void
+    )({ target: { value: "moderator" } });
+    tree = role.render();
+    editDialog(tree).onSave();
+    tree = role.render();
+    const dialog = find(tree, ofType(AdminReauthDialog)).props as Reauth;
+    expect(dialog.hasPassword).toBe(false);
+    await dialog.onConfirm(undefined);
+    const setRole = calls().find((c) => c[1] === "set_role")!;
+    expect(setRole[2]).not.toHaveProperty("currentAdminPassword");
+  });
+
+  it("still asks an account with a password for it", () => {
+    const { render } = setup();
+    const first = render();
+    const logoutAll = findAll(first, ofType(GatedActionCard)).find(
+      (el) => el.props.action === "force_logout_all",
+    )!;
+    (logoutAll.props.onClick as () => void)();
+    const dialog = find(render(), ofType(AdminReauthDialog)).props as Reauth;
+    expect(dialog.hasPassword).toBe(true);
   });
 });
 

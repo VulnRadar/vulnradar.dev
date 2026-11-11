@@ -5,7 +5,7 @@ import {
   deleteAllSessions,
   createSession,
 } from "@/lib/auth";
-import { verifyReauthPassword } from "@/lib/auth/reauth";
+import { reauthRefusal, verifyReauthPassword } from "@/lib/auth/reauth";
 import {
   analyzePassword,
   checkPasswordRequirements,
@@ -75,13 +75,7 @@ async function confirmCurrentPassword(
     missing: "Current password is required to change profile details.",
     wrong: "Current password is incorrect.",
   });
-  if (!reauth.ok) {
-    const stepUp = "stepUp" in reauth && reauth.stepUp === true;
-    return NextResponse.json(
-      stepUp ? { error: reauth.error, stepUp: true } : { error: reauth.error },
-      { status: reauth.status },
-    );
-  }
+  if (!reauth.ok) return reauthRefusal(reauth);
   return null;
 }
 

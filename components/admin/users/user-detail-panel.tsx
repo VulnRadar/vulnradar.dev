@@ -97,10 +97,10 @@ import {
   StatBar,
   StatBarSkeleton,
   StatusPill,
-  AdminPasswordConfirmDialog,
   EmptyState,
   type AdminTocItem,
 } from "@/components/admin/shared";
+import { AdminReauthDialog } from "@/components/admin/shared/admin-reauth-dialog";
 import { useAdminPermissions } from "@/components/admin/hooks";
 import { GiftSubscriptionModal } from "./gift-subscription-modal";
 import { AccountHistory } from "./account-history";
@@ -138,6 +138,14 @@ interface UserDetailPanelProps {
   callerRole: string;
   /** The signed-in staff member's own id; null until the session has loaded. */
   callerId: number | null;
+  /**
+   * meHasPassword(me) for the signed-in staff member. An account created
+   * through Google, GitHub or Discord has none, so the password-gated actions
+   * confirm with a code mailed to it instead of a password field it has
+   * nothing to type into. Defaults to true, which only means the password
+   * field is shown and the server still decides.
+   */
+  callerHasPassword?: boolean;
   /**
    * Reload the list, the counters and this record once, after a save that made
    * several writes. The writes themselves are sent with refetch:false so the
@@ -219,6 +227,7 @@ export function UserDetailPanel({
   onAction,
   callerRole,
   callerId,
+  callerHasPassword = true,
   onRefresh,
   allBadges,
   onBadgesChanged,
@@ -347,10 +356,11 @@ export function UserDetailPanel({
   const [notifMessage, setNotifMessage] = useState("");
   const [tocOpen, setTocOpen] = useState(false);
 
-  // Password re-auth state. update_email/set_role (the account and role
-  // dialogs) and disable/reset_password/delete (support actions) are all in
+  // Re-auth state. update_email/set_role (the account and role dialogs) and
+  // disable/reset_password/delete (support actions) are all in
   // PASSWORD_GATED_ACTIONS, so the backend rejects them with 403 unless
-  // currentAdminPassword is sent.
+  // currentAdminPassword is sent, or, for a staff account with no password,
+  // until it has confirmed with the code mailed to it.
   const [showSupportPasswordDialog, setShowSupportPasswordDialog] =
     useState(false);
   const [supportNotify, setSupportNotify] = useState(true);
@@ -384,7 +394,7 @@ export function UserDetailPanel({
 
   // Queue a support action for confirmation. Decides which dialog to show
   // up front, not mid-flow: password-gated actions go straight to
-  // AdminPasswordConfirmDialog, skipping SaveConfirmationModal entirely.
+  // AdminReauthDialog, skipping SaveConfirmationModal entirely.
   //
   // This used to always open SaveConfirmationModal first, and for a gated
   // action, its own onConfirm would set showSupportPasswordDialog(true)
@@ -441,8 +451,9 @@ export function UserDetailPanel({
   };
 
   // Execute the pending support action. `password` is only sent when the
-  // action is in PASSWORD_GATED_ACTIONS (see queueSupportAction's caller
-  // in the support-action confirmation modal below).
+  // action is in PASSWORD_GATED_ACTIONS and the caller has a password (see
+  // the re-auth dialog below). A caller with none sends nothing: the step-up
+  // cookie its emailed code left behind is what the server reads.
   const executeSupportAction = async (
     notifyUser: boolean,
     password?: string,
@@ -2529,8 +2540,8 @@ export function UserDetailPanel({
               </p>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              These change or remove access. Everything here asks for your own
-              password first, and the deletions cannot be undone.
+              These change or remove access. Everything here asks you to confirm
+              it is you first, and the deletions cannot be undone.
             </p>
           </CardHeader>
           <CardContent className="p-4 pt-0">
@@ -3025,6 +3036,7 @@ export function UserDetailPanel({
           key={u.id}
           user={u}
           canEditEmailAndPlan={perms.canManageStaff}
+          hasPassword={callerHasPassword}
           onSave={saveAccountChanges}
           onClose={closeEditing}
         />
@@ -3033,6 +3045,7 @@ export function UserDetailPanel({
         <ChangeStaffRoleDialog
           key={u.id}
           user={u}
+          hasPassword={callerHasPassword}
           onSave={saveAccountChanges}
           onClose={closeEditing}
         />
@@ -3065,7 +3078,7 @@ export function UserDetailPanel({
       {/* Support action confirmation modal -- only ever opens for a
           NON-gated action now: queueSupportAction sends a password-gated
           one (disable/reset_password/delete/etc, see
-          PASSWORD_GATED_ACTIONS) straight to the password dialog below
+          PASSWORD_GATED_ACTIONS) straight to the re-auth dialog below
           instead, so this component's own "success + auto-close in 1.5s"
           sequence never runs concurrently with that dialog being open.
           See queueSupportAction's own comment for the stale-timeout race
@@ -3097,7 +3110,7 @@ export function UserDetailPanel({
         forceNotify={true}
       />
 
-      <AdminPasswordConfirmDialog
+      <AdminReauthDialog
         open={showSupportPasswordDialog}
         onOpenChange={(o) => {
           setShowSupportPasswordDialog(o);
@@ -3105,12 +3118,11 @@ export function UserDetailPanel({
         }}
         title={pendingSupportAction?.label || "Confirm Action"}
         description={
-          pendingSupportAction?.description
-            ? `${pendingSupportAction.description} Re-enter your password to confirm.`
-            : "Re-enter your password to confirm this action."
+          pendingSupportAction?.description || "Confirm this action."
         }
         confirmLabel={pendingSupportAction?.label || "Confirm"}
         variant={pendingSupportAction?.variant}
+        hasPassword={callerHasPassword}
         onConfirm={async (password) => {
           const result = await executeSupportAction(supportNotify, password);
           if (result.ok) setShowSupportPasswordDialog(false);

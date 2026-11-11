@@ -164,20 +164,24 @@ export async function verifyReauthPassword(
 
 /**
  * The response for a failed re-auth. A missing step-up is always a 403 with
- * `stepUp: true`, so a client can offer the mailed code; a missing password
- * is a 400 and a wrong one `wrongStatus`, which some routes have always
- * answered with a 401.
+ * `stepUp: true`, so a client can offer the mailed code. A wrong password is
+ * `wrongStatus` and a missing one `missingStatus`, because the routes this
+ * replaced each had their own pair and v3 keeps them: some answer a wrong
+ * password with a 401, the admin routes answer both with a 403, and account
+ * deletion answers both with a 400.
  */
 export function reauthRefusal(
   reauth: Extract<ReauthResult, { ok: false }>,
-  wrongStatus: 401 | 403 = 403,
+  wrongStatus: 400 | 401 | 403 = 403,
+  missingStatus: 400 | 403 = 400,
 ): NextResponse {
   if (reauth.stepUp) {
     return ApiResponse.forbidden(reauth.error, { stepUp: true });
   }
-  return reauth.status === 400
-    ? ApiResponse.badRequest(reauth.error)
-    : ApiResponse.error(reauth.error, wrongStatus);
+  return ApiResponse.error(
+    reauth.error,
+    reauth.status === 400 ? missingStatus : wrongStatus,
+  );
 }
 
 async function verifyStepUp(userId: number): Promise<ReauthResult> {

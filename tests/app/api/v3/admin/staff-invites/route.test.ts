@@ -271,6 +271,8 @@ describe("POST /api/v3/admin/staff-invites — authorization", () => {
       }),
     );
     expect(res.status).toBe(403);
+    // What tells the invite dialog to offer the mailed code.
+    expect((await res.json()).stepUp).toBe(true);
     expect(mockVerifyPassword).not.toHaveBeenCalled();
     expect(mockSendEmail).not.toHaveBeenCalled();
   });

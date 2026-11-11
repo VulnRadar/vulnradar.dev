@@ -4,7 +4,7 @@ import {
   isSuperAdminRole,
   logAction,
 } from "@/lib/auth/authorization";
-import { verifyReauthPassword } from "@/lib/auth/reauth";
+import { reauthRefusal, verifyReauthPassword } from "@/lib/auth/reauth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp } from "@/lib/api/request-utils";
 import { parseBody } from "@/lib/api/api-utils";
@@ -95,8 +95,9 @@ export async function POST(request: NextRequest) {
   // The shared helper, not a third hand-rolled password_hash read. The
   // inline version this replaces treated a NULL hash as a wrong password, so
   // a super_admin created through Google/GitHub/Discord could never apply an
-  // update and was told their password was incorrect. Both failure cases stay
-  // 403, which is what this route has always returned.
+  // update and was told their password was incorrect. Both password failures
+  // stay 403, which is what this route has always returned, and a missing
+  // step-up is a 403 with `stepUp: true`.
   const reauth = await verifyReauthPassword(
     admin.userId,
     currentAdminPassword,
@@ -105,9 +106,7 @@ export async function POST(request: NextRequest) {
       wrong: "Password is incorrect.",
     },
   );
-  if (!reauth.ok) {
-    return NextResponse.json({ error: reauth.error }, { status: 403 });
-  }
+  if (!reauth.ok) return reauthRefusal(reauth, 403, 403);
 
   const version =
     typeof targetVersion === "string" && targetVersion.trim()

@@ -1350,8 +1350,28 @@ describe("PATCH /api/v3/admin — GATED_ACTIONS re-auth (real scrypt)", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ password_hash: null }] });
     const res = await PATCH(patchRequest({ action: "make_admin", userId: 5 }));
     expect(res.status).toBe(403);
-    expect((await res.json()).error).toMatch(/code from your email/);
+    const json = await res.json();
+    expect(json.error).toMatch(/code from your email/);
+    // What tells the Users panel to offer the mailed code instead of a
+    // password field the account has nothing to type into.
+    expect(json.stepUp).toBe(true);
     expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("does not count a missing step-up against the password attempt budget", async () => {
+    // A password-less admin opening the dialog before it has confirmed by
+    // email made no guess at anything, so it must not use up the budget that
+    // caps guesses at a password.
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ password_hash: null }] });
+    const res = await PATCH(patchRequest({ action: "disable", userId: 5 }));
+    expect(res.status).toBe(403);
+    expect(mockRefundRateLimitAttempt).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a gated action with the wrong currentAdminPassword", async () => {
