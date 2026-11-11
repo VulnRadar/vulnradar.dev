@@ -234,6 +234,10 @@ describe("GET /api/v3/data-request", () => {
     expect(writeBack).toBeDefined();
     expect(writeBack![1][0]).toBe(42);
     expect(String(writeBack![1][1])).not.toContain(FIXTURE_FINGERPRINT);
+    // Only over the copy that was read, so an export saved in between (which
+    // holds no token) is not replaced with this older one.
+    expect(String(writeBack![0])).toMatch(/AND data = \$3/);
+    expect(writeBack![1][2]).toBe(JSON.stringify(stored, null, 2));
   });
 
   it("leaves a stored export with no device trust tokens untouched", async () => {

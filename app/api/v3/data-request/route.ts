@@ -119,17 +119,20 @@ export async function GET() {
     );
     const canDownloadNew = new Date() >= cooldownEnd;
 
-    let data = result.rows[0].data;
-    const scrubbed = scrubDeviceTrustTokens(data);
+    const stored = result.rows[0].data;
+    let data = stored;
+    const scrubbed = scrubDeviceTrustTokens(stored);
     if (scrubbed !== null) {
       data = scrubbed;
       // Written back so the token is gone from storage too, not only from
       // this response. Best effort: the caller is owed the scrubbed copy
-      // whether or not the write lands.
+      // whether or not the write lands. Only over the text that was read: a
+      // new export saved since then holds no token, and this would otherwise
+      // overwrite it with the older one.
       await pool
         .query(
-          `UPDATE data_requests SET data = $2 WHERE user_id = $1 AND downloaded_at IS NOT NULL`,
-          [session.userId, scrubbed],
+          `UPDATE data_requests SET data = $2 WHERE user_id = $1 AND downloaded_at IS NOT NULL AND data = $3`,
+          [session.userId, scrubbed, stored],
         )
         .catch((err) =>
           console.error("[data-request] Failed to scrub a stored export:", err),
