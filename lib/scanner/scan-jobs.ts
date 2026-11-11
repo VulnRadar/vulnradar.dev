@@ -512,7 +512,7 @@ export async function finalizeScanSuccess(
     const commit = await client.query("COMMIT");
     if (commit?.command === "ROLLBACK") {
       throw new Error(
-        "The scan's completion was rolled back by the database instead of committed.",
+        "The scan finished, but the database rolled back its results instead of saving them.",
       );
     }
   } catch (err) {
