@@ -12,10 +12,10 @@
  * happened. Throwing puts the reason where the person is looking.
  *
  * The server's own `error` wins over the caller's fallback, because it is the
- * one that knows why (a role ceiling, a seat cap, "Owners cannot leave"). A
- * rejected fetch has no server message at all, and its native text ("Failed to
- * fetch") is not something to show a person, so it becomes the connection
- * sentence the rest of the page already uses.
+ * one that knows why (a role ceiling, a seat cap, an owner told to transfer
+ * the team before leaving it). A rejected fetch has no server message at all,
+ * and its native text ("Failed to fetch") is not something to show a person,
+ * so it becomes the connection sentence the rest of the page already uses.
  */
 export const TEAMS_UNREACHABLE =
   "We could not reach the server. Check your connection and try again.";
