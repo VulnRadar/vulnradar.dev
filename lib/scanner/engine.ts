@@ -26,7 +26,7 @@ import {
 } from "./check-types";
 import { buildPageContext } from "./page-context";
 import { dedupeFindings } from "./dedupe";
-import { generateId } from "./_helpers";
+import { generateId, hitDistinguisher } from "./_helpers";
 import { logError } from "@/lib/logging/log";
 import { currentScanId } from "@/lib/database/request-context";
 
@@ -94,26 +94,6 @@ export function noPageChecks(): SyncCheckResult {
  */
 export function dedupeScanFindings(findings: Vulnerability[]): Vulnerability[] {
   return dedupeFindings(findings, pageCheckGroups).findings;
-}
-
-/**
- * A string that differs between two hits from the same check's `run()` call
- * when, and only when, the hits describe genuinely different things, so
- * `generateId` can fold it in and keep multi-hit findings from colliding on
- * id (see check-types.ts's `CheckHit | CheckHit[] | null` and _helpers.ts's
- * `generateId`).
- *
- * Prefers the hit's excerpts, the verbatim proof pointing at the specific
- * thing found (e.g. a script `src` URL), over its `evidence` summary: two
- * hits can share identical evidence text (the same library name and
- * version) while pointing at two different script URLs, which excerpts
- * would still tell apart.
- */
-function hitDistinguisher(hit: CheckHit): string {
-  if (hit.excerpts && hit.excerpts.length > 0) {
-    return hit.excerpts.map((e) => `${e.label}:${e.value}`).join("|");
-  }
-  return hit.evidence;
 }
 
 function hitToVulnerability(
@@ -393,13 +373,17 @@ function* checkPasses(
       try {
         const result = check.run(ctx!);
         if (!result) continue;
-        const hits = Array.isArray(result) ? result : [result];
-        // Only fold a per-hit distinguisher into the id when this check
-        // actually produced more than one hit this run: a check that only
-        // ever returns one hit (the overwhelming majority) keeps producing
-        // the exact id it always has, so existing scan_finding_feedback
-        // rows and regression-alert baselines for those findings stay valid.
-        const distinguish = hits.length > 1;
+        // A check that reports several things on one page returns an array,
+        // and an array always gets each hit folded into its id, even when it
+        // holds one hit this run. Deciding by the hit count instead changed a
+        // hit's id the moment a second one appeared or went away, so its
+        // false-positive mark and remediation status stopped applying and
+        // the regression email reported it as new. A check that returns a
+        // single CheckHit (the overwhelming majority) keeps the id it always
+        // had. The shape of the return value is the per-check declaration:
+        // a check that can return several hits returns an array every time.
+        const distinguish = Array.isArray(result);
+        const hits = distinguish ? result : [result];
         for (const hit of hits)
           findings.push(hitToVulnerability(check, hit, url, distinguish));
       } catch (err) {

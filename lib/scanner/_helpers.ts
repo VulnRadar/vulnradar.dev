@@ -32,9 +32,42 @@ function fnvHash(s: string): string {
 }
 
 /**
+ * One spelling per scanned address: the host lower-cased, the fragment
+ * dropped, and a trailing slash dropped from any path but the root (which
+ * always has one). "example.com", "https://Example.com" and
+ * "https://example.com/#top" are one site, and storing or hashing them as
+ * typed gave the dashboard, the CLI and a crawl three baselines and three sets
+ * of finding ids for it, so triage reset and the regression email re-alerted
+ * on every switch of entry point. The query string is kept: ?page=2 is a
+ * different page. Userinfo is kept too, because it is part of what gets
+ * fetched. A string the URL parser refuses comes back unchanged, so the
+ * caller's validation still sees what was sent.
+ *
+ * This is the local copy of canonicalScanUrl in lib/scanner/scan-identity.ts
+ * (scan-routes-entry); once that module lands, this becomes a re-export of it.
+ */
+export function canonicalScanUrl(input: string): string {
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    return input;
+  }
+  url.hash = "";
+  if (url.hostname) url.hostname = url.hostname.toLowerCase();
+  if (url.pathname.length > 1 && url.pathname.endsWith("/")) {
+    url.pathname = url.pathname.slice(0, -1);
+  }
+  return url.href;
+}
+
+/**
  * Stable, deterministic finding ID: `<checkId>--<hash>`.
  * Two scans of the same URL produce the same IDs for the same findings,
- * enabling reliable diffing between scans.
+ * enabling reliable diffing between scans. The URL is hashed in its
+ * canonicalScanUrl form, so the same site reached by a different spelling
+ * keeps its ids; anything that is not a URL (a host, a file path) is hashed
+ * as given.
  *
  * `distinguisher`, when given, is folded into the hash alongside `url`. A
  * check's `run()` is allowed to return more than one `CheckHit` for a single
@@ -42,12 +75,47 @@ function fnvHash(s: string): string {
  * per-hit distinguisher every hit from that check on that page would
  * collapse onto the exact same id: a React list key collision, and a
  * false_positive mark on one hit (scan_finding_feedback is keyed on this id)
- * silently suppressing the other, unrelated hit too. Leaving it undefined
- * (every single-hit check, which is the overwhelming majority) reproduces
- * the exact id this function has always produced, so existing feedback rows
- * and regression-alert baselines keyed on the old id stay valid.
+ * silently suppressing the other, unrelated hit too. lib/scanner/engine.ts
+ * passes one for every hit of a check that returns an array.
  */
 export function generateId(
+  checkId: string,
+  url: string,
+  distinguisher?: string,
+): string {
+  return legacyFindingId(checkId, canonicalScanUrl(url), distinguisher);
+}
+
+/**
+ * A string that differs between two hits from the same check's `run()` call
+ * when, and only when, the hits describe genuinely different things, so
+ * `generateId` can fold it in and keep multi-hit findings from colliding on
+ * id (see check-types.ts's `CheckHit | CheckHit[] | null`).
+ *
+ * Prefers the hit's excerpts, the verbatim proof pointing at the specific
+ * thing found (e.g. a script `src` URL), over its `evidence` summary: two
+ * hits can share identical evidence text (the same library name and
+ * version) while pointing at two different script URLs, which excerpts
+ * would still tell apart. Typed structurally because a stored finding's
+ * `evidenceExcerpts` is the same data under another name, and the id remap
+ * (lib/scanner/finding-id-remap.ts) rebuilds ids from stored findings.
+ */
+export function hitDistinguisher(hit: {
+  excerpts?: readonly { label: string; value: string }[];
+  evidence: string;
+}): string {
+  if (hit.excerpts && hit.excerpts.length > 0) {
+    return hit.excerpts.map((e) => `${e.label}:${e.value}`).join("|");
+  }
+  return hit.evidence;
+}
+
+/**
+ * The id as it was computed before the URL was canonicalised: the URL hashed
+ * exactly as given. Only lib/scanner/finding-id-remap.ts needs it, to
+ * recognise the ids that feedback and remediation rows were stored under.
+ */
+export function legacyFindingId(
   checkId: string,
   url: string,
   distinguisher?: string,
@@ -168,15 +236,11 @@ export function getEffectiveCsp(headers: Headers, body: string): string {
  * Cookie parsing helpers.
  */
 export function getSetCookies(headers: Headers): string[] {
-  // `Headers.getSetCookie()` is the standard API; fall back to scanning
-  // comma-joined values if the runtime doesn't support it.
-  if (
-    typeof (headers as unknown as { getSetCookie?: () => string[] })
-      .getSetCookie === "function"
-  ) {
-    return (
-      headers as unknown as { getSetCookie: () => string[] }
-    ).getSetCookie();
+  // `Headers.getSetCookie()` is the standard API and the DOM types declare it,
+  // so no cast is needed to call it. The fallback stays for a test double or
+  // an older runtime whose Headers object lacks the method.
+  if (typeof headers.getSetCookie === "function") {
+    return headers.getSetCookie();
   }
   const all: string[] = [];
   headers.forEach((value, key) => {

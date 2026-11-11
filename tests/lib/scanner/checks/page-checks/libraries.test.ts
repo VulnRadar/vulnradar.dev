@@ -3,6 +3,7 @@ import { libraryChecks } from "@/lib/scanner/checks/page-checks/libraries";
 import { runPageCheckTests, type PageCheckFixtures } from "./_test-harness";
 import { runSyncChecks } from "@/lib/scanner/engine";
 import { generateId } from "@/lib/scanner/_helpers";
+import { buildPageContext } from "@/lib/scanner/page-context";
 
 const fixtures: PageCheckFixtures = {
   "page-outdated-vulnerable-library": [
@@ -171,7 +172,11 @@ describe("page-outdated-vulnerable-library: two vulnerable libraries on one page
     expect(second).toEqual(first);
   });
 
-  it("keeps a lone hit's id in the original <checkId>--<urlHash> shape, unchanged by this fix", () => {
+  // The id of a hit is the same whether it is alone on the page or has
+  // company. It used to take the plain <checkId>--<urlHash> shape when alone
+  // and fold the hit in only when there were two, so removing the other
+  // library changed this one's id and dropped its triage.
+  it("gives a lone hit the same id it has next to another library", () => {
     const singleLibraryBody = `<script src="https://code.jquery.com/jquery-1.9.0.min.js"></script>`;
     const findings = runSyncChecks(
       url,
@@ -181,9 +186,25 @@ describe("page-outdated-vulnerable-library: two vulnerable libraries on one page
       f.id.startsWith("page-outdated-vulnerable-library--"),
     );
     expect(findings).toHaveLength(1);
-    expect(findings[0].id).toBe(
+    expect(findings[0].id).not.toBe(
       generateId("page-outdated-vulnerable-library", url),
     );
+    const withCompany = libraryFindings().find((f) =>
+      f.evidence.includes("jQuery"),
+    );
+    expect(findings[0].id).toBe(withCompany?.id);
+  });
+
+  it("returns an array even for one hit, which is what marks it multi-hit", () => {
+    const check = libraryChecks.find(
+      (c) => c.id === "page-outdated-vulnerable-library",
+    );
+    const ctx = buildPageContext(
+      url,
+      headers,
+      `<script src="https://code.jquery.com/jquery-1.9.0.min.js"></script>`,
+    );
+    expect(Array.isArray(check?.run(ctx))).toBe(true);
   });
 });
 

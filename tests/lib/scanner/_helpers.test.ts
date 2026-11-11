@@ -4,40 +4,117 @@
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { generateId, withDeadline } from "@/lib/scanner/_helpers";
+import {
+  canonicalScanUrl,
+  generateId,
+  getSetCookies,
+  legacyFindingId,
+  withDeadline,
+} from "@/lib/scanner/_helpers";
 
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
-describe("generateId", () => {
-  // Ids key scan_finding_feedback rows and regression-alert baselines, so the
-  // output may never change. These literals are FNV-1a 32 in base 36 of the
-  // exact input, computed once and pinned.
-  it("is <checkId>--<FNV-1a 32 of the url, base 36>", () => {
-    expect(generateId("csp-missing", "https://example.com")).toBe(
+describe("legacyFindingId", () => {
+  // The ids feedback and remediation rows were stored under, which the remap
+  // recognises. These literals are FNV-1a 32 in base 36 of the exact input,
+  // computed once and pinned.
+  it("is <checkId>--<FNV-1a 32 of the url as given, base 36>", () => {
+    expect(legacyFindingId("csp-missing", "https://example.com")).toBe(
       "csp-missing--v03177",
     );
-    expect(generateId("csp-missing", "https://example.com/")).toBe(
+    expect(legacyFindingId("csp-missing", "https://example.com/")).toBe(
       "csp-missing--1qfat2s",
     );
   });
 
   it("hashes an empty url to a stable value rather than failing", () => {
-    expect(generateId("x", "")).toBe("x--ztntfp");
+    expect(legacyFindingId("x", "")).toBe("x--ztntfp");
   });
 
   it("folds a distinguisher into the hash, separated by one space", () => {
-    expect(generateId("x", "https://example.com", "x")).toBe("x--1v91943");
-    expect(generateId("x", "https://example.com", "a")).toBe("x--1sr4tvc");
-    expect(generateId("x", "https://example.com", "b")).toBe("x--1tl3my9");
+    expect(legacyFindingId("x", "https://example.com", "x")).toBe("x--1v91943");
+    expect(legacyFindingId("x", "https://example.com", "a")).toBe("x--1sr4tvc");
+    expect(legacyFindingId("x", "https://example.com", "b")).toBe("x--1tl3my9");
   });
 
   it("treats an empty distinguisher as none", () => {
-    expect(generateId("x", "https://example.com", "")).toBe(
-      generateId("x", "https://example.com"),
+    expect(legacyFindingId("x", "https://example.com", "")).toBe(
+      legacyFindingId("x", "https://example.com"),
     );
+  });
+});
+
+describe("generateId", () => {
+  // Ids key scan_finding_feedback rows and regression-alert baselines. The
+  // canonical spelling of a URL keeps the id it always had, so the common
+  // stored form (an address with its root slash) did not move.
+  it("is the legacy id of the canonical url", () => {
+    expect(generateId("csp-missing", "https://example.com/")).toBe(
+      "csp-missing--1qfat2s",
+    );
+    expect(generateId("x", "https://example.com/", "a")).toBe(
+      legacyFindingId("x", "https://example.com/", "a"),
+    );
+  });
+
+  it.each([
+    "https://example.com",
+    "https://EXAMPLE.com/",
+    "https://example.com/#pricing",
+    "https://Example.COM",
+  ])("gives %s the id of https://example.com/", (spelling) => {
+    expect(generateId("csp-missing", spelling)).toBe("csp-missing--1qfat2s");
+  });
+
+  it("keeps a page's trailing-slash spellings together and its query apart", () => {
+    expect(generateId("x", "https://example.com/blog/")).toBe(
+      generateId("x", "https://example.com/blog"),
+    );
+    expect(generateId("x", "https://example.com/blog?page=2")).not.toBe(
+      generateId("x", "https://example.com/blog"),
+    );
+  });
+
+  it("hashes what is not a URL exactly as given", () => {
+    expect(generateId("host-listed-threat-intel", "Example.com")).toBe(
+      legacyFindingId("host-listed-threat-intel", "Example.com"),
+    );
+    expect(generateId("x", "")).toBe("x--ztntfp");
+  });
+});
+
+describe("canonicalScanUrl", () => {
+  it.each([
+    ["https://Example.com", "https://example.com/"],
+    ["https://example.com/a/", "https://example.com/a"],
+    ["https://example.com/a/?q=1#frag", "https://example.com/a?q=1"],
+    ["http://example.com:80/", "http://example.com/"],
+    ["ssh://Host.example:22", "ssh://host.example:22"],
+    ["mongodb://db.example:27017/", "mongodb://db.example:27017/"],
+  ])("canonicalises %s to %s", (input, output) => {
+    expect(canonicalScanUrl(input)).toBe(output);
+  });
+
+  it("returns a string the parser refuses unchanged", () => {
+    expect(canonicalScanUrl("not a url")).toBe("not a url");
+  });
+});
+
+describe("getSetCookies", () => {
+  it("returns every Set-Cookie header separately", () => {
+    const headers = new Headers();
+    headers.append("Set-Cookie", "a=1; Path=/");
+    headers.append("set-cookie", "b=2; Secure");
+    expect(getSetCookies(headers)).toEqual(["a=1; Path=/", "b=2; Secure"]);
+  });
+
+  it("falls back to iterating when the runtime has no getSetCookie", () => {
+    const headers = new Headers({ "set-cookie": "a=1" });
+    Object.defineProperty(headers, "getSetCookie", { value: undefined });
+    expect(getSetCookies(headers)).toEqual(["a=1"]);
   });
 });
 

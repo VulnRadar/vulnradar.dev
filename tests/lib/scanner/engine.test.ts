@@ -561,3 +561,37 @@ describe("runSyncChecks reports a root cause once", () => {
     expect(count(["open-redirect", "page-open-redirect-param-shape"])).toBe(1);
   });
 });
+
+describe("finding ids of a check that can return several hits", () => {
+  const jquery = "https://code.jquery.com/jquery-1.12.4.min.js";
+  const lodash = "https://cdn.jsdelivr.net/npm/lodash@4.17.15/lodash.min.js";
+  const page = (srcs: string[]) =>
+    `<html><head>${srcs.map((s) => `<script src="${s}"></script>`).join("")}</head><body>ok</body></html>`;
+  const libraryFindings = (srcs: string[]) =>
+    runSyncChecks(
+      "https://example.com/",
+      new Headers({ "content-type": "text/html" }),
+      page(srcs),
+    ).findings.filter((f) =>
+      f.id.startsWith("page-outdated-vulnerable-library--"),
+    );
+
+  // The id used to fold the hit in only when the check returned two or more
+  // hits that run, so the same library on the same page changed id the moment
+  // a second one was added or removed: its false-positive mark and its
+  // remediation status stopped applying, and the regression email reported a
+  // finding the owner had already dismissed as new.
+  it("keeps the id of a hit when the other hit goes away", () => {
+    const both = libraryFindings([jquery, lodash]);
+    expect(both).toHaveLength(2);
+    const [only] = libraryFindings([jquery]);
+    expect(only).toBeDefined();
+    const sameHit = both.find((f) => f.evidence === only.evidence);
+    expect(sameHit?.id).toBe(only.id);
+  });
+
+  it("still gives two hits two different ids", () => {
+    const both = libraryFindings([jquery, lodash]);
+    expect(new Set(both.map((f) => f.id)).size).toBe(2);
+  });
+});

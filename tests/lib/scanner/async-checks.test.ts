@@ -405,10 +405,10 @@ describe("checkMX", () => {
 // call. The literals below were produced by the old private copy.
 
 describe("async finding ids", () => {
-  it("are <checkId>--<FNV-1a of the url> exactly as before", async () => {
+  it("are <checkId>--<FNV-1a of the canonical url>", async () => {
     dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf2.0"]]);
-    const [finding] = await checkSPF("example.com", "https://example.com");
-    expect(finding.id).toBe("async-missing-spf-record--v03177");
+    const [finding] = await checkSPF("example.com", "https://example.com/");
+    expect(finding.id).toBe("async-missing-spf-record--1qfat2s");
   });
 
   it("come from the shared generateId", async () => {
@@ -426,12 +426,20 @@ describe("async finding ids", () => {
     expect(finding.id).toBe("async-weak-spf-record-all---13ervfc");
   });
 
-  it("differ when only the url differs", async () => {
+  // One site, one set of ids, whichever spelling of it the scan was given.
+  it("are the same for two spellings of one address", async () => {
     dnsMock.resolveTxt.mockResolvedValue([["v=spf2.0"]]);
     const [bare] = await checkSPF("example.com", "https://example.com");
     const [slash] = await checkSPF("example.com", "https://example.com/");
-    expect(bare.id).not.toBe(slash.id);
+    expect(bare.id).toBe(slash.id);
     expect(slash.id).toBe("async-missing-spf-record--1qfat2s");
+  });
+
+  it("differ when the page differs", async () => {
+    dnsMock.resolveTxt.mockResolvedValue([["v=spf2.0"]]);
+    const [root] = await checkSPF("example.com", "https://example.com/");
+    const [page] = await checkSPF("example.com", "https://example.com/a");
+    expect(root.id).not.toBe(page.id);
   });
 });
 
