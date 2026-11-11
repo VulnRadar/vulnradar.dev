@@ -163,8 +163,11 @@ const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
 vi.stubGlobal("fetch", mockFetch);
 
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
-const { AUTH_SESSION_COOKIE_NAME, DEVICE_TRUST_COOKIE_NAME } =
-  await import("@/lib/config/constants");
+const {
+  AUTH_SESSION_COOKIE_NAME,
+  DEVICE_TRUST_COOKIE_NAME,
+  AUTH_2FA_PENDING_COOKIE,
+} = await import("@/lib/config/constants");
 const { signDiscordState, DISCORD_NONCE_COOKIE } =
   await import("@/lib/auth/discord-state");
 const { decryptApiKey } = await import("@/lib/auth/crypto");
@@ -670,6 +673,26 @@ describe("GET /api/v3/auth/discord/callback", () => {
         cookieState.get("discord_pending_login")!,
       );
       expect(pending?.userId).toBe(42);
+    });
+
+    // Two pending cookies at once made email-send and verify disagree on
+    // whose sign-in it was (lib/auth/pending-user.ts).
+    it("clears a leftover password or OAuth pending cookie when it sets its own", async () => {
+      cookieState.set(AUTH_2FA_PENDING_COOKIE, "stale-password-pending");
+      cookieState.set("oauth_pending_login", "stale-oauth-pending");
+      existingConnectionUserId = 42;
+      twoFAConfigRow = {
+        totp_enabled: true,
+        two_factor_method: "app",
+        email: "u@example.com",
+      };
+      const state = loginState();
+
+      await GET(callbackRequest({ code: "somecode", state }));
+
+      expect(cookieState.get("discord_pending_login")).toBeTruthy();
+      expect(cookieState.get(AUTH_2FA_PENDING_COOKIE)).toBeUndefined();
+      expect(cookieState.get("oauth_pending_login")).toBeUndefined();
     });
 
     it("sends the email 2FA code in the background for email-method 2FA", async () => {

@@ -13,10 +13,12 @@ import {
  * email. getSession, hashPassword, and verifyPassword all run for real.
  */
 
+process.env.API_KEY_ENCRYPTION_KEY = "a".repeat(64);
+
 const rateLimitCounts = new Map<string, number>();
 let sessionRow: Record<string, unknown> | null = null;
 let userRow: {
-  password_hash: string;
+  password_hash: string | null;
   totp_enabled: boolean;
   backup_codes?: string | null;
 } | null = null;
@@ -53,8 +55,8 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   // The route no longer selects password_hash itself: re-auth moved into
   // verifyReauthPassword (lib/auth/reauth.ts), which runs its own
   // SELECT password_hash. That indirection is what lets an OAuth-only
-  // account (password_hash NULL) re-auth with its session instead of a
-  // password it does not have. Both queries are served here so the real
+  // account (password_hash NULL) re-auth with the mailed step-up instead of
+  // a password it does not have. Both queries are served here so the real
   // re-auth logic stays under test rather than being mocked away.
   if (s.startsWith("SELECT totp_enabled FROM users WHERE id = $1")) {
     return { rows: userRow ? [userRow] : [] };
@@ -97,6 +99,8 @@ const { hashPassword } = await import("@/lib/auth/password-hash");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
 const { GET, POST } = await import("@/app/api/v3/auth/2fa/backup-codes/route");
+const { STEP_UP_COOKIE, signStepUpToken } = await import("@/lib/auth/reauth");
+const { hashSessionId } = await import("@/lib/auth/auth");
 
 const REAL_PASSWORD = "Hy6#Wqnprtlv84";
 let realPasswordHash: string;
@@ -238,5 +242,25 @@ describe("POST /api/v3/auth/2fa/backup-codes", () => {
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
+  }, 20_000);
+
+  // New backup codes are a way back into the account. A stolen session on a
+  // password-less account used to be enough to mint a set of its own.
+  it("asks an OAuth-only account for the mailed step-up, then regenerates", async () => {
+    login(1);
+    userRow = { password_hash: null, totp_enabled: true };
+
+    const refused = await POST(postReq({}));
+    expect(refused.status).toBe(403);
+    expect((await refused.json()).stepUp).toBe(true);
+    expect(backupCodesUpdateCalls).toHaveLength(0);
+
+    cookieState.set(
+      STEP_UP_COOKIE,
+      signStepUpToken(1, hashSessionId("session-1")),
+    );
+    const res = await POST(postReq({}));
+    expect(res.status).toBe(200);
+    expect(backupCodesUpdateCalls).toHaveLength(1);
   }, 20_000);
 });

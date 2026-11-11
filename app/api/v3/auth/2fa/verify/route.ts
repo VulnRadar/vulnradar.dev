@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual, createHash } from "node:crypto";
-import { createSession, verifyPassword } from "@/lib/auth";
+import { createSession, getSession, verifyPassword } from "@/lib/auth";
 import { decryptApiKey } from "@/lib/auth/crypto";
 import { verifyTOTPWithCounter } from "@/lib/auth/totp";
 import pool from "@/lib/database/db";
@@ -14,9 +13,22 @@ import {
 } from "@/lib/api/api-utils";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { verifyPendingToken } from "@/lib/auth/pending-2fa";
+import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
 import {
-  AUTH_2FA_PENDING_COOKIE,
+  DISCORD_PENDING_COOKIE,
+  OAUTH_PENDING_COOKIE,
+  PENDING_COOKIE_NAMES,
+  resolvePendingUser,
+} from "@/lib/auth/pending-user";
+import { consumeEmailCode } from "@/lib/auth/email-codes";
+import {
+  currentSessionId,
+  signStepUpToken,
+  STEP_UP_COOKIE,
+  stepUpCookieOptions,
+} from "@/lib/auth/reauth";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
+import {
   DEVICE_TRUST_COOKIE_NAME,
   ERROR_MESSAGES,
 } from "@/lib/config/constants";
@@ -24,6 +36,32 @@ import { getSetting } from "@/lib/config/runtime-config";
 import { upsertTrustedDevice } from "@/lib/auth/device-trust";
 import { loginsPausedResponseFor } from "@/lib/admin/service-state";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
+
+const SIX_DIGITS = /^\d{6}$/;
+
+/**
+ * Two buckets: one keyed by (user, ip) and one by user alone, so a caller who
+ * already holds the first factor (or a session, for the step-up) cannot
+ * brute-force the 6-digit code by rotating source IPs. Admin-configurable,
+ * default 5 per 5 minutes (RATE_LIMIT_2FA_VERIFY_*). The step-up shares the
+ * user bucket with sign-in, so mixing the two buys no extra guesses.
+ */
+async function twoFactorAttemptLimit(
+  userId: number,
+  ip: string,
+  scope: "2fa-verify" | "2fa-step-up" = "2fa-verify",
+): Promise<NextResponse | null> {
+  for (const key of [`${scope}:${userId}:${ip}`, `2fa-verify-user:${userId}`]) {
+    const rl = await checkRateLimit({ key, ...RATE_LIMITS.twoFactorVerify });
+    if (!rl.allowed) {
+      return ApiResponse.tooManyRequests(
+        TOO_MANY_ATTEMPTS("2FA attempts", rl.retryAfterSeconds),
+        rl.retryAfterSeconds,
+      );
+    }
+  }
+  return null;
+}
 
 /** users.backup_codes is a JSON array of hashes in a TEXT column. */
 function parseBackupCodes(raw: unknown): string[] {
@@ -44,6 +82,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   const parsed = await readJsonObject(request);
   if (!parsed.ok) return parsed.response;
+  if (parsed.data.purpose === "reauth") {
+    return verifyStepUp(parsed.data.code, ip);
+  }
   // `userId` from the body is intentionally NOT destructured: it must never be
   // trusted for authorization. The effective user id comes only from a signed
   // pending cookie below (lib/auth/pending-2fa.ts).
@@ -64,87 +105,36 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   ]);
   if (validationError) return ApiResponse.badRequest(validationError);
 
-  // Verify the pending 2FA token. Three possible sources: a normal
-  // password login (AUTH_2FA_PENDING_COOKIE), the existing Discord
-  // account-linking login (discord_pending_login), or a Google/GitHub/
-  // Discord OAuth sign-in from app/api/v3/auth/oauth/[provider]/callback
-  // (oauth_pending_login). The last two carry the userId in the cookie
-  // itself rather than the request body, since they arrive via a full-page
-  // redirect with no client-side state to attach it to.
-  const pending = request.cookies.get(AUTH_2FA_PENDING_COOKIE)?.value;
-  const discordPending = request.cookies.get("discord_pending_login")?.value;
-  const oauthPending = request.cookies.get("oauth_pending_login")?.value;
-
-  let usingThirdPartyPendingCookie = false;
-  let thirdPartyPendingCookieName:
-    "discord_pending_login" | "oauth_pending_login" | null = null;
-  // The user id is ONLY ever taken from a cryptographically-signed pending
-  // cookie (lib/auth/pending-2fa.ts), never from the request body. The body's
-  // userId used to be trusted after a compare against a forgeable cookie, which
-  // let anyone reach a victim's 2FA step without their password.
-  let effectiveUserId = 0;
-  const pendingMaxAgeMs =
-    (await getSetting("2FA_PENDING_MAX_AGE_SECONDS")) * 1000;
-
-  // Check for a third-party pending login first. Discord takes priority only
-  // because both could never realistically be set at once (each callback sets
-  // exactly one).
-  const thirdPartyPendingRaw = discordPending ?? oauthPending;
-  if (thirdPartyPendingRaw) {
-    thirdPartyPendingCookieName = discordPending
-      ? "discord_pending_login"
-      : "oauth_pending_login";
-    const parsed = verifyPendingToken<{ userId: number; ts: number }>(
-      thirdPartyPendingRaw,
-    );
-    if (parsed && typeof parsed.userId === "number") {
-      usingThirdPartyPendingCookie = true;
-      effectiveUserId = parsed.userId;
-      // Freshness: same admin-configurable window the password-login pending
-      // cookie uses (2FA_PENDING_MAX_AGE_SECONDS), so raising one raises both.
-      if (Date.now() - parsed.ts > pendingMaxAgeMs) {
-        return ApiResponse.unauthorized(
-          thirdPartyPendingCookieName === "discord_pending_login"
-            ? "Discord login session expired. Please try again."
-            : "That sign-in session expired. Please try again.",
-        );
-      }
+  // Whose sign-in this is. Three possible sources: a password login
+  // (AUTH_2FA_PENDING_COOKIE), a Discord sign-in (discord_pending_login), or a
+  // Google/GitHub/Discord OAuth sign-in (oauth_pending_login). The user id is
+  // ONLY ever taken from one of those signed cookies, never from the request
+  // body: the body's userId used to be trusted after a compare against a
+  // forgeable cookie, which let anyone reach a victim's 2FA step without their
+  // password. email-send asks the same resolver, so the code it mailed and the
+  // code checked here are always for the same account.
+  const pending = await resolvePendingUser(request);
+  if (!pending.ok) {
+    if (pending.reason === "expired") {
+      return ApiResponse.unauthorized(
+        pending.cookieName === DISCORD_PENDING_COOKIE
+          ? "Discord login session expired. Please try again."
+          : pending.cookieName === OAUTH_PENDING_COOKIE
+            ? "That sign-in session expired. Please try again."
+            : ERROR_MESSAGES.INVALID_2FA_SESSION,
+      );
     }
+    return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_2FA_SESSION);
   }
-
-  if (!usingThirdPartyPendingCookie) {
-    const parsed = verifyPendingToken<{ userId: number; ts: number }>(pending);
-    if (!parsed || typeof parsed.userId !== "number") {
-      return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_2FA_SESSION);
-    }
-    if (Date.now() - parsed.ts > pendingMaxAgeMs) {
-      return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_2FA_SESSION);
-    }
-    effectiveUserId = parsed.userId;
-  }
+  const effectiveUserId = pending.userId;
 
   // auth: rate-limit 2FA attempts (admin-configurable, default 5 / 5 min --
   // RATE_LIMIT_2FA_VERIFY_ATTEMPTS/WINDOW_MINUTES). Two buckets: one keyed by
   // (user, ip) and one keyed by user alone, so an attacker who already holds
   // the password (and thus a valid signed pending cookie) can't brute-force the
   // 6-digit code by rotating source IPs to reset the per-ip bucket.
-  if (effectiveUserId) {
-    for (const key of [
-      `2fa-verify:${effectiveUserId}:${ip}`,
-      `2fa-verify-user:${effectiveUserId}`,
-    ]) {
-      const rl = await checkRateLimit({
-        key,
-        ...RATE_LIMITS.twoFactorVerify,
-      });
-      if (!rl.allowed) {
-        return ApiResponse.tooManyRequests(
-          `Too many 2FA attempts. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
-          rl.retryAfterSeconds,
-        );
-      }
-    }
-  }
+  const limited = await twoFactorAttemptLimit(effectiveUserId, ip);
+  if (limited) return limited;
 
   // Get user's TOTP secret, backup codes, and 2FA method. `role` rides along
   // for the PAUSE_LOGINS check further down.
@@ -229,58 +219,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     if (codeError) return ApiResponse.badRequest(codeError);
 
     if (method === "email") {
-      // Verify email 2FA code. Atomically consume the matching row so two
-      // concurrent requests with the same code cannot both pass verification
-      // (the prior SELECT+DELETE pattern let the second request reuse
-      // the just-matched code and open a parallel authenticated session).
-      // L-2: look up the row, then in Node verify the salted hash
-      // (sha256(code_salt:code)). Doing the hash in Node avoids SQL-
-      // injection-style hash comparison tricks.
-      // Pull code_hash alongside code_salt in the one query rather than
-      // re-selecting it per candidate row (was a query-per-row loop).
-      const candidate = await pool.query<{
-        id: number;
-        code_salt: string;
-        code_hash: string;
-      }>(
-        `SELECT id, code_salt, code_hash FROM email_2fa_codes
-         WHERE user_id = $1
-           AND expires_at > NOW()
-         ORDER BY created_at DESC
-         LIMIT 5`,
-        [effectiveUserId],
-      );
-      let matched: { id: number } | null = null;
-      for (const row of candidate.rows) {
-        const expected = createHash("sha256")
-          .update(`${row.code_salt}:${code}`)
-          .digest("hex");
-        const storedHash = row.code_hash;
-        const expectedBuf = Buffer.from(expected, "hex");
-        const storedBuf = Buffer.from(storedHash ?? "", "hex");
-        if (
-          storedHash &&
-          expectedBuf.length === storedBuf.length &&
-          timingSafeEqual(expectedBuf, storedBuf)
-        ) {
-          matched = { id: row.id };
-          break;
-        }
-      }
-      if (matched) {
-        // auth: use RETURNING to atomically verify a row was actually
-        // deleted. Without this, two concurrent requests with the same
-        // code both run the DELETE (first wins, second deletes 0 rows
-        // but pg doesn't error), and both would have set verified = true
-        // before the DELETE — opening a parallel authenticated session.
-        const del = await pool.query<{ id: number }>(
-          "DELETE FROM email_2fa_codes WHERE id = $1 RETURNING id",
-          [matched.id],
-        );
-        if (del.rows.length > 0) {
-          verified = true;
-        }
-      }
+      // Only a sign-in code finishes a sign-in: a step-up code mailed to the
+      // same account is refused here (lib/auth/email-codes.ts). Consumed with
+      // DELETE ... RETURNING, so two concurrent requests with the same code
+      // cannot both open a session.
+      verified = await consumeEmailCode(effectiveUserId, "login", code);
     } else {
       // Verify TOTP code (app-based)
       if (!user.totp_secret) {
@@ -400,11 +343,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Create response
   const response = NextResponse.json({ success: true });
 
-  // Clear the pending cookies
-  response.cookies.delete(AUTH_2FA_PENDING_COOKIE);
-  if (thirdPartyPendingCookieName) {
-    response.cookies.delete(thirdPartyPendingCookieName);
-  }
+  // All three, not only the one used: a leftover is a stale first factor.
+  for (const name of PENDING_COOKIE_NAMES) response.cookies.delete(name);
 
   // If user wants to remember this device, set device trust cookie
   // Use the rememberDevice value from the form submission for both normal and Discord logins
@@ -429,3 +369,50 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   return response;
 });
+
+/**
+ * POST { purpose: "reauth", code }: the second half of the step-up a
+ * password-less account takes before a security change. Consumes a code from
+ * POST /auth/2fa/email-send { purpose: "reauth" } once, and answers with the
+ * signed step-up cookie lib/auth/reauth.ts accepts for ten minutes on this
+ * session only. Needs the session, not a pending cookie, and only a step-up
+ * code: a sign-in code mailed to the same account is refused here, as this
+ * code is refused by the sign-in path above.
+ */
+async function verifyStepUp(code: unknown, ip: string) {
+  const session = await getSession();
+  if (!session) return ApiResponse.unauthorized();
+  const refused = refuseWhileImpersonating(
+    session,
+    "Confirming a security change",
+  );
+  if (refused) return refused;
+
+  if (typeof code !== "string" || !SIX_DIGITS.test(code)) {
+    return ApiResponse.badRequest("Enter the 6-digit code from the email.");
+  }
+
+  const limited = await twoFactorAttemptLimit(
+    session.userId,
+    ip,
+    "2fa-step-up",
+  );
+  if (limited) return limited;
+
+  const sessionId = await currentSessionId();
+  if (!sessionId) return ApiResponse.unauthorized();
+
+  if (!(await consumeEmailCode(session.userId, "reauth", code))) {
+    return ApiResponse.badRequest(
+      "That code did not match or has expired. Ask for a new one.",
+    );
+  }
+
+  const response = NextResponse.json({ success: true });
+  response.cookies.set(
+    STEP_UP_COOKIE,
+    signStepUpToken(session.userId, sessionId),
+    stepUpCookieOptions(),
+  );
+  return response;
+}

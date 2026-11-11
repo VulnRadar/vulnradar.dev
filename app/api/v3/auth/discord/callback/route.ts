@@ -21,6 +21,10 @@ import {
 import { timingSafeEqual } from "node:crypto";
 import { findTrustedDevice } from "@/lib/auth/device-trust";
 import { signPendingToken } from "@/lib/auth/pending-2fa";
+import {
+  DISCORD_PENDING_COOKIE,
+  otherPendingCookies,
+} from "@/lib/auth/pending-user";
 import { encryptApiKey } from "@/lib/auth/crypto";
 import { getClientIp } from "@/lib/api/request-utils";
 import { loginsPausedReasonFor } from "@/lib/admin/service-state";
@@ -397,6 +401,11 @@ export async function GET(request: Request) {
             path: "/",
           },
         );
+        // A leftover password or OAuth pending cookie would be a second
+        // candidate for whose 2FA step this is (lib/auth/pending-user.ts).
+        for (const name of otherPendingCookies(DISCORD_PENDING_COOKIE)) {
+          cookieStore.delete(name);
+        }
 
         // Send email 2FA code in background (non-blocking)
         if (user2FA.two_factor_method === "email") {

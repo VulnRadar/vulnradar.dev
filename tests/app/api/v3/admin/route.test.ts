@@ -160,6 +160,7 @@ vi.mock("@/lib/billing/stripe", () => ({
 
 const mockSendEmail = vi.fn();
 vi.mock("@/lib/email/email", () => ({
+  isEmailConfigured: () => true,
   sendEmail: (...args: unknown[]) => mockSendEmail(...args),
   adminNotificationEmail: vi.fn(() => ({
     subject: "s",
@@ -1309,11 +1310,11 @@ describe("PATCH /api/v3/admin — GATED_ACTIONS re-auth (real scrypt)", () => {
     expect(json.error).toMatch(/Re-enter your password/);
   });
 
-  it("lets an OAuth-created admin through: no password on the account means the session is the re-auth signal", async () => {
-    // createOAuthUser leaves password_hash NULL. The inline check this gate
-    // replaced treated that as a wrong password, so a Google/GitHub/Discord
-    // staff account could not perform ANY password-gated admin action and
-    // was told its password was incorrect.
+  it("asks an OAuth-created admin for the mailed step-up: the session alone is not re-auth", async () => {
+    // createOAuthUser leaves password_hash NULL. That used to let the session
+    // through on its own, so a stolen staff session cookie could perform
+    // every password-gated action. verifyReauthPassword now wants a code
+    // mailed to the admin's address first (tests/lib/auth/reauth.test.ts).
     queueRole("admin");
     queueTarget({
       email: "t@example.com",
@@ -1322,7 +1323,9 @@ describe("PATCH /api/v3/admin — GATED_ACTIONS re-auth (real scrypt)", () => {
     });
     mockQuery.mockResolvedValueOnce({ rows: [{ password_hash: null }] });
     const res = await PATCH(patchRequest({ action: "make_admin", userId: 5 }));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/code from your email/);
+    expect(mockLogAction).not.toHaveBeenCalled();
   });
 
   it("rejects a gated action with the wrong currentAdminPassword", async () => {

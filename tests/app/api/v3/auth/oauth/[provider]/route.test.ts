@@ -62,6 +62,8 @@ const { GET, POST } = await import("@/app/api/v3/auth/oauth/[provider]/route");
 const { verifyOAuthState, OAUTH_NONCE_COOKIE } =
   await import("@/lib/auth/oauth-state");
 const { hashPassword } = await import("@/lib/auth/password-hash");
+const { STEP_UP_COOKIE, signStepUpToken } = await import("@/lib/auth/reauth");
+const { hashSessionId } = await import("@/lib/auth/auth");
 
 const LINK_PASSWORD = "the-account-password";
 const linkPasswordHash = await hashPassword(LINK_PASSWORD);
@@ -320,9 +322,25 @@ describe("GET /api/v3/auth/oauth/[provider]", () => {
       expect((await res.json()).error).toBe("Confirm your password first");
     });
 
-    it("takes a password-less account's empty post", async () => {
+    // A password-less account proves it is at the keyboard with the mailed
+    // step-up rather than its session alone (lib/auth/reauth.ts).
+    it("refuses a password-less account's empty post until it has stepped up", async () => {
       signedIn({ user_id: 55 });
       storedHash = null;
+
+      const res = await POST(linkPost("google"), ctx("google"));
+
+      expect(res.status).toBe(403);
+      expect((await res.json()).url).toBeUndefined();
+    });
+
+    it("takes a password-less account's empty post once it has stepped up", async () => {
+      signedIn({ user_id: 55 });
+      storedHash = null;
+      cookieState.set(
+        STEP_UP_COOKIE,
+        signStepUpToken(55, hashSessionId("session-1")),
+      );
 
       const res = await POST(linkPost("google"), ctx("google"));
 

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { getSession, hashPassword } from "@/lib/auth";
-import { verifyReauthPassword } from "@/lib/auth/reauth";
+import { reauthRefusal, verifyReauthPassword } from "@/lib/auth/reauth";
+import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
 import { backupCodesRegeneratedEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import pool from "@/lib/database/db";
@@ -83,9 +84,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     ...RATE_LIMITS.login,
   });
   if (!rl.allowed) {
-    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
     return NextResponse.json(
-      { error: `Too many attempts. Please try again in ${minutes} minute(s).` },
+      { error: TOO_MANY_ATTEMPTS("attempts", rl.retryAfterSeconds) },
       {
         status: 429,
         headers: { "Retry-After": String(rl.retryAfterSeconds) },
@@ -106,20 +106,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return NextResponse.json({ error: "2FA is not enabled." }, { status: 400 });
   }
 
-  // An OAuth-only account has no password to re-enter, so its session is the
-  // re-auth signal instead (see verifyReauthPassword). Demanding one
-  // unconditionally meant a Google/GitHub/Discord account could never
-  // regenerate its backup codes.
+  // An OAuth-only account has no password to re-enter, so it confirms with
+  // the mailed step-up instead (see verifyReauthPassword). New codes are a
+  // way back into the account, so its session alone is not enough.
   const reauth = await verifyReauthPassword(session.userId, password, {
     missing: "Password is required to regenerate backup codes.",
     wrong: "Incorrect password.",
   });
-  if (!reauth.ok) {
-    return NextResponse.json(
-      { error: reauth.error },
-      { status: reauth.status === 400 ? 400 : 401 },
-    );
-  }
+  if (!reauth.ok) return reauthRefusal(reauth, 401);
 
   const backupCodes = generateBackupCodes(8);
   const hashedCodes = await Promise.all(

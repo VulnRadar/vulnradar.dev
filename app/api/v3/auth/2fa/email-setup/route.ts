@@ -1,16 +1,44 @@
 import { NextRequest } from "next/server";
 import { getSession, revokeOtherSessions } from "@/lib/auth";
-import { verifyReauthPassword } from "@/lib/auth/reauth";
-import { email2FAEnabledEmail, email2FADisabledEmail } from "@/lib/email/email";
+import { reauthRefusal, verifyReauthPassword } from "@/lib/auth/reauth";
+import {
+  email2FAEnabledEmail,
+  email2FADisabledEmail,
+  isEmailConfigured,
+  sendEmail,
+} from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import pool from "@/lib/database/db";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
 import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
+import {
+  consumeEmailCode,
+  issueEmailCode,
+  maskEmail,
+} from "@/lib/auth/email-codes";
+import { signedInCodeEmail } from "@/lib/auth/step-up-email";
 
-// POST - Enable email 2FA
+const EMAIL_NOT_CONFIGURED_MESSAGE =
+  "This server cannot send email, so email codes cannot be turned on. Use an authenticator app instead.";
+
+/**
+ * Turning email codes on is two calls, both re-authenticated:
+ *
+ *   POST { password }        mails a confirmation code, changes nothing
+ *   POST { password, code }  checks that code, then turns email codes on
+ *
+ * It used to flip totp_enabled on the first call, so an address that never
+ * receives our mail (a typo, a dead mailbox, a server with no SMTP at all)
+ * locked the account out at its next sign-in, and on a one-admin self-host
+ * only direct database access got it back. The code proves the mail arrives
+ * before the account depends on it. A server that cannot send mail is refused
+ * outright, before any password is spent.
+ */
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
@@ -23,6 +51,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   );
   if (refused) return refused;
 
+  if (!isEmailConfigured()) {
+    return ApiResponse.conflict(EMAIL_NOT_CONFIGURED_MESSAGE);
+  }
+
   // auth: rate-limit password verification so a stolen session cookie
   // cannot be used to brute-force the account password through this
   // endpoint. Same cap as login (5 attempts / 15 min).
@@ -32,34 +64,30 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     ...RATE_LIMITS.login,
   });
   if (!rl.allowed) {
-    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
     return ApiResponse.tooManyRequests(
-      `Too many attempts. Please try again in ${minutes} minute(s).`,
+      TOO_MANY_ATTEMPTS("attempts", rl.retryAfterSeconds),
       rl.retryAfterSeconds,
     );
   }
 
-  let body: { password?: string };
+  let body: { password?: unknown; code?: unknown };
   try {
     body = await request.json();
   } catch {
     return ApiResponse.badRequest("Invalid request body.");
   }
-  const { password } = body;
+  if (!body || typeof body !== "object") {
+    return ApiResponse.badRequest("Invalid request body.");
+  }
+  const { password, code } = body;
 
-  // An OAuth-only account has no password to re-enter, so its session is the
-  // re-auth signal instead (see verifyReauthPassword). Demanding one
-  // unconditionally meant a Google/GitHub/Discord account could never turn on
-  // email 2FA, which is the only second factor those accounts can use.
+  // A password-less account confirms with the mailed step-up instead (see
+  // verifyReauthPassword); its session alone is not enough.
   const reauth = await verifyReauthPassword(session.userId, password, {
     missing: "Password is required.",
     wrong: "Incorrect password.",
   });
-  if (!reauth.ok) {
-    return reauth.status === 400
-      ? ApiResponse.badRequest(reauth.error)
-      : ApiResponse.forbidden(reauth.error);
-  }
+  if (!reauth.ok) return reauthRefusal(reauth);
 
   const { rows } = await pool.query(
     "SELECT totp_enabled, two_factor_method, email FROM users WHERE id = $1",
@@ -69,6 +97,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (rows[0].totp_enabled && rows[0].two_factor_method === "app") {
     return ApiResponse.badRequest("Disable authenticator app 2FA first.");
+  }
+
+  if (code === undefined || code === null || code === "") {
+    return sendConfirmationCode(session.userId, rows[0].email);
+  }
+  if (typeof code !== "string" || !/^\d{6}$/.test(code)) {
+    return ApiResponse.badRequest("Enter the 6-digit code from the email.");
+  }
+  if (!(await consumeEmailCode(session.userId, "setup", code))) {
+    return ApiResponse.badRequest(
+      "That code did not match or has expired. Ask for a new one.",
+    );
   }
 
   await pool.query(
@@ -101,6 +141,33 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   return ApiResponse.success({ success: true });
 });
 
+async function sendConfirmationCode(userId: number, email: string) {
+  const [cooldownSeconds, expiryMinutes] = await Promise.all([
+    getSetting("EMAIL_2FA_RESEND_COOLDOWN_SECONDS"),
+    getSetting("EMAIL_2FA_CODE_EXPIRY_MINUTES"),
+  ]);
+  const issued = await issueEmailCode(
+    userId,
+    "setup",
+    expiryMinutes,
+    cooldownSeconds,
+  );
+  if (!issued.ok) {
+    return ApiResponse.tooManyRequests(
+      "Please wait before requesting another code.",
+      issued.retryAfterSeconds,
+    );
+  }
+  await sendEmail({
+    to: email,
+    ...signedInCodeEmail("setup", issued.code, expiryMinutes),
+  });
+  return ApiResponse.success({
+    codeSent: true,
+    maskedEmail: maskEmail(email),
+  });
+}
+
 // DELETE - Disable email 2FA
 export const DELETE = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
@@ -122,32 +189,28 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
     ...RATE_LIMITS.login,
   });
   if (!rl.allowed) {
-    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
     return ApiResponse.tooManyRequests(
-      `Too many attempts. Please try again in ${minutes} minute(s).`,
+      TOO_MANY_ATTEMPTS("attempts", rl.retryAfterSeconds),
       rl.retryAfterSeconds,
     );
   }
 
-  let body: { password?: string };
+  let body: { password?: unknown } | null;
   try {
     body = await request.json();
   } catch {
     return ApiResponse.badRequest("Invalid request body.");
   }
-  const { password } = body;
+  const password = body?.password;
 
-  // Same OAuth-only rule as the POST: without this, an account that has no
-  // password could enable email 2FA and then never turn it off again.
+  // Same rule as the POST: a password-less account confirms with the mailed
+  // step-up. Turning off a second factor is exactly what a stolen session
+  // would do first.
   const reauth = await verifyReauthPassword(session.userId, password, {
     missing: "Password is required.",
     wrong: "Incorrect password.",
   });
-  if (!reauth.ok) {
-    return reauth.status === 400
-      ? ApiResponse.badRequest(reauth.error)
-      : ApiResponse.forbidden(reauth.error);
-  }
+  if (!reauth.ok) return reauthRefusal(reauth);
 
   const { rows } = await pool.query(
     "SELECT two_factor_method, email FROM users WHERE id = $1",

@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import crypto from "crypto";
 import { getSession, hashPassword, revokeOtherSessions } from "@/lib/auth";
-import { verifyReauthPassword } from "@/lib/auth/reauth";
+import { reauthRefusal, verifyReauthPassword } from "@/lib/auth/reauth";
+import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
 import {
   encryptApiKey,
   decryptApiKey,
@@ -133,28 +134,22 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     ...RATE_LIMITS.login,
   });
   if (!rl.allowed) {
-    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
     return ApiResponse.tooManyRequests(
-      `Too many attempts. Please try again in ${minutes} minute(s).`,
+      TOO_MANY_ATTEMPTS("attempts", rl.retryAfterSeconds),
       rl.retryAfterSeconds,
     );
   }
 
   // auth: require password re-entry before enabling 2FA. An attacker with
   // only a session cookie cannot silently enroll their own TOTP device.
-  // An OAuth-only account has no password to re-enter, so its session is the
-  // re-auth signal instead: see verifyReauthPassword. Demanding one here
-  // unconditionally made 2FA unreachable for every Google/GitHub/Discord
-  // signup.
+  // An OAuth-only account has no password to re-enter, so it confirms with
+  // the mailed step-up instead (see verifyReauthPassword): an authenticator
+  // the attacker enrolled would lock the owner out of their own account.
   const reauth = await verifyReauthPassword(session.userId, currentPassword, {
     missing: "Your current password is required to enable 2FA.",
     wrong: "Password is incorrect.",
   });
-  if (!reauth.ok) {
-    return reauth.status === 400
-      ? ApiResponse.badRequest(reauth.error)
-      : ApiResponse.error(reauth.error, 403);
-  }
+  if (!reauth.ok) return reauthRefusal(reauth);
 
   if (
     !code ||

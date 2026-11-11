@@ -46,6 +46,10 @@ import {
 } from "@/lib/auth/oauth-userinfo";
 import { findTrustedDevice } from "@/lib/auth/device-trust";
 import { signPendingToken } from "@/lib/auth/pending-2fa";
+import {
+  OAUTH_PENDING_COOKIE,
+  otherPendingCookies,
+} from "@/lib/auth/pending-user";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import {
   sendEmail,
@@ -497,6 +501,11 @@ async function signInOAuthUser(
         path: "/",
       },
     );
+    // A leftover password or Discord pending cookie would be a second
+    // candidate for whose 2FA step this is (lib/auth/pending-user.ts).
+    for (const name of otherPendingCookies(OAUTH_PENDING_COOKIE)) {
+      cookieStore.delete(name);
+    }
 
     if (method === "email") {
       setImmediate(() => {

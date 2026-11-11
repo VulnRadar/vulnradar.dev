@@ -1,13 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { makeHeaderStore } from "../../_test-harness";
+import {
+  defaultSessionRow,
+  makeCookieStore,
+  makeHeaderStore,
+} from "../../_test-harness";
 
 /**
  * Route-level tests for POST /api/v3/auth/2fa/email-send.
  *
- * This route is not session-gated at all -- it relies entirely on the
- * pending-2FA cookies set by login/discord-callback, read directly off the
- * request via request.cookies (not next/headers).
+ * Two jobs. With no body it mails the sign-in code, and is not session-gated:
+ * it relies on the pending-2FA cookies set by login and the OAuth and Discord
+ * callbacks, read off the request (not next/headers). With
+ * { purpose: "reauth" } it mails the step-up code a signed-in password-less
+ * account enters before a security change, and needs that session.
  *
  * Mocked at the network/database boundary only: the pg pool and outbound
  * email (sendEmail is awaited directly by this route, not backgrounded).
@@ -15,8 +21,10 @@ import { makeHeaderStore } from "../../_test-harness";
 
 let userEmailRow: { email: string } | null = null;
 let recentCodeRow: { created_at: string } | null = null;
+let sessionRow: Record<string, unknown> | null = null;
 let deleteCodeCalls: unknown[][] = [];
 let insertCodeCalls: unknown[][] = [];
+let cooldownCalls: unknown[][] = [];
 let settingsRows: { key: string; value: string }[] = [];
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
@@ -24,10 +32,17 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   if (s.startsWith("SELECT key, value FROM system_settings")) {
     return { rows: settingsRows };
   }
+  if (s.startsWith("DELETE FROM sessions WHERE expires_at")) {
+    return { rows: [] };
+  }
+  if (s.includes("SELECT s.user_id")) {
+    return { rows: sessionRow ? [sessionRow] : [] };
+  }
   if (s.startsWith("SELECT email FROM users WHERE id = $1")) {
     return { rows: userEmailRow ? [userEmailRow] : [] };
   }
   if (s.startsWith("SELECT created_at FROM email_2fa_codes")) {
+    cooldownCalls.push(params);
     return { rows: recentCodeRow ? [recentCodeRow] : [] };
   }
   if (s.startsWith("DELETE FROM email_2fa_codes WHERE user_id")) {
@@ -48,22 +63,25 @@ vi.mock("@/lib/database/db", () => ({
 }));
 
 const { store: headerStore } = makeHeaderStore();
+const { store: cookieStore, state: cookieState } = makeCookieStore();
 vi.mock("next/headers", () => ({
   headers: vi.fn(async () => headerStore),
-  cookies: vi.fn(async () => ({
-    get: () => undefined,
-    set: () => {},
-    delete: () => {},
-  })),
+  cookies: vi.fn(async () => cookieStore),
 }));
 
+let emailConfigured = true;
 const mockSendEmail = vi.fn(async (_params: unknown) => {});
 vi.mock("@/lib/email/email", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/email/email")>();
-  return { ...actual, sendEmail: (params: unknown) => mockSendEmail(params) };
+  return {
+    ...actual,
+    isEmailConfigured: () => emailConfigured,
+    sendEmail: (params: unknown) => mockSendEmail(params),
+  };
 });
 
-const { AUTH_2FA_PENDING_COOKIE } = await import("@/lib/config/constants");
+const { AUTH_2FA_PENDING_COOKIE, AUTH_SESSION_COOKIE_NAME } =
+  await import("@/lib/config/constants");
 const { signPendingToken } = await import("@/lib/auth/pending-2fa");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { POST } = await import("@/app/api/v3/auth/2fa/email-send/route");
@@ -74,7 +92,7 @@ function signedPending(userId: number, ts: number = Date.now()): string {
   return signPendingToken({ userId, ts });
 }
 
-function req(cookies: Record<string, string> = {}) {
+function req(cookies: Record<string, string> = {}, body?: unknown) {
   return new NextRequest("http://localhost/api/v3/auth/2fa/email-send", {
     method: "POST",
     headers: {
@@ -83,16 +101,26 @@ function req(cookies: Record<string, string> = {}) {
         .map(([k, v]) => `${k}=${v}`)
         .join("; "),
     },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
+}
+
+function signIn(overrides: Record<string, unknown> = {}) {
+  cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+  sessionRow = defaultSessionRow({ email: "oauth@example.com", ...overrides });
 }
 
 beforeEach(() => {
   mockQuery.mockClear();
   mockSendEmail.mockClear();
+  cookieState.clear();
+  sessionRow = null;
   userEmailRow = null;
   recentCodeRow = null;
   deleteCodeCalls = [];
   insertCodeCalls = [];
+  cooldownCalls = [];
+  emailConfigured = true;
 });
 
 describe("POST /api/v3/auth/2fa/email-send", () => {
@@ -138,10 +166,12 @@ describe("POST /api/v3/auth/2fa/email-send", () => {
 
     expect(res.status).toBe(200);
     expect(json.maskedEmail).toBe("us***@example.com");
-    expect(deleteCodeCalls).toEqual([[1]]);
+    // Only sign-in codes are replaced: a step-up code in flight survives.
+    expect(deleteCodeCalls).toEqual([[1, "login"]]);
     expect(insertCodeCalls).toHaveLength(1);
-    const [userId, codeHash, codeSalt] = insertCodeCalls[0];
+    const [userId, codeHash, codeSalt, , purpose] = insertCodeCalls[0];
     expect(userId).toBe(1);
+    expect(purpose).toBe("login");
     expect(codeHash).toMatch(/^[a-f0-9]{64}$/);
     expect(codeSalt).toMatch(/^[a-f0-9]{64}$/);
     expect(codeHash).not.toBe(codeSalt);
@@ -178,5 +208,88 @@ describe("POST /api/v3/auth/2fa/email-send", () => {
     expect(res.status).toBe(200);
     expect(json.maskedEmail).toBe("di***@example.com");
     expect(insertCodeCalls[0][0]).toBe(7);
+  });
+
+  // The verify route used to read these in the opposite order, so the code
+  // went to one account and was checked against another. Both now take the
+  // newest first factor (tests/app/api/v3/auth/2fa/verify asks the same).
+  it("mails the newest sign-in when a password and an OAuth pending cookie are both present", async () => {
+    userEmailRow = { email: "user@example.com" };
+    const now = Date.now();
+    const res = await POST(
+      req({
+        [AUTH_2FA_PENDING_COOKIE]: signedPending(2, now - 60_000),
+        oauth_pending_login: signedPending(1, now),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(insertCodeCalls[0][0]).toBe(1);
+  });
+});
+
+describe("POST /api/v3/auth/2fa/email-send { purpose: 'reauth' }", () => {
+  it("answers 401 without a session, whatever pending cookie is present", async () => {
+    const res = await POST(
+      req(
+        { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
+        { purpose: "reauth" },
+      ),
+    );
+    expect(res.status).toBe(401);
+    expect(insertCodeCalls).toHaveLength(0);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("is refused while impersonating", async () => {
+    signIn({ impersonated_by: 99 });
+    const res = await POST(req({}, { purpose: "reauth" }));
+    expect(res.status).toBe(403);
+    expect((await res.json()).impersonationBlocked).toBe(true);
+    expect(insertCodeCalls).toHaveLength(0);
+  });
+
+  it("mails a 10-minute step-up code to the session's own address", async () => {
+    signIn({ user_id: 5 });
+    const res = await POST(req({}, { purpose: "reauth" }));
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).maskedEmail).toBe("oa***@example.com");
+    expect(deleteCodeCalls).toEqual([[5, "reauth"]]);
+    expect(cooldownCalls[0]).toEqual([5, expect.any(Number), "reauth"]);
+    const [userId, codeHash, , expiry, purpose] = insertCodeCalls[0];
+    expect(userId).toBe(5);
+    expect(codeHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(expiry).toBe(10);
+    expect(purpose).toBe("reauth");
+
+    const mail = mockSendEmail.mock.calls[0][0] as {
+      to: string;
+      subject: string;
+      text: string;
+      template: string;
+    };
+    expect(mail.to).toBe("oauth@example.com");
+    expect(mail.template).toBe("stepUpCode");
+    expect(mail.subject).not.toMatch(/\d{6}/);
+    expect(mail.text).toContain("It expires in 10 minutes.");
+  });
+
+  it("holds the resend cooldown", async () => {
+    signIn();
+    recentCodeRow = { created_at: new Date().toISOString() };
+    const res = await POST(req({}, { purpose: "reauth" }));
+    expect(res.status).toBe(429);
+    expect(insertCodeCalls).toHaveLength(0);
+  });
+
+  it("answers 409 with emailConfigured false on a server that cannot send mail", async () => {
+    emailConfigured = false;
+    signIn();
+    const res = await POST(req({}, { purpose: "reauth" }));
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.emailConfigured).toBe(false);
+    expect(json.error).toMatch(/sign in again/i);
+    expect(insertCodeCalls).toHaveLength(0);
   });
 });

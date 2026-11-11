@@ -13,9 +13,11 @@ import {
  * email. getSession and verifyPassword run for real.
  */
 
+process.env.API_KEY_ENCRYPTION_KEY = "a".repeat(64);
+
 const rateLimitCounts = new Map<string, number>();
 let sessionRow: Record<string, unknown> | null = null;
-let passwordHashRow: { password_hash: string } | null = null;
+let passwordHashRow: { password_hash: string | null } | null = null;
 let disableUpdateCalls: unknown[][] = [];
 let deviceTrustDeleteCalls: unknown[][] = [];
 
@@ -80,6 +82,8 @@ const { hashPassword } = await import("@/lib/auth/password-hash");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
 const { POST } = await import("@/app/api/v3/auth/2fa/disable/route");
+const { STEP_UP_COOKIE, signStepUpToken } = await import("@/lib/auth/reauth");
+const { hashSessionId } = await import("@/lib/auth/auth");
 
 const REAL_PASSWORD = "Zb3!Kqorvmtp62";
 let realPasswordHash: string;
@@ -166,5 +170,25 @@ describe("POST /api/v3/auth/2fa/disable", () => {
     await POST(req({ password: REAL_PASSWORD }));
     await new Promise((resolve) => setImmediate(resolve));
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  // Switching 2FA off is what a stolen session does first. A password-less
+  // account used to need nothing more than that session.
+  it("asks an OAuth-only account for the mailed step-up with a 403, not a 401", async () => {
+    login(1);
+    passwordHashRow = { password_hash: null };
+
+    const refused = await POST(req({}));
+    expect(refused.status).toBe(403);
+    expect((await refused.json()).stepUp).toBe(true);
+    expect(disableUpdateCalls).toHaveLength(0);
+
+    cookieState.set(
+      STEP_UP_COOKIE,
+      signStepUpToken(1, hashSessionId("session-1")),
+    );
+    const res = await POST(req({}));
+    expect(res.status).toBe(200);
+    expect(disableUpdateCalls).toEqual([[1]]);
   });
 });

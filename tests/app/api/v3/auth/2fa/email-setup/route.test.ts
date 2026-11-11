@@ -13,7 +13,15 @@ import {
  * email. getSession and verifyPassword run for real. POST (enable) and
  * DELETE (disable) share the exact same rate-limit bucket key
  * ("email-2fa-setup:<userId>:<ip>"), which is exercised explicitly below.
+ *
+ * Turning email codes on is two calls: the first mails a confirmation code
+ * and changes nothing, the second enters it back and only then flips
+ * totp_enabled. It used to flip on the first call, so an address that never
+ * gets our mail, or a server with no SMTP at all, locked the account out at
+ * its next sign-in.
  */
+
+process.env.API_KEY_ENCRYPTION_KEY = "e".repeat(64);
 
 const rateLimitCounts = new Map<string, number>();
 let sessionRow: Record<string, unknown> | null = null;
@@ -26,6 +34,16 @@ let userRow: {
 let enableUpdateCalls: unknown[][] = [];
 let disableUpdateCalls: unknown[][] = [];
 let deleteCodesCalls: unknown[][] = [];
+
+/** email_2fa_codes, in memory. */
+let codeRows: {
+  id: number;
+  user_id: number;
+  code_hash: string;
+  code_salt: string;
+  purpose: string;
+}[] = [];
+let nextCodeId = 1;
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
@@ -74,9 +92,38 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     disableUpdateCalls.push(params);
     return { rows: [] };
   }
+  if (s.startsWith("SELECT created_at FROM email_2fa_codes"))
+    return { rows: [] };
   if (s.startsWith("DELETE FROM email_2fa_codes WHERE user_id")) {
     deleteCodesCalls.push(params);
+    codeRows = codeRows.filter(
+      (r) =>
+        r.user_id !== params[0] ||
+        (params.length > 1 && r.purpose !== params[1]),
+    );
     return { rows: [] };
+  }
+  if (s.startsWith("INSERT INTO email_2fa_codes")) {
+    codeRows.push({
+      id: nextCodeId++,
+      user_id: params[0] as number,
+      code_hash: params[1] as string,
+      code_salt: params[2] as string,
+      purpose: params[4] as string,
+    });
+    return { rows: [] };
+  }
+  if (s.startsWith("SELECT id, code_salt, code_hash FROM email_2fa_codes")) {
+    return {
+      rows: codeRows.filter(
+        (r) => r.user_id === params[0] && r.purpose === params[1],
+      ),
+    };
+  }
+  if (s.startsWith("DELETE FROM email_2fa_codes WHERE id = $1 RETURNING id")) {
+    const before = codeRows.length;
+    codeRows = codeRows.filter((r) => r.id !== params[0]);
+    return { rows: codeRows.length < before ? [{ id: params[0] }] : [] };
   }
   if (s.includes("FROM notification_preferences WHERE user_id"))
     return { rows: [] };
@@ -99,15 +146,22 @@ vi.mock("next/headers", () => ({
   headers: vi.fn(async () => headerStore),
 }));
 
+let emailConfigured = true;
 const mockSendEmail = vi.fn(async (_params: unknown) => {});
 vi.mock("@/lib/email/email", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/email/email")>();
-  return { ...actual, sendEmail: (params: unknown) => mockSendEmail(params) };
+  return {
+    ...actual,
+    isEmailConfigured: () => emailConfigured,
+    sendEmail: (params: unknown) => mockSendEmail(params),
+  };
 });
 
 const { hashPassword } = await import("@/lib/auth/password-hash");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
+const { STEP_UP_COOKIE, signStepUpToken } = await import("@/lib/auth/reauth");
+const { hashSessionId } = await import("@/lib/auth/auth");
 const { POST, DELETE } =
   await import("@/app/api/v3/auth/2fa/email-setup/route");
 
@@ -131,6 +185,26 @@ function login(userId = 1) {
   sessionRow = defaultSessionRow({ user_id: userId });
 }
 
+function stepUp(userId = 1) {
+  cookieState.set(
+    STEP_UP_COOKIE,
+    signStepUpToken(userId, hashSessionId("session-1")),
+  );
+}
+
+/** The code the last mail carried. */
+function mailedCode(): string {
+  const last = mockSendEmail.mock.calls.at(-1)?.[0] as { text: string };
+  return /Your code is (\d{6})/.exec(last.text)![1];
+}
+
+const passwordUser = () => ({
+  password_hash: realPasswordHash,
+  totp_enabled: false,
+  two_factor_method: null,
+  email: "user@example.com",
+});
+
 beforeEach(async () => {
   await new Promise((resolve) => setImmediate(resolve));
   mockQuery.mockClear();
@@ -144,6 +218,8 @@ beforeEach(async () => {
   enableUpdateCalls = [];
   disableUpdateCalls = [];
   deleteCodesCalls = [];
+  codeRows = [];
+  emailConfigured = true;
   invalidateSettingsCache();
 });
 
@@ -153,11 +229,29 @@ describe("POST /api/v3/auth/2fa/email-setup", () => {
     expect(res.status).toBe(401);
   });
 
+  it("refuses with 409 when this server cannot send email, before any password is spent", async () => {
+    emailConfigured = false;
+    login(1);
+    userRow = passwordUser();
+    const res = await POST(req("POST", { password: REAL_PASSWORD }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/cannot send email/);
+    expect(enableUpdateCalls).toHaveLength(0);
+    expect(rateLimitCounts.size).toBe(0);
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("UPDATE users SET totp_enabled"),
+      ),
+    ).toBe(false);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
   it("rate limits repeated attempts", async () => {
     login(1);
     rateLimitCounts.set("email-2fa-setup:1:unknown", 5);
     const res = await POST(req("POST", { password: REAL_PASSWORD }));
     expect(res.status).toBe(429);
+    expect((await res.json()).error).not.toMatch(/\(s\)/);
   });
 
   it("rejects a malformed JSON body", async () => {
@@ -174,12 +268,7 @@ describe("POST /api/v3/auth/2fa/email-setup", () => {
 
   it("requires a password when the account has one", async () => {
     login();
-    userRow = {
-      password_hash: realPasswordHash,
-      totp_enabled: false,
-      two_factor_method: null,
-      email: "user@example.com",
-    };
+    userRow = passwordUser();
     const res = await POST(req("POST", {}));
     expect(res.status).toBe(400);
     expect(enableUpdateCalls).toHaveLength(0);
@@ -195,27 +284,36 @@ describe("POST /api/v3/auth/2fa/email-setup", () => {
     expect(enableUpdateCalls).toHaveLength(0);
   });
 
-  it("lets an OAuth-only account (no password) enable email 2FA", async () => {
+  it("asks an OAuth-only account for the mailed step-up, not its session alone", async () => {
     login(1);
+    userRow = { ...passwordUser(), password_hash: null };
+    const res = await POST(req("POST", {}));
+    expect(res.status).toBe(403);
+    expect((await res.json()).stepUp).toBe(true);
+    expect(enableUpdateCalls).toHaveLength(0);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("lets an OAuth-only account that stepped up turn email codes on", async () => {
+    login(1);
+    stepUp(1);
     userRow = {
+      ...passwordUser(),
       password_hash: null,
-      totp_enabled: false,
-      two_factor_method: null,
       email: "oauth@example.com",
     };
-    const res = await POST(req("POST", {}));
+    const sent = await POST(req("POST", {}));
+    expect(sent.status).toBe(200);
+    expect(enableUpdateCalls).toHaveLength(0);
+
+    const res = await POST(req("POST", { code: mailedCode() }));
     expect(res.status).toBe(200);
     expect(enableUpdateCalls).toEqual([[1]]);
   });
 
   it("rejects an incorrect password", async () => {
     login();
-    userRow = {
-      password_hash: realPasswordHash,
-      totp_enabled: false,
-      two_factor_method: null,
-      email: "user@example.com",
-    };
+    userRow = passwordUser();
     const res = await POST(req("POST", { password: "totally-wrong" }));
     expect(res.status).toBe(403);
     expect(enableUpdateCalls).toHaveLength(0);
@@ -224,33 +322,99 @@ describe("POST /api/v3/auth/2fa/email-setup", () => {
   it("refuses to enable email 2FA when authenticator-app 2FA is already active", async () => {
     login();
     userRow = {
-      password_hash: realPasswordHash,
+      ...passwordUser(),
       totp_enabled: true,
       two_factor_method: "app",
-      email: "user@example.com",
     };
     const res = await POST(req("POST", { password: REAL_PASSWORD }));
     expect(res.status).toBe(400);
     expect(enableUpdateCalls).toHaveLength(0);
   });
 
-  it("enables email 2FA on the correct password", async () => {
+  it("mails a confirmation code on the correct password and changes nothing yet", async () => {
     login(1);
-    userRow = {
-      password_hash: realPasswordHash,
-      totp_enabled: false,
-      two_factor_method: null,
-      email: "user@example.com",
-    };
+    userRow = passwordUser();
     const res = await POST(req("POST", { password: REAL_PASSWORD }));
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json.success).toBe(true);
+    expect(json).toMatchObject({
+      codeSent: true,
+      maskedEmail: "us***@example.com",
+    });
+    expect(enableUpdateCalls).toHaveLength(0);
+    expect(codeRows).toHaveLength(1);
+    expect(codeRows[0].purpose).toBe("setup");
+    const mail = mockSendEmail.mock.calls[0][0] as {
+      to: string;
+      subject: string;
+      text: string;
+    };
+    expect(mail.to).toBe("user@example.com");
+    // Never the code in the subject, and not the sign-in template either.
+    expect(mail.subject).not.toMatch(/\d{6}/);
+    expect(mail.text).not.toMatch(/try to sign in/);
+  });
+
+  it("turns email codes on once the mailed code comes back", async () => {
+    login(1);
+    userRow = passwordUser();
+    await POST(req("POST", { password: REAL_PASSWORD }));
+    const code = mailedCode();
+
+    const res = await POST(req("POST", { password: REAL_PASSWORD, code }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).success).toBe(true);
     expect(enableUpdateCalls).toEqual([[1]]);
+    expect(codeRows).toHaveLength(0);
 
     await new Promise((resolve) => setImmediate(resolve));
-    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    // The confirmation code, then the "email codes are on" notice.
+    expect(mockSendEmail).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses a wrong confirmation code and leaves email codes off", async () => {
+    login(1);
+    userRow = passwordUser();
+    await POST(req("POST", { password: REAL_PASSWORD }));
+    const wrong = mailedCode() === "123456" ? "654321" : "123456";
+
+    const res = await POST(
+      req("POST", { password: REAL_PASSWORD, code: wrong }),
+    );
+    expect(res.status).toBe(400);
+    expect(enableUpdateCalls).toHaveLength(0);
+  });
+
+  it("does not accept a sign-in or step-up code as the confirmation", async () => {
+    login(1);
+    userRow = passwordUser();
+    await POST(req("POST", { password: REAL_PASSWORD }));
+    const code = mailedCode();
+    for (const row of codeRows) row.purpose = "login";
+
+    const res = await POST(req("POST", { password: REAL_PASSWORD, code }));
+    expect(res.status).toBe(400);
+    expect(enableUpdateCalls).toHaveLength(0);
+  });
+
+  it("still re-authenticates the confirming call", async () => {
+    login(1);
+    userRow = passwordUser();
+    await POST(req("POST", { password: REAL_PASSWORD }));
+    const res = await POST(req("POST", { code: mailedCode() }));
+    expect(res.status).toBe(400);
+    expect(enableUpdateCalls).toHaveLength(0);
+  });
+
+  it("answers a code that is not six digits with a 400", async () => {
+    login(1);
+    userRow = passwordUser();
+    const res = await POST(
+      req("POST", { password: REAL_PASSWORD, code: "12ab56" }),
+    );
+    expect(res.status).toBe(400);
+    expect(enableUpdateCalls).toHaveLength(0);
   });
 });
 
@@ -267,13 +431,24 @@ describe("DELETE /api/v3/auth/2fa/email-setup", () => {
     expect(res.status).toBe(429);
   });
 
+  it("answers a null body with a 400, not a 500", async () => {
+    login();
+    userRow = {
+      ...passwordUser(),
+      totp_enabled: true,
+      two_factor_method: "email",
+    };
+    const res = await DELETE(req("DELETE", null));
+    expect(res.status).toBe(400);
+    expect(disableUpdateCalls).toHaveLength(0);
+  });
+
   it("requires a password when the account has one", async () => {
     login();
     userRow = {
-      password_hash: realPasswordHash,
+      ...passwordUser(),
       totp_enabled: true,
       two_factor_method: "email",
-      email: "user@example.com",
     };
     const res = await DELETE(req("DELETE", {}));
     expect(res.status).toBe(400);
@@ -288,7 +463,7 @@ describe("DELETE /api/v3/auth/2fa/email-setup", () => {
     expect(disableUpdateCalls).toHaveLength(0);
   });
 
-  it("lets an OAuth-only account (no password) disable email 2FA", async () => {
+  it("asks an OAuth-only account for the step-up before turning email codes off", async () => {
     login(1);
     userRow = {
       password_hash: null,
@@ -296,6 +471,11 @@ describe("DELETE /api/v3/auth/2fa/email-setup", () => {
       two_factor_method: "email",
       email: "oauth@example.com",
     };
+    const refused = await DELETE(req("DELETE", {}));
+    expect(refused.status).toBe(403);
+    expect(disableUpdateCalls).toHaveLength(0);
+
+    stepUp(1);
     const res = await DELETE(req("DELETE", {}));
     expect(res.status).toBe(200);
     expect(disableUpdateCalls).toEqual([[1]]);
@@ -305,10 +485,9 @@ describe("DELETE /api/v3/auth/2fa/email-setup", () => {
   it("rejects an incorrect password", async () => {
     login();
     userRow = {
-      password_hash: realPasswordHash,
+      ...passwordUser(),
       totp_enabled: true,
       two_factor_method: "email",
-      email: "user@example.com",
     };
     const res = await DELETE(req("DELETE", { password: "totally-wrong" }));
     expect(res.status).toBe(403);
@@ -318,10 +497,9 @@ describe("DELETE /api/v3/auth/2fa/email-setup", () => {
   it("rejects when email 2FA isn't the active method", async () => {
     login();
     userRow = {
-      password_hash: realPasswordHash,
+      ...passwordUser(),
       totp_enabled: true,
       two_factor_method: "app",
-      email: "user@example.com",
     };
     const res = await DELETE(req("DELETE", { password: REAL_PASSWORD }));
     expect(res.status).toBe(400);
@@ -331,10 +509,9 @@ describe("DELETE /api/v3/auth/2fa/email-setup", () => {
   it("disables email 2FA and clears pending codes on the correct password", async () => {
     login(1);
     userRow = {
-      password_hash: realPasswordHash,
+      ...passwordUser(),
       totp_enabled: true,
       two_factor_method: "email",
-      email: "user@example.com",
     };
     const res = await DELETE(req("DELETE", { password: REAL_PASSWORD }));
     const json = await res.json();

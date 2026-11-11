@@ -63,6 +63,8 @@ const { verifyDiscordState, DISCORD_NONCE_COOKIE } =
   await import("@/lib/auth/discord-state");
 const { GET, POST } = await import("@/app/api/v3/auth/discord/route");
 const { hashPassword } = await import("@/lib/auth/password-hash");
+const { STEP_UP_COOKIE, signStepUpToken } = await import("@/lib/auth/reauth");
+const { hashSessionId } = await import("@/lib/auth/auth");
 
 const CONNECT_PASSWORD = "the-account-password";
 const connectPasswordHash = await hashPassword(CONNECT_PASSWORD);
@@ -237,9 +239,25 @@ describe("/api/v3/auth/discord", () => {
     expect((await res.json()).error).toBe("Confirm your password first");
   });
 
-  it("takes a password-less account's empty post", async () => {
+  // A password-less account proves it is at the keyboard with the mailed
+  // step-up rather than its session alone (lib/auth/reauth.ts).
+  it("refuses a password-less account's empty post until it has stepped up", async () => {
     signedIn({ user_id: 7 });
     storedHash = null;
+
+    const res = await POST(discordPost());
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).url).toBeUndefined();
+  });
+
+  it("takes a password-less account's empty post once it has stepped up", async () => {
+    signedIn({ user_id: 7 });
+    storedHash = null;
+    cookieState.set(
+      STEP_UP_COOKIE,
+      signStepUpToken(7, hashSessionId("session-1")),
+    );
 
     const res = await POST(discordPost());
 
@@ -250,6 +268,10 @@ describe("/api/v3/auth/discord", () => {
   it("still treats a missing action as connect on the POST", async () => {
     signedIn({ user_id: 7 });
     storedHash = null;
+    cookieState.set(
+      STEP_UP_COOKIE,
+      signStepUpToken(7, hashSessionId("session-1")),
+    );
 
     const res = await POST(discordPost({}, null));
 

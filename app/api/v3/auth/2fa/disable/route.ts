@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
-import { verifyReauthPassword } from "@/lib/auth/reauth";
+import { reauthRefusal, verifyReauthPassword } from "@/lib/auth/reauth";
+import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
 import { twoFactorDisabledEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import pool from "@/lib/database/db";
@@ -33,9 +34,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     ...RATE_LIMITS.login,
   });
   if (!rl.allowed) {
-    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
     return ApiResponse.tooManyRequests(
-      `Too many attempts. Please try again in ${minutes} minute(s).`,
+      TOO_MANY_ATTEMPTS("attempts", rl.retryAfterSeconds),
       rl.retryAfterSeconds,
     );
   }
@@ -44,19 +44,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (!parsed.success) return ApiResponse.badRequest(parsed.error);
   const { password } = parsed.data;
 
-  // Re-auth before turning 2FA off. An OAuth-only account has no password
-  // to re-enter, so its session is the re-auth signal instead (see
-  // verifyReauthPassword): demanding one unconditionally left those accounts
-  // unable to disable 2FA at all once it was on.
+  // Re-auth before turning 2FA off. An OAuth-only account has no password to
+  // re-enter, so it confirms with the mailed step-up instead (see
+  // verifyReauthPassword); its session alone is not enough.
   const reauth = await verifyReauthPassword(session.userId, password, {
     missing: "Current password is required.",
     wrong: "Incorrect password.",
   });
-  if (!reauth.ok) {
-    return reauth.status === 400
-      ? ApiResponse.badRequest(reauth.error)
-      : ApiResponse.unauthorized(reauth.error);
-  }
+  if (!reauth.ok) return reauthRefusal(reauth, 401);
 
   // Disable 2FA and clear backup codes
   await pool.query(

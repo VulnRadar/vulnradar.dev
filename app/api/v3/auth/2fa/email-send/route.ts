@@ -1,90 +1,129 @@
-import { NextRequest } from "next/server";
-import { randomInt, randomBytes, createHash } from "node:crypto";
+import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
-import { email2FACodeEmail, sendEmail } from "@/lib/email/email";
+import {
+  email2FACodeEmail,
+  isEmailConfigured,
+  sendEmail,
+} from "@/lib/email/email";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
-import { AUTH_2FA_PENDING_COOKIE } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
-import { verifyPendingToken } from "@/lib/auth/pending-2fa";
+import { getSession } from "@/lib/auth";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
+import { resolvePendingUser } from "@/lib/auth/pending-user";
+import { issueEmailCode, maskEmail } from "@/lib/auth/email-codes";
+import { signedInCodeEmail } from "@/lib/auth/step-up-email";
+import {
+  STEP_UP_MAX_AGE_SECONDS,
+  STEP_UP_SIGN_IN_MESSAGE,
+} from "@/lib/auth/reauth";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  // The user id comes ONLY from a cryptographically-signed pending cookie
-  // (lib/auth/pending-2fa.ts) -- both the password-login and the OAuth/Discord
-  // cookies. A forgeable pending cookie here would let anyone trigger a 2FA
-  // email to any account (and pin the userId for the verify step).
-  const pending = request.cookies.get(AUTH_2FA_PENDING_COOKIE)?.value;
-  const discordPending = request.cookies.get("discord_pending_login")?.value;
-  const oauthPending = request.cookies.get("oauth_pending_login")?.value;
-
-  let userId: number | null = null;
-
-  const parsed = verifyPendingToken<{ userId: number; ts: number }>(
-    pending ?? discordPending ?? oauthPending,
-  );
-  if (parsed && typeof parsed.userId === "number") {
-    const pendingMaxAgeMs =
-      (await getSetting("2FA_PENDING_MAX_AGE_SECONDS")) * 1000;
-    if (Date.now() - parsed.ts > pendingMaxAgeMs) {
-      return ApiResponse.unauthorized(
-        "Login session expired. Please sign in again.",
-      );
-    }
-    userId = parsed.userId;
+  // The sign-in screen posts nothing; the step-up posts { purpose: "reauth" }.
+  // A body that is not JSON is the sign-in screen, never an error.
+  const body = (await request.json().catch(() => null)) as {
+    purpose?: unknown;
+  } | null;
+  if (body && typeof body === "object" && body.purpose === "reauth") {
+    return sendStepUpCode();
   }
+  return sendLoginCode(request);
+});
 
-  if (!userId) {
-    return ApiResponse.unauthorized("No pending 2FA session.");
+async function sendLoginCode(request: NextRequest) {
+  // The user id comes ONLY from a signed pending cookie. A forgeable one here
+  // would let anyone trigger a 2FA email to any account (and pin the userId
+  // for the verify step). The same resolver as verify, so both agree on whose
+  // sign-in this is when more than one pending cookie is present.
+  const pending = await resolvePendingUser(request);
+  if (!pending.ok) {
+    return ApiResponse.unauthorized(
+      pending.reason === "expired"
+        ? "Login session expired. Please sign in again."
+        : "No pending 2FA session.",
+    );
   }
+  const userId = pending.userId;
 
-  // Get user email
   const userResult = await pool.query("SELECT email FROM users WHERE id = $1", [
     userId,
   ]);
   const user = userResult.rows[0];
   if (!user) return ApiResponse.badRequest("User not found.");
 
-  // Check if a code was recently sent
-  const resendCooldownSeconds = await getSetting(
-    "EMAIL_2FA_RESEND_COOLDOWN_SECONDS",
+  const [cooldownSeconds, codeExpiryMinutes] = await Promise.all([
+    getSetting("EMAIL_2FA_RESEND_COOLDOWN_SECONDS"),
+    getSetting("EMAIL_2FA_CODE_EXPIRY_MINUTES"),
+  ]);
+  const issued = await issueEmailCode(
+    userId,
+    "login",
+    codeExpiryMinutes,
+    cooldownSeconds,
   );
-  const recentCode = await pool.query(
-    "SELECT created_at FROM email_2fa_codes WHERE user_id = $1 AND created_at > NOW() - ($2 * INTERVAL '1 second') ORDER BY created_at DESC LIMIT 1",
-    [userId, resendCooldownSeconds],
-  );
-  if (recentCode.rows.length > 0) {
+  if (!issued.ok) {
     return ApiResponse.tooManyRequests(
       "Please wait before requesting another code.",
-      resendCooldownSeconds,
+      issued.retryAfterSeconds,
     );
   }
 
-  // Delete old codes for this user
-  await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [userId]);
-
-  // Generate 6-digit code
-  const code = randomInt(100000, 999999).toString();
-
-  // L-2: salted hash. Same shape as the login route's email 2FA.
-  const codeSalt = randomBytes(32).toString("hex");
-  const codeHash = createHash("sha256")
-    .update(`${codeSalt}:${code}`)
-    .digest("hex");
-  const codeExpiryMinutes = await getSetting("EMAIL_2FA_CODE_EXPIRY_MINUTES");
-  await pool.query(
-    "INSERT INTO email_2fa_codes (user_id, code_hash, code_salt, expires_at) VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 minute'))",
-    [userId, codeHash, codeSalt, codeExpiryMinutes],
-  );
-
-  // Send the email
-  const emailContent = email2FACodeEmail(code, codeExpiryMinutes);
   await sendEmail({
     to: user.email,
-    ...emailContent,
+    ...email2FACodeEmail(issued.code, codeExpiryMinutes),
   });
 
-  // Mask email for UI
-  const parts = user.email.split("@");
-  const masked = parts[0].substring(0, 2) + "***@" + parts[1];
+  return ApiResponse.success({
+    message: "Code sent.",
+    maskedEmail: maskEmail(user.email),
+  });
+}
 
-  return ApiResponse.success({ message: "Code sent.", maskedEmail: masked });
-});
+/**
+ * The step-up for an account with no password: a code to the address on file,
+ * which POST /auth/2fa/verify with { purpose: "reauth" } turns into the
+ * ten-minute step-up cookie lib/auth/reauth.ts accepts. A signed-in session
+ * is required, and an impersonation session is refused: the step-up stands in
+ * for the account owner's password, which staff never have.
+ */
+async function sendStepUpCode() {
+  const session = await getSession();
+  if (!session) return ApiResponse.unauthorized();
+  const refused = refuseWhileImpersonating(
+    session,
+    "Confirming a security change",
+  );
+  if (refused) return refused;
+
+  // No mail, no code. The step-up on such a server is a fresh sign-in, and
+  // `emailConfigured: false` tells the client to offer that instead.
+  if (!isEmailConfigured()) {
+    return NextResponse.json(
+      { error: STEP_UP_SIGN_IN_MESSAGE, emailConfigured: false },
+      { status: 409 },
+    );
+  }
+
+  const cooldownSeconds = await getSetting("EMAIL_2FA_RESEND_COOLDOWN_SECONDS");
+  const issued = await issueEmailCode(
+    session.userId,
+    "reauth",
+    STEP_UP_MAX_AGE_SECONDS / 60,
+    cooldownSeconds,
+  );
+  if (!issued.ok) {
+    return ApiResponse.tooManyRequests(
+      "Please wait before requesting another code.",
+      issued.retryAfterSeconds,
+    );
+  }
+
+  await sendEmail({
+    to: session.email,
+    ...signedInCodeEmail("reauth", issued.code, STEP_UP_MAX_AGE_SECONDS / 60),
+  });
+
+  return ApiResponse.success({
+    message: "Code sent.",
+    maskedEmail: maskEmail(session.email),
+  });
+}

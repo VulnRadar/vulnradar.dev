@@ -1,9 +1,18 @@
-import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  vi,
+} from "vitest";
 import { NextRequest } from "next/server";
 import {
   makeCookieStore,
   makeHeaderStore,
   computeTotpCode,
+  defaultSessionRow,
 } from "../../_test-harness";
 
 /**
@@ -36,7 +45,13 @@ let userRow: {
 } | null = null;
 let totpLastCounter: string | null = null;
 let userEmailRow: { email: string } | null = null;
-let emailCodeCandidates: { id: number; code_salt: string }[] = [];
+let emailCodeCandidates: {
+  id: number;
+  code_salt: string;
+  purpose?: "login" | "reauth" | "setup";
+}[] = [];
+let sessionRow: Record<string, unknown> | null = null;
+let storedPasswordHash: string | null = null;
 let emailCodeHashes: Record<number, string> = {};
 
 let sessionInsertCalls: unknown[][] = [];
@@ -92,13 +107,22 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     return { rows: [] };
   }
   if (s.startsWith("SELECT id, code_salt, code_hash FROM email_2fa_codes")) {
-    // The route now pulls code_hash in the same query (no per-row lookup).
+    // code_hash comes in the same query (no per-row lookup), and only codes
+    // of the purpose asked for ($2) are candidates, as in Postgres.
     return {
-      rows: emailCodeCandidates.map((c) => ({
-        ...c,
-        code_hash: emailCodeHashes[c.id] ?? null,
-      })),
+      rows: emailCodeCandidates
+        .filter((c) => (c.purpose ?? "login") === params[1])
+        .map((c) => ({ ...c, code_hash: emailCodeHashes[c.id] ?? null })),
     };
+  }
+  if (s.startsWith("DELETE FROM sessions WHERE expires_at")) {
+    return { rows: [] };
+  }
+  if (s.includes("SELECT s.user_id")) {
+    return { rows: sessionRow ? [sessionRow] : [] };
+  }
+  if (s.startsWith("SELECT password_hash FROM users WHERE id = $1")) {
+    return { rows: [{ password_hash: storedPasswordHash }] };
   }
   if (s.startsWith("DELETE FROM email_2fa_codes WHERE id = $1 RETURNING id")) {
     const id = params[0] as number;
@@ -171,10 +195,28 @@ const { hashPassword } = await import("@/lib/auth/password-hash");
 const { generateSecret } = await import("@/lib/auth/totp");
 const { encryptApiKey } = await import("@/lib/auth/crypto");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
-const { AUTH_2FA_PENDING_COOKIE, DEVICE_TRUST_COOKIE_NAME } =
-  await import("@/lib/config/constants");
+const {
+  AUTH_2FA_PENDING_COOKIE,
+  AUTH_SESSION_COOKIE_NAME,
+  DEVICE_TRUST_COOKIE_NAME,
+} = await import("@/lib/config/constants");
 const { signPendingToken } = await import("@/lib/auth/pending-2fa");
+const { STEP_UP_COOKIE, verifyReauthPassword } =
+  await import("@/lib/auth/reauth");
 const { POST } = await import("@/app/api/v3/auth/2fa/verify/route");
+
+async function emailCode(
+  id: number,
+  code: string,
+  purpose: "login" | "reauth" | "setup",
+) {
+  const { createHash, randomBytes } = await import("node:crypto");
+  const salt = randomBytes(32).toString("hex");
+  emailCodeCandidates.push({ id, code_salt: salt, purpose });
+  emailCodeHashes[id] = createHash("sha256")
+    .update(`${salt}:${code}`)
+    .digest("hex");
+}
 
 // The verify route now derives the userId ONLY from a cryptographically-signed
 // pending cookie (never the request body), so tests must present a real signed
@@ -218,6 +260,10 @@ beforeEach(async () => {
   // previous test before resetting mocks, so a leftover callback can't
   // fire mid-test and inflate a call count assertion.
   await new Promise((resolve) => setImmediate(resolve));
+  // Ten seconds into a 30-second TOTP step, with the clock held there. On the
+  // real clock a code computed by the test could land one step before the
+  // route checks it, which is a rare red build under parallel forks.
+  vi.setSystemTime(new Date("2026-01-01T00:00:10Z"));
   mockQuery.mockClear();
   queries.length = 0;
   cookieState.clear();
@@ -225,6 +271,8 @@ beforeEach(async () => {
   headerState.set("user-agent", "vitest-agent");
   mockSendEmail.mockClear();
   rateLimitCounts.clear();
+  sessionRow = null;
+  storedPasswordHash = null;
   userRow = null;
   totpLastCounter = null;
   userEmailRow = { email: "user@example.com" };
@@ -238,6 +286,10 @@ beforeEach(async () => {
   events.length = 0;
   lockedBackupCodes = undefined;
   invalidateSettingsCache();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("POST /api/v3/auth/2fa/verify", () => {
@@ -614,5 +666,175 @@ describe("POST /api/v3/auth/2fa/verify", () => {
       expect(json.success).toBe(true);
       expect(sessionInsertCalls).toHaveLength(1);
     });
+  });
+
+  // email-send used to read the password cookie first and this route the
+  // provider cookies first, so with both present the code went to one account
+  // and was checked against another. Both take the newest first factor now.
+  it("checks the code against the newest sign-in when a password and an OAuth pending cookie are both present", async () => {
+    userRow = {
+      totp_secret: null,
+      totp_enabled: true,
+      backup_codes: null,
+      two_factor_method: "email",
+    };
+    await emailCode(9, "654321", "login");
+    const now = Date.now();
+
+    const res = await POST(
+      verifyRequest(
+        { code: "654321" },
+        {
+          [AUTH_2FA_PENDING_COOKIE]: signedPending(2, now - 60_000),
+          oauth_pending_login: signedPending(1, now),
+        },
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(sessionInsertCalls[0][1]).toBe(1);
+    // Both pending cookies are expired on the way out, not only the one used.
+    const cleared = res.headers.getSetCookie().join("\n");
+    expect(cleared).toContain(`${AUTH_2FA_PENDING_COOKIE}=;`);
+    expect(cleared).toContain("oauth_pending_login=;");
+    expect(cleared).toContain("discord_pending_login=;");
+  });
+
+  it("refuses a step-up code at the sign-in step", async () => {
+    userRow = {
+      totp_secret: null,
+      totp_enabled: true,
+      backup_codes: null,
+      two_factor_method: "email",
+    };
+    await emailCode(9, "654321", "reauth");
+
+    const res = await POST(
+      verifyRequest(
+        { code: "654321" },
+        { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
+      ),
+    );
+    expect(res.status).toBe(400);
+    expect(emailCodeDeleteCalls).toEqual([]);
+    expect(sessionInsertCalls).toHaveLength(0);
+  });
+
+  it("answers the rate limit in words, not 'minute(s)'", async () => {
+    userRow = {
+      totp_secret: encryptApiKey(TOTP_SECRET),
+      totp_enabled: true,
+      backup_codes: null,
+      two_factor_method: "app",
+    };
+    rateLimitCounts.set("2fa-verify:1:unknown", 5);
+    const res = await POST(
+      verifyRequest(
+        { code: "123456" },
+        { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
+      ),
+    );
+    expect(res.status).toBe(429);
+    expect((await res.json()).error).toMatch(
+      /^Too many 2FA attempts\. Try again in (under a minute|a minute|\d+ minutes)\.$/,
+    );
+  });
+});
+
+describe("POST /api/v3/auth/2fa/verify { purpose: 'reauth' }", () => {
+  function signIn(overrides: Record<string, unknown> = {}) {
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+    sessionRow = defaultSessionRow({ user_id: 3, ...overrides });
+  }
+
+  function stepUpCookieFrom(res: Response): string | undefined {
+    const line = res.headers
+      .getSetCookie()
+      .find((c) => c.startsWith(`${STEP_UP_COOKIE}=`));
+    return line?.slice(STEP_UP_COOKIE.length + 1).split(";")[0];
+  }
+
+  it("answers 401 without a session, even with a pending cookie", async () => {
+    await emailCode(4, "111222", "reauth");
+    const res = await POST(
+      verifyRequest(
+        { purpose: "reauth", code: "111222" },
+        { [AUTH_2FA_PENDING_COOKIE]: signedPending(3) },
+      ),
+    );
+    expect(res.status).toBe(401);
+    expect(emailCodeDeleteCalls).toEqual([]);
+  });
+
+  it("is refused while impersonating", async () => {
+    signIn({ impersonated_by: 99 });
+    await emailCode(4, "111222", "reauth");
+    const res = await POST(
+      verifyRequest({ purpose: "reauth", code: "111222" }),
+    );
+    expect(res.status).toBe(403);
+    expect(stepUpCookieFrom(res)).toBeUndefined();
+  });
+
+  it("answers a code that is not six digits with a 400", async () => {
+    signIn();
+    const res = await POST(verifyRequest({ purpose: "reauth", code: 111222 }));
+    expect(res.status).toBe(400);
+  });
+
+  it("consumes the code once and sets a step-up the re-auth gate accepts for this session", async () => {
+    signIn();
+    await emailCode(4, "111222", "reauth");
+
+    const res = await POST(
+      verifyRequest({ purpose: "reauth", code: "111222" }),
+    );
+    expect(res.status).toBe(200);
+    expect(emailCodeDeleteCalls).toEqual([4]);
+    // A step-up is not a sign-in: no session is created.
+    expect(sessionInsertCalls).toHaveLength(0);
+
+    const line = res.headers
+      .getSetCookie()
+      .find((c) => c.startsWith(`${STEP_UP_COOKIE}=`))!;
+    expect(line).toMatch(/HttpOnly/i);
+    expect(line).toMatch(/SameSite=strict/i);
+    expect(line).toMatch(/Max-Age=600/);
+
+    cookieState.set(STEP_UP_COOKIE, stepUpCookieFrom(res)!);
+    storedPasswordHash = null;
+    const messages = { missing: "m", wrong: "w" };
+    expect(await verifyReauthPassword(3, undefined, messages)).toEqual({
+      ok: true,
+    });
+    // The same cookie on another session, or for another user, is nothing.
+    expect(await verifyReauthPassword(4, undefined, messages)).toMatchObject({
+      ok: false,
+    });
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-2");
+    expect(await verifyReauthPassword(3, undefined, messages)).toMatchObject({
+      ok: false,
+    });
+  });
+
+  it("refuses a sign-in code as a step-up", async () => {
+    signIn();
+    await emailCode(4, "111222", "login");
+
+    const res = await POST(
+      verifyRequest({ purpose: "reauth", code: "111222" }),
+    );
+    expect(res.status).toBe(400);
+    expect(emailCodeDeleteCalls).toEqual([]);
+    expect(stepUpCookieFrom(res)).toBeUndefined();
+  });
+
+  it("counts step-up guesses against the same per-user bucket as sign-in", async () => {
+    signIn();
+    rateLimitCounts.set("2fa-verify-user:3", 5);
+    const res = await POST(
+      verifyRequest({ purpose: "reauth", code: "111222" }),
+    );
+    expect(res.status).toBe(429);
   });
 });

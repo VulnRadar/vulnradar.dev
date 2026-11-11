@@ -39,6 +39,13 @@ vi.mock("@/lib/auth/authorization", async (importOriginal) => {
   };
 });
 
+// The re-auth gate reads the session and step-up cookies itself. No cookie
+// in this suite, so a password-less admin never holds a step-up.
+vi.mock("next/headers", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/headers")>()),
+  cookies: vi.fn(async () => ({ get: () => undefined })),
+}));
+
 vi.mock("@/lib/api/request-utils", () => ({
   getClientIp: vi.fn(async () => "127.0.0.1"),
 }));
@@ -248,17 +255,13 @@ describe("POST /api/v3/admin/staff-invites — authorization", () => {
     expect(mockLogAction).not.toHaveBeenCalled();
   });
 
-  // An admin created through Google/GitHub/Discord has password_hash NULL,
-  // and the hand-rolled check this route used to run read that column
-  // directly and called a null hash a wrong password. Such an admin could
-  // never send an invite, and was told their own password was incorrect.
-  it("lets an OAuth-created admin with no password send an invite", async () => {
+  // An admin created through Google/GitHub/Discord has password_hash NULL.
+  // That used to let the session through on its own, so a stolen staff
+  // session could mail a staff-role invite to any address. The gate now wants
+  // the mailed step-up (tests/lib/auth/reauth.test.ts covers the pass).
+  it("asks an OAuth-created admin with no password for the step-up", async () => {
     queueRole("admin", 1);
     mockQuery.mockResolvedValueOnce({ rows: [{ password_hash: null }] });
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // existingUser
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // existingInvite
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 77 }] }); // INSERT
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // inviterRes
 
     const res = await POST(
       new NextRequest("http://localhost/api/v3/admin/staff-invites", {
@@ -267,8 +270,9 @@ describe("POST /api/v3/admin/staff-invites — authorization", () => {
         body: JSON.stringify({ email: "new@example.com", role: "support" }),
       }),
     );
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
     expect(mockVerifyPassword).not.toHaveBeenCalled();
+    expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
   // This endpoint mails an attacker-chosen address a link that grants a staff
