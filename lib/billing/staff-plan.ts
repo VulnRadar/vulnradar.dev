@@ -75,10 +75,10 @@ function isStaffRoleForPlanGrant(role: string | null | undefined): boolean {
  * The plan a cancelled or lapsed subscription falls back to, as a SQL CASE
  * over `users.role`, plus the role array it needs bound.
  *
- * The three cancellation paths (the Stripe webhook's
+ * The cancellation paths (the Stripe webhook's
  * customer.subscription.deleted, POST /api/v3/billing/subscription/cancel,
- * and POST /api/v3/billing's cancel_immediately) each hand-wrote
- * `role IN ('admin', 'moderator', 'support')`. That covered three of the
+ * and the POST /api/v3/billing cancel_immediately since removed) each
+ * hand-wrote `role IN ('admin', 'moderator', 'support')`. That covered three of the
  * seven roles in STAFF_ROLES, so a billing/security_analyst/content_manager/
  * ops account dropped to free instead of the pro_supporter floor its role
  * grants, and super_admin -- whose floor is elite_supporter -- was in none of
