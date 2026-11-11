@@ -1,20 +1,9 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/database/db";
-import { getSession, isStaffRole } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
+import { requireAdmin, requireStaff } from "@/lib/auth/authorization";
 import { withErrorHandling } from "@/lib/api/api-utils";
-import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
 import { logError } from "@/lib/logging/log";
-
-/**
- * "Admins only" is the admin tier and above, the same line requireAdmin()
- * draws. isStaffRole() is true for every role with any permission (support,
- * billing, ops, moderator ...), so using it for both audiences showed an
- * admin-targeted notice (an incident note, a credential rotation) to every
- * specialist account.
- */
-function isAdminRole(role: string | null | undefined): boolean {
-  return (STAFF_ROLE_HIERARCHY[role ?? ""] ?? 0) >= STAFF_ROLE_HIERARCHY.admin;
-}
 
 export const GET = withErrorHandling(async () => {
   try {
@@ -25,8 +14,16 @@ export const GET = withErrorHandling(async () => {
     // trustworthy source of who the caller is.
     const session = await getSession();
     const isAuthenticated = !!session?.userId;
-    const isStaff = isAuthenticated && isStaffRole(session?.role);
-    const isAdmin = isAuthenticated && isAdminRole(session?.role);
+
+    // The same two gates every staff and admin route uses, rather than the
+    // role string on the session. Those read the role from the account row
+    // and apply ENFORCE_STAFF_2FA, so a staff account the policy has shut out
+    // of the panel is not still handed the notices written for staff (an
+    // incident note, a credential rotation). "Admins only" is the admin tier
+    // and above, the line requireAdmin() draws; requireStaff() alone is true
+    // for support, billing, ops and the rest.
+    const isStaff = isAuthenticated && (await requireStaff()) !== null;
+    const isAdmin = isStaff && (await requireAdmin()) !== null;
 
     const now = new Date();
 

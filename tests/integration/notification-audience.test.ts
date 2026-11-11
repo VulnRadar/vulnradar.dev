@@ -1,7 +1,12 @@
-import { it, expect, vi, beforeAll, afterAll } from "vitest";
+import { it, expect, vi, beforeAll, afterAll, afterEach } from "vitest";
 import { randomBytes } from "node:crypto";
 import pool from "@/lib/database/db";
-import { describeIntegration } from "./_db";
+import {
+  describeIntegration,
+  createUser,
+  setSettings,
+  clearSettings,
+} from "./_db";
 
 /**
  * Which site notifications each role is shown, judged by Postgres.
@@ -15,24 +20,27 @@ import { describeIntegration } from "./_db";
  * back for each role is a property of the WHERE clause, so it is asserted here
  * against the real table.
  *
- * Only getSession is replaced: the role is the one input the route takes from
- * the request, and it is read from a cookie that a test has no browser for.
+ * The two flags now come from requireStaff() and requireAdmin(), which read
+ * the role and totp_enabled from the users row and apply ENFORCE_STAFF_2FA, so
+ * each case signs in as a real account of that role.
+ *
+ * Only getSession is replaced: it reads a cookie that a test has no browser
+ * for.
  */
-let currentRole: string | null = null;
+let sessionUserId: number | null = null;
 
 vi.mock("@/lib/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/auth")>();
   return {
     ...actual,
     getSession: async () =>
-      currentRole === null
+      sessionUserId === null
         ? null
         : {
-            userId: 1,
+            userId: sessionUserId,
             email: "role@example.test",
             name: null,
             tosAcceptedAt: null,
-            role: currentRole,
           },
   };
 });
@@ -52,8 +60,21 @@ const AUDIENCES = [
 const prefix = `aud-${randomBytes(4).toString("hex")}`;
 const titleFor = (audience: string) => `${prefix}-${audience}`;
 
-async function visibleAudiences(role: string | null): Promise<string[]> {
-  currentRole = role;
+/** totp defaults on, so the role cases hold whatever ENFORCE_STAFF_2FA is. */
+async function signInAs(role: string | null, totp = true): Promise<void> {
+  if (role === null) {
+    sessionUserId = null;
+    return;
+  }
+  const user = await createUser({ role });
+  await pool.query("UPDATE users SET totp_enabled = $2 WHERE id = $1", [
+    user.id,
+    totp,
+  ]);
+  sessionUserId = user.id;
+}
+
+async function visibleAudiences(): Promise<string[]> {
   const res = await GET();
   expect(res.status).toBe(200);
   const body = (await res.json()) as {
@@ -78,6 +99,10 @@ describeIntegration("active notifications by audience", () => {
     }
   });
 
+  afterEach(async () => {
+    await clearSettings();
+  });
+
   afterAll(async () => {
     await pool.query(`DELETE FROM admin_notifications WHERE title LIKE $1`, [
       `${prefix}-%`,
@@ -85,11 +110,13 @@ describeIntegration("active notifications by audience", () => {
   });
 
   it("shows a signed-out visitor only the public and guest notices", async () => {
-    expect(await visibleAudiences(null)).toEqual(["all", "unauthenticated"]);
+    await signInAs(null);
+    expect(await visibleAudiences()).toEqual(["all", "unauthenticated"]);
   });
 
   it("shows a signed-in customer the public and signed-in notices, no staff ones", async () => {
-    expect(await visibleAudiences("user")).toEqual(["all", "authenticated"]);
+    await signInAs("user");
+    expect(await visibleAudiences()).toEqual(["all", "authenticated"]);
   });
 
   it.each([
@@ -100,17 +127,15 @@ describeIntegration("active notifications by audience", () => {
     "ops",
     "moderator",
   ])("shows %s the staff notice but not the admin one", async (role) => {
-    expect(await visibleAudiences(role)).toEqual([
-      "all",
-      "authenticated",
-      "staff",
-    ]);
+    await signInAs(role);
+    expect(await visibleAudiences()).toEqual(["all", "authenticated", "staff"]);
   });
 
   it.each(["admin", "super_admin"])(
     "shows %s both the staff notice and the admin one",
     async (role) => {
-      expect(await visibleAudiences(role)).toEqual([
+      await signInAs(role);
+      expect(await visibleAudiences()).toEqual([
         "admin",
         "all",
         "authenticated",
@@ -118,4 +143,21 @@ describeIntegration("active notifications by audience", () => {
       ]);
     },
   );
+
+  it("hides the staff and admin notices from an admin without 2FA under ENFORCE_STAFF_2FA", async () => {
+    await setSettings({ ENFORCE_STAFF_2FA: true });
+    await signInAs("admin", false);
+    expect(await visibleAudiences()).toEqual(["all", "authenticated"]);
+  });
+
+  it("still shows an admin with 2FA both notices under ENFORCE_STAFF_2FA", async () => {
+    await setSettings({ ENFORCE_STAFF_2FA: true });
+    await signInAs("admin", true);
+    expect(await visibleAudiences()).toEqual([
+      "admin",
+      "all",
+      "authenticated",
+      "staff",
+    ]);
+  });
 });
