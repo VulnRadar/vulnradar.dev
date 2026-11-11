@@ -21,6 +21,7 @@ import { execFileSync } from "node:child_process";
 import { dirname, join, resolve as pathResolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { replaceOutput } from "./replace-output.mjs";
+import { collectPageIds, renderPageIdsModule } from "./check-page-ids.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = pathResolve(__dirname, "..", "..");
@@ -29,6 +30,7 @@ const PAGE_CHECKS_DIR = join(ROOT, "lib", "scanner", "checks", "page-checks");
 const OUTPUT = join(ROOT, "lib", "ai", "checks-knowledge.md");
 const INDEX_OUTPUT = join(ROOT, "lib", "ai", "checks-index.md");
 const STATS_OUTPUT = join(ROOT, "lib", "config", "check-stats.generated.ts");
+const PAGE_IDS_OUTPUT = join(ROOT, "lib", "seo", "check-page-ids.generated.ts");
 
 // Floor assertions. A checks-data category that stops parsing, gets renamed or
 // is deleted used to shrink the compiled knowledge silently: the build stayed
@@ -220,6 +222,20 @@ function renderCheck(check, category) {
   lines.push("");
   if (check.description) {
     lines.push(String(check.description));
+    lines.push("");
+  }
+  // A write-up whose findings carry other ids. Without this the assistant
+  // told people to filter on an id no scan reports.
+  if (Array.isArray(check.emittedAs) && check.emittedAs.length) {
+    const prefixes = check.emittedAs.map((id) => `\`${id}\``).join(" or ");
+    lines.push(
+      `**Finding ids:** a scan does not report \`${check.id}\` as a finding id. Its findings carry an id starting ${prefixes}, followed by \`--\` and a hash of the scanned URL.`,
+    );
+    lines.push("");
+  } else if (check.documentationOnly) {
+    lines.push(
+      `**Reference only:** no scan reports a finding under \`${check.id}\`.`,
+    );
     lines.push("");
   }
   if (check.riskImpact && check.riskImpact !== check.description) {
@@ -455,6 +471,12 @@ async function build() {
   writeFileSync(STATS_OUTPUT, statsLines.join("\n"), "utf8");
   console.log(
     `[compile-checks-knowledge] wrote ${STATS_OUTPUT.replace(ROOT + "\\", "")} (EXACT_CHECK_COUNT=${exactCheckCount}, label=${roundedLabel}+)`,
+  );
+
+  const pageIds = collectPageIds(byCategory);
+  writeFileSync(PAGE_IDS_OUTPUT, renderPageIdsModule(pageIds), "utf8");
+  console.log(
+    `[compile-checks-knowledge] wrote ${PAGE_IDS_OUTPUT.replace(ROOT + "\\", "")} (${pageIds.ids.length} page ids)`,
   );
 
   const newestSource = Math.max(

@@ -37,7 +37,8 @@ import {
   useCopyFeedback,
   CopiedAnnouncement,
 } from "@/components/shared/copy-feedback";
-import { API, APP_NAME } from "@/lib/config/client-constants";
+import { API, APP_NAME, ROUTES } from "@/lib/config/client-constants";
+import { checkPageHref } from "@/lib/seo/check-page-href";
 import {
   REMEDIATION_STATUSES,
   REMEDIATION_LABELS,
@@ -1073,6 +1074,7 @@ export function IssueDetail({
   const owasp = owaspRef(issue.owasp);
   const corroboration = corroborationLabel(issue.alsoReportedBy);
   const locationLabel = findingLocationLabel(issue.location);
+  const guideHref = checkPageHref(issue.id);
 
   const handleBack = useCallback(() => {
     removeQueryParam(FINDING_QUERY_PARAM);
@@ -1436,16 +1438,30 @@ export function IssueDetail({
             </li>
           ))}
         </ol>
-        <Link
-          href="/checks"
-          className={cn(
-            "mt-4 inline-flex items-center gap-1 text-xs text-primary hover:underline",
-            FOCUS_RING,
+        <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-1">
+          {guideHref && (
+            <Link
+              href={guideHref}
+              className={cn(
+                "inline-flex min-h-6 items-center gap-1 text-xs text-primary hover:underline",
+                FOCUS_RING,
+              )}
+            >
+              Read the full fix guide for this check
+              <ArrowRight aria-hidden className="h-3 w-3" />
+            </Link>
           )}
-        >
-          Browse all {APP_NAME} fix guides
-          <ArrowRight aria-hidden className="h-3 w-3" />
-        </Link>
+          <Link
+            href={ROUTES.CHECKS}
+            className={cn(
+              "inline-flex min-h-6 items-center gap-1 text-xs text-primary hover:underline",
+              FOCUS_RING,
+            )}
+          >
+            Browse all {APP_NAME} fix guides
+            <ArrowRight aria-hidden className="h-3 w-3" />
+          </Link>
+        </div>
       </section>
 
       {issue.codeExamples.length > 0 && (

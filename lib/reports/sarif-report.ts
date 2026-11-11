@@ -1,6 +1,7 @@
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types";
 import { APP_NAME, APP_URL, APP_VERSION } from "@/lib/config/constants";
 import { toDisplayExcerpts } from "@/lib/scanner/evidence-excerpts";
+import { checkPageHref } from "@/lib/seo/check-page-href";
 import {
   REMEDIATION_LABELS,
   type RemediationStatus,
@@ -58,6 +59,7 @@ interface SarifReportingDescriptor {
   shortDescription: SarifMessage;
   fullDescription: SarifMessage;
   helpUri?: string;
+  help?: { text: string; markdown: string };
   defaultConfiguration: { level: SarifLevel };
   properties: {
     tags: string[];
@@ -174,7 +176,42 @@ function ruleTags(finding: Vulnerability): string[] {
   return tags;
 }
 
+/**
+ * What GitHub Code Scanning shows under "Rule help": the fix steps, and the
+ * fix guide for the check when it has one. Without it an alert says what is
+ * wrong and the reader has to go and find how to fix it.
+ */
+function helpFor(
+  finding: Vulnerability,
+): { text: string; markdown: string } | null {
+  const steps = (finding.fixSteps ?? []).filter((s) => s.trim() !== "");
+  const href = checkPageHref(finding.id);
+  const guideUrl = href ? `${APP_URL}${href}` : null;
+  if (steps.length === 0 && !guideUrl) return null;
+
+  const text: string[] = [];
+  const markdown: string[] = [];
+  if (steps.length > 0) {
+    text.push("How to fix it:", ...steps.map((s, i) => `${i + 1}. ${s}`));
+    markdown.push(
+      "**How to fix it**",
+      "",
+      ...steps.map((s, i) => `${i + 1}. ${s}`),
+    );
+  }
+  if (guideUrl) {
+    if (text.length > 0) {
+      text.push("");
+      markdown.push("");
+    }
+    text.push(`Fix guide: ${guideUrl}`);
+    markdown.push(`[Read the fix guide](${guideUrl})`);
+  }
+  return { text: text.join("\n"), markdown: markdown.join("\n") };
+}
+
 function toRule(finding: Vulnerability): SarifReportingDescriptor {
+  const help = helpFor(finding);
   return {
     id: finding.id,
     name: finding.title,
@@ -183,6 +220,7 @@ function toRule(finding: Vulnerability): SarifReportingDescriptor {
     ...(finding.references && finding.references.length > 0
       ? { helpUri: finding.references[0] }
       : {}),
+    ...(help ? { help } : {}),
     defaultConfiguration: { level: LEVEL_BY_SEVERITY[finding.severity] },
     properties: {
       tags: ruleTags(finding),
