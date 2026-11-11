@@ -253,6 +253,9 @@ describe("the draft", () => {
     expect(html).toContain(
       "Required to change the address your account recovers through.",
     );
+    // The change waits for the link, and the field says so before Save.
+    expect(html).toContain("We email a link to the new address.");
+    expect(html).toContain("ada@example.com");
   });
 
   it("is dirty and saveable only once something changed", () => {
@@ -317,6 +320,55 @@ describe("saveProfileDetails", () => {
     // Only in the body: never in the URL.
     expect(calls[0].url).not.toContain("pass");
     expect(patches).toEqual([{ email: "ada@new.example" }]);
+  });
+
+  // PATCH /auth/update holds a new address as pending: it answers with the
+  // address the account still uses and names the one waiting. The tile keeps
+  // the old address and the confirmation says what is left to do, rather
+  // than claiming the address was updated.
+  it("a pending address keeps the saved one and says to open the link", async () => {
+    stubFetch({
+      ok: true,
+      body: { email: "ada@example.com", pendingEmail: "ada@new.example" },
+    });
+    const patches: unknown[] = [];
+    const u = user();
+    const draft = {
+      ...withDetailsEmail(profileDetailsDraftFrom(u), "ada@new.example", u),
+      currentPassword: "pw",
+    };
+    const out = await saveProfileDetails(draft, u, (p) => patches.push(p));
+    expect(patches).toEqual([{ email: "ada@example.com" }]);
+    expect(out).toEqual({
+      ok: true,
+      message:
+        "Open the link we sent to ada@new.example to finish changing your email address.",
+    });
+  });
+
+  it("a saved name and a pending address name both outcomes", async () => {
+    stubFetch(
+      { ok: true, body: { name: "Ada King" } },
+      {
+        ok: true,
+        body: { email: "ada@example.com", pendingEmail: "ada@new.example" },
+      },
+    );
+    const u = user();
+    const draft = {
+      ...withDetailsEmail(
+        { ...profileDetailsDraftFrom(u), name: "Ada King" },
+        "ada@new.example",
+        u,
+      ),
+      currentPassword: "pw",
+    };
+    const out = await saveProfileDetails(draft, u, () => {});
+    expect(out).toEqual({
+      ok: true,
+      message:
+        "Your name was updated. Open the link we sent to ada@new.example to finish changing your email address.",
+    });
   });
 
   it("sends the name first, then the email", async () => {

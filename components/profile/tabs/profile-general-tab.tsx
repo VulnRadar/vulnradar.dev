@@ -163,6 +163,7 @@ export async function saveProfileDetails(
   }
 
   let emailSaved = false;
+  let pendingEmail: string | null = null;
   if (emailChanged(draft, user)) {
     const result = await patchProfile(
       { email: draft.email, currentPassword: draft.currentPassword },
@@ -177,13 +178,29 @@ export async function saveProfileDetails(
           : result.error,
       };
     }
-    onUserPatch?.({ email: result.data.email as string });
-    emailSaved = true;
+    // The route holds a new address as pending and answers with the one the
+    // account still uses, so the tile keeps showing that one until the link
+    // mailed to the new address is opened.
+    if (typeof result.data.email === "string") {
+      onUserPatch?.({ email: result.data.email });
+    }
+    if (typeof result.data.pendingEmail === "string") {
+      pendingEmail = result.data.pendingEmail;
+    } else {
+      emailSaved = true;
+    }
   }
 
   // name and email are part of MeResponse, so the nav and every other page
   // reading useAuth() need telling, not just this page's own copy.
   refreshAuthCache();
+  if (pendingEmail) {
+    const finish = `Open the link we sent to ${pendingEmail} to finish changing your email address.`;
+    return {
+      ok: true,
+      message: nameSaved ? `Your name was updated. ${finish}` : finish,
+    };
+  }
   return {
     ok: true,
     message:
@@ -230,6 +247,12 @@ export function ProfileDetailsFields({
           autoComplete="email"
           required
         />
+        {emailChanged(draft, user) && (
+          <p className="text-xs text-muted-foreground">
+            We email a link to the new address. Until you open it, you keep
+            signing in and getting mail at {user.email}.
+          </p>
+        )}
       </div>
       {/* The address is the account's recovery route, so changing it is a
           sensitive change and the API requires the current password for one.

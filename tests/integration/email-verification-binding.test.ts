@@ -182,6 +182,14 @@ async function accountState(userId: number) {
   return rows[0];
 }
 
+async function pendingOf(userId: number) {
+  const { rows } = await pool.query<{ pending_email: string | null }>(
+    "SELECT pending_email FROM users WHERE id = $1",
+    [userId],
+  );
+  return rows[0]?.pending_email ?? null;
+}
+
 describeIntegration("email verification is bound to the mailed address", () => {
   it("records the address on every token it issues", async () => {
     const user = await createUser();
@@ -241,11 +249,15 @@ describeIntegration("email verification is bound to the mailed address", () => {
       expect((await changeEmail(victim)).status).toBe(200);
       const res = await clickLink(token);
 
+      // A profile change no longer moves the account at once (see
+      // pending-email.test.ts): it keeps its address, unverified as it was,
+      // and the old link is still gone with the change.
       expect(res.status).toBe(400);
       expect(await accountState(user.id)).toEqual({
-        email: victim,
+        email: user.email,
         email_verified_at: null,
       });
+      expect(await pendingOf(user.id)).toBe(victim);
     });
 
     // Issuing the new link used to be the only thing that deleted the old
@@ -263,7 +275,7 @@ describeIntegration("email verification is bound to the mailed address", () => {
 
       expect(res.status).toBe(400);
       expect(await accountState(user.id)).toEqual({
-        email: victim,
+        email: user.email,
         email_verified_at: null,
       });
       const { rows } = await pool.query(
@@ -275,7 +287,7 @@ describeIntegration("email verification is bound to the mailed address", () => {
     });
   });
 
-  it("replay the old link, then change the address: the new address starts unverified", async () => {
+  it("replay the old link, then change the address: the new address only waits", async () => {
     const user = await signedInAccount();
     const token = await linkFor(user);
     const victim = `${unique("victim")}@example.test`;
@@ -285,10 +297,12 @@ describeIntegration("email verification is bound to the mailed address", () => {
     expect((await clickLink(token)).status).toBe(200);
     expect((await changeEmail(victim)).status).toBe(200);
 
-    expect(await accountState(user.id)).toEqual({
-      email: victim,
-      email_verified_at: null,
-    });
+    // The verified flag stays with the address it was earned on, and the new
+    // one is pending until its own link is opened.
+    const state = await accountState(user.id);
+    expect(state.email).toBe(user.email);
+    expect(state.email_verified_at).not.toBeNull();
+    expect(await pendingOf(user.id)).toBe(victim);
   });
 
   // Both at once, the way the attack fires them. Whichever commits first, the
@@ -301,9 +315,11 @@ describeIntegration("email verification is bound to the mailed address", () => {
 
       await Promise.all([changeEmail(victim), clickLink(token)]);
 
+      // Whichever commits first, the old link can only ever verify the
+      // address the account still holds, and never moves it to the new one.
       const state = await accountState(user.id);
-      expect(state.email).toBe(victim);
-      expect(state.email_verified_at).toBeNull();
+      expect(state.email).toBe(user.email);
+      expect(await pendingOf(user.id)).toBe(victim);
     }
   });
 

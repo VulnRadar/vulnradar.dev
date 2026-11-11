@@ -15,7 +15,6 @@ import {
 } from "@/lib/auth/password-strength";
 import {
   profileNameChangedEmail,
-  profileEmailChangedEmail,
   profilePasswordChangedEmail,
 } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
@@ -37,15 +36,19 @@ import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 
 /**
- * The current-password check an email or password change has to pass, or the
+ * The re-authentication an email or password change has to pass, or the
  * response that refuses it.
  *
  * The strict login bucket (5 / 15 min) gates it rather than the broad
  * profile-update `api` bucket (100/hr), or a stolen session cookie gets about
- * 20x more online guesses against this exact check. An account with no
- * password (OAuth-only, see createOAuthUser) passes on the session alone,
- * which also lets it set its first password; a users row that cannot be read
- * fails closed.
+ * 20x more online guesses against this exact check. What counts as proof is
+ * verifyReauthPassword's call, not this route's: a password account re-enters
+ * its password, and an account with no password (OAuth-only, see
+ * createOAuthUser) passes the step-up that function reads for itself, for its
+ * first password as much as for an address change. The status is the one it
+ * gives (400 for a missing password, 403 for a wrong one or a missing
+ * step-up), and `stepUp` is passed on so the profile screen knows to offer
+ * the mailed code instead of a password field.
  */
 async function confirmCurrentPassword(
   userId: number,
@@ -73,7 +76,11 @@ async function confirmCurrentPassword(
     wrong: "Current password is incorrect.",
   });
   if (!reauth.ok) {
-    return NextResponse.json({ error: reauth.error }, { status: 403 });
+    const stepUp = "stepUp" in reauth && reauth.stepUp === true;
+    return NextResponse.json(
+      stepUp ? { error: reauth.error, stepUp: true } : { error: reauth.error },
+      { status: reauth.status },
+    );
   }
   return null;
 }
@@ -128,10 +135,11 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
       if (refused) return refused;
     }
 
-    // auth: changing email or password requires re-authentication with the
-    // current password. Without this, a stolen session cookie is enough to
-    // take over the account by changing the email and then triggering a
-    // password reset. Name and avatar are NOT account-takeover vectors on
+    // auth: changing email or password requires re-authentication (the
+    // current password, or the step-up for an account that has none).
+    // Without this, a stolen session cookie is enough to take over the
+    // account by changing the email and then triggering a password reset, or
+    // by setting a first password. Name and avatar are NOT account-takeover vectors on
     // their own (there's no follow-up step that turns "I can rename you"
     // into "I own your account" the way there is for email), so they don't
     // require it -- and no UI in the general profile tab collects a
@@ -174,14 +182,31 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
     const currentName = currentUser.rows[0]?.name || "";
     const currentEmail = currentUser.rows[0]?.email || "";
 
-    // Update name
-    if (typeof name === "string") {
+    // Update name. Held to the same bound signup uses: users.name is
+    // VARCHAR(255), and a longer name used to reach the UPDATE and come back
+    // as a 500.
+    if (name !== undefined) {
+      if (typeof name !== "string") {
+        return NextResponse.json(
+          { error: "Name must be text." },
+          { status: 400 },
+        );
+      }
       const trimmed = name.trim();
       if (!trimmed) {
         return NextResponse.json(
           { error: "Name cannot be empty." },
           { status: 400 },
         );
+      }
+      const nameError = Validate.string(
+        trimmed,
+        "Name",
+        1,
+        await getSetting("MAX_NAME_LENGTH"),
+      );
+      if (nameError) {
+        return NextResponse.json({ error: nameError }, { status: 400 });
       }
 
       if (trimmed !== currentName) {
@@ -212,12 +237,14 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
       }
     }
 
-    // Set when the account's email address actually changes. Changing the
-    // login identifier is as much of a takeover-relevant event as changing
-    // the password, so it rotates sessions and trusted devices the same way
+    // Set when a new address is recorded as pending. Asking to move the
+    // account's recovery address is as takeover-relevant as changing the
+    // password, so it rotates sessions and trusted devices the same way
     // (handled after the password branch below, which already does its own
-    // rotation and returns early).
-    let emailChanged = false;
+    // rotation and returns early). A stolen cookie that predates the request
+    // dies here, before the link is even opened.
+    let emailChangeRequested = false;
+    let pendingEmail: string | null = null;
 
     // Update email. A blank string is a malformed email (400), not a request
     // that skipped the re-auth above.
@@ -229,24 +256,22 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
     }
     if (wantsEmailChange) {
       const trimmedEmail = email.toLowerCase().trim();
+      const unchanged = trimmedEmail === currentEmail.toLowerCase();
       // The new-address rule is for a new address. Sending back the one the
       // account already holds, stored under the old any-@ rule (a self-hosted
       // admin@localhost), is not new input and is not refused.
-      if (
-        trimmedEmail !== currentEmail.toLowerCase() &&
-        Validate.email(trimmedEmail)
-      ) {
+      if (!unchanged && Validate.email(trimmedEmail)) {
         return NextResponse.json(
           { error: "Please enter a valid email." },
           { status: 400 },
         );
       }
 
-      if (trimmedEmail !== currentEmail) {
+      if (!unchanged) {
         // Taken by another account, compared the way the unique index on
-        // LOWER(email) compares. A case-sensitive check let a stored
-        // mixed-case address through to the UPDATE, which then hit the index
-        // and failed as a 500 instead of this 409.
+        // LOWER(email) compares. Checked again when the link is opened,
+        // because a pending address reserves nothing: someone can sign up
+        // with it in between.
         const existing = await pool.query(
           "SELECT id FROM users WHERE LOWER(email) = $1 AND id != $2",
           [trimmedEmail, session.userId],
@@ -258,20 +283,20 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
           );
         }
 
-        // auth: reset email_verified_at on email change so the new address
-        // must be verified before login is permitted. Without this, the new
-        // email is implicitly "verified" by the previous verification, and
-        // an attacker who knows the current password can change the email
-        // to attacker@evil.com and then trigger forgot-password (which
-        // only requires the email) to take over the account.
+        // auth: the new address waits in pending_email until the link mailed
+        // to it is opened (verify-email swaps it in). users.email and
+        // email_verified_at stay as they are, so sign-in, password resets,
+        // scan alerts and invites keep going to the address the account has
+        // proved. Moving the account at once let a typo strand its owner,
+        // sent every notification to an inbox nobody had shown they read,
+        // and let an address that belonged to someone else be claimed.
         //
-        // The links already mailed to the old address die in the same
-        // transaction. As separate steps, a link clicked between them, or one
-        // left behind because issuing the new link threw, verified the NEW
-        // address for someone who only ever read the old inbox. The DELETE
-        // goes first so this locks the token rows and then the user row, the
-        // order verify-email locks them in, and a racing click waits instead
-        // of deadlocking.
+        // The links already mailed die in the same transaction. As separate
+        // steps, a link clicked between them, or one left behind because
+        // issuing the new link threw, could still be used after the change.
+        // The DELETE goes first so this locks the token rows and then the
+        // user row, the order verify-email locks them in, and a racing click
+        // waits instead of deadlocking.
         const tx = await pool.connect();
         try {
           await tx.query("BEGIN");
@@ -280,7 +305,7 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
             [session.userId],
           );
           await tx.query(
-            "UPDATE users SET email = $1, email_verified_at = NULL, updated_at = NOW() WHERE id = $2",
+            "UPDATE users SET pending_email = $1, updated_at = NOW() WHERE id = $2",
             [trimmedEmail, session.userId],
           );
           await tx.query("COMMIT");
@@ -290,15 +315,15 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
         } finally {
           tx.release();
         }
-        emailChanged = true;
+        emailChangeRequested = true;
+        pendingEmail = trimmedEmail;
 
-        // Send a verification link to the new address immediately. Without
-        // this the account was left with email_verified_at NULL and no token
-        // ever issued, so the user was stranded (locked out at next login)
-        // until they manually found and hit resend-verification. A failure
-        // here is logged, not thrown: the address has already changed, and
-        // the session rotation below must run for it either way. Resend
-        // covers the missing link.
+        // The link is bound to the pending address (the token row records
+        // it), so it can move the account there and nowhere else. A failure
+        // here is logged, not thrown: the pending address is recorded and
+        // the session rotation below must run either way. Saving the change
+        // again mails a new link. "Your address was changed" goes to the old
+        // address from verify-email, once it is true.
         try {
           await sendEmailVerification(
             session.userId,
@@ -311,37 +336,6 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
             err,
           );
         }
-
-        // Send account changes email to BOTH old and new email addresses (non-blocking)
-        const emailContent = profileEmailChangedEmail(
-          currentEmail,
-          trimmedEmail,
-          { ipAddress: ip, userAgent },
-        );
-        setImmediate(() => {
-          sendNotificationEmail({
-            userId: session.userId,
-            userEmail: currentEmail,
-            type: "account_changes",
-            emailContent,
-          }).catch((err) =>
-            console.error(
-              "Failed to send profile email change (old) notification:",
-              err,
-            ),
-          );
-          sendNotificationEmail({
-            userId: session.userId,
-            userEmail: trimmedEmail,
-            type: "account_changes",
-            emailContent,
-          }).catch((err) =>
-            console.error(
-              "Failed to send profile email change (new) notification:",
-              err,
-            ),
-          );
-        });
       }
     }
 
@@ -362,12 +356,20 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
         // nothing is left behind.
         await deleteAvatarFilesIfLocal(session.userId);
         storedValue = null;
-      } else if (avatarUrl.startsWith("https://cdn.discordapp.com/")) {
-        // Pre-cleared Discord CDN URL from OAuth: an external reference we
-        // store as-is. Drop any previously uploaded avatar so it doesn't
-        // linger.
-        await deleteAvatarFilesIfLocal(session.userId);
-        storedValue = avatarUrl;
+      } else if (!avatarUrl.startsWith("data:")) {
+        // Only an uploaded image is taken here. Any string that began with
+        // https://cdn.discordapp.com/ used to be stored as-is, unbounded and
+        // unchecked: another user's picture, a channel attachment, a URL of
+        // any length. Using the linked Discord or GitHub picture is
+        // PATCH /account/discord or /account/github with syncAvatar, which
+        // builds the URL from the account's own linked id.
+        return NextResponse.json(
+          {
+            error:
+              "Upload an image file. To use your Discord or GitHub picture, sync it from Connected accounts.",
+          },
+          { status: 400 },
+        );
       } else {
         const { validateAvatarDataUrl } = await import("@/lib/uploads/avatar");
         const result = validateAvatarDataUrl(avatarUrl);
@@ -503,6 +505,7 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
         email: updated.rows[0].email,
         name: updated.rows[0].name,
         avatarUrl: updated.rows[0].avatar_url || null,
+        ...(pendingEmail ? { pendingEmail } : {}),
         message:
           "Profile updated successfully. All other sessions have been signed out for security.",
         sessionInvalidated: true,
@@ -530,11 +533,11 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
 
     // session: an email change rotates sessions and trusted devices too.
     // Only the password branch above used to do this, so an attacker holding
-    // a stolen cookie could move the account to their own address and keep
-    // every other session (and every device_trust row that skips 2FA) alive
-    // for the full session TTL. Reached only when no password was changed:
-    // that branch returns above after doing exactly this.
-    if (emailChanged) {
+    // a stolen cookie could keep every other session (and every device_trust
+    // row that skips 2FA) alive for the full session TTL while the account
+    // moved. Reached only when no password was changed: that branch returns
+    // above after doing exactly this.
+    if (emailChangeRequested) {
       await deleteAllSessions(session.userId);
       await pool.query("DELETE FROM device_trust WHERE user_id = $1", [
         session.userId,
@@ -550,8 +553,8 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
         email: updated.rows[0].email,
         name: updated.rows[0].name,
         avatarUrl: updated.rows[0].avatar_url || null,
-        message:
-          "Profile updated successfully. All other sessions have been signed out for security.",
+        pendingEmail,
+        message: `We sent a link to ${pendingEmail}. Your address changes when you open it. All other sessions have been signed out for security.`,
         sessionInvalidated: true,
       });
       const sessionMaxAgeDays = await getSetting("SESSION_MAX_AGE_DAYS");

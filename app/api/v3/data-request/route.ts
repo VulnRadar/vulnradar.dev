@@ -264,11 +264,13 @@ export async function POST(_request: NextRequest) {
       aiChatEventsData,
       aiMessageFeedbackData,
     ] = await runInBatches([
-      // Core user data (excluding password_hash, totp_secret, backup_codes for security)
+      // Core user data (excluding password_hash, totp_secret, backup_codes for security).
+      // pending_email is an address the account asked to move to and has not
+      // confirmed yet: something the person typed, so it is theirs to see.
       () =>
         pool.query(
           `
-        SELECT id, email, name, avatar_url, discord_id, role, plan, 
+        SELECT id, email, pending_email, name, avatar_url, discord_id, role, plan,
                stripe_customer_id, subscription_status, current_period_end, cancel_at_period_end,
                beta_access, daily_scan_limit, email_verified_at, tos_accepted_at, disabled_at,
                onboarding_completed, totp_enabled, two_factor_method, created_at, updated_at

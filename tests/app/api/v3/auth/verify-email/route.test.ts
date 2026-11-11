@@ -5,9 +5,9 @@ import { createHash, createHmac } from "node:crypto";
 /**
  * Route-level tests for /api/v3/auth/verify-email (POST and GET).
  *
- * Mocked at the network/database boundary only: the pg pool. This route
- * has no rate limiting, no session/cookie handling, and sends no email
- * itself, so next/headers and lib/email/email don't need mocking at all.
+ * Mocked at the network/database boundary only: the pg pool and the
+ * outbound mail send. The route has no rate limiting and no session; the
+ * headers it reads for the change notice come from next/headers.
  */
 
 const queries: { sql: string; params: unknown[] }[] = [];
@@ -18,6 +18,7 @@ let tokenRow: {
   expires_at: string;
   token_email: string | null;
   email: string;
+  pending_email?: string | null;
   name: string | null;
   email_verified_at: string | null;
 } | null = null;
@@ -27,6 +28,11 @@ let deletedTokenIds: unknown[][] = [];
 let verifiedUserCalls: unknown[][] = [];
 let tokenUsedCalls: unknown[][] = [];
 let verifiedUserRowCount = 1;
+let swapCalls: unknown[][] = [];
+let swapRowCount = 1;
+let swapError: (Error & { code?: string }) | null = null;
+let addressOwnerRow: { id: number } | null = null;
+let pendingDroppedCalls: unknown[][] = [];
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
@@ -49,6 +55,20 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     verifiedUserCalls.push(params);
     return { rows: [], rowCount: verifiedUserRowCount };
   }
+  if (s.startsWith("UPDATE users SET email = pending_email")) {
+    if (swapError) throw swapError;
+    swapCalls.push(params);
+    return { rows: [], rowCount: swapRowCount };
+  }
+  if (
+    s.startsWith("SELECT id FROM users WHERE LOWER(email) = $1 AND id <> $2")
+  ) {
+    return { rows: addressOwnerRow ? [addressOwnerRow] : [] };
+  }
+  if (s.startsWith("UPDATE users SET pending_email = NULL")) {
+    pendingDroppedCalls.push(params);
+    return { rows: [], rowCount: 1 };
+  }
   if (s.startsWith("UPDATE email_verification_tokens SET used_at = NOW()")) {
     tokenUsedCalls.push(params);
     return { rows: [] };
@@ -65,6 +85,34 @@ vi.mock("@/lib/database/db", () => ({
     }),
   },
 }));
+
+vi.mock("next/headers", () => ({
+  headers: async () => ({
+    get: (name: string) =>
+      name.toLowerCase() === "user-agent" ? "vitest-agent" : null,
+  }),
+  cookies: async () => ({ get: () => undefined }),
+}));
+
+const sentMail: { to: string; subject: string; text: string }[] = [];
+vi.mock("@/lib/email/email", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/email/email")>();
+  return {
+    ...actual,
+    sendEmail: async (params: {
+      to: string;
+      subject: string;
+      text: string;
+    }) => {
+      sentMail.push(params);
+    },
+  };
+});
+
+async function flushMail() {
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+}
 
 // A configured secret, so the keyed digest and the old unkeyed one differ and
 // a test can tell which of the two the route looked up.
@@ -106,6 +154,12 @@ beforeEach(() => {
   verifiedUserCalls = [];
   tokenUsedCalls = [];
   verifiedUserRowCount = 1;
+  swapCalls = [];
+  swapRowCount = 1;
+  swapError = null;
+  addressOwnerRow = null;
+  pendingDroppedCalls = [];
+  sentMail.length = 0;
 });
 
 describe("POST /api/v3/auth/verify-email", () => {
@@ -288,6 +342,125 @@ describe("POST /api/v3/auth/verify-email", () => {
       q.sql.startsWith("SELECT id, used_at FROM email_verification_tokens"),
     );
     expect(usedLookup?.params).toEqual([keyed]);
+  });
+});
+
+// sec-auth-3. A profile email change waits in users.pending_email, and the
+// link mailed to the new address is what moves the account onto it. Until
+// then the account keeps signing in, recovering and receiving mail at the
+// address it has.
+describe("POST /api/v3/auth/verify-email for a pending address", () => {
+  function pendingToken(overrides: Partial<NonNullable<typeof tokenRow>> = {}) {
+    return validToken({
+      token_email: "moved@example.com",
+      email: "old@example.com",
+      pending_email: "moved@example.com",
+      email_verified_at: new Date().toISOString(),
+      ...overrides,
+    });
+  }
+
+  it("swaps the pending address in, verified, and marks the token used", async () => {
+    tokenRow = pendingToken();
+
+    const res = await POST(verifyPostRequest({ token: "pending-token" }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.verified).toBe(true);
+    expect(json.emailChanged).toBe(true);
+    expect(json.user.email).toBe("moved@example.com");
+    expect(swapCalls).toEqual([[10, "moved@example.com"]]);
+    const swap = queries.find((q) =>
+      q.sql.startsWith("UPDATE users SET email = pending_email"),
+    );
+    // The address, the flag and the pending column move together, and only
+    // while the row still holds the address the link was mailed to.
+    expect(swap?.sql).toMatch(/pending_email = NULL/);
+    expect(swap?.sql).toMatch(/email_verified_at = NOW\(\)/);
+    expect(swap?.sql).toMatch(
+      /WHERE id = \$1 AND LOWER\(pending_email\) = \$2/,
+    );
+    expect(tokenUsedCalls).toEqual([[3]]);
+    // Not the "already verified" short cut: the account's old address being
+    // verified says nothing about the new one.
+    expect(json.alreadyVerified).toBeUndefined();
+    expect(verifiedUserCalls).toHaveLength(0);
+  });
+
+  it("tells the old address, as a security notice, and confirms to the new one", async () => {
+    tokenRow = pendingToken();
+
+    await POST(verifyPostRequest({ token: "pending-token" }));
+    await flushMail();
+
+    const toOld = sentMail.filter((m) => m.to === "old@example.com");
+    expect(toOld).toHaveLength(1);
+    expect(toOld[0].subject).toMatch(/email was changed/i);
+    expect(toOld[0].text).toContain("moved@example.com");
+    expect(sentMail.some((m) => m.to === "moved@example.com")).toBe(true);
+  });
+
+  it("refuses a link for a pending address that was replaced since", async () => {
+    tokenRow = pendingToken({ pending_email: "third@example.com" });
+
+    const res = await POST(verifyPostRequest({ token: "pending-token" }));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/request a new one/i);
+    expect(swapCalls).toHaveLength(0);
+    expect(deletedTokenIds).toEqual([[3]]);
+  });
+
+  it("refuses an expired link for a pending address", async () => {
+    tokenRow = pendingToken({
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+    });
+
+    const res = await POST(verifyPostRequest({ token: "pending-token" }));
+
+    expect(res.status).toBe(400);
+    expect(swapCalls).toHaveLength(0);
+  });
+
+  // A pending address reserves nothing. Someone else can sign up with it
+  // meanwhile, and then the link cannot hand them the same address twice.
+  it("drops the pending address when another account has taken it since", async () => {
+    tokenRow = pendingToken();
+    addressOwnerRow = { id: 99 };
+
+    const res = await POST(verifyPostRequest({ token: "pending-token" }));
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json.error).toMatch(/another account/i);
+    expect(swapCalls).toHaveLength(0);
+    expect(pendingDroppedCalls).toEqual([[10, "moved@example.com"]]);
+    expect(deletedTokenIds).toEqual([[3]]);
+    expect(queries.map((q) => q.sql)).toContain("COMMIT");
+  });
+
+  it("drops the pending address when the swap loses a race for it", async () => {
+    tokenRow = pendingToken();
+    swapError = Object.assign(new Error("duplicate key"), { code: "23505" });
+
+    const res = await POST(verifyPostRequest({ token: "pending-token" }));
+
+    expect(res.status).toBe(409);
+    expect(pendingDroppedCalls).toEqual([[10, "moved@example.com"]]);
+    expect(deletedTokenIds).toEqual([[3]]);
+    expect(tokenUsedCalls).toHaveLength(0);
+  });
+
+  it("refuses when the row no longer holds the pending address at the write", async () => {
+    tokenRow = pendingToken();
+    swapRowCount = 0;
+
+    const res = await POST(verifyPostRequest({ token: "pending-token" }));
+
+    expect(res.status).toBe(400);
+    expect(tokenUsedCalls).toHaveLength(0);
+    expect(queries.map((q) => q.sql)).toContain("ROLLBACK");
   });
 });
 

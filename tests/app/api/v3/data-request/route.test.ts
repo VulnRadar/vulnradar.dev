@@ -386,6 +386,21 @@ describe("POST /api/v3/data-request", () => {
     );
   });
 
+  // A profile email change waits in pending_email until its link is opened.
+  // It is an address the person typed, so the account section carries it.
+  it("exports the pending email address with the account", async () => {
+    routeQueries({});
+    await POST(postRequest());
+    const account = mockQuery.mock.calls
+      .map(([sql]) => String(sql).replace(/[ \n]+/g, " "))
+      .find(
+        (sql) =>
+          sql.includes("FROM users WHERE id = $1 ") &&
+          sql.includes("email_verified_at, tos_accepted_at"),
+      );
+    expect(account).toMatch(/SELECT id, email, pending_email, name/);
+  });
+
   it("never includes the encrypted AI API key in the export", async () => {
     routeQueries({
       priorDownloadAt: null,

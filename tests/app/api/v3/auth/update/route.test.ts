@@ -24,13 +24,14 @@ const queries: { sql: string; params: unknown[] }[] = [];
 const rateLimitCounts = new Map<string, number>();
 
 let sessionRow: Record<string, unknown> | null = null;
-let passwordHashRow: { password_hash: string } | null = null;
+let passwordHashRow: { password_hash: string | null } | null = null;
 let currentUserRow: { name: string; email: string } | null = null;
 let existingEmailOwnerRow: { id: number } | null = null;
 let updatedUserRow: Record<string, unknown> | null = null;
 
 let nameUpdateCalls: unknown[][] = [];
 let emailUpdateCalls: unknown[][] = [];
+let pendingEmailCalls: unknown[][] = [];
 let avatarUpdateCalls: unknown[][] = [];
 let avatarStoreCalls: unknown[][] = [];
 let avatarDeleteCalls: unknown[][] = [];
@@ -76,8 +77,14 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   ) {
     return { rows: existingEmailOwnerRow ? [existingEmailOwnerRow] : [] };
   }
-  if (s.startsWith("UPDATE users SET email = $1, email_verified_at = NULL")) {
+  // Any write to the address itself, however it is spelled. A pending change
+  // must never issue one.
+  if (/^UPDATE users SET (.*[ ,])?email\s*=/.test(s)) {
     emailUpdateCalls.push(params);
+    return { rows: [] };
+  }
+  if (s.startsWith("UPDATE users SET pending_email = $1")) {
+    pendingEmailCalls.push(params);
     return { rows: [] };
   }
   if (s.startsWith("UPDATE users SET avatar_url = $1 WHERE id = $2")) {
@@ -140,6 +147,29 @@ vi.mock("@/lib/auth/email-verification", async (importOriginal) => {
     ) => {
       if (issueVerificationError) throw issueVerificationError;
       return actual.sendEmailVerification(...args);
+    },
+  };
+});
+
+// The re-auth check is the real one unless a case stands in for the step-up a
+// password-less account has to pass, which lib/auth/reauth.ts reads from its
+// own cookie. What this suite proves is that the route obeys whatever that
+// check answers, for both writes it guards.
+type ReauthOutcome = Awaited<
+  ReturnType<typeof import("@/lib/auth/reauth").verifyReauthPassword>
+>;
+let reauthOverride: ReauthOutcome | null = null;
+const reauthCalls: unknown[][] = [];
+vi.mock("@/lib/auth/reauth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/reauth")>();
+  return {
+    ...actual,
+    verifyReauthPassword: async (
+      ...args: Parameters<typeof actual.verifyReauthPassword>
+    ) => {
+      reauthCalls.push(args);
+      if (reauthOverride) return reauthOverride;
+      return actual.verifyReauthPassword(...args);
     },
   };
 });
@@ -216,6 +246,9 @@ beforeEach(async () => {
   };
   nameUpdateCalls = [];
   emailUpdateCalls = [];
+  pendingEmailCalls = [];
+  reauthOverride = null;
+  reauthCalls.length = 0;
   avatarUpdateCalls = [];
   avatarStoreCalls = [];
   avatarDeleteCalls = [];
@@ -302,8 +335,92 @@ describe("PATCH /api/v3/auth/update", () => {
   it("requires the current password for an email change", async () => {
     logIn();
     const res = await PATCH(updateRequest({ email: "new@example.com" }));
-    expect(res.status).toBe(403);
+    // A missing password is a 400, the status verifyReauthPassword gives it,
+    // and not the 403 a wrong one gets.
+    expect(res.status).toBe(400);
     expect(emailUpdateCalls).toHaveLength(0);
+    expect(pendingEmailCalls).toHaveLength(0);
+  });
+
+  // sec-auth-8. An account with no password used to pass on the session
+  // alone, so a stolen cookie could move the address and set a first
+  // password: a full, persistent takeover. The step-up lives inside
+  // verifyReauthPassword; this route has to ask it for both writes and obey a
+  // refusal, rather than reading password_hash itself.
+  describe("an account with no password", () => {
+    const STEP_UP_REFUSAL = {
+      ok: false,
+      status: 403,
+      error: "Confirm it is you with a code from your email first.",
+      stepUp: true,
+    } as unknown as ReauthOutcome;
+
+    it.each([
+      ["an email change", { email: "new-address@example.com" }],
+      ["a first password", { newPassword: "Another-Strong-Password-9!" }],
+    ])(
+      "refuses %s without a step-up and writes nothing",
+      async (_label, body) => {
+        logIn();
+        passwordHashRow = { password_hash: null };
+        reauthOverride = STEP_UP_REFUSAL;
+
+        const res = await PATCH(updateRequest(body));
+        const json = await res.json();
+
+        expect(res.status).toBe(403);
+        expect(json.stepUp).toBe(true);
+        expect(reauthCalls).toHaveLength(1);
+        expect(reauthCalls[0][0]).toBe(7);
+        expect(queries.some((q) => q.sql.startsWith("UPDATE users"))).toBe(
+          false,
+        );
+        expect(
+          queries.some((q) =>
+            q.sql.startsWith("INSERT INTO email_verification_tokens"),
+          ),
+        ).toBe(false);
+      },
+    );
+
+    it("takes the email change once the step-up holds", async () => {
+      logIn();
+      passwordHashRow = { password_hash: null };
+      reauthOverride = { ok: true };
+
+      const res = await PATCH(
+        updateRequest({ email: "new-address@example.com" }),
+      );
+
+      expect(res.status).toBe(200);
+      expect(pendingEmailCalls).toEqual([["new-address@example.com", 7]]);
+    });
+
+    it("sets a first password once the step-up holds", async () => {
+      logIn();
+      passwordHashRow = { password_hash: null };
+      reauthOverride = { ok: true };
+
+      const res = await PATCH(
+        updateRequest({ newPassword: "Another-Strong-Password-9!" }),
+      );
+
+      expect(res.status).toBe(200);
+      expect(passwordUpdateCalls).toHaveLength(1);
+    }, 15_000);
+  });
+
+  it("answers a wrong password with 403 and counts it against the re-auth bucket", async () => {
+    logIn();
+    const res = await PATCH(
+      updateRequest({
+        email: "new-address@example.com",
+        currentPassword: "totally-wrong",
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(rateLimitCounts.get("profile-reauth:7:unknown")).toBe(1);
+    expect(pendingEmailCalls).toHaveLength(0);
   });
 
   // The re-auth gate fails closed. A session whose users row is gone used to
@@ -340,6 +457,25 @@ describe("PATCH /api/v3/auth/update", () => {
         updateRequest({ name: "   ", currentPassword: CURRENT_PASSWORD }),
       );
       expect(res.status).toBe(400);
+    });
+
+    // users.name is VARCHAR(255). Unchecked, a longer name reached the UPDATE,
+    // Postgres refused it, and the client got a 500 for a typing mistake.
+    it("refuses a name over MAX_NAME_LENGTH with a 400, before any write", async () => {
+      logIn();
+      const res = await PATCH(updateRequest({ name: "n".repeat(300) }));
+      const json = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(json.error).toMatch(/Name cannot exceed 255 characters/);
+      expect(nameUpdateCalls).toHaveLength(0);
+    });
+
+    it("refuses a name that is not text", async () => {
+      logIn();
+      const res = await PATCH(updateRequest({ name: 12345 }));
+      expect(res.status).toBe(400);
+      expect(nameUpdateCalls).toHaveLength(0);
     });
 
     it("updates the name and queues a change notification", async () => {
@@ -392,6 +528,7 @@ describe("PATCH /api/v3/auth/update", () => {
       );
       expect(res.status).toBe(400);
       expect(emailUpdateCalls).toHaveLength(0);
+      expect(pendingEmailCalls).toHaveLength(0);
     });
 
     it("rejects an email already taken by another account", async () => {
@@ -405,6 +542,7 @@ describe("PATCH /api/v3/auth/update", () => {
       );
       expect(res.status).toBe(409);
       expect(emailUpdateCalls).toHaveLength(0);
+      expect(pendingEmailCalls).toHaveLength(0);
     });
 
     // users has a unique index on LOWER(email), so "Taken@Example.com" and
@@ -462,38 +600,72 @@ describe("PATCH /api/v3/auth/update", () => {
       expect(emailUpdateCalls).toHaveLength(0);
     });
 
-    it("updates the email, resets email_verified_at, and notifies both addresses", async () => {
+    // sec-auth-3 and bug-messaging-3. The change used to land at once: the
+    // account moved to an address nobody had proved, lost its verified flag,
+    // and every scan alert, invite and reset link went to whatever was typed.
+    // A typo stranded the owner; someone else's address was squatted. Now the
+    // address waits in pending_email and the account keeps the one it has.
+    it("holds a new address as pending and leaves email and email_verified_at alone", async () => {
       logIn();
       const res = await PATCH(
+        updateRequest({
+          email: " New-Address@Example.com ",
+          currentPassword: CURRENT_PASSWORD,
+        }),
+      );
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(pendingEmailCalls).toEqual([["new-address@example.com", 7]]);
+      expect(emailUpdateCalls).toHaveLength(0);
+      expect(queries.some((q) => q.sql.includes("email_verified_at"))).toBe(
+        false,
+      );
+      // The response still names the address the account signs in with, and
+      // says which one is waiting.
+      expect(json.email).toBe("user@example.com");
+      expect(json.pendingEmail).toBe("new-address@example.com");
+    });
+
+    it("mails the link to the pending address, bound to that address", async () => {
+      logIn();
+      await PATCH(
         updateRequest({
           email: "new-address@example.com",
           currentPassword: CURRENT_PASSWORD,
         }),
       );
-
-      expect(res.status).toBe(200);
-      expect(emailUpdateCalls).toHaveLength(1);
-      const [newEmail, userId] = emailUpdateCalls[0];
-      expect(newEmail).toBe("new-address@example.com");
-      expect(userId).toBe(7);
-      // email_verified_at is reset to NULL as a literal in the SQL text, not
-      // a bound param -- verify via the query text captured for this call.
-      const emailUpdateQuery = queries.find((q) =>
-        q.sql.startsWith(
-          "UPDATE users SET email = $1, email_verified_at = NULL",
-        ),
+      const issued = queries.find((q) =>
+        q.sql.startsWith("INSERT INTO email_verification_tokens"),
       );
-      expect(emailUpdateQuery?.sql).toContain("email_verified_at = NULL");
+      expect(issued?.params[0]).toBe(7);
+      expect(issued?.params[3]).toBe("new-address@example.com");
 
       await new Promise((resolve) => setImmediate(resolve));
-      // One notification to the old address, one to the new address, plus a
-      // verification link sent to the new address (email_verified_at was
-      // reset, so the new address must be re-verified before login).
-      expect(mockSendEmail).toHaveBeenCalledTimes(3);
+      await new Promise((resolve) => setImmediate(resolve));
+      // Only the link goes out now. "Your address was changed" would be false
+      // until the link is opened, so verify-email sends it, to the old
+      // address, when the change really happens.
       const sentTo = mockSendEmail.mock.calls.map(
         ([p]) => (p as { to: string }).to,
       );
-      expect(sentTo).toContain("new-address@example.com");
+      expect(sentTo).toEqual(["new-address@example.com"]);
+      const [link] = mockSendEmail.mock.calls[0] as [{ text: string }];
+      expect(link.text).toMatch(/\/verify-email\?token=[0-9a-f]{64}/);
+    });
+
+    it("does not hold the address the account already has, in another case, as pending", async () => {
+      logIn();
+      currentUserRow = { name: "Original Name", email: "User@Example.com" };
+      const res = await PATCH(
+        updateRequest({
+          email: "user@example.com",
+          currentPassword: CURRENT_PASSWORD,
+        }),
+      );
+      expect(res.status).toBe(200);
+      expect(pendingEmailCalls).toHaveLength(0);
+      expect(sessionDeleteCalls).toHaveLength(0);
     });
 
     it("rotates every other session and every trusted device on an email change", async () => {
@@ -527,7 +699,7 @@ describe("PATCH /api/v3/auth/update", () => {
     // step. As two, a link clicked in between (or one that survived because
     // issuing the new link threw) verified the NEW address for someone who
     // only ever controlled the old one.
-    it("clears the old verification links in the same transaction as the address change", async () => {
+    it("clears the old verification links in the same transaction as the pending address", async () => {
       logIn();
       const res = await PATCH(
         updateRequest({
@@ -540,7 +712,7 @@ describe("PATCH /api/v3/auth/update", () => {
       const sqls = queries.map((q) => q.sql);
       const begin = sqls.indexOf("BEGIN");
       const update = sqls.findIndex((q) =>
-        q.startsWith("UPDATE users SET email = $1, email_verified_at = NULL"),
+        q.startsWith("UPDATE users SET pending_email = $1"),
       );
       const clear = sqls.findIndex((q) =>
         q.startsWith(
@@ -579,8 +751,9 @@ describe("PATCH /api/v3/auth/update", () => {
       );
       expect(clear).toBeGreaterThanOrEqual(0);
       expect(sqls.indexOf("COMMIT")).toBeGreaterThan(clear);
-      // The address did change, so the rotation that goes with it still runs
-      // and the caller is told the truth instead of a 500.
+      // The pending address is recorded, so the rotation that goes with it
+      // still runs and the caller is told the truth instead of a 500. Saving
+      // the change again mails a new link.
       expect(res.status).toBe(200);
       expect(sessionDeleteCalls).toEqual([[7]]);
       expect(logged).toHaveBeenCalled();
@@ -638,31 +811,34 @@ describe("PATCH /api/v3/auth/update", () => {
       expect(avatarUpdateCalls).toEqual([[null, 7]]);
     });
 
-    it("allows a Discord CDN avatar URL without further validation", async () => {
+    // gap-uploads-and-connected-accounts-7. Anything that began with
+    // https://cdn.discordapp.com/ was stored as the avatar as-is: another
+    // user's picture, a file from any channel's attachments, or a URL of any
+    // length, all outside the image checks. No screen sends one here: "use my
+    // Discord picture" is PATCH /account/discord {syncAvatar: true}, which
+    // builds the URL from the account's own linked Discord id.
+    it.each([
+      [
+        "a Discord attachments URL",
+        "https://cdn.discordapp.com/attachments/1/2/not-an-avatar.png",
+      ],
+      [
+        "a 100 KB Discord URL",
+        `https://cdn.discordapp.com/avatars/123/${"a".repeat(100_000)}.png`,
+      ],
+      [
+        "another account's Discord avatar",
+        "https://cdn.discordapp.com/avatars/123/abc.png",
+      ],
+      ["any other external URL", "https://example.com/me.png"],
+    ])("refuses %s with a 400 and writes nothing", async (_label, url) => {
       logIn();
-      const discordUrl = "https://cdn.discordapp.com/avatars/123/abc.png";
-      const res = await PATCH(
-        updateRequest({
-          avatarUrl: discordUrl,
-          currentPassword: CURRENT_PASSWORD,
-        }),
-      );
-      expect(res.status).toBe(200);
-      // The external URL is stored as-is (not moved into user_avatars)...
-      expect(avatarUpdateCalls).toEqual([[discordUrl, 7]]);
-      expect(avatarStoreCalls).toHaveLength(0);
-    });
+      const res = await PATCH(updateRequest({ avatarUrl: url }));
 
-    it("deletes any stored avatar row when switching to a Discord CDN URL", async () => {
-      logIn();
-      await PATCH(
-        updateRequest({
-          avatarUrl: "https://cdn.discordapp.com/avatars/123/abc.png",
-          currentPassword: CURRENT_PASSWORD,
-        }),
-      );
-      // Switching to an external avatar drops any previously uploaded row.
-      expect(avatarDeleteCalls).toContainEqual([7]);
+      expect(res.status).toBe(400);
+      expect(avatarUpdateCalls).toHaveLength(0);
+      expect(avatarStoreCalls).toHaveLength(0);
+      expect(avatarDeleteCalls).toHaveLength(0);
     });
 
     it("rejects an SVG data URL avatar via the real validator (XSS vector)", async () => {
