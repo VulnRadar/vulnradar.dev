@@ -7,10 +7,10 @@ import type { Category, Vulnerability } from "@/lib/scanner/types";
  * category tag, its CWE id, or, as a last resort, its scanner category) into
  * the security controls it touches across six frameworks:
  *
- *   - PCI DSS 4.0            (requirement numbers)
+ *   - PCI DSS 4.0.1          (requirement numbers, unchanged from 4.0)
  *   - SOC 2                  (2017 Trust Services Criteria, the CC series)
  *   - ISO/IEC 27001:2022     (Annex A control numbers)
- *   - OWASP ASVS 4.0         (verification chapter numbers)
+ *   - OWASP ASVS 4.0.3       (verification chapter numbers)
  *   - HIPAA Security Rule    (45 CFR Part 164 safeguard citations)
  *   - GDPR                   (Art. 32 security-of-processing articles)
  *
@@ -53,7 +53,7 @@ export interface FrameworkMeta {
 export const FRAMEWORKS: FrameworkMeta[] = [
   {
     key: "pci",
-    name: "PCI DSS 4.0",
+    name: "PCI DSS 4.0.1",
     blurb:
       "Payment Card Industry Data Security Standard. Requirement numbers below are the ones a finding is relevant to, not an assessed pass or fail.",
   },
@@ -71,7 +71,7 @@ export const FRAMEWORKS: FrameworkMeta[] = [
   },
   {
     key: "asvs",
-    name: "OWASP ASVS 4.0",
+    name: "OWASP ASVS 4.0.3",
     blurb:
       "Application Security Verification Standard. Chapter references point to the verification requirements that cover this class of finding.",
   },

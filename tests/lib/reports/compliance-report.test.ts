@@ -61,7 +61,7 @@ describe("generateComplianceReport", () => {
     // The disclaimer section comes before any framework section.
     const disclaimerIndex = report.indexOf("## Read this first");
     expect(disclaimerIndex).toBeGreaterThanOrEqual(0);
-    expect(disclaimerIndex).toBeLessThan(report.indexOf("## PCI DSS 4.0"));
+    expect(disclaimerIndex).toBeLessThan(report.indexOf("## PCI DSS 4.0.1"));
 
     // The load-bearing "this is not a certification" phrasing must survive.
     expect(report).toContain(
@@ -177,7 +177,7 @@ describe("generateComplianceReport", () => {
     // A clean scan is stated as a clean result, never as compliance.
     expect(report).toContain("not an assessment of compliance");
     // Still names every framework in the overview.
-    expect(report).toContain("OWASP ASVS 4.0");
+    expect(report).toContain("OWASP ASVS 4.0.3");
   });
 
   it("never throws on a minimal finding missing optional fields", () => {
