@@ -29,8 +29,10 @@ const SetSchema = z.object({
   findingId: z.string().min(1).max(200),
   findingUrl: z.string().url().max(2048),
   status: z.enum(REMEDIATION_STATUSES),
-  note: z.string().max(2000).optional(),
-  assignee: z.string().max(120).optional(),
+  // Presence decides whether a column is written: left out keeps the stored
+  // value, null clears it. See the upsert below.
+  note: z.string().max(2000).nullish(),
+  assignee: z.string().max(120).nullish(),
   // A target/SLA date (from a date input, so "2026-09-01", or a full ISO
   // datetime). null clears it. Parseability is enforced in the handler so a
   // junk string becomes null rather than a DB error.
@@ -71,6 +73,13 @@ export async function POST(req: NextRequest) {
 
   const { findingId, findingUrl, status, note, assignee } = result.data;
   const dueAt = normalizeDueAt(result.data.dueAt);
+  // The bulk route's rule (remediation/bulk/route.ts), applied here too. A
+  // caller that only moves a finding along, a CI step marking it fixed, sends
+  // the status alone, and the upsert used to write NULL over the note, the
+  // assignee and the due date someone had typed in the dashboard.
+  const setNote = note !== undefined;
+  const setAssignee = assignee !== undefined;
+  const setDue = result.data.dueAt !== undefined;
 
   try {
     // `open` is the implicit default (absence of a row), so setting it just
@@ -91,7 +100,12 @@ export async function POST(req: NextRequest) {
          (user_id, finding_id, finding_url, status, note, assignee, due_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (user_id, finding_id, finding_url)
-       DO UPDATE SET status = $4, note = $5, assignee = $6, due_at = $7, updated_at = NOW()
+       DO UPDATE SET
+         status = EXCLUDED.status,
+         note = CASE WHEN $8::boolean THEN EXCLUDED.note ELSE finding_remediation.note END,
+         assignee = CASE WHEN $9::boolean THEN EXCLUDED.assignee ELSE finding_remediation.assignee END,
+         due_at = CASE WHEN $10::boolean THEN EXCLUDED.due_at ELSE finding_remediation.due_at END,
+         updated_at = NOW()
        RETURNING status, note, assignee, due_at, updated_at`,
       [
         session.userId,
@@ -101,6 +115,9 @@ export async function POST(req: NextRequest) {
         note ?? null,
         assignee ?? null,
         dueAt,
+        setNote,
+        setAssignee,
+        setDue,
       ],
     );
 

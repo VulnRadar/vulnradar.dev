@@ -74,6 +74,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Absent means add, as it always has. Anything else that is not one of the
+  // two used to be treated as add too, so a client sending "delete" (or a
+  // typo of "remove") was told it worked and got the opposite.
+  if (action !== undefined && action !== "add" && action !== "remove") {
+    return NextResponse.json(
+      { error: 'action must be "add" or "remove".' },
+      { status: 400 },
+    );
+  }
+
   const maxTagLength = await getSetting("MAX_TAG_LENGTH");
   const cleanTag = tag.trim().toLowerCase().slice(0, maxTagLength);
   if (!cleanTag)

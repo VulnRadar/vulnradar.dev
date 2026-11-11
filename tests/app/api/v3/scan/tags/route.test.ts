@@ -188,6 +188,44 @@ describe("POST /api/v3/scan/tags", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
+  // Anything that was not "remove" used to fall through to the add branch, so
+  // an integration sending "delete" (or a typo of "remove") got a 200 and the
+  // very tag it meant to take off.
+  it.each([
+    ["delete", "delete"],
+    ["a capitalised remove", "Remove"],
+    ["an empty string", ""],
+    ["a number", 1],
+    ["null", null],
+  ])(
+    "rejects action %s with 400 and inserts nothing",
+    async (_label, action) => {
+      const res = await POST(postRequest({ scanId: 1, tag: "prod", action }));
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(/"add" or "remove"/);
+      expect(mockQuery).not.toHaveBeenCalled();
+    },
+  );
+
+  it("adds when action is 'add' explicitly, as it does when action is absent", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ count: 0 }] }) // user-tag count
+      .mockResolvedValueOnce({ rows: [] }) // insert
+      .mockResolvedValueOnce({ rows: [{ tag: "prod", source: "user" }] });
+
+    const res = await POST(
+      postRequest({ scanId: 1, tag: "prod", action: "add" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("INSERT INTO scan_tags"),
+      ),
+    ).toBe(true);
+  });
+
   it("rejects a tag that is empty after trimming, before checking scan ownership", async () => {
     const res = await POST(postRequest({ scanId: 1, tag: "   " }));
     expect(res.status).toBe(400);

@@ -142,6 +142,10 @@ describe("POST /api/v3/scan/remediation", () => {
       "alice",
       // due_at: absent in the payload, so it normalizes to null.
       null,
+      // note and assignee were sent, due_at was not.
+      true,
+      true,
+      false,
     ]);
   });
 
@@ -168,6 +172,48 @@ describe("POST /api/v3/scan/remediation", () => {
     expect(sql).toContain("DELETE FROM finding_remediation");
     expect(sql).not.toContain("INSERT");
     expect(params).toEqual([42, "csp-missing--abc123", "https://example.com/"]);
+  });
+
+  // An integration that only moves a finding along its lifecycle sends the
+  // status and nothing else. The upsert used to write NULL into every column
+  // the body left out, so the note, the assignee and the due date someone
+  // typed in the dashboard were wiped by the next status change from CI.
+  // Presence decides now, the same rule the bulk route applies.
+  it("leaves the note, assignee and due date alone when the body sends only a status", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ status: "in_progress" }] });
+
+    const res = await POST(
+      postRequest({
+        findingId: "csp-missing--abc123",
+        findingUrl: "https://example.com/",
+        status: "in_progress",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toMatch(
+      /note = CASE WHEN \$8::boolean THEN EXCLUDED\.note ELSE finding_remediation\.note END/,
+    );
+    expect(sql).toMatch(
+      /assignee = CASE WHEN \$9::boolean THEN EXCLUDED\.assignee ELSE finding_remediation\.assignee END/,
+    );
+    expect(sql).toMatch(
+      /due_at = CASE WHEN \$10::boolean THEN EXCLUDED\.due_at ELSE finding_remediation\.due_at END/,
+    );
+    expect(params.slice(7)).toEqual([false, false, false]);
+  });
+
+  it("clears a field the body sends as null", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ status: "fixed" }] });
+
+    await POST(
+      postRequest(validPayload({ note: null, assignee: null, dueAt: null })),
+    );
+
+    const [, params] = mockQuery.mock.calls[0];
+    expect(params.slice(4, 7)).toEqual([null, null, null]);
+    expect(params.slice(7)).toEqual([true, true, true]);
   });
 
   it("returns 503 when the remediation table has not been migrated yet", async () => {
