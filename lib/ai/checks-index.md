@@ -94,8 +94,8 @@ remediation documentation in the docs.
 - [high    ] `postmessage-no-origin-check` [body-pattern] - postMessage Without Origin Validation
 - [high    ] `localstorage-sensitive-data` [body-pattern] - Sensitive Data Stored in localStorage
 - [high    ] `dom-xss-location-hash` [body-pattern] - DOM XSS via location.hash Assignment
-- [high    ] `cs-document-write-usage` [body-pattern] - document.write() in Page Scripts
-- [high    ] `eval-in-client-script` [body-pattern] - eval() in Client-Side JavaScript
+- [low     ] `cs-document-write-usage` [body-pattern] - document.write() in Page Scripts
+- [low     ] `eval-in-client-script` [body-pattern] - eval() in Client-Side JavaScript
 - [medium  ] `third-party-script-no-sri` [body-pattern] - External Script Without Subresource Integrity
 - [medium  ] `source-map-exposed-production` [body-pattern] - JavaScript Source Map Exposed in Production
 - [medium  ] `jsonp-callback-endpoint` [body-pattern] - JSONP Callback Pattern Detected
@@ -226,15 +226,15 @@ remediation documentation in the docs.
 - [critical] `code-deser-ruby-marshal-load` [body-pattern] - Ruby Marshal.load() Called With Request Data
 
 ### configuration (23)
-- [medium  ] `ratelimit-policy-missing` [combined] - No Rate-Limit Policy Detected
-- [medium  ] `vary-header-cookie` [header] - Set-Cookie on a Response a Shared Cache May Store
+- [info    ] `ratelimit-policy-missing` [combined] - No Rate-Limit Policy Detected
+- [low     ] `vary-header-cookie` [header] - Set-Cookie on a Response a Shared Cache May Store
 - [low     ] `cookie-too-large` [header] - Set-Cookie Header Exceeds 4 KB
 - [low     ] `vary-header-missing` [header] - Vary Header Missing on Compressed Responses
 - [info    ] `content-disposition-inline` [header] - Downloadable Content Served as inline
 - [info    ] `x-xss-protection-block` [header] - X-XSS-Protection Header Is Deprecated
 - [low     ] `server-timing-cache-timings` [header-value] - Server-Timing Exposes Cache Timings
 - [low     ] `vary-cookie-on-static-resource` [combined] - Vary: Cookie on Static Resource
-- [medium  ] `vary-origin-missing-cors` [combined] - CORS Endpoint Missing Vary: Origin
+- [low     ] `vary-origin-missing-cors` [combined] - CORS Endpoint Missing Vary: Origin
 - [info    ] `x-amz-cf-id` [header-value] - X-Amz-Cf-Id CloudFront Request ID Exposed
 - [info    ] `x-vercel-cache` [header-value] - X-Vercel-Cache Reveals Edge Cache State
 - [info    ] `x-nextjs-cache` [header-value] - X-Nextjs-Cache Reveals Next.js ISR Cache State
@@ -406,7 +406,7 @@ remediation documentation in the docs.
 - [info    ] `cookie-expires-in-past` [header] - Cookie Expires Is in the Past
 - [high    ] `cookie-partitioned-without-secure` [header] - Partitioned Cookie Missing Secure Attribute
 - [medium  ] `cookie-httponly-missing` [header] - Cookie Missing HttpOnly Attribute
-- [medium  ] `cookie-samesite-missing` [header] - Cookie Missing SameSite Attribute
+- [low     ] `cookie-samesite-missing` [header] - Cookie Missing SameSite Attribute
 - [info    ] `cookie-no-secure-prefix` [header] - Sensitive Cookie Without __Secure- or __Host- Prefix
 - [high    ] `set-cookie-samesite-none-no-secure` [header] - SameSite=None Cookie Missing Secure Attribute
 - [medium  ] `cookie-no-csrf-token` [header] - No CSRF Token Cookie Detected
@@ -828,9 +828,9 @@ remediation documentation in the docs.
 - [medium  ] `vibe-expose-stacktrace` [body-pattern] - Stack Trace Exposed in Response
 - [high    ] `vibe-md5-sha1-usage` [body-pattern] - Weak Hashing Algorithm (MD5/SHA-1) Detected
 - [high    ] `vibe-insecure-deserialize` [body-pattern] - Unsafe Deserialization of User Input
-- [medium  ] `vibe-http-not-https` [body-pattern] - Hardcoded HTTP URL in Application
+- [low     ] `vibe-http-not-https` [body-pattern] - Hardcoded HTTP URL in Application
 - [medium  ] `vibe-predictable-userid` [body-pattern] - Sequential/Predictable IDs in API Responses
-- [high    ] `vibe-missing-csrf` [body-pattern] - Form Missing CSRF Protection
+- [medium  ] `vibe-missing-csrf` [body-pattern] - Form Missing CSRF Protection
 - [high    ] `vibe-base64-sensitive` [body-pattern] - Base64-Encoded Secret Pattern Detected
 - [high    ] `vibe-unrestricted-file-upload` [body-pattern] - File Upload Without Type Validation
 - [high    ] `vibe-template-injection` [body-pattern] - Server-Side Template Injection Risk
@@ -846,7 +846,7 @@ remediation documentation in the docs.
 - [medium  ] `vibe-insecure-cookie-domain` [body-pattern] - Cookie Set Client-Side with Overly Broad Domain
 - [high    ] `vibe-no-rate-limit` [body-pattern] - Authentication Endpoint Lacks Rate Limiting
 - [critical] `vibe-path-traversal` [body-pattern] - Path Traversal Risk in File Operations
-- [medium  ] `vibe-weak-password-policy` [body-pattern] - No Password Strength Requirement Enforced
+- [low     ] `vibe-weak-password-policy` [body-pattern] - No Password Strength Requirement Enforced
 - [high    ] `vibe-prototype-pollution` [body-pattern] - Prototype Pollution Vulnerability Risk
 - [medium  ] `vibe-prompt-injection-risk` [body-pattern] - User Input Concatenated Directly Into an LLM Prompt
 - [high    ] `vibe-llm-api-called-from-client` [body-pattern] - LLM API Called Directly From Client-Side Code
@@ -862,10 +862,10 @@ remediation documentation in the docs.
 - Total checks: **804**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - medium: 220
-  - high: 192
-  - low: 188
-  - info: 104
+  - medium: 215
+  - low: 195
+  - high: 189
+  - info: 105
   - critical: 100
 - By type:
   - body-pattern: 465

@@ -321,7 +321,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [ShieldAlert] **[FIXED]** **A Stopped Scan No Longer Reads as Clean**
   A scan you cancelled has no findings, and the recent-scans list on the dashboard read that as a clean result, in green. It now says what happened: Cancelled, or Did not finish, or Running. History says Cancelled too, rather than lumping a scan you stopped in with one that broke.
 - [Link2] **[ENGINE]** **A Trailing Slash Is Not a Different Page**
-  example.com/landing and example.com/landing/ are the same page, and the scanner treated them as two: a site scan could scan the page twice, list it twice and spend two of your scans on it. They are one page now, everywhere, while a different query string (?page=2 against ?page=3) still counts as the different page it is. The recent-scans list also shows the page you scanned rather than just the site, and no longer shows a bare "/" as if it were a path.
+  example.com/landing and example.com/landing/ are the same page, and the scanner treated them as two: a site scan could scan the page twice, list it twice and spend two of your scans on it. They are one page now in a site scan, while a different query string (?page=2 against ?page=3) still counts as the different page it is. The recent-scans list also shows the page you scanned rather than just the site, and no longer shows a bare "/" as if it were a path.
 - [Languages] **[ADDED]** **VulnRadar Speaks Your Language**
   Pick a language from the globe in the top bar, or from your profile: English, Spanish, French, German, Brazilian Portuguese or Japanese. The choice follows your account to any browser you sign in on, and a visitor without an account gets the language their browser asks for. Emails go out in it, and the AI assistant answers in it. Numbers and dates are formatted the way your language writes them, while the things you have to type or match exactly stay as they are: URLs, header names, finding IDs, code and config. Translation is being rolled out screen by screen, and anything not translated yet reads in English rather than breaking.
 - [MessagesSquare] **[ADDED]** **Support Works in Any Language**
@@ -485,7 +485,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Shield] **[SECURITY]** **Security Policy Covers 4.0.x**
   The supported-versions table now lists 4.0.x as supported, and a test fails the build if a minor release ships without moving the table.
 - [Mail] **[FIXED]** **Staff Alert Emails Open the Support Inbox**
-  The contact form alert now opens the contact messages view of the support inbox, and the support ticket alert opens the ticket queue. Before, both landed on the admin Overview page. Links in alerts that were already sent now find the right place too.
+  The contact form alert now opens the contact messages view of the support inbox, and the support ticket alert opens the ticket itself. Before, both landed on the admin Overview page. Links in alerts that were already sent now find the right place too.
 - [MailOpen] **[FIXED]** **Broadcast Preview Shows the Real Email Logo**
   The email preview in the admin broadcast composer now shows the same header logo recipients get. It used to show the SVG favicon, which Gmail and Outlook do not display.
 - [Volume2] **[ACCESSIBILITY]** **Quieter Billing Notices for Screen Readers**
@@ -603,7 +603,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Mail] **[SECURITY]** **Verification Links Only Work for the Address They Were Sent To**
   An email verification link now verifies only the address it was mailed to. If the account has moved to another address since, or the link is from before this change, it is treated as expired and asks for a new one. Changing your email also cancels every link sent to the old address at the same moment, so an old link can never verify the new address.
 - [KeyRound] **[SECURITY]** **Email Changes Re-Check Your Password More Strictly**
-  Changing your email or password now uses the same current-password check as the rest of the account settings, and refuses the change if your account cannot be looked up instead of letting it through. If the new verification email cannot be sent, the change still signs out your other sessions, and you can request a new link.
+  Changing your email or password now uses the same current-password check as the rest of the account settings, and refuses the change if your account cannot be looked up instead of letting it through. If the new verification email cannot be sent, the change still signs out your other sessions, and saving the change again sends a new link.
 - [ShieldCheck] **[SECURITY]** **Staff SSO Needs a Verified Address**
   Staff single sign-on now opens a staff account only when that account has verified the email address the identity provider matched. Otherwise it gives the usual generic refusal and files a security alert for admins, which the alerts panel labels as a refused staff SSO sign-in.
 - [Lock] **[SECURITY]** **Sign-In Callbacks Refuse Unexpected States**
@@ -1168,6 +1168,156 @@ The largest release since 3.0, and a pass over the whole product rather than one
   A missing MX record and sensitive paths listed in robots.txt are now reported as low severity instead of medium, since neither exposes anything on its own. Their finding ids do not change.
 - [Layout] **[IMPROVED]** **Groundwork for Info Hints**
   A small info button that can sit beside a heading and hold an explanation the reader can skip is now part of the interface kit, with a slot for one in admin panel headers. It opens on hover, tap, click or keyboard focus, closes on Escape, an outside press or a scroll, and gives screen readers the same text as the button's description. No page uses it yet.
+- [ShieldCheck] **[SECURITY]** **Every API Write Is Origin-Checked**
+  State-changing requests to any API path are now refused unless they come from this site, not only those under the v3 prefix. An API key only waives that check on the public API, and it is stripped from requests to dashboard routes. A signed-out API call now gets a JSON 401 instead of a redirect to the login page; browser navigations still go to the login page. Error responses from this layer now include an error code and the request id.
+- [Search] **[API]** **Unknown API Paths Answer in JSON**
+  An API path that does not exist now returns a JSON 404 with a code saying whether the path is outside API v4, uses an unsupported version, or does not exist, instead of the HTML not-found page.
+- [Link2] **[FIXED]** **Anchor Links Scroll Again**
+  Links to a section of a page, such as a docs heading or a changelog entry, now scroll to that section in Chrome and Edge instead of opening at the top.
+- [ServerCrash] **[FIXED]** **Maintenance Mode Answers Crawlers With 503**
+  With maintenance mode switched on in the admin panel, signed-out visitors and crawlers get a 503 with Retry-After, so search engines no longer index the maintenance notice as the page. Signed-in staff keep full access.
+- [Database] **[SELFHOST]** **Restarts No Longer Lock the Database**
+  A restart against a database that is already up to date takes no table locks, waits at most five seconds for any lock it does need, and builds new scan history indexes without holding up scans. Schema work and long backfills get ten minutes instead of being cut off at 30 seconds on every boot.
+- [Users] **[FIXED]** **Deleting a Staff Account Keeps Their Notes and Gifts**
+  Deleting a staff account no longer deletes the admin notes it wrote or the plans it gifted to other people. Those stay in place with the author removed, so gift recipients keep their plan, and the notes still show on the account they describe, attributed to a former staff member.
+- [Database] **[FIXED]** **Deploys Can No Longer Rewind an Id Sequence**
+  The startup check that repairs id sequences could move one backwards while the previous version was still saving data, which made new records fail with a duplicate id. It now only ever moves a sequence forward.
+- [Database] **[CHANGED]** **Database Groundwork for 4.0.0 Features**
+  The database gains the columns 4.0.0 features rely on: pending email changes, AI usage by feature, schedule outcomes and stored scan settings, webhook event filters and failure tracking, links from crawl pages to their crawl, AI verifier reasons, verified domain addresses, API key expiry, and what a mailed code is for. Feedback the AI verifier filled in is now marked as AI, and everything a person set stays theirs. The upgrade command adds the same columns.
+- [Tag] **[FIXED]** **Scans No Longer Lose Their Results to a Failed Tag Write**
+  If saving a scan's automatic tags failed, the database quietly threw away the scan's completion too, and the scan sat at running until it was closed as stale. Now only the tags are skipped and the results are kept. If the completion itself is rolled back, the scan is marked failed straight away instead of being reported as finished.
+- [CircleSlash] **[FIXED]** **Cancelling a Scan Stops It in Every Part of the Server**
+  A cancel sent from one part of the server could miss the scan job running in another, so a cancelled scheduled scan kept sending requests to its target until it finished. The cancel is now visible everywhere in the process.
+- [Timer] **[FIXED]** **Scans That Never Ran Show Zero Duration**
+  A bulk scan URL that was closed before it started, or a queued scan the stale sweep closed, showed its time in the queue as its scan duration. It now shows zero.
+- [Lock] **[SECURITY]** **Session Cookies Are Never Stored With Scan Results**
+  Cookie, Authorization and CSRF headers from a scanned site are now redacted at the point where the scan result is saved, on top of the redaction each scan type already did, so a missed step elsewhere cannot store a site's session tokens.
+- [Shield] **[SECURITY]** **Crawls and the Daily Scan Limit**
+  A crawl whose start page points inside a private network is now refused up front with the same error a single scan gives, before anything is charged or saved. A scan the daily limit could not be charged for is now refused with the daily limit error instead of running uncounted.
+- [Network] **[API]** **Protocol URLs Can Be Scanned**
+  A single scan of an ssh, ftp, smtp, imap, pop3, mongodb or other advertised protocol URL now reaches the protocol scanners instead of being refused as not http. Private and internal addresses are still refused for every scheme.
+- [Globe] **[CHANGED]** **One History Per Site**
+  example.com, https://example.com/ and https://Example.com/#top are now stored as the same site, so the dashboard, the extension and the CLI share one baseline. Scans stored before this under another spelling still count as the site's previous scan, so the first rescan does not re-alert on findings already known. A URL containing a control character is refused.
+- [Pencil] **[FIXED]** **Tags, Remediation and Limit Emails**
+  Tagging a scan with an action other than add or remove now returns an error instead of adding the tag. A remediation update that sends only a status keeps the note, assignee and due date already stored, and sending null clears one. A rate-limited API key emails its owner at most once a day, naming the key.
+- [Radar] **[SECURITY]** **Port Sweeps Need Proof the Server Is Yours**
+  Verifying a domain proves you control its DNS, not the servers its names point at. Before a port sweep, the server being swept must now serve your verification value at /.well-known/vulnradar-verify/ followed by your token, and the sweep connects only to that address. A name that is an alias for a host outside your verified domain is refused.
+- [ShieldAlert] **[SECURITY]** **IP Blocklist Rules Cover Hostnames**
+  An IP address or range on the blocklist now stops scans of any hostname that resolves into it, not only targets typed as a raw IP address. A malformed IP rule is ignored instead of blocking every scan, and the admin panel now refuses to save one.
+- [Crosshair] **[SECURITY]** **Discovery and Port Refresh Respect the Blocklist**
+  Finding pages for a crawl and refreshing a scan's port sweep now refuse a blocked domain. Page discovery also counts against the per-target scan limit, like the crawl itself, and a form login during discovery needs the same server proof as a port sweep.
+- [Gauge] **[SECURITY]** **Feedback Can No Longer Be Used to Undermine a Check**
+  A check's accuracy is now counted in distinct people, never in rows, so one account or the AI verifier's suggestions can no longer lower a check's confidence on other customers' scans. Marking results is rate limited and only accepts a finding the named scan reported. In v3, POST /scan/feedback now requires scanHistoryId.
+- [CheckCircle] **[FIXED]** **False Positives Stay Dismissed on Every Rescan**
+  A finding you mark false positive stays out of the summary, the count, the risk score and the grade on every later scan of the same site, not only on the scan you marked. The grade and badge update as soon as you mark it. Accepted risks still count toward the grade. The public host report still describes every finding.
+- [Fingerprint] **[ENGINE]** **Finding Ids Stay Put**
+  A finding keeps its id when a second vulnerable library appears on the page or goes away, and when the same site is entered with or without the root slash or in different letter case, so triage marks and remediation status carry over. Existing marks are copied to the new ids when the server starts.
+- [Activity] **[ADDED]** **Scans Record What Changed Since Last Time**
+  Each scan now stores which findings are new and which were fixed since your previous completed scan of the same URL, ready for the result view to show.
+- [KeyRound] **[SECURITY]** **Email Confirmation for Accounts Without a Password**
+  Accounts that sign in with Google, GitHub or Discord and have no password now confirm security changes with a code emailed to them: setting a password, changing the email address, changing two-step settings, generating backup codes, linking another sign-in provider and staff actions. Before, a stolen session was enough to make any of these changes.
+- [Smartphone] **[SECURITY]** **Remembered Devices Stored as a Hash**
+  Remembered devices are now stored as a one-way hash, so a copy of the database can no longer be used to skip two-step sign-in. A device remembered before this update asks for the second step once more.
+- [Mail] **[FIXED]** **Email Codes Check the Inbox First**
+  Turning on email sign-in codes now sends a code you enter back before anything changes, and the option is not offered on a server that cannot send email. A mistyped address or missing mail setup can no longer lock you out.
+- [Fingerprint] **[FIXED]** **Two-Step Sign-In With Two Sign-Ins in Progress**
+  Two-step sign-in no longer fails when a password sign-in and a Google, GitHub or Discord sign-in were started in the same browser. The code is now sent for, and checked against, the most recent one. Signing in also no longer cancels a confirmation code already on its way for a security change.
+- [MailOpen] **[SECURITY]** **Email Changes Wait for Confirmation**
+  Changing your email address now takes effect only when you open the link sent to the new address. Until then you keep signing in and getting mail at your current address, and that address gets a security notice once the change goes through. If another account takes the new address first, the change is cancelled, and an address an admin sets in the meantime replaces the waiting change.
+- [UserCog] **[FIXED]** **Long Display Names**
+  A display name over the allowed length is now refused with a clear message instead of a server error.
+- [Image] **[SECURITY]** **Profile Pictures From Discord**
+  The profile update no longer accepts arbitrary Discord links as a profile picture. Upload an image, or sync your Discord or GitHub picture from Connected accounts.
+- [Timer] **[SECURITY]** **Third-Party Calls Give Up After Ten Seconds**
+  The captcha check on sign-up, the contact form and support tickets, live browser sessions, Discord sign-in and the Discord connection now stop waiting after ten seconds if the other service goes quiet. The captcha check then says it could not verify and asks you to try again, instead of hanging or showing a server error.
+- [FileText] **[FIXED]** **Contact Form Shows Its Limits**
+  The contact form names the field that is missing or too long, says how long it is and what the limit is, caps each field at its limit and counts the message as you type. Security reports now state the same 48 hour acknowledgement as the security policy.
+- [Keyboard] **[ACCESSIBILITY]** **Keyboard and Autofill on the Contact Form**
+  The contact category picker now works like a radio group from the keyboard: one tab stop, arrow keys, Home and End. The name and email fields support browser autofill.
+- [LifeBuoy] **[SELFHOST]** **Contact Alerts Reach the Support Address**
+  New contact form submissions now alert the support address (SUPPORT_EMAIL) instead of the no-reply sender nobody reads. Self-hosters should make sure SUPPORT_EMAIL is set to their own address.
+- [Lock] **[SECURITY]** **Sign-In Lockout No Longer Reveals Registered Addresses**
+  The temporary lock after repeated wrong passwords now applies the same way to every address, whether or not it has an account, and its message no longer mentions an account, so it can't be used to find out who is registered.
+- [UserCheck] **[SECURITY]** **Signing Out Ends an Impersonation Completely**
+  Signing out, or signing out everywhere, while an admin is impersonating a user now also ends the admin's own saved session in that browser. Signing out everywhere also forgets trusted devices, says so before you confirm, and tells you how many API keys are still active.
+- [Key] **[SECURITY]** **Old Password Hashes Are Upgraded at Sign-In**
+  Accounts whose passwords were stored with the older, cheaper hash are re-hashed at the current cost the next time they sign in. Two first sign-ups on a fresh install can no longer both become super admin.
+- [Mail] **[FIXED]** **Long Email Addresses and Slow Captcha Checks**
+  Password reset and sign-up no longer fail with a server error for very long email addresses. Sign-up now waits at most 10 seconds for the captcha service and asks the visitor to try again if it can't be reached.
+- [Users] **[SECURITY]** **Leaving a Team Ends What You Shared With It**
+  When someone leaves a team or is removed from it, their verified domains, scheduled scans and webhooks stop being shared with that team straight away. Teammates can no longer run active scans or port sweeps against a domain whose owner has left. This changes how v3 behaves now.
+- [ShieldQuestion] **[SECURITY]** **Domain Verification Switch Fails Closed**
+  Turning domain verification off now turns off active scanning against every domain at once. The periodic re-check of verified domains keeps running, so a domain that changed hands while the feature was off cannot come back as a grant when it is switched on again.
+- [Globe] **[FIXED]** **Only the Verifier Can Remove a Domain**
+  Only the person who verified a domain can remove it. A team owner or admin can stop sharing a teammate's domain with the team instead, from the domain list, which keeps the proof of ownership. The scan form only offers a port sweep for domains you are allowed to scan under, so viewers are no longer told a scan will work and then refused.
+- [Crown] **[ADDED]** **Transfer Team Ownership**
+  Team owners can hand a team to another member from the team's menu, or with PATCH /api/v3/teams and a newOwnerId. The new owner's plan must cover the team's members and pending invites. The old owner stays on as an admin, and both people get an email.
+- [Bot] **[SECURITY]** **AI Opt-Out Now Holds When the Setting Cannot Be Read**
+  If your account has AI switched off and the setting could not be read for a moment, AI verification, scan summaries, repository reviews and automatic tag suggestions used to go ahead anyway. They now refuse or skip, and the AI actions stay hidden until the setting can be read again.
+- [Settings] **[SECURITY]** **Removing Your AI Provider Keeps AI Switched Off**
+  Resetting to the built-in AI used to quietly turn AI back on for accounts that had switched it off. The reset now removes only the saved provider, model and key, and the settings page shows the switch as it is actually stored.
+- [ShieldAlert] **[SECURITY]** **Batch AI Verification Respects Scan Blocks**
+  Batch AI verification now refuses a target that the blocklist or the domain's owner has blocked from scanning, with the same blocked answer a scan gets, before any request is sent to it.
+- [FileText] **[SECURITY]** **Admin Notes Are Tied to Their Account**
+  Editing or deleting an admin note now only works on a note about the account being acted on, and a note about yourself can only be changed by whoever wrote it.
+- [KeyRound] **[ADMIN]** **Password Lockout Counts Wrong Passwords Only**
+  The admin re-auth limit now counts only wrong passwords on actions that ask for one, so notes, badges and multi-field saves no longer lock a moderator out partway through.
+- [CalendarClock] **[FIXED]** **Disabling an Account Pauses Its Scheduled Scans**
+  Disabling an account now pauses its scheduled scans, and enabling it again resumes the same ones on their normal schedule. Schedules the owner paused stay paused.
+- [CreditCard] **[ADMIN]** **Gift Expiry and Force Logout Report What Happened**
+  A gifted plan can no longer be given an expiry in the past, which used to end the active gift, and Force Logout now says whether API keys were revoked or left in place.
+- [Bell] **[SECURITY]** **Staff Notices Follow the 2FA Policy**
+  Site notices written for staff or for admins are no longer shown to a staff account that the two-factor requirement has locked out of the admin panel, or to a session that still carries a role the account has since lost.
+- [FileSpreadsheet] **[SECURITY]** **Audit Log Export Is Safe to Open in a Spreadsheet**
+  Exporting the audit log as CSV no longer lets a name or email that starts with = or @ run as a spreadsheet formula, and a value containing a lone carriage return no longer breaks the row.
+- [UserCog] **[ADMIN]** **Expired Staff Invites Can Be Cleared**
+  Expired staff invites now appear in the Staff invite list and can be revoked. Re-inviting the same address replaces the expired invite, and the Overview only counts the newest invite for each address. Only admins see the invite controls and the invite health row.
+- [AlertTriangle] **[ADMIN]** **Admin Panels Report Failures Where You Can See Them**
+  A notification that fails to save now shows the reason inside its dialog and keeps what you typed. A settings save or import interrupted by a network error no longer leaves the buttons stuck. AI Chats search covers every stored conversation, its tiles count the conversations their filters open, and Scanner Queue only offers actions your role can perform. Staff accounts without a password confirm invites and updates with a code from their email.
+- [Bot] **[FIXED]** **AI Chat No Longer Uses Up Your Verification Allowance**
+  AI chat, scan summaries and automatic tag suggestions are free and no longer count against the AI tokens your plan gives you for verifying findings, so they cannot block a verification or make it spend purchased AI credits. The billing page now shows verification usage only, and an admin resetting your allowance resets verification only.
+- [CreditCard] **[SECURITY]** **Plan Upgrades Are Charged When You Switch**
+  Moving to a higher plan, or to a longer billing period, now charges the prorated difference to your card on file straight away, and the new plan starts once that charge goes through. If the card is declined you stay on your current plan and the switch screen says so. Moving to a lower plan still charges nothing until your next invoice.
+- [CreditCard] **[SECURITY]** **Cancel Immediately No Longer Credits the Unused Period**
+  Cancelling immediately from the Billing tab now ends the subscription without a proration credit, which matches the no-refund policy the cancel dialog states. There is now one cancel implementation instead of two that gave different results, and the unused duplicate billing endpoint is removed.
+- [Heart] **[FIXED]** **A Gifted Plan No Longer Hides Your Paid Subscription**
+  If you are paying for a subscription and also have a gifted plan, the Billing tab now shows the subscription, its billing portal link and its cancel control next to the gift, so you can always stop a charge, and checkout recognises you as a subscriber who can switch plans. The Billing tab also loads on self-hosted instances without a Stripe key instead of showing a billing error, and its usage meters now have screen reader labels.
+- [Monitor] **[FIXED]** **Live-Browser Minutes Are Billed Only for Time the Session Ran**
+  Ending a live-browser session after it had already timed out no longer bills the minutes after the timeout. Typing a bare public IP address into the live-browser launcher now opens it instead of being rejected as an invalid URL.
+- [MessagesSquare] **[ADMIN]** **Reply Drafts Stay With Their Ticket**
+  In the staff support inbox, the reply you are typing now belongs to the ticket it was written on. Opening another ticket shows an empty box, and the draft is still there when you come back. Closing the tab with an unsent draft asks first.
+- [BellRing] **[ADMIN]** **Ticket Alerts Open the Ticket**
+  The email that tells staff about a new ticket or a reply now opens that ticket's conversation in the support inbox instead of the plain queue. A ticket that no longer exists, or that you cannot see, opens the queue without comment.
+- [Languages] **[FIXED]** **No Translate Button Where Translation Cannot Work**
+  Support tickets no longer offer Translate, to staff or to customers, on a deployment with no AI provider configured, and a translation request there no longer uses up the rate limit. Translations already saved can still be toggled against the original.
+- [Code] **[FIXED]** **Cookie Fix Examples That Actually Work**
+  The SameSite example on the cookie check pages recommended a cookie prefix combination browsers silently reject. It is corrected, and the Secure, HttpOnly and SameSite pages now show the setting for Django, Flask, Rails, Laravel, Spring Boot, PHP and ASP.NET Core.
+- [Gauge] **[CHANGED]** **Severity Recalibrated on Nine Heuristic Checks**
+  Findings for Vary: Cookie, Vary: Origin, a missing SameSite attribute, eval() on a non-literal value, document.write(), weak password policy and hardcoded http URLs are now low severity, the form CSRF heuristic is medium, and a missing rate-limit header is informational, because none of them proves an exploitable flaw on its own. Scores for scans that hit these checks can rise slightly.
+- [BookOpen] **[FIXED]** **Wrong CWE Tags Removed, Compliance Labels Updated**
+  Three check pages no longer carry a CWE that described a different weakness, so SARIF and compliance exports route them correctly, and the compliance report now cites PCI DSS 4.0.1 and OWASP ASVS 4.0.3.
+- [Server] **[IMPROVED]** **Apache and Caddy Rules for Exposed .env Files**
+  The exposed .env finding now shows deny rules for Apache and Caddy next to Nginx, and all three keep /.well-known/ reachable so certificate renewal keeps working.
+- [Mail] **[FIXED]** **Broadcasts to One Address Match Any Capitalisation**
+  A broadcast sent to a single address now reaches the account whatever capitalisation or spaces the address was typed with. A send that would reach nobody is refused with the reason, instead of being marked sent.
+- [Newspaper] **[ADMIN]** **Broadcast Sends and Resends Show Who They Reach**
+  The broadcast list shows each broadcast's audience, how many recipients it was delivered to and how many failed, and a Sending state while delivery runs. The Send and Resend confirmations state how many people will be mailed. A resend retries the failed deliveries and reaches anyone who joined the audience since, and says so when there is nothing left to send. If the list fails to load, it shows an error with Retry instead of an empty list.
+- [ShieldAlert] **[ADMIN]** **Security Alerts Never Hide an Unresolved Alert**
+  The Security Alerts panel loads unresolved alerts first and takes its header and counters from the full count, so an older unresolved alert can no longer sit unseen behind newer resolved ones. Resolved alerts are one click away, the list loads more on request, and a failed action is announced to screen readers.
+- [Trash2] **[FIXED]** **Blocked-Data Purge States the Real Number of Scans**
+  Deleting the stored scans of a blocked domain now confirms the exact number that will be removed across every account, not the 100 the list shows, and the list says when it is showing only the most recent 100.
+- [UserCog] **[ADMIN]** **Admin Panel No Longer Crashes on an Account You Cannot Open**
+  Following a stale or refused user link in the admin panel now shows a short message and the user list instead of the whole panel falling over, and the dead link is cleared from the address bar. Roles without access to accounts no longer get links to them in the audit log.
+- [Shield] **[ADMIN]** **Admin Actions on Protected Accounts Are Disabled Up Front**
+  The user panel now greys out edits, role changes, badges, notes and support actions on accounts your role cannot act on (a peer, a higher role, the owner account, or yourself for destructive actions and clearing your own rate limits), with one note saying why, so you are no longer asked for your password only to be refused. Force Logout All says plainly when your role cannot revoke API keys, and no longer claims it did.
+- [List] **[FIXED]** **Admin Lists Show Failures and Real Totals**
+  The user and team directories badge the total across all pages, say 1 scan and 1 API key correctly, and step back to the last page with rows after a delete empties one. Content, team members and AI conversations show a retry when a request fails instead of looking empty, and saving an account or badges now reloads once instead of after every write. The staff list's date column is labelled Account created, which is what it shows.
+- [CalendarClock] **[FIXED]** **Gift Expiry Uses Your Local Time**
+  The gift subscription dialog now shows and saves the expiry in your local time zone instead of shifting it by your UTC offset each time you save, and it will not accept a time in the past. The admin jump list also respects reduced motion.
+- [ShieldCheck] **[SECURITY]** **A Trailing Dot No Longer Slips Past the Blocklist**
+  A blocked host written with a trailing dot, such as blocked.com. or its percent-encoded form, read as a different host to the blocklist but was still fetched as blocked.com. The dot is now removed before the rules are checked, on every scan, crawl, bulk scan, discovery and AI verification.
+- [Mail] **[SECURITY]** **An Admin's Email Correction Cannot Be Undone by an Old Link**
+  When an admin changes an account's email address, any email change the account had waiting is cancelled and its confirmation link stops working, so opening that link later can no longer swap the old pending address back in.
 
 ---
 
@@ -3476,6 +3626,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1430
+- **Total changes documented:** 1505
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

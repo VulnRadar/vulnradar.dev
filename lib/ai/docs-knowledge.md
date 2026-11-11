@@ -2638,7 +2638,7 @@ before the build, not just the admin toggle flipped afterwards.
 - Every paid plan is sold on both intervals: purchasable products in total. Yearly is % cheaper than twelve monthly payments of the same plan. The limits are identical either way; the interval only changes when you are charged.
 - On a self-hosted instance every limit above is an admin setting, not a hard-coded constant. The values shown here are the shipped defaults; the running instance reads its own settings, so a self-hosted deployment can raise or lower any of them without touching the code. See the Administration page.
 - Pick a plan on /pricing and choose monthly or yearly. That takes you to a checkout page which collects payment through Stripe; card details are entered in Stripe&rsquo;s own hosted fields and never reach our servers. The new limits apply as soon as Stripe confirms the payment.
-- Moving between paid plans works the same way: choose the other plan and check out. Invoices, receipts, and your saved payment method live in the Stripe billing portal, reachable from Profile &rarr; Billing under &ldquo;Manage billing&rdquo;.
+- Moving between paid plans switches the subscription you already have, on the card already on file. A higher plan, or a different billing period, charges the prorated difference to that card straight away, and the new plan starts once that charge goes through; if it is declined, you stay on the plan you had. A lower plan on the same billing period charges nothing at the time: the unused part of the period comes off your next invoice. Invoices, receipts, and your saved payment method live in the Stripe billing portal, reachable from Profile &rarr; Billing under &ldquo;Manage billing&rdquo;.
 - The free tier is the trial. It is not time-limited, it needs no card, and it runs the same engine, so you can find out whether the scanner is useful before any money changes hands.
 - Three features meter usage because each one costs real money per call to a third party. Each has an allowance included with your plan, and each has a matching credit balance you can top up. Credits are spent only after the included allowance for that period is gone, they are a one-off purchase rather than a subscription, and they do not expire with the billing period.
 
@@ -3293,7 +3293,7 @@ individual URLs instead.
 | `/docs/rate-limits` | - | 6 | 6 | 0 | 4 | 0 | 0 | 11 | 3 |
 | `/docs/architecture` | - | 5 | 1 | 0 | 2 | 0 | 0 | 9 | 0 |
 | `/docs/developers` | - | 16 | 3 | 0 | 11 | 0 | 0 | 21 | 9 |
-| `/docs/account-security` | - | 6 | 3 | 0 | 1 | 0 | 0 | 21 | 0 |
+| `/docs/account-security` | - | 6 | 3 | 0 | 1 | 0 | 0 | 20 | 0 |
 | `/docs/administration` | - | 12 | 8 | 0 | 0 | 0 | 0 | 38 | 0 |
 | `/docs/ai` | - | 11 | 1 | 0 | 2 | 0 | 0 | 23 | 0 |
 | `/docs/billing` | - | 8 | 7 | 0 | 0 | 0 | 0 | 21 | 0 |

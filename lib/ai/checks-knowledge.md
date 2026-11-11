@@ -21,10 +21,10 @@ in this file and quote the title, description, and fix steps.
 - **Total checks:** 804
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - medium: 220
-  - high: 192
-  - low: 188
-  - info: 104
+  - medium: 215
+  - low: 195
+  - high: 189
+  - info: 105
   - critical: 100
 - **By type:**
   - body-pattern: 465
@@ -2630,12 +2630,12 @@ import DOMPurify from 'dompurify';
 document.getElementById('content').innerHTML = DOMPurify.sanitize(location.hash.slice(1));
 ```
 
-### `cs-document-write-usage` [client-side / high / body-pattern]
+### `cs-document-write-usage` [client-side / low / body-pattern]
 **document.write() in Page Scripts**
 
-document.write() was found in the page scripts. This function is dangerous because it can overwrite the entire page document, is a primary DOM XSS sink, and is deprecated in modern browsers.
+document.write() appears in the page scripts. It is deprecated, can overwrite the whole document when it runs after load, and is a DOM XSS sink if attacker-controlled data reaches it.
 
-**Risk:** If any attacker-controlled data reaches document.write(), it results in DOM XSS. Additionally, document.write() called after page load rewrites the entire document, destroying all event listeners and breaking React/Vue/Angular hydration.
+**Risk:** Whether this is exploitable depends on what is written, and the scan does not trace that. The reliable costs are practical: a call after page load rewrites the document, destroying event listeners and breaking React, Vue and Angular hydration, and Chrome blocks it for some cross-site scripts on slow connections.
 
 **Why it matters:** document.write() is a legacy API from the early web. Modern JavaScript has safe alternatives for all of its use cases. Browsers have started restricting it (Chrome warns in console), and it's likely to be removed eventually.
 
@@ -2659,12 +2659,12 @@ script.async = true;
 document.head.appendChild(script);
 ```
 
-### `eval-in-client-script` [client-side / high / body-pattern]
+### `eval-in-client-script` [client-side / low / body-pattern]
 **eval() in Client-Side JavaScript**
 
-eval() or the Function() constructor was found in client-side JavaScript. These functions execute strings as code and are a top DOM XSS sink.
+eval() or the Function() constructor is called in an inline script with an argument that is not a constant string. Whatever that value holds runs as code. A call with a fixed string literal is not reported.
 
-**Risk:** If any attacker-controlled data reaches eval() or new Function(), it results in arbitrary JavaScript execution. This is rated as one of the most dangerous DOM XSS sinks because it can bypass CSP 'unsafe-inline' in some browsers.
+**Risk:** If attacker-controlled data reaches the call (a URL fragment, postMessage data, a value read back from storage), it is arbitrary JavaScript execution in the page. The scan sees the call, not the data flow, so this is a lead to review, not a confirmed injection.
 
 **Why it matters:** eval() and new Function(string) convert strings into executable code. When combined with user input; URL parameters, postMessage data, or third-party data; they enable arbitrary code execution.
 
@@ -2673,10 +2673,10 @@ eval() or the Function() constructor was found in client-side JavaScript. These 
 - https://portswigger.net/web-security/cross-site-scripting/dom-based
 
 **Fix:**
-- Remove all eval() and new Function(string) calls.
+- Remove eval() and new Function(string) calls that take a variable.
 - Replace eval(jsonString) with JSON.parse(jsonString).
-- Replace eval(mathExpression) with a safe math parser library.
-- Enable the CSP 'unsafe-eval' restriction to block these at the browser level.
+- Replace eval(mathExpression) with a safe expression parser.
+- Drop 'unsafe-eval' from script-src once nothing needs it, so the browser refuses these calls.
 - **Replace eval with safe alternatives** (javascript):
 ```javascript
 // Bad
@@ -2697,21 +2697,21 @@ const fn = (x) => x * multiplier;
 ### `third-party-script-no-sri` [client-side / medium / body-pattern]
 **External Script Without Subresource Integrity**
 
-One or more external JavaScript files are loaded from CDNs or third-party domains without an integrity attribute. If the CDN is compromised, the script can be replaced with malicious code that runs in all users' browsers.
+A script from a public library CDN is loaded at an exact version with no integrity attribute. If the CDN or the package is compromised, the changed file runs in every visitor's browser.
 
-**Risk:** Supply-chain attacks via compromised CDNs have affected millions of websites. Without SRI, the browser has no way to verify that the script content matches what you tested. A single CDN compromise silently injects malicious code into your site.
+**Risk:** Compromised CDN files and hijacked packages have injected code into thousands of sites. Without SRI the browser cannot tell that a versioned file changed, so the page runs whatever the CDN serves.
 
-**Why it matters:** Subresource Integrity (SRI) allows browsers to verify that fetched resources haven't been altered. The integrity attribute contains a cryptographic hash of the expected script content: if the served content doesn't match, the browser refuses to execute it.
+**Why it matters:** Subresource Integrity lets the browser check a fetched file against a hash you wrote down. It suits exactly this case, a library at a fixed version. Your own scripts, same-site assets, vendors that change their files on purpose (tag managers, analytics, payment and CAPTCHA scripts) and unpinned URLs are not reported by this check, because a hash would either be pointless or break the integration.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity
 - https://cheatsheetseries.owasp.org/cheatsheets/Third_Party_Javascript_Management_Cheat_Sheet.html
 
 **Fix:**
-- Generate SRI hashes: openssl dgst -sha384 -binary script.js | openssl base64 -A.
-- Add integrity='sha384-...' and crossorigin='anonymous' to external script tags.
-- Use the SRI Hash Generator at https://www.srihash.org/.
-- Pin to a specific version of the CDN resource (not 'latest') so the hash remains valid.
+- Generate the hash: openssl dgst -sha384 -binary script.js | openssl base64 -A.
+- Add integrity="sha384-..." and crossorigin="anonymous" to the script tag.
+- Keep the exact version in the URL (not 'latest' or a major alias), so the hash stays valid.
+- Or self-host the file and drop the third-party dependency.
 - **Script tag with SRI** (html):
 ```html
 <!-- Bad -->
@@ -6285,23 +6285,23 @@ data = JSON.parse(params[:payload])
 
 ## Category: configuration (23 checks)
 
-### `ratelimit-policy-missing` [configuration / medium / combined]
+### `ratelimit-policy-missing` [configuration / info / combined]
 **No Rate-Limit Policy Detected**
 
-No rate-limiting headers (X-RateLimit-Limit, RateLimit-Limit, Retry-After) or a 429 response were observed. Without rate-limiting, brute-force, credential stuffing, and scraping attacks can run unchecked.
+An API host answered with none of RateLimit-Limit, X-RateLimit-Limit or Retry-After, or a response sent RateLimit-Limit without RateLimit-Policy. These headers only describe a limit that exists: their absence does not show that none is enforced.
 
-**Risk:** Attackers can brute-force credentials, scrape all content, or exhaust backend resources with no request budget enforced. APIs without rate-limiting are a primary target for enumeration and DoS.
+**Risk:** Clients cannot see the request budget they have, so well-behaved integrations back off late or not at all. Whether brute force and scraping are really possible depends on limits the server enforces without announcing them, which an external scan cannot see.
 
-**Why it matters:** Rate-limiting controls how many requests a client can make within a time window. Without it, malicious actors can submit thousands of authentication attempts, harvest user data, or trigger expensive server operations at will.
+**Why it matters:** Rate limiting caps how many requests a client can make in a time window. Announcing the cap with RateLimit-* or X-RateLimit-* headers and answering 429 with Retry-After lets clients stay inside it. A server can enforce a limit and say nothing, so this is a prompt to document the policy for API consumers rather than evidence that the endpoint is unprotected.
 
 **References:**
 - https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429
 
 **Fix:**
-- Add rate-limiting middleware (e.g., upstash/ratelimit, express-rate-limit, nginx limit_req).
+- Enforce a limit in middleware or at the proxy (upstash/ratelimit, express-rate-limit, nginx limit_req) if the endpoint has none.
 - Return 429 Too Many Requests with a Retry-After header when the limit is exceeded.
-- Return X-RateLimit-Limit, X-RateLimit-Remaining, and X-RateLimit-Reset headers on every response.
+- Publish the budget with RateLimit-Limit, RateLimit-Remaining and RateLimit-Reset (or the X-RateLimit-* names) so clients can pace themselves.
 - **Next.js API route (upstash/ratelimit)** (typescript):
 ```typescript
 import { Ratelimit } from '@upstash/ratelimit';
@@ -6344,7 +6344,7 @@ http {
 }
 ```
 
-### `vary-header-cookie` [configuration / medium / header]
+### `vary-header-cookie` [configuration / low / header]
 **Set-Cookie on a Response a Shared Cache May Store**
 
 The response sets an application cookie, carries an explicit sign that a shared cache may store it, and has no Cache-Control: no-store, no-cache or private. A CDN or reverse proxy that stores it can replay the Set-Cookie to other visitors. Cookies a CDN or load balancer adds for itself are not reported, and neither are static assets, whose bytes are the same for every visitor.
@@ -6558,7 +6558,7 @@ location ~* \.(js|css|png|jpg|webp|woff2|ico)$ {
 }
 ```
 
-### `vary-origin-missing-cors` [configuration / medium / combined]
+### `vary-origin-missing-cors` [configuration / low / combined]
 **CORS Endpoint Missing Vary: Origin**
 
 An endpoint returns a dynamic Access-Control-Allow-Origin header (reflecting the request's Origin) without including Vary: Origin. Caches that store this response may serve one origin's response to a different origin.
@@ -6844,13 +6844,33 @@ The response body looks like raw .env file content (APP_DEBUG/APP_KEY/DB_PASSWOR
 
 **Fix:**
 - Remove .env from the web-accessible document root immediately and rotate every credential it contained.
-- Add a web-server rule that denies access to dotfiles (Nginx: 'location ~ /\.'; Apache: '<FilesMatch "^\.">').
+- Add a web-server rule that denies access to dotfiles (Nginx: 'location ~ /\.'; Apache: '<FilesMatch "^\.">' with Require all denied; Caddy: a path matcher on '*/.*' with respond 404), and leave /.well-known/ reachable for certificate issuance.
 - Audit for any debug/info endpoint that dumps environment variables and remove it from production.
 - **Nginx: deny dotfiles** (nginx):
 ```nginx
-location ~ /\. {
+location ~ /\.(?!well-known) {
   deny all;
   return 404;
+}
+```
+- **Apache: deny dotfiles** (apache):
+```apache
+# Matches the file name only, so /.well-known/acme-challenge/<token> still works.
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>
+```
+- **Caddy: answer 404 for dotfiles** (caddy):
+```caddy
+example.com {
+  @dotfiles {
+    path */.*
+    not path /.well-known/*
+  }
+  respond @dotfiles 404
+
+  root * /var/www/site
+  file_server
 }
 ```
 
@@ -11058,6 +11078,64 @@ res.cookie('session', token, {
   path: '/',
 });
 ```
+- **Django (settings.py)** (python):
+```python
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+LANGUAGE_COOKIE_SECURE = True
+```
+- **Flask** (python):
+```python
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+)
+```
+- **Rails** (ruby):
+```ruby
+# config/environments/production.rb
+config.force_ssl = true
+
+# config/initializers/session_store.rb
+Rails.application.config.session_store :cookie_store,
+  key: "_app_session",
+  secure: true,
+  httponly: true,
+  same_site: :lax
+```
+- **Laravel (config/session.php)** (php):
+```php
+'secure' => env('SESSION_SECURE_COOKIE', true),
+'http_only' => true,
+'same_site' => 'lax',
+```
+- **Spring Boot (application.properties)** (properties):
+```properties
+server.servlet.session.cookie.secure=true
+server.servlet.session.cookie.http-only=true
+server.servlet.session.cookie.same-site=lax
+```
+- **PHP** (php):
+```php
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => true,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
+session_start();
+```
+- **ASP.NET Core** (csharp):
+```csharp
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+});
+```
 
 ### `cookie-host-prefix-not-secure` [cookies / high / header]
 **__Host- Prefix Cookie Missing Secure Attribute**
@@ -11246,13 +11324,64 @@ res.cookie('__Host-session', token, {
   path: '/',
 });
 ```
+- **Django (settings.py)** (python):
+```python
+SESSION_COOKIE_HTTPONLY = True
+# Leave CSRF_COOKIE_HTTPONLY False if your JavaScript reads the token from the cookie.
+```
+- **Flask** (python):
+```python
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=True,
+)
+```
+- **Rails** (ruby):
+```ruby
+# config/initializers/session_store.rb
+Rails.application.config.session_store :cookie_store,
+  key: "_app_session",
+  httponly: true,
+  secure: true
 
-### `cookie-samesite-missing` [cookies / medium / header]
+# A cookie you set yourself:
+cookies[:remember] = { value: token, httponly: true, secure: true }
+```
+- **Laravel (config/session.php)** (php):
+```php
+'http_only' => true,
+'secure' => env('SESSION_SECURE_COOKIE', true),
+```
+- **Spring Boot (application.properties)** (properties):
+```properties
+server.servlet.session.cookie.http-only=true
+server.servlet.session.cookie.secure=true
+```
+- **PHP** (php):
+```php
+// php.ini: session.cookie_httponly = 1
+setcookie('remember', $token, [
+    'path' => '/',
+    'secure' => true,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
+```
+- **ASP.NET Core** (csharp):
+```csharp
+builder.Services.AddSession(options =>
+{
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+});
+```
+
+### `cookie-samesite-missing` [cookies / low / header]
 **Cookie Missing SameSite Attribute**
 
 A cookie is set without the SameSite attribute. Without SameSite, the cookie is sent on all cross-site requests (or defaults to SameSite=Lax in modern browsers), potentially enabling CSRF attacks.
 
-**Risk:** Without SameSite=Lax or Strict, cross-site POST requests (CSRF attacks) carry the session cookie. Older browsers that do not enforce a default SameSite will include the cookie in every cross-origin request.
+**Risk:** Without SameSite, a browser that does not apply a default sends the cookie on cross-site POST requests, which is what CSRF needs. Current Chrome, Edge and Firefox treat a missing attribute as Lax, so for most visitors the exposure is a CSRF token that is the only defence, not an open door; it is a hardening gap rather than an exploitable flaw by itself.
 
 **Why it matters:** SameSite controls whether a cookie is sent with cross-site requests. SameSite=Strict prevents the cookie from being sent on any cross-site request. SameSite=Lax (the browser default in Chrome) allows top-level navigation GET requests but blocks cross-site POST. Explicitly setting SameSite is more portable than relying on browser defaults.
 
@@ -11268,9 +11397,59 @@ A cookie is set without the SameSite attribute. Without SameSite, the cookie is 
 ```http
 Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/
 ```
-- **SameSite=Strict (high-privilege)** (http):
+- **SameSite=Strict (high-privilege, path-scoped with __Secure-)** (http):
 ```http
-Set-Cookie: __Host-admin-token=xyz; HttpOnly; Secure; SameSite=Strict; Path=/admin
+Set-Cookie: __Secure-admin-token=xyz; HttpOnly; Secure; SameSite=Strict; Path=/admin
+```
+- **Django (settings.py)** (python):
+```python
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+```
+- **Flask** (python):
+```python
+app.config.update(
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=True,
+)
+```
+- **Rails** (ruby):
+```ruby
+# config/initializers/session_store.rb
+Rails.application.config.session_store :cookie_store,
+  key: "_app_session",
+  same_site: :lax,
+  secure: true
+
+# A cookie you set yourself:
+cookies[:theme] = { value: "dark", same_site: :lax }
+```
+- **Laravel (config/session.php)** (php):
+```php
+'same_site' => 'lax',
+'secure' => env('SESSION_SECURE_COOKIE', true),
+```
+- **Spring Boot (application.properties)** (properties):
+```properties
+server.servlet.session.cookie.same-site=lax
+server.servlet.session.cookie.secure=true
+```
+- **PHP** (php):
+```php
+// php.ini: session.cookie_samesite = "Lax"
+setcookie('theme', 'dark', [
+    'path' => '/',
+    'secure' => true,
+    'samesite' => 'Lax',
+]);
+```
+- **ASP.NET Core** (csharp):
+```csharp
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+});
 ```
 
 ### `cookie-no-secure-prefix` [cookies / info / header]
@@ -12328,7 +12507,7 @@ _mta-sts.example.com. IN TXT "v=STSv1; id=20240101000000"
 ### `email-tls-rpt-rua-missing` [email / low / header]
 **TLS-RPT Record Missing rua= Reporting URI**
 
-Async check: a v=TLSRPTv1 TXT record exists at _smtp._tls.<domain>, but it has no rua= tag specifying where to send reports. Without rua=, the record has no effect.
+A TLS-RPT record exists at _smtp._tls but has no rua= tag, so it requests no reports and has no effect.
 
 **Finding ids:** a scan does not report `email-tls-rpt-rua-missing` as a finding id. Its findings carry an id starting `async-tls-rpt-record-missing-rua-reporting-uri`, followed by `--` and a hash of the scanned URL.
 
@@ -18108,11 +18287,11 @@ try {
 ### `rails-version-exposure` [information-disclosure / info / header]
 **Rails default session cookie name reveals framework**
 
-A cookie matching Rails' default *_session naming convention was found in the Set-Cookie header. This reveals that the server-side framework is Ruby on Rails, but not which version.
+A cookie named in Rails' default style, _<app>_session with a leading underscore, was found in the Set-Cookie header. That points to Ruby on Rails but does not reveal a version. Laravel's laravel_session and CodeIgniter's ci_session lack the underscore and are not reported.
 
 **Risk:** Knowing the server runs Rails lets attackers focus reconnaissance on Rails-specific vulnerabilities and misconfigurations instead of probing the stack blindly. This is a framework fingerprint only: it does not reveal the Rails version, and is unrelated to whether X-Powered-By or X-Runtime headers are present.
 
-**Why it matters:** Rails names its session cookie <app>_session by default. This name is a recognizable Rails fingerprint independent of any response header. Renaming it to a generic opaque string costs nothing and removes this passive disclosure.
+**Why it matters:** Rails names its session cookie _<app>_session unless config/initializers/session_store.rb sets another key. The name is a recognisable Rails fingerprint independent of any response header. Renaming it to a generic opaque string costs nothing and removes this passive disclosure.
 
 **References:**
 - https://guides.rubyonrails.org/security.html#session-storage
@@ -21477,21 +21656,21 @@ config.public_file_server.enabled = ENV['RAILS_SERVE_STATIC_FILES'].present?
 ### `supply-chain-sri-external-script` [supply-chain / medium / body-pattern]
 **External CDN Script Without SRI Hash**
 
-An external JavaScript file is loaded from a CDN without a Subresource Integrity (integrity=) attribute. If the CDN is compromised or serves a different file version, malicious code can run on your site without detection.
+A pinned script on cdnjs, jsDelivr, unpkg, Google Hosted Libraries, the jQuery CDN or BootstrapCDN has no integrity attribute. A versioned URL should never change, so a hash costs nothing.
 
 **Risk:** CDN compromises (Polyfill.io 2024, event-stream 2018, ua-parser-js 2021) have injected malicious code into millions of sites. SRI is the primary defense: it makes CDN tampering immediately detectable and blocks execution of modified scripts.
 
-**Why it matters:** When you load a script from a CDN without SRI, you're trusting that CDN completely. SRI lets you cryptographically pin the exact bytes of the script you tested, so any modification by a compromised CDN is blocked.
+**Why it matters:** A script at a versioned library URL is supposed to be immutable, which is exactly the case SRI is built for. The hash makes the browser refuse the file if the CDN, the package or a mirror serves different bytes. Scripts on your own origin, on the same site, from vendors that update their files on purpose (tag managers, analytics, payment and CAPTCHA scripts), and from unpinned or unknown hosts are not reported by this check.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity
 - https://www.srihash.org/
 
 **Fix:**
-- Generate SRI hash: npx sri-hash https://cdn.example.com/script.js
-- Add integrity and crossorigin attributes to all external script and link tags.
-- Pin to specific versions in CDN URLs, avoid 'latest' or major-version aliases.
-- Consider self-hosting critical scripts instead of relying on CDNs.
+- Generate the hash: curl -s URL | openssl dgst -sha384 -binary | openssl base64 -A.
+- Add integrity="sha384-..." and crossorigin="anonymous" to the script tag.
+- Keep the exact version in the URL, so the hash stays valid.
+- Consider self-hosting the file if you would rather not depend on the CDN at all.
 - **SRI-protected script tag** (html):
 ```html
 <script
@@ -22653,7 +22832,7 @@ EOF
 ### `tls-certificate-expiry` [tls / critical / header]
 **TLS Certificate Expiry**
 
-Async check: opens a TLS connection to :443 and reports the certificate validity window, expiry, self-signing, and incomplete chains.
+The TLS certificate on port 443 is expired, self-signed, or sent without its intermediate certificates.
 
 **Finding ids:** a scan does not report `tls-certificate-expiry` as a finding id. Its findings carry an id starting `async-expired-tls-certificate` or `async-tls-certificate-expiring-soon` or `async-tls-certificate-expiring-within-30-days`, followed by `--` and a hash of the scanned URL.
 
@@ -22677,7 +22856,7 @@ openssl s_client -connect example.com:443 -showcerts < /dev/null | openssl x509 
 ### `tls-protocol-version` [tls / high / header]
 **Weak TLS Protocol Version**
 
-Async check: reports whether the negotiated TLS protocol is TLS 1.2+ or older (TLS 1.0/1.1/SSLv3).
+The server negotiated TLS 1.0, TLS 1.1 or SSLv3 instead of TLS 1.2 or newer.
 
 **Finding ids:** a scan does not report `tls-protocol-version` as a finding id. Its findings carry an id starting `async-weak-tls-protocol-version`, followed by `--` and a hash of the scanned URL.
 
@@ -22867,7 +23046,7 @@ openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt -untrusted chain.pem s
 ### `tls-http-no-https-upgrade` [tls / medium / header]
 **Plain HTTP Does Not Redirect to HTTPS**
 
-Async check: for an http:// target, opens a raw connection to :80 with redirect-following disabled and inspects only the first response. Reports when the server answers directly (or redirects to a non-HTTPS location) instead of redirecting straight to HTTPS.
+Plain HTTP on port 80 answers directly or redirects to a non-HTTPS location instead of upgrading to HTTPS.
 
 **Risk:** A client that reaches the site over plain HTTP, via an old bookmark, a typed URL without a scheme, or a link that omits https://, is served in cleartext instead of being moved onto an encrypted connection, exposing that traffic to on-path tampering and interception.
 
@@ -22892,7 +23071,7 @@ server {
 ### `tls-cert-chain-incomplete` [tls / medium / header]
 **TLS Certificate Chain Missing Intermediate Certificate**
 
-Async check: opens a TLS connection and inspects the certificate chain the server actually sent (via the peer certificate's issuer-certificate links), independent of whether the connecting client's own trust store happens to already have the missing intermediate cached. Reports when the handshake verified successfully but the server sent only the leaf certificate.
+The server sent only the leaf certificate, so clients without the intermediate cached cannot build a chain.
 
 **Risk:** Clients that don't already have the missing intermediate cached and don't fetch it via AIA, including many non-browser HTTP libraries, older mobile OS TLS stacks, and embedded devices, cannot build a trust path to a root and will reject the connection outright.
 
@@ -22913,11 +23092,11 @@ openssl s_client -connect example.com:443 -showcerts < /dev/null 2>/dev/null | g
 ### `tls-ocsp-stapling-disabled` [tls / info / header]
 **OCSP Stapling Not Enabled**
 
-Async check: opens a TLS connection requesting OCSP status (requestOCSP) and listens for a stapled OCSP response during the handshake. Reports when an otherwise validly-verified certificate has no stapled response.
+The certificate names an OCSP responder, but the server did not staple an OCSP response during the handshake.
 
 **Risk:** Without stapling, clients that check revocation must contact the CA's OCSP responder directly on every visit, adding latency and revealing the visitor's browsing activity to the CA. Some clients soft-fail this check entirely, silently accepting a revoked certificate rather than blocking on a failed OCSP lookup.
 
-**Why it matters:** OCSP stapling (RFC 6066) lets the server attach a timestamped, CA-signed revocation status to the TLS handshake itself, so clients don't need a separate round trip to the CA to check revocation.
+**Why it matters:** OCSP stapling (RFC 6066) lets the server attach a timestamped, CA-signed revocation status to the TLS handshake itself, so clients don't need a separate round trip to the CA to check revocation. This is reported only when the certificate names an OCSP responder in its Authority Information Access extension, because a server can only staple a response it can fetch from there. Let's Encrypt stopped putting an OCSP URL in its certificates in 2025, and Google Trust Services issues without one, so those certificates cannot be stapled and are never flagged here: they are revoked through CRLs instead. A certificate that demands stapling through the Must-Staple extension is a different and more serious case, covered by tls-must-staple-not-stapled.
 
 **References:**
 - https://datatracker.ietf.org/doc/html/rfc6066#section-8
@@ -23642,7 +23821,7 @@ const CreateUserSchema = z.object({
 const body = CreateUserSchema.parse(await req.json());
 ```
 
-### `vibe-http-not-https` [vibe-code / medium / body-pattern]
+### `vibe-http-not-https` [vibe-code / low / body-pattern]
 **Hardcoded HTTP URL in Application**
 
 A hardcoded http:// URL (non-localhost) was found in the response body, indicating the application may make insecure connections to external services or load resources over plaintext HTTP.
@@ -23707,7 +23886,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 }
 ```
 
-### `vibe-missing-csrf` [vibe-code / high / body-pattern]
+### `vibe-missing-csrf` [vibe-code / medium / body-pattern]
 **Form Missing CSRF Protection**
 
 An HTML form was found without a CSRF token field. AI-generated form scaffolding commonly omits CSRF protection, assuming the developer will add it later.
@@ -24233,7 +24412,7 @@ async function serveFile(filename: string) {
 }
 ```
 
-### `vibe-weak-password-policy` [vibe-code / medium / body-pattern]
+### `vibe-weak-password-policy` [vibe-code / low / body-pattern]
 **No Password Strength Requirement Enforced**
 
 A password registration or reset handler was found without minimum length or complexity requirements. AI-generated user registration accepts any string as a password, including single characters.

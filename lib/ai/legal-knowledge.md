@@ -485,6 +485,10 @@ verified.
 
 : remembers a device you marked as trusted so you are not asked
 for a two-factor code on it again.
+- vulnradar_step_up
+
+: short-lived (10 minutes), set when an account that has no
+password confirms a security change with a code from its email.
 - vr_oauth_nonce
 
 : short-lived, set while an OAuth sign-in (Google, GitHub, or
