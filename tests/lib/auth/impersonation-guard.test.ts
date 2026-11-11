@@ -136,6 +136,10 @@ const NO_GUARD_NEEDED = new Map<string, string>([
     "billing/subscription/reactivate/route.ts",
     "undoes a pending cancellation the customer can make again themselves, starts no new charge and changes no price, so refusing it would only stop staff from reversing a period-end cancel they made while reproducing a bug",
   ],
+  [
+    "webhooks/stripe/route.ts",
+    "authenticated by Stripe's signature, never by a session, so no impersonation session can reach it; it cancels a subscription only after a second failed renewal Stripe itself reported",
+  ],
 ]);
 
 /** Every route.ts under app/api/v3, as a path relative to that root. */
