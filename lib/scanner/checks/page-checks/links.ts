@@ -27,7 +27,7 @@ const NON_POPUP_TARGETS = new Set(["_blank", "_self", "_parent", "_top"]);
 function keepsOpener(a: AnchorRef): boolean {
   const target = (a.target ?? "").trim().toLowerCase();
   if (!target) return false;
-  const rel = (a.rel ?? "").toLowerCase().split(/s+/);
+  const rel = (a.rel ?? "").toLowerCase().split(/\s+/);
   if (rel.includes("noopener") || rel.includes("noreferrer")) return false;
   if (target === "_blank") return rel.includes("opener");
   return !NON_POPUP_TARGETS.has(target);

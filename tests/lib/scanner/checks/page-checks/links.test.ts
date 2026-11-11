@@ -64,6 +64,19 @@ const fixtures: PageCheckFixtures = {
       expect: "skip",
     },
     {
+      description: "rel=opener among other tokens still opts in",
+      url: "https://example.com/",
+      body: `<a href="https://partner.example.net/" target="_blank" rel="nofollow opener">Partner</a>`,
+      expect: "fire",
+    },
+    {
+      description:
+        "a named target whose rel lists noopener after another token",
+      url: "https://example.com/",
+      body: `<a href="https://partner.example.net/" target="popup" rel="nofollow noopener">Partner</a>`,
+      expect: "skip",
+    },
+    {
       description: "a named target with rel=noopener",
       url: "https://example.com/",
       body: `<a href="https://partner.example.net/" target="popup" rel="noopener">Partner</a>`,
