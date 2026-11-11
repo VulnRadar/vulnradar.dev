@@ -41,6 +41,10 @@ describe("isSessionLikeName", () => {
     "remember_me",
     "MoodleSession",
     "AppSessionID",
+    "my_auth",
+    "remember_web_59ba36addc2b2f94",
+    "rememberMe",
+    "ASPSESSIONIDQQQSRRST",
   ])("%s is session-like", (name) => {
     expect(isSessionLikeName(name)).toBe(true);
   });
@@ -54,6 +58,13 @@ describe("isSessionLikeName", () => {
     "locale",
     "_ga",
     "loggedConversion",
+    "author_pref",
+    "authority",
+    "sidebar_state",
+    "tokenizer",
+    "remember_theme",
+    "csrf_session",
+    "_xsrf",
   ])("%s is not session-like", (name) => {
     expect(isSessionLikeName(name)).toBe(false);
   });

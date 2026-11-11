@@ -27,19 +27,39 @@ export function isCsrfTokenReadableByDesign(name: string): boolean {
   return CSRF_TOKEN_READABLE_BY_DESIGN.test(name.trim());
 }
 
-const SESSION_NAME =
-  /^(?:.*[-_.])?(?:sess|session|sid|sessid|jsessionid|phpsessid|asp\.net_sessionid|auth|token|jwt|access_token|refresh_token|remember|login)/i;
+/**
+ * A whole word of a session or auth cookie name, after camelCase is split.
+ * Whole words only: a prefix match took `author_pref` for `auth`,
+ * `sidebar_state` for `sid` and `tokenizer` for `token`.
+ */
+const SENSITIVE_COOKIE_WORD =
+  /(?:^|[_.-])(?:sess|session|sid|auth|token|jwt|access|refresh|login|secret|password|passwd|pwd)(?:$|[_.-])/;
 
-/** A CamelCase name has no separator before "Session" (`MoodleSession`). */
-const CAMEL_SESSION_NAME = /[a-z]Session(?:Id|ID)?$/;
+/**
+ * Persistent-login cookies (`remember_me`, Laravel's `remember_web_<hash>`).
+ * `remember` alone is not enough: `remember_theme` remembers a preference.
+ */
+const REMEMBER_LOGIN = /(?:^|[_.-])remember(?:me|[_.-](?:me|token|web))/;
+
+/** Any CSRF or XSRF cookie, whatever else its name says. */
+const CSRF_NAME = /csrf|xsrf/i;
 
 /**
  * Whether the name suggests the cookie carries a session or credential.
- * A CSRF token readable by design is not one, even though its name contains
- * "token".
+ *
+ * A CSRF cookie is not one, even though its name contains "token": the
+ * double-submit pattern needs script to read it, the same call
+ * sensitive-meta-tags makes for the csrf meta tag.
  */
 export function isSessionLikeName(name: string): boolean {
   const n = name.trim();
-  if (isCsrfTokenReadableByDesign(n)) return false;
-  return SESSION_NAME.test(n) || CAMEL_SESSION_NAME.test(n);
+  if (isCsrfTokenReadableByDesign(n) || CSRF_NAME.test(n)) return false;
+  const words = n.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+  // PHPSESSID and JSESSIONID are one run with no separator, and IIS appends a
+  // random suffix to ASPSESSIONID.
+  return (
+    SENSITIVE_COOKIE_WORD.test(words) ||
+    /sess(?:ion)?id$|^aspsessionid/.test(words) ||
+    REMEMBER_LOGIN.test(words)
+  );
 }

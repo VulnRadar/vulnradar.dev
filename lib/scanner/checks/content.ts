@@ -24,6 +24,7 @@ import { safeReadBody } from "../read-bounded-body";
 import { versionBelow } from "../library-fingerprints";
 import { SCANNER_UA } from "../user-agent";
 import { DISCORD_HOST_RUN } from "./code";
+import { isSessionLikeName } from "../cookie-names";
 import { startTagAttributes, tokenize } from "../html/tokenizer";
 import { plainSlashView } from "./_plain-slashes";
 import { looksBundled } from "./_sinks";
@@ -66,10 +67,6 @@ const NON_TEXT_INPUT_TYPE =
 const COOKIE_NAME_LITERAL =
   /^\s*(?:=\s*|\.\s*(?:indexOf|includes|match|search|startsWith|test)\s*\(\s*)(?:["'`]([^"'`]{0,80})|\/((?:\\.|[^/\\\n]){1,120})\/)/;
 
-/** A whole word of a session or auth cookie name, after camelCase is split. */
-const SENSITIVE_COOKIE_WORD =
-  /(?:^|[_.-])(?:sess|session|sid|auth|token|jwt|access|refresh|login|secret|password|passwd|pwd)(?:$|[_.-])/;
-
 /** The cookie name a `document.cookie` access is written against, or null
  *  when the name is computed and cannot be read from the source. */
 function cookieNameAfter(rest: string): string | null {
@@ -81,16 +78,6 @@ function cookieNameAfter(rest: string): string | null {
   if (named) return named[1];
   const bare = literal.trim();
   return quoted && /^[A-Za-z0-9_.%-]+$/.test(bare) ? bare : null;
-}
-
-function isSensitiveCookieName(name: string): boolean {
-  // The double-submit CSRF cookie (Angular's XSRF-TOKEN, Django's csrftoken)
-  // has to be readable by script, so it is the opposite of a finding, the same
-  // call sensitive-meta-tags makes for the csrf meta tag.
-  if (/csrf|xsrf/i.test(name)) return false;
-  const words = name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
-  // PHPSESSID, JSESSIONID and ASPSESSIONID are one run with no separator.
-  return SENSITIVE_COOKIE_WORD.test(words) || /sess(?:ion)?id$/.test(words);
 }
 
 /** Code that reads as an injected probe or payload, not as page behaviour. */
@@ -1485,7 +1472,7 @@ const rawDetectors: Record<string, DetectFn> = {
       const name = cookieNameAfter(
         body.slice(m.index + m[0].length, m.index + m[0].length + 200),
       );
-      if (name !== null && isSensitiveCookieName(name)) {
+      if (name !== null && isSessionLikeName(name)) {
         sensitive++;
         if (!names.includes(name) && names.length < 5) names.push(name);
       }

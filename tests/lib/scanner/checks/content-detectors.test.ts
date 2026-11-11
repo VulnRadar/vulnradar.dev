@@ -110,6 +110,23 @@ describe("document-cookie-access", () => {
     ).toBeNull();
   });
 
+  it("judges the name with the same rule as the code checks", () => {
+    for (const name of ["author_pref", "sidebar_state", "remember_theme"]) {
+      expect(
+        run("document-cookie-access", script(`document.cookie = "${name}=1";`)),
+      ).toBeNull();
+    }
+    expect(
+      run("document-cookie-access", script(`document.cookie = "my_auth=1";`)),
+    ).toContain("my_auth");
+    expect(
+      run(
+        "document-cookie-access",
+        script(`document.cookie = "csrf_session=1";`),
+      ),
+    ).toBeNull();
+  });
+
   it("DC2: a function parameter called token is not a cookie name", () => {
     expect(
       run(

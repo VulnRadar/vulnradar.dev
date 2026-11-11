@@ -50,6 +50,12 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
     {
+      description:
+        "a cookie whose name only contains auth or sid is not a session",
+      body: "<script>document.cookie = 'author_pref=' + v; document.cookie = 'sidebar_state=' + s;</script>",
+      expect: "skip",
+    },
+    {
       description: "a CSRF token written for Axios is readable by design",
       body: "<script>document.cookie = 'csrftoken=' + t + '; path=/';</script>",
       expect: "skip",
@@ -57,6 +63,11 @@ const fixtures: DetectorFixtures = {
   ],
 
   "code-cookie-write-no-samesite": [
+    {
+      description: "a cookie whose name only contains auth is not a session",
+      body: "<script>document.cookie = 'author_pref=' + v;</script>",
+      expect: "skip",
+    },
     {
       description: "a session cookie write with no SameSite fires",
       body: "<script>document.cookie = 'session=' + id + '; path=/';</script>",
