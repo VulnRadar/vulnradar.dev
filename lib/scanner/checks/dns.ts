@@ -86,6 +86,7 @@ import { randomBytes } from "crypto";
 import type { Vulnerability } from "../types";
 import { generateId, withDeadline } from "../_helpers";
 import { extractRootDomain } from "../root-domain";
+import { isPlatformSubdomain, mailDomainFor } from "../platform-hosts";
 // Shared per-scan DNS memo: checkDNSSecurity resolves several of these exact
 // records too, so routing through it collapses the duplicates when this
 // module runs inside a scan. ref: AUDIT-012#perf-09
@@ -99,10 +100,26 @@ import {
   resolveCaaOnce,
 } from "../dns-memo";
 
-function dnsErrorCode(err: unknown): string {
+export function dnsErrorCode(err: unknown): string {
   return err && typeof err === "object" && "code" in err
     ? String((err as { code: unknown }).code)
     : "";
+}
+
+/**
+ * Whether an SPF record authorizes any sender at all. `v=spf1 -all` (and the
+ * ~all and ?all spellings with no other term) is the textbook record for a
+ * domain that sends no mail, so it must not read as "this domain is
+ * configured for mail". Anything else, an include, ip4, a, mx or a +all that
+ * lets everyone send, does. Exported because async-checks.ts decides the mail
+ * posture of a domain with the same rule.
+ */
+export function spfAuthorizes(record: string): boolean {
+  return record
+    .trim()
+    .split(/\s+/)
+    .slice(1)
+    .some((term) => !/^[-~?]all$/i.test(term));
 }
 
 /** How long one lookup in this module may take before it is abandoned. */
@@ -209,15 +226,23 @@ export async function checkNsProviderConcentration(
 }
 
 /**
- * Queries a random, near-certainly-nonexistent subdomain (16 hex chars).
- * If it resolves anyway, the domain has a wildcard DNS record answering
- * for any subdomain, whether or not that subdomain was ever intentionally
- * created.
+ * Queries a random, near-certainly-nonexistent subdomain (16 hex chars) of
+ * the registrable domain. If it resolves anyway, the zone has a wildcard DNS
+ * record answering for any subdomain, whether or not that subdomain was ever
+ * intentionally created.
+ *
+ * The probe goes under the registrable domain, not under the scanned host. A
+ * wildcard does not match through an existing node, so a scan of
+ * www.example.com probed under www. and missed a zone wildcard on
+ * *.example.com. A platform subdomain is skipped: its wildcard belongs to the
+ * platform, and the owner can neither add nor remove it.
  */
 export async function checkWildcardDns(
-  domain: string,
+  host: string,
   url: string,
 ): Promise<Vulnerability[]> {
+  if (isPlatformSubdomain(host)) return [];
+  const domain = mailDomainFor(host);
   const probe = `${randomBytes(8).toString("hex")}.${domain}`;
   let recordType: "A" | "AAAA" | null = null;
 
@@ -250,7 +275,7 @@ export async function checkWildcardDns(
       "dns-wildcard-record-present",
       url,
       "Wildcard DNS Record Detected",
-      "low",
+      "info",
       `A randomly generated subdomain (${probe}) resolved successfully via ${recordType} record, meaning ${domain} has a wildcard DNS record that answers for any subdomain.`,
       `Queried ${probe}, a name never created, and it resolved (${recordType}), indicating a wildcard (*.${domain}) DNS record is in effect.`,
       "Every possible subdomain resolves, whether or not it was intentionally created. Phishing pages hosted at unexpected subdomains inherit this domain's trust and any wildcard TLS certificate, and if the wildcard target is a shared or reassignable resource, it also widens the subdomain-takeover surface: an attacker no longer needs to find an existing dangling record, any name they pick already resolves.",
@@ -273,18 +298,24 @@ export async function checkWildcardDns(
 }
 
 /**
- * RFC 7505: a domain with no MX and no SPF looks like it never sends or
- * receives mail, but absence alone is ambiguous, it could just as easily
+ * RFC 7505: a domain with no MX and no sending SPF looks like it never sends
+ * or receives mail, but absence alone is ambiguous, it could just as easily
  * be an oversight. Recommends publishing an explicit null MX rather than
  * leaving mail intent unstated. Skipped when the domain already has a
- * null MX (isNullMx) or has any real MX record at all: that gap is
- * async-checks.ts's checkMX "MX Record Missing" job, which only fires
- * when SPF exists, the complementary case to this check.
+ * null MX (isNullMx) or has any real MX record at all, and when its SPF
+ * authorizes a sender: that gap is async-checks.ts's checkMX "MX Record
+ * Missing" job, the complementary case to this check.
  */
 export async function checkNullMxRecommended(
-  domain: string,
+  host: string,
   url: string,
 ): Promise<Vulnerability[]> {
+  // The apex speaks for the whole domain's mail. A subdomain or a platform
+  // host has no MX of its own to recommend a null MX for, and the scan of
+  // the apex says it once. www. is the apex's alias, so it counts as the apex.
+  if (isPlatformSubdomain(host)) return [];
+  const domain = mailDomainFor(host);
+  if (domain !== host.toLowerCase().replace(/^www\./, "")) return [];
   if (await isNullMx(domain)) return []; // already doing the right thing
 
   try {
@@ -299,10 +330,12 @@ export async function checkNullMxRecommended(
 
   try {
     const txt = await withDeadline(resolveTxtOnce(domain), DNS_TIMEOUT_MS);
-    const hasSpf = txt
+    const spf = txt
       .map((r) => r.join(""))
-      .some((r) => r.startsWith("v=spf1"));
-    if (hasSpf) return []; // domain does send mail -- checkMX's job, not this one
+      .find((r) => /^v=spf1(?:\s|$)/i.test(r.trim()));
+    // A bare "v=spf1 -all" says "no sender", the record a non-mail domain
+    // should publish, so it does not count as "configured for mail".
+    if (spf && spfAuthorizes(spf)) return []; // sends mail: checkMX's job
   } catch {
     /* no TXT records at all -- fine, proceed */
   }
@@ -313,8 +346,8 @@ export async function checkNullMxRecommended(
       url,
       "Null MX Recommended for Non-Mail Domain",
       "info",
-      `${domain} has no MX record and no SPF record, consistent with a domain that does not send or receive email. RFC 7505 defines a null MX as the explicit way to declare that in DNS instead of leaving it unstated.`,
-      `No MX record and no v=spf1 TXT record found for ${domain}.`,
+      `${domain} has no MX record and no SPF record that authorizes a sender, consistent with a domain that does not send or receive email. RFC 7505 defines a null MX as the explicit way to declare that in DNS instead of leaving it unstated.`,
+      `No MX record, and no v=spf1 TXT record that authorizes a sender, found for ${domain}.`,
       "This is a hygiene recommendation, not a vulnerability. Leaving mail intent unstated is ambiguous to some receiving and anti-spoofing systems, while a null MX confirms the domain was never meant to send or receive mail.",
       "RFC 7505 defines a single MX record with exchange '.' as the standard way to declare a domain accepts no mail. Pairing it with a hard-fail SPF record documents both directions of that intent.",
       [

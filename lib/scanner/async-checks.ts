@@ -28,6 +28,10 @@ import {
   safeFetch,
 } from "@/lib/scanner/safe-fetch";
 import { extractRootDomain } from "@/lib/scanner/root-domain";
+import {
+  isPlatformSubdomain,
+  mailDomainFor,
+} from "@/lib/scanner/platform-hosts";
 import { computeSslGrade, recordSslGrade } from "@/lib/scanner/ssl-grade";
 import {
   resolveDnsRecords,
@@ -68,6 +72,8 @@ import {
   checkCnameChain,
   checkCaaIodef,
   checkVerificationTokenSprawl,
+  dnsErrorCode,
+  spfAuthorizes,
 } from "@/lib/scanner/checks/dns";
 import {
   checkSpfRecordQuality,
@@ -178,98 +184,134 @@ function makeVuln(
 
 // ── Individual DNS sub-checks (run in parallel) ─────────────────────────────
 
-export async function checkSPF(
-  domain: string,
-  url: string,
-): Promise<Vulnerability[]> {
-  const findings: Vulnerability[] = [];
+/**
+ * What the TXT set says about SPF, in three states rather than two.
+ *
+ * "absent" is an answer: the resolver said the name has no TXT records (or no
+ * such name) or has TXT records without a v=spf1 one. "unknown" is the
+ * absence of an answer: a timeout, SERVFAIL, a refused query. The two were
+ * one before. checkSPF swallowed ENODATA, emitted nothing, and the caller read
+ * "no Missing SPF finding" as "SPF exists", so checkMX reported "SPF is
+ * configured but there is no MX" for 17 of 17 hosts that had no TXT record at
+ * all.
+ *
+ * `authorizes` is false for a bare `v=spf1 -all`: that record says "this
+ * domain sends no mail", which is not a domain configured for mail.
+ */
+export interface SpfRead {
+  state: "present" | "absent" | "unknown";
+  record: string | null;
+  authorizes: boolean;
+}
+
+export async function readSpf(domain: string): Promise<SpfRead> {
   try {
     const txtRecords = await withDeadline(
       resolveTxtOnce(domain),
       DNS_LOOKUP_TIMEOUT_MS,
     );
-    const flat = txtRecords.map((r) => r.join(""));
-    const spf = flat.find((r) => r.startsWith("v=spf1"));
-    if (!spf) {
-      findings.push(
-        makeVuln(
-          url,
-          A.missingSpfRecord,
-          "No SPF (Sender Policy Framework) DNS record was found for this domain.",
-          `No TXT record starting with 'v=spf1' found for ${domain}.`,
-          "Without SPF, attackers can send emails that appear to come from your domain (email spoofing/phishing).",
-          "SPF is a DNS TXT record that specifies which mail servers are authorized to send email on behalf of your domain.",
-          [
-            "Add a TXT record to your DNS with your SPF policy.",
-            "Start with: v=spf1 include:_spf.google.com ~all (adjust for your mail provider).",
-            "Use -all (hard fail) for strict enforcement or ~all (soft fail) to start.",
-          ],
-          [
-            {
-              label: "DNS TXT Record",
-              language: "dns",
-              code: "v=spf1 include:_spf.google.com include:sendgrid.net -all",
-            },
-          ],
-        ),
-      );
-    } else if (spf.includes("+all")) {
-      findings.push(
-        makeVuln(
-          url,
-          A.weakSpfRecordAll,
-          "SPF record uses +all which allows any server to send email as your domain.",
-          `SPF record: ${spf}`,
-          "The +all mechanism effectively disables SPF protection, allowing anyone to spoof emails from your domain.",
-          "SPF with +all means 'allow all senders' which defeats the purpose of having SPF at all.",
-          [
-            "Change +all to -all (hard fail) or ~all (soft fail).",
-            "Audit which mail servers need to be in your SPF record.",
-          ],
-        ),
-      );
-    } else if (spf.includes("~all") && !spf.includes("-all")) {
-      findings.push(
-        makeVuln(
-          url,
-          A.spfRecordUsesSoftFailAll,
-          "SPF record uses ~all (soft fail). Unauthorized senders are flagged but mail is still delivered.",
-          `SPF record: ${spf}`,
-          "Soft fail allows unauthorized email to reach recipients — receivers may still deliver spoofed messages.",
-          "~all is a reasonable starting point, but upgrading to -all (hard fail) fully blocks unauthorized senders.",
-          [
-            "Once you have verified all legitimate mail sources are in your SPF record, change ~all to -all.",
-            "Review DMARC aggregate reports (rua=) to identify any unauthorized senders before switching.",
-          ],
-          [
-            {
-              label: "DNS TXT Record",
-              language: "dns",
-              code: "v=spf1 include:_spf.google.com include:sendgrid.net -all",
-            },
-          ],
-          75,
-        ),
-      );
+    const record =
+      txtRecords
+        .map((r) => r.join(""))
+        .find((r) => /^v=spf1(?:\s|$)/i.test(r.trim())) ?? null;
+    if (!record) return { state: "absent", record: null, authorizes: false };
+    return { state: "present", record, authorizes: spfAuthorizes(record) };
+  } catch (err: unknown) {
+    const code = dnsErrorCode(err);
+    if (code === "ENODATA" || code === "ENOTFOUND" || code === "ENOENT") {
+      return { state: "absent", record: null, authorizes: false };
     }
-    if (spf && /\bptr\b/.test(spf)) {
-      findings.push(
-        makeVuln(
-          url,
-          A.spfUsesDeprecatedPtrMechanism,
-          "The SPF record uses the deprecated ptr: mechanism. RFC 7208 §5.5 says this SHOULD NOT be published.",
-          `SPF record: ${spf}`,
-          "ptr: triggers expensive reverse DNS lookups that can timeout or fail, causing SPF temperror and mail delivery issues.",
-          "RFC 7208 explicitly deprecates ptr: because it is slow, unreliable, and counts against the 10-lookup limit.",
-          [
-            "Replace ptr: with explicit ip4:, ip6:, a:, or include: mechanisms.",
-            "Audit all senders and add their IPs or SPF include references directly.",
-          ],
-        ),
-      );
-    }
-  } catch {
-    /* DNS failed */
+    return { state: "unknown", record: null, authorizes: false };
+  }
+}
+
+export async function checkSPF(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  const findings: Vulnerability[] = [];
+  const read = await readSpf(domain);
+  // No answer is neither "present" nor "missing"; saying nothing is the
+  // honest result.
+  if (read.state === "unknown") return findings;
+  const spf = read.record;
+  if (!spf) {
+    findings.push(
+      makeVuln(
+        url,
+        A.missingSpfRecord,
+        "No SPF (Sender Policy Framework) DNS record was found for this domain.",
+        `No TXT record starting with 'v=spf1' found for ${domain}.`,
+        "Without SPF, attackers can send emails that appear to come from your domain (email spoofing/phishing).",
+        "SPF is a DNS TXT record that specifies which mail servers are authorized to send email on behalf of your domain.",
+        [
+          "Add a TXT record to your DNS with your SPF policy.",
+          "Start with: v=spf1 include:_spf.google.com ~all (adjust for your mail provider).",
+          "Use -all (hard fail) for strict enforcement or ~all (soft fail) to start.",
+        ],
+        [
+          {
+            label: "DNS TXT Record",
+            language: "dns",
+            code: "v=spf1 include:_spf.google.com include:sendgrid.net -all",
+          },
+        ],
+      ),
+    );
+  } else if (spf.includes("+all")) {
+    findings.push(
+      makeVuln(
+        url,
+        A.weakSpfRecordAll,
+        "SPF record uses +all which allows any server to send email as your domain.",
+        `SPF record: ${spf}`,
+        "The +all mechanism effectively disables SPF protection, allowing anyone to spoof emails from your domain.",
+        "SPF with +all means 'allow all senders' which defeats the purpose of having SPF at all.",
+        [
+          "Change +all to -all (hard fail) or ~all (soft fail).",
+          "Audit which mail servers need to be in your SPF record.",
+        ],
+      ),
+    );
+  } else if (spf.includes("~all") && !spf.includes("-all")) {
+    findings.push(
+      makeVuln(
+        url,
+        A.spfRecordUsesSoftFailAll,
+        "SPF record uses ~all (soft fail). Unauthorized senders are flagged but mail is still delivered.",
+        `SPF record: ${spf}`,
+        "Soft fail allows unauthorized email to reach recipients — receivers may still deliver spoofed messages.",
+        "~all is a reasonable starting point, but upgrading to -all (hard fail) fully blocks unauthorized senders.",
+        [
+          "Once you have verified all legitimate mail sources are in your SPF record, change ~all to -all.",
+          "Review DMARC aggregate reports (rua=) to identify any unauthorized senders before switching.",
+        ],
+        [
+          {
+            label: "DNS TXT Record",
+            language: "dns",
+            code: "v=spf1 include:_spf.google.com include:sendgrid.net -all",
+          },
+        ],
+        75,
+      ),
+    );
+  }
+  if (spf && /\bptr\b/.test(spf)) {
+    findings.push(
+      makeVuln(
+        url,
+        A.spfUsesDeprecatedPtrMechanism,
+        "The SPF record uses the deprecated ptr: mechanism. RFC 7208 §5.5 says this SHOULD NOT be published.",
+        `SPF record: ${spf}`,
+        "ptr: triggers expensive reverse DNS lookups that can timeout or fail, causing SPF temperror and mail delivery issues.",
+        "RFC 7208 explicitly deprecates ptr: because it is slow, unreliable, and counts against the 10-lookup limit.",
+        [
+          "Replace ptr: with explicit ip4:, ip6:, a:, or include: mechanisms.",
+          "Audit all senders and add their IPs or SPF include references directly.",
+        ],
+      ),
+    );
   }
   return findings;
 }
@@ -1578,29 +1620,61 @@ export async function checkBIMI(
 }
 
 /**
- * RFC 7505 null MX: a single MX record whose exchange is the root name
- * ("."), which formally declares "this domain accepts no mail at all."
- * Used to suppress DKIM/MTA-STS/TLS-RPT findings in checkDNSSecurity below
- * -- all three protect a real inbound/outbound mail flow, which a
- * null-MX domain has explicitly opted out of by design, not by oversight.
+ * What the MX lookup says. "null" is RFC 7505: a single MX record whose
+ * exchange is the root name ("."), which formally declares "this domain
+ * accepts no mail at all." "none" is an answer of no records; "unknown" is
+ * no answer. Feeds mailPostureOf, which decides whether the DKIM/MTA-STS/
+ * TLS-RPT findings in checkDNSSecurity apply at all.
  */
-async function hasNullMX(domain: string): Promise<boolean> {
+export type MxState = "present" | "null" | "none" | "unknown";
+
+export async function readMxState(domain: string): Promise<MxState> {
   try {
     const records = await withDeadline(resolveMxOnce(domain), 4000);
-    return records.length === 1 && /^\.?$/.test(records[0].exchange.trim());
-  } catch {
-    return false;
+    if (records.length === 0) return "none";
+    if (records.length === 1 && /^\.?$/.test(records[0].exchange.trim())) {
+      return "null";
+    }
+    return "present";
+  } catch (err: unknown) {
+    const code = dnsErrorCode(err);
+    return code === "ENODATA" || code === "ENOTFOUND" || code === "ENOENT"
+      ? "none"
+      : "unknown";
   }
+}
+
+/**
+ * What a domain does with mail, judged from its MX and SPF together.
+ *
+ *  - "null-mx": RFC 7505 null MX, an explicit "no mail at all".
+ *  - "active": a real MX, or an SPF that authorizes some sender.
+ *  - "none": no real MX, and SPF is absent or a bare -all. Nothing here
+ *    sends or receives mail, so DKIM, MTA-STS, TLS-RPT and the other
+ *    controls that protect a mail flow have nothing to protect.
+ *  - "unknown": a lookup gave no answer. Treated as active by the caller, so a
+ *    transient resolver failure can only add findings, never hide them.
+ */
+export type MailPosture = "null-mx" | "active" | "none" | "unknown";
+
+export function mailPostureOf(mx: MxState, spf: SpfRead): MailPosture {
+  if (mx === "null") return "null-mx";
+  if (mx === "present") return "active";
+  if (mx === "unknown" || spf.state === "unknown") return "unknown";
+  return spf.state === "present" && spf.authorizes ? "active" : "none";
 }
 
 export async function checkMX(
   domain: string,
   url: string,
-  hasSPF: boolean,
+  spf: SpfRead,
 ): Promise<Vulnerability[]> {
-  // Only report missing MX when SPF exists — that indicates the domain is
-  // configured for email. Domains intentionally not using email skip this.
-  if (!hasSPF) return [];
+  // Only report missing MX when SPF names a sender: that is a domain
+  // configured to send mail with nowhere to receive replies. A missing SPF
+  // says nothing about mail at all, and a bare `v=spf1 -all` is the record a
+  // domain publishes precisely because it does not use mail, so neither
+  // premise "SPF is configured" holds.
+  if (spf.state !== "present" || !spf.authorizes) return [];
   try {
     const records = await withDeadline(resolveMxOnce(domain), 4000);
     if (records.length > 0) return [];
@@ -2447,17 +2521,25 @@ async function checkZoneTransfer(
  * the full record-set fetch at the end all share one resolution per record
  * instead of each asking for it again. A fresh map per call: nothing is
  * cached between scans. ref: AUDIT-012#perf-09
+ *
+ * `domain` is the scanned host and drives the checks that are about the host
+ * itself (resolution, dangling CNAME, DNSSEC, CAA, NS, SOA). `mailDomain` is
+ * the registrable domain, which is the name that actually publishes SPF,
+ * DKIM, DMARC, MX and the zone wildcard; it defaults to `domain` so a caller
+ * that already has the apex does not have to say so twice.
  */
 export function checkDNSSecurity(
   domain: string,
   url: string,
+  mailDomain: string = domain,
 ): Promise<Vulnerability[]> {
-  return withDnsMemo(() => runDNSSecurityChecks(domain, url));
+  return withDnsMemo(() => runDNSSecurityChecks(domain, url, mailDomain));
 }
 
 async function runDNSSecurityChecks(
   domain: string,
   url: string,
+  mailDomain: string,
 ): Promise<Vulnerability[]> {
   // Run SPF first (its result gates the MX check)
   const [
@@ -2471,7 +2553,6 @@ async function runDNSSecurityChecks(
     tlsRptResult,
     mtaStsPolicyResult,
     cnameResult,
-    nullMxResult,
     spfChainResult,
     soaResult,
     dnsResolutionResult,
@@ -2491,38 +2572,45 @@ async function runDNSSecurityChecks(
     wildcardDnsResult,
     nullMxRecommendedResult,
   ] = await Promise.allSettled([
-    checkSPF(domain, url),
-    checkDMARC(domain, url),
-    checkDKIM(domain, url),
+    checkSPF(mailDomain, url),
+    checkDMARC(mailDomain, url),
+    checkDKIM(mailDomain, url),
     checkDNSSEC(domain, url),
     checkCAA(domain, url),
     checkNSCount(domain, url),
-    checkMTASTS(domain, url),
-    checkTLSRPT(domain, url),
-    checkMTASTSPolicyFile(domain, url),
+    checkMTASTS(mailDomain, url),
+    checkTLSRPT(mailDomain, url),
+    checkMTASTSPolicyFile(mailDomain, url),
     checkDanglingCNAME(domain, url),
-    hasNullMX(domain),
-    checkSPFChain(domain, url),
+    checkSPFChain(mailDomain, url),
     checkSOARefresh(domain, url),
     checkDNSResolution(domain, url),
     checkDSRecord(domain, url),
     checkDNSKEYRecord(domain, url),
-    checkTLSARecord(domain, url),
-    checkBackupMX(domain, url),
-    checkMXHostnameCname(domain, url),
-    checkDanglingMX(domain, url),
+    checkTLSARecord(mailDomain, url),
+    checkBackupMX(mailDomain, url),
+    checkMXHostnameCname(mailDomain, url),
+    checkDanglingMX(mailDomain, url),
     checkZoneTransfer(domain, url),
     checkCAAPermissive(domain, url),
     checkSOASerialStale(domain, url),
-    checkDMARCSubdomainPolicy(domain, url),
-    checkBIMI(domain, url),
-    checkDKIMWeakKey(domain, url),
+    checkDMARCSubdomainPolicy(mailDomain, url),
+    checkBIMI(mailDomain, url),
+    checkDKIMWeakKey(mailDomain, url),
     checkNsProviderConcentration(domain, url),
-    checkWildcardDns(domain, url),
+    checkWildcardDns(mailDomain, url),
+    // Takes the host: it only speaks for an apex, and decides that itself.
     checkNullMxRecommended(domain, url),
   ]);
 
-  const isNullMx = nullMxResult.status === "fulfilled" && nullMxResult.value;
+  // Both reads are already resolved by the sub-checks above and come back
+  // from the per-scan memo, so judging the mail posture costs no lookups.
+  const spf = await readSpf(mailDomain);
+  const posture = mailPostureOf(await readMxState(mailDomain), spf);
+  const isNullMx = posture === "null-mx";
+  // "none" and "null-mx" domains neither send nor receive mail. "unknown" is
+  // treated as live: a lookup that did not answer must not hide findings.
+  const mailIsLive = posture === "active" || posture === "unknown";
 
   const findings: Vulnerability[] = [];
 
@@ -2561,12 +2649,14 @@ async function runDNSSecurityChecks(
   ]) {
     if (r.status === "fulfilled") findings.push(...r.value);
   }
-  // Skip on a null-MX domain: these all protect a real mail flow (DKIM
+  // Skip when the domain has no mail flow: these all protect one (DKIM
   // signs outbound, MTA-STS/TLS-RPT secure inbound SMTP TLS, BIMI is a
   // sender-branding feature, backup MX/CNAME hygiene protects inbound
-  // delivery) that a domain declaring "no mail at all" has deliberately
-  // opted out of.
-  if (!isNullMx) {
+  // delivery). A null-MX domain has opted out of mail on purpose; a "none"
+  // domain (no real MX, SPF absent or a bare -all) never had any. Missing
+  // SPF and Missing DMARC stay above: a domain that sends nothing should
+  // still say so.
+  if (mailIsLive) {
     for (const r of [
       dkimResult,
       mtaStsResult,
@@ -2583,17 +2673,13 @@ async function runDNSSecurityChecks(
     }
   }
 
-  // MX check needs SPF result to gate on (avoid flagging non-email domains).
-  // Gate on SPF *presence*, not a finding-free SPF: a present-but-imperfect
-  // SPF (~all soft-fail, +all, ptr:) still means the domain is configured for
-  // mail, so a missing MX on it is a real finding. checkSPF emits
-  // "Missing SPF Record" exactly when no v=spf1 record exists, so the absence
-  // of that finding is the presence signal (the same title the null-MX
-  // filter above keys on).
-  const hasSPF =
-    spfResult.status === "fulfilled" &&
-    !spfResult.value.some((v) => v.title === "Missing SPF Record");
-  const mxResult = await checkMX(domain, url, hasSPF);
+  // MX check is gated on what the SPF record says (avoid flagging non-email
+  // domains). A present-but-imperfect SPF (~all soft-fail, +all, ptr:) still
+  // means the domain is configured for mail, so a missing MX on it is a real
+  // finding. An absent SPF, one that could not be read, or a bare -all is not
+  // that signal. The gate used to be "no Missing SPF finding", which was also
+  // true when the TXT lookup failed or the name had no TXT records at all.
+  const mxResult = await checkMX(mailDomain, url, spf);
   findings.push(...mxResult);
 
   // Capture the full structured DNS record set for the "fetch full DNS" panel.
@@ -3270,6 +3356,22 @@ async function checkExposedFiles(
     !/^\s*<(?:!doctype|html|\?xml)/i.test(body) &&
     envPattern.test(body);
 
+  /**
+   * A web.config is an XML document whose root element is <configuration>.
+   *
+   * The probe used to accept any 200 whose body merely contained
+   * "<configuration>", "<system.web>" or "<connectionStrings>" somewhere,
+   * which an HTML page documenting IIS satisfies, as does a catch-all that
+   * echoes the request. Requiring the root element, after an optional BOM, XML
+   * declaration and comments, and refusing an HTML content type, is what a
+   * real file passes and a page about one does not.
+   */
+  const looksLikeWebConfig = (body: string, contentType: string): boolean =>
+    !/text\/html/i.test(contentType) &&
+    /^﻿?\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<configuration[\s>]/i.test(
+      body,
+    );
+
   interface FileProbe {
     path: string;
     verify: (status: number, body: string, ct: string) => string | null;
@@ -3735,13 +3837,7 @@ async function checkExposedFiles(
     {
       path: "/web.config",
       verify: (status, body, ct) => {
-        if (status !== 200) return null;
-        if (
-          !body.includes("<configuration>") &&
-          !body.includes("<system.web>") &&
-          !body.includes("<connectionStrings>")
-        )
-          return null;
+        if (status !== 200 || !looksLikeWebConfig(body, ct)) return null;
         const hasSecrets =
           body.includes("connectionString") ||
           body.includes("password") ||
@@ -4726,6 +4822,87 @@ export async function checkBucketListing(
   return findings;
 }
 
+// Paths every CMS and storefront ships in its stock robots.txt. WordPress
+// disallows /wp-admin/, Shopify /admin, /cart, /checkout and /orders. A
+// robots.txt that lists one tells an attacker nothing they would not try
+// anyway, so these alone are not a finding.
+const STOCK_ROBOTS_PATHS = new Set([
+  "/admin",
+  "/administrator",
+  "/wp-admin",
+  "/wp-login.php",
+  "/cgi-bin",
+  "/cart",
+  "/checkout",
+  "/checkouts",
+  "/account",
+  "/orders",
+  "/login",
+  "/user",
+]);
+
+// A first segment that starts like a stock path but names something more
+// specific (/admin-portal-2024) is a path nobody would guess, which is what
+// makes listing it a disclosure.
+const STOCK_ROBOTS_STEMS = ["admin", "administrator", "wp-admin", "cgi-bin"];
+
+const REVEALING_ROBOTS_DOTFILE = /^\.(?:git|env|svn|hg|ds_store)(?![a-z0-9])/;
+const REVEALING_ROBOTS_WORDS = new Set([
+  "backup",
+  "backups",
+  "bak",
+  "dump",
+  "dumps",
+  "database",
+  "db",
+  "private",
+  "secret",
+  "secrets",
+  "internal",
+  "staging",
+  "debug",
+  "old",
+  "archive",
+  "archives",
+  "tmp",
+  "test",
+  "config",
+]);
+const REVEALING_ROBOTS_EXTENSION =
+  /\.(?:sql|bak|old|orig|zip|tar|tgz|gz|7z|rar|log|ini|conf|env|pem|key|sqlite|db)$/;
+
+/**
+ * Disallow lines in a robots.txt that name something an attacker would not
+ * already try: a dotfile, a backup or database path, a file with an archive
+ * or secret extension, or a more specific variant of a stock admin path.
+ * One entry per distinct path, in file order, as the line was written.
+ */
+function revealingRobotsLines(body: string): string[] {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const raw of body.split(/\r?\n/)) {
+    const m = /^\s*disallow\s*:\s*([^#]*)/i.exec(raw);
+    if (!m) continue;
+    const value = m[1].trim();
+    const path = value.toLowerCase().replace(/[*$]/g, "").replace(/\/+$/, "");
+    if (!path.startsWith("/") || STOCK_ROBOTS_PATHS.has(path)) continue;
+    const segments = path.split("/").filter(Boolean);
+    if (segments.length === 0) continue;
+    const revealing =
+      segments.some(
+        (s) =>
+          REVEALING_ROBOTS_DOTFILE.test(s) ||
+          s.split(/[^a-z0-9]+/).some((w) => REVEALING_ROBOTS_WORDS.has(w)),
+      ) ||
+      REVEALING_ROBOTS_EXTENSION.test(segments[segments.length - 1]) ||
+      STOCK_ROBOTS_STEMS.some((stem) => segments[0].startsWith(stem));
+    if (!revealing || seen.has(path)) continue;
+    seen.add(path);
+    lines.push(`Disallow: ${value}`);
+  }
+  return lines;
+}
+
 export async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
   const findings: Vulnerability[] = [];
   try {
@@ -4763,21 +4940,10 @@ export async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
     }
 
     const body = await safeReadBody(res, 65536, 5000);
-    if (
-      !body.includes("User-agent") &&
-      !body.includes("Disallow") &&
-      !body.includes("Allow")
-    )
-      return findings;
+    // RFC 9309: field names are case-insensitive, so an all-lowercase file
+    // is as much a robots.txt as the capitalised one.
+    if (!/^\s*(?:user-agent|disallow|allow)\s*:/im.test(body)) return findings;
 
-    // Single combined regex for all sensitive paths
-    const sensitiveRegex =
-      /Disallow:\s*(\/(?:admin|backup|config|database|private|secret|\.env|\.git|wp-admin|cgi-bin|tmp|internal|api\/internal|debug|staging|test)\b[^\n]*)/gi;
-    const matches: string[] = [];
-    let match: RegExpExecArray | null;
-    while ((match = sensitiveRegex.exec(body)) !== null) {
-      matches.push(match[0].trim());
-    }
     // Dedupe: a robots.txt with more than one User-agent block (e.g. one
     // for "*" and another scoped to specific AI crawlers) legitimately
     // repeats the same Disallow line under each block -- that's valid
@@ -4785,7 +4951,7 @@ export async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
     // this, a site disallowing the same one sensitive path under two
     // User-agent blocks got reported as "2 sensitive path(s)" listing the
     // identical line twice.
-    const found = [...new Set(matches)];
+    const found = revealingRobotsLines(body);
 
     if (found.length > 0) {
       findings.push(
@@ -5146,19 +5312,46 @@ async function boundedBranch(
     },
   );
   const branchTimeoutMs = await getSetting("SCANNER_ASYNC_BRANCH_TIMEOUT_MS");
-  return Promise.race([
-    settled,
-    new Promise<{
-      label: string;
-      findings: Vulnerability[];
-      timedOut: boolean;
-    }>((resolve) =>
-      setTimeout(
-        () => resolve({ label, findings: NO_FINDINGS, timedOut: true }),
-        branchTimeoutMs,
-      ),
-    ),
-  ]);
+  return resolveWithin(settled, branchTimeoutMs, {
+    label,
+    findings: NO_FINDINGS,
+    timedOut: true,
+  });
+}
+
+/**
+ * Settle with `promise`, or resolve with `fallback` once `ms` have passed,
+ * whichever comes first. withDeadline's sibling for a caller that wants a
+ * value on timeout rather than a rejection.
+ *
+ * The two Promise.race sites this replaced paired the work with a bare
+ * `new Promise(resolve => setTimeout(...))`. That timer was never cleared, so
+ * every branch that finished in a second still left a 12 second timer pending
+ * behind it, and the 8 second extended-DNS timer likewise: a worker could not
+ * go idle, and a test using fake timers saw them as outstanding. The timer is
+ * cleared the moment the race is decided and unref'd, as withDeadline's is.
+ * The work itself is abandoned, not cancelled; a late rejection is absorbed
+ * by the handler attached here.
+ */
+function resolveWithin<T>(
+  promise: Promise<T>,
+  ms: number,
+  fallback: T,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    if (typeof timer.unref === "function") timer.unref();
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
 }
 
 /**
@@ -5236,55 +5429,64 @@ function buildBranches(
 
   // DNS checks map to "dns" category (SPF, DMARC, DKIM, DNSSEC)
   if (wantsHost && (runAll || allowed!.has("dns"))) {
+    // The registrable domain is the name that publishes SPF, DKIM, DMARC and
+    // MX; www.fastmail.com has none of its own and was reported as missing
+    // all of them. See mailDomainFor.
+    const mailDomain = mailDomainFor(hostname);
     branches.push({
       label: "dns",
+      // A subdomain of a hosting platform's zone (x.vercel.app) is not the
+      // owner's to configure: every record the branch would judge belongs to
+      // the platform. The branch keeps its label so progress denominators do
+      // not change; it just has nothing to say.
       run: () =>
-        Promise.allSettled([
-          checkDNSSecurity(hostname, url),
-          // The DNSSEC-parameter, zone-hygiene and email-policy-content
-          // probes in checks/dns.ts and checks/email.ts. They run in their
-          // own withDnsMemo scope rather than checkDNSSecurity's, because
-          // that one is opened inside checkDNSSecurity and a nested scope
-          // would not be shared either way; the memo still collapses the
-          // repeats WITHIN this group, which is where they are (four of
-          // these read the same apex TXT set).
-          //
-          // Raced against a budget well under the branch ceiling. Several of
-          // these are two- or three-round probes (SPF include chains, the
-          // DMARC report authorization lookup, MTA-STS policy fetch then MX),
-          // so their worst case is a multiple of one DNS timeout. Without
-          // this race that worst case would take the WHOLE dns branch past
-          // SCANNER_ASYNC_BRANCH_TIMEOUT_MS and discard checkDNSSecurity's 28
-          // sub-checks along with it: a slow resolver would cost the scan the
-          // findings it already had. Timing out here costs only this group.
-          Promise.race([
-            withDnsMemo(() =>
-              Promise.allSettled([
-                checkDnssecAlgorithmStrength(hostname, url),
-                checkDsDigestAlgorithm(hostname, url),
-                checkNsecParameters(hostname, url),
-                checkCnameChain(hostname, url),
-                checkCaaIodef(hostname, url),
-                checkVerificationTokenSprawl(hostname, url),
-                checkSpfRecordQuality(hostname, url),
-                checkDmarcReporting(hostname, url),
-                checkDkimSelectorFlags(hostname, url),
-                checkBimiVmc(hostname, url),
-                checkMxIpLiteral(hostname, url),
-                checkMtaStsPolicyContent(hostname, url),
-              ]).then((results) =>
-                results.flatMap((r) =>
-                  r.status === "fulfilled" ? r.value : [],
+        isPlatformSubdomain(hostname)
+          ? Promise.resolve([])
+          : Promise.allSettled([
+              checkDNSSecurity(hostname, url, mailDomain),
+              // The DNSSEC-parameter, zone-hygiene and email-policy-content
+              // probes in checks/dns.ts and checks/email.ts. They run in their
+              // own withDnsMemo scope rather than checkDNSSecurity's, because
+              // that one is opened inside checkDNSSecurity and a nested scope
+              // would not be shared either way; the memo still collapses the
+              // repeats WITHIN this group, which is where they are (four of
+              // these read the same apex TXT set).
+              //
+              // Bounded by a budget well under the branch ceiling. Several of
+              // these are two- or three-round probes (SPF include chains, the
+              // DMARC report authorization lookup, MTA-STS policy fetch then MX),
+              // so their worst case is a multiple of one DNS timeout. Without
+              // this race that worst case would take the WHOLE dns branch past
+              // SCANNER_ASYNC_BRANCH_TIMEOUT_MS and discard checkDNSSecurity's 28
+              // sub-checks along with it: a slow resolver would cost the scan the
+              // findings it already had. Timing out here costs only this group.
+              resolveWithin<Vulnerability[]>(
+                withDnsMemo(() =>
+                  Promise.allSettled([
+                    checkDnssecAlgorithmStrength(hostname, url),
+                    checkDsDigestAlgorithm(hostname, url),
+                    checkNsecParameters(hostname, url),
+                    checkCnameChain(hostname, url),
+                    checkCaaIodef(hostname, url),
+                    checkVerificationTokenSprawl(hostname, url),
+                    checkSpfRecordQuality(mailDomain, url),
+                    checkDmarcReporting(mailDomain, url),
+                    checkDkimSelectorFlags(mailDomain, url),
+                    checkBimiVmc(mailDomain, url),
+                    checkMxIpLiteral(mailDomain, url),
+                    checkMtaStsPolicyContent(mailDomain, url),
+                  ]).then((results) =>
+                    results.flatMap((r) =>
+                      r.status === "fulfilled" ? r.value : [],
+                    ),
+                  ),
                 ),
+                EXTENDED_DNS_BUDGET_MS,
+                [],
               ),
+            ]).then((results) =>
+              results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])),
             ),
-            new Promise<Vulnerability[]>((resolve) =>
-              setTimeout(() => resolve([]), EXTENDED_DNS_BUDGET_MS),
-            ),
-          ]),
-        ]).then((results) =>
-          results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])),
-        ),
     });
   }
 

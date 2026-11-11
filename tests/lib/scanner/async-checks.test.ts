@@ -96,6 +96,9 @@ import { userAgentOf } from "./_user-agent-of";
 import { PinnedDispatcher } from "@/lib/scanner/safe-fetch";
 import {
   checkSPF,
+  readSpf,
+  mailPostureOf,
+  checkMX,
   checkSPFChain,
   checkDMARC,
   checkDKIM,
@@ -235,6 +238,161 @@ describe("checkSPF", () => {
   it("swallows DNS resolution failures (returns no findings)", async () => {
     dnsMock.resolveTxt.mockRejectedValueOnce(new Error("ENOTFOUND"));
     const findings = await checkSPF("example.com", "https://example.com");
+    expect(findings).toEqual([]);
+  });
+
+  it("reports a name with no TXT records at all as Missing SPF", async () => {
+    // ENODATA is an answer ("nothing there"), not a failure to get one.
+    dnsMock.resolveTxt.mockRejectedValueOnce(dnsError("ENODATA"));
+    const findings = await checkSPF("example.com", "https://example.com");
+    expect(findings.map((f) => f.title)).toEqual(["Missing SPF Record"]);
+  });
+
+  it("says nothing when the lookup never got an answer", async () => {
+    dnsMock.resolveTxt.mockRejectedValueOnce(dnsError("ETIMEOUT"));
+    expect(await checkSPF("example.com", "https://example.com")).toEqual([]);
+    dnsMock.resolveTxt.mockRejectedValueOnce(dnsError("ESERVFAIL"));
+    expect(await checkSPF("example.com", "https://example.com")).toEqual([]);
+  });
+
+  it("stays quiet on v=spf1 -all, the record of a domain that sends no mail", async () => {
+    dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf1 -all"]]);
+    expect(await checkSPF("example.com", "https://example.com")).toEqual([]);
+  });
+});
+
+describe("readSpf", () => {
+  it("is present and authorizing for a record that names a sender", async () => {
+    dnsMock.resolveTxt.mockResolvedValueOnce([
+      ["google-site-verification=abc"],
+      ["v=spf1 include:_spf.google.com ~all"],
+    ]);
+    expect(await readSpf("example.com")).toEqual({
+      state: "present",
+      record: "v=spf1 include:_spf.google.com ~all",
+      authorizes: true,
+    });
+  });
+
+  it("is present but not authorizing for a bare -all", async () => {
+    dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf1 -all"]]);
+    const read = await readSpf("vercel.app");
+    expect(read.state).toBe("present");
+    expect(read.authorizes).toBe(false);
+  });
+
+  it("is absent for TXT records without a v=spf1, for ENODATA and for NXDOMAIN", async () => {
+    dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf2.0"]]);
+    expect((await readSpf("a.example")).state).toBe("absent");
+    dnsMock.resolveTxt.mockRejectedValueOnce(dnsError("ENODATA"));
+    expect((await readSpf("b.example")).state).toBe("absent");
+    dnsMock.resolveTxt.mockRejectedValueOnce(dnsError("ENOTFOUND"));
+    expect((await readSpf("c.example")).state).toBe("absent");
+  });
+
+  it("is unknown for a timeout, a refusal or an error with no code", async () => {
+    dnsMock.resolveTxt.mockRejectedValueOnce(dnsError("ETIMEOUT"));
+    expect((await readSpf("a.example")).state).toBe("unknown");
+    dnsMock.resolveTxt.mockRejectedValueOnce(dnsError("EREFUSED"));
+    expect((await readSpf("b.example")).state).toBe("unknown");
+    dnsMock.resolveTxt.mockRejectedValueOnce(new Error("boom"));
+    expect((await readSpf("c.example")).state).toBe("unknown");
+  });
+
+  it("does not take a record that merely starts with the letters v=spf1", async () => {
+    dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf10 include:x -all"]]);
+    expect((await readSpf("example.com")).state).toBe("absent");
+  });
+});
+
+describe("mailPostureOf", () => {
+  const present = (authorizes: boolean) =>
+    ({ state: "present", record: "v=spf1", authorizes }) as const;
+  const absent = { state: "absent", record: null, authorizes: false } as const;
+  const unknown = {
+    state: "unknown",
+    record: null,
+    authorizes: false,
+  } as const;
+
+  it("is null-mx for a null MX whatever SPF says", () => {
+    expect(mailPostureOf("null", absent)).toBe("null-mx");
+    expect(mailPostureOf("null", present(true))).toBe("null-mx");
+  });
+
+  it("is active for a real MX", () => {
+    expect(mailPostureOf("present", absent)).toBe("active");
+  });
+
+  it("is active for no MX but an SPF that names a sender", () => {
+    expect(mailPostureOf("none", present(true))).toBe("active");
+  });
+
+  it("is none for no MX and an SPF that is absent or a bare -all", () => {
+    expect(mailPostureOf("none", absent)).toBe("none");
+    expect(mailPostureOf("none", present(false))).toBe("none");
+  });
+
+  it("is unknown whenever a lookup did not answer", () => {
+    expect(mailPostureOf("unknown", absent)).toBe("unknown");
+    expect(mailPostureOf("none", unknown)).toBe("unknown");
+  });
+});
+
+describe("checkMX", () => {
+  const spf = (record: string) =>
+    ({
+      state: "present",
+      record,
+      authorizes: !/^v=spf1\s+[-~?]all$/i.test(record),
+    }) as const;
+
+  it("fires for a domain whose SPF names a sender but that has no MX", async () => {
+    dnsMock.resolveMx.mockRejectedValueOnce(dnsError("ENODATA"));
+    const findings = await checkMX(
+      "example.com",
+      "https://example.com",
+      spf("v=spf1 include:_spf.google.com ~all"),
+    );
+    expect(findings.map((f) => f.title)).toEqual(["MX Record Missing"]);
+  });
+
+  it("is quiet for a domain with no TXT records at all (SPF absent)", async () => {
+    const findings = await checkMX("example.com", "https://example.com", {
+      state: "absent",
+      record: null,
+      authorizes: false,
+    });
+    expect(findings).toEqual([]);
+    expect(dnsMock.resolveMx).not.toHaveBeenCalled();
+  });
+
+  it("is quiet for v=spf1 -all, which declares that the domain sends no mail", async () => {
+    dnsMock.resolveMx.mockRejectedValueOnce(dnsError("ENODATA"));
+    const findings = await checkMX(
+      "vercel.app",
+      "https://vercel.app",
+      spf("v=spf1 -all"),
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("is quiet when the SPF could not be read", async () => {
+    const findings = await checkMX("example.com", "https://example.com", {
+      state: "unknown",
+      record: null,
+      authorizes: false,
+    });
+    expect(findings).toEqual([]);
+  });
+
+  it("is quiet when the MX lookup itself failed", async () => {
+    dnsMock.resolveMx.mockRejectedValueOnce(dnsError("ETIMEOUT"));
+    const findings = await checkMX(
+      "example.com",
+      "https://example.com",
+      spf("v=spf1 include:_spf.google.com ~all"),
+    );
     expect(findings).toEqual([]);
   });
 });
@@ -1496,6 +1654,245 @@ describe("checkDNSSecurity", () => {
   });
 });
 
+// A DNS lookup that is the answer "there is nothing here". The orchestrator
+// used to read a swallowed ENODATA as "SPF exists", which is what produced
+// "SPF is configured but there is no MX" for hosts with no TXT at all.
+describe("checkDNSSecurity: what the SPF and MX answers say about mail", () => {
+  const doh = () =>
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: () => Promise.resolve({ AD: false }),
+    });
+
+  it("reports Missing SPF and no MX finding for a name whose TXT lookup is ENODATA", async () => {
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ENODATA"));
+    dnsMock.resolveMx.mockRejectedValue(dnsError("ENODATA"));
+    doh();
+    const titles = (
+      await checkDNSSecurity("example.com", "https://example.com")
+    ).map((f) => f.title);
+    expect(titles).toContain("Missing SPF Record");
+    expect(titles).not.toContain("MX Record Missing");
+  });
+
+  it("is quiet about SPF and MX for v=spf1 -all with no MX (the vercel.app shape)", async () => {
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (name === "example.com") return [["v=spf1 -all"]];
+      throw dnsError("ENODATA");
+    });
+    dnsMock.resolveMx.mockRejectedValue(dnsError("ENODATA"));
+    doh();
+    const titles = (
+      await checkDNSSecurity("example.com", "https://example.com")
+    ).map((f) => f.title);
+    expect(titles).not.toContain("Missing SPF Record");
+    expect(titles).not.toContain("MX Record Missing");
+  });
+
+  it("reports MX Record Missing when SPF names a sender and there is no MX", async () => {
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (name === "example.com")
+        return [["v=spf1 include:_spf.google.com ~all"]];
+      throw dnsError("ENODATA");
+    });
+    dnsMock.resolveMx.mockRejectedValue(dnsError("ENODATA"));
+    doh();
+    const titles = (
+      await checkDNSSecurity("example.com", "https://example.com")
+    ).map((f) => f.title);
+    expect(titles).toContain("MX Record Missing");
+  });
+
+  it("does not claim the SPF record is missing when the TXT lookup timed out", async () => {
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ETIMEOUT"));
+    dnsMock.resolveMx.mockRejectedValue(dnsError("ENODATA"));
+    doh();
+    const titles = (
+      await checkDNSSecurity("example.com", "https://example.com")
+    ).map((f) => f.title);
+    expect(titles).not.toContain("Missing SPF Record");
+    expect(titles).not.toContain("MX Record Missing");
+  });
+
+  describe("a domain with no mail flow (no real MX, SPF absent or -all)", () => {
+    it("keeps Missing SPF and Missing DMARC but drops the controls that protect a mail flow", async () => {
+      dnsMock.resolveTxt.mockRejectedValue(dnsError("ENODATA"));
+      dnsMock.resolveMx.mockRejectedValue(dnsError("ENODATA"));
+      doh();
+      const titles = (
+        await checkDNSSecurity("example.com", "https://example.com")
+      ).map((f) => f.title);
+      expect(titles).toContain("Missing SPF Record");
+      expect(titles).toContain("Missing DMARC Record");
+      expect(titles).toContain("Null MX Recommended for Non-Mail Domain");
+      expect(titles).not.toContain("No DKIM Records Found");
+      expect(titles).not.toContain("MTA-STS Record Missing");
+      expect(titles).not.toContain("TLS-RPT Record Missing");
+    });
+  });
+
+  describe("a domain with a live mail flow", () => {
+    it("still reports a missing DKIM, MTA-STS and TLS-RPT", async () => {
+      dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+        if (name === "example.com")
+          return [["v=spf1 include:_spf.google.com -all"]];
+        throw dnsError("ENODATA");
+      });
+      dnsMock.resolveMx.mockResolvedValue([
+        { exchange: "aspmx.l.google.com", priority: 1 },
+      ]);
+      doh();
+      const titles = (
+        await checkDNSSecurity("example.com", "https://example.com")
+      ).map((f) => f.title);
+      expect(titles).toContain("No DKIM Records Found");
+      expect(titles).toContain("MTA-STS Record Missing");
+    });
+
+    it("treats a posture it could not read as live, so a blip cannot hide findings", async () => {
+      dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+        if (name === "example.com") return [["v=spf1 include:x.example -all"]];
+        throw dnsError("ENODATA");
+      });
+      dnsMock.resolveMx.mockRejectedValue(dnsError("ETIMEOUT"));
+      doh();
+      const titles = (
+        await checkDNSSecurity("example.com", "https://example.com")
+      ).map((f) => f.title);
+      expect(titles).toContain("No DKIM Records Found");
+    });
+  });
+
+  describe("the mail domain argument", () => {
+    it("judges mail records on the mail domain and host records on the host", async () => {
+      dnsMock.resolveTxt.mockRejectedValue(dnsError("ENODATA"));
+      dnsMock.resolveMx.mockRejectedValue(dnsError("ENODATA"));
+      doh();
+      await checkDNSSecurity(
+        "www.example.com",
+        "https://www.example.com",
+        "example.com",
+      );
+      const txtNames = dnsMock.resolveTxt.mock.calls.map((c) => String(c[0]));
+      // SPF, DMARC and the DKIM selectors are looked up under example.com.
+      expect(txtNames).toContain("example.com");
+      expect(txtNames).toContain("_dmarc.example.com");
+      expect(txtNames.some((n) => n.endsWith("_domainkey.example.com"))).toBe(
+        true,
+      );
+      // Nothing mail-shaped is asked of the www name. (The bare www name is
+      // read once for the structured DNS records panel, which describes the
+      // scanned host.)
+      expect(
+        txtNames.filter(
+          (n) => n !== "www.example.com" && n.includes("www.example.com"),
+        ),
+      ).toEqual([]);
+      // MX belongs to the mail domain too.
+      expect(dnsMock.resolveMx).toHaveBeenCalledWith("example.com");
+      // NS is a property of the host being scanned.
+      expect(dnsMock.resolveNs).toHaveBeenCalledWith("www.example.com");
+    });
+  });
+});
+
+describe("the dns branch and hosting platforms", () => {
+  function dnsCalls() {
+    return [
+      ...dnsMock.resolveTxt.mock.calls,
+      ...dnsMock.resolveMx.mock.calls,
+      ...dnsMock.resolveNs.mock.calls,
+      ...dnsMock.resolveSoa.mock.calls,
+      ...dnsMock.resolveCname.mock.calls,
+      ...dnsMock.resolveCaa.mock.calls,
+      ...dnsMock.resolve4.mock.calls,
+      ...dnsMock.resolve6.mock.calls,
+    ];
+  }
+
+  it("makes no DNS lookup and returns nothing for a subdomain of vercel.app", async () => {
+    const findings = await runAsyncChecks(
+      "https://civilian-operations.vercel.app",
+      ["dns"],
+    );
+    expect(findings).toEqual([]);
+    expect(dnsCalls()).toEqual([]);
+  });
+
+  it("still plans the dns branch for a platform host, so progress denominators do not change", () => {
+    expect(
+      getPlannedAsyncBranches("https://civilian-operations.vercel.app", [
+        "dns",
+      ]),
+    ).toEqual(["dns"]);
+  });
+
+  it.each([
+    "https://notvercel.app",
+    "https://vercel.app.example.com",
+    "https://vercel.app",
+  ])("still runs for %s", async (url) => {
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ENODATA"));
+    dnsMock.resolveMx.mockRejectedValue(dnsError("ENODATA"));
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: () => Promise.resolve({ AD: false }),
+    });
+    await runAsyncChecks(url, ["dns"]);
+    expect(dnsMock.resolveTxt).toHaveBeenCalled();
+  });
+
+  it("judges www.fastmail.com by fastmail.com's records, not its own", async () => {
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (name === "fastmail.com")
+        return [["v=spf1 include:spf.messagingengine.com ?all"]];
+      if (name === "_dmarc.fastmail.com") return [["v=DMARC1; p=none"]];
+      if (name.endsWith("www.fastmail.com")) throw dnsError("ENOTFOUND");
+      throw dnsError("ENODATA");
+    });
+    dnsMock.resolveMx.mockImplementation(async (name: string) => {
+      if (name === "fastmail.com")
+        return [{ exchange: "in1-smtp.messagingengine.com", priority: 10 }];
+      throw dnsError("ENODATA");
+    });
+    dnsMock.resolveCname.mockImplementation(async (name: string) => {
+      if (name === "fm1._domainkey.fastmail.com")
+        return ["fm1.fastmail.com.dkim.fmhosted.com"];
+      throw dnsError("ENOTFOUND");
+    });
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: () => Promise.resolve({ AD: false }),
+    });
+
+    const titles = (
+      await runAsyncChecks("https://www.fastmail.com/", ["dns"])
+    ).map((f) => f.title);
+
+    expect(titles).not.toContain("Missing SPF Record");
+    expect(titles).not.toContain("No DKIM Records Found");
+    expect(titles).not.toContain("Null MX Recommended for Non-Mail Domain");
+  });
+
+  it("leaves no timer pending once the dns branch has finished", async () => {
+    vi.useFakeTimers();
+    try {
+      dnsMock.resolveTxt.mockRejectedValue(dnsError("ENODATA"));
+      dnsMock.resolveMx.mockRejectedValue(dnsError("ENODATA"));
+      dnsMock.resolveSoa.mockRejectedValue(dnsError("ENODATA"));
+      dnsMock.resolveCaa.mockRejectedValue(dnsError("ENODATA"));
+      vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+        {
+          json: () => Promise.resolve({ AD: false }),
+        },
+      );
+      await runAsyncChecks("https://example.com", ["dns"]);
+      // The branch ceiling (12s) and the extended-DNS budget (8s) each used to
+      // leave a bare setTimeout behind a branch that finished in milliseconds.
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 // ── checkTLSCert ─────────────────────────────────────────────────────
 
 describe("checkTLSCert", () => {
@@ -1800,7 +2197,7 @@ describe("checkRobotsTxt", () => {
       status: 200,
       get body() {
         return streamOf(
-          "User-agent: *\nDisallow: /admin\n\nUser-agent: GPTBot\nDisallow: /admin\n",
+          "User-agent: *\nDisallow: /backup\n\nUser-agent: GPTBot\nDisallow: /backup\n",
         );
       },
     });
@@ -1809,7 +2206,89 @@ describe("checkRobotsTxt", () => {
     // Reported as one distinct sensitive path, not "2 sensitive path(s)"
     // with the same line listed twice.
     expect(findings[0].evidence).toContain("found 1 sensitive path(s)");
-    expect(findings[0].evidence.match(/Disallow:\s*\/admin/gi)?.length).toBe(1);
+    expect(findings[0].evidence.match(/Disallow:\s*\/backup/gi)?.length).toBe(
+      1,
+    );
+  });
+
+  describe("what counts as revealing", () => {
+    async function robots(body: string) {
+      vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+        {
+          ok: true,
+          status: 200,
+          get body() {
+            return streamOf(body);
+          },
+        },
+      );
+      return checkRobotsTxt("https://example.com");
+    }
+
+    it("stays quiet on the stock WordPress robots.txt", async () => {
+      expect(
+        await robots(
+          "User-agent: *\nDisallow: /wp-admin/\nAllow: /wp-admin/admin-ajax.php\n",
+        ),
+      ).toEqual([]);
+    });
+
+    it("stays quiet on Shopify's documented default", async () => {
+      expect(
+        await robots(
+          [
+            "User-agent: *",
+            "Disallow: /admin",
+            "Disallow: /cart",
+            "Disallow: /orders",
+            "Disallow: /checkouts/",
+            "Disallow: /checkout",
+            "Disallow: /carts",
+            "Disallow: /account",
+            "Disallow: /collections/*sort_by*",
+            "Disallow: /*/checkouts",
+            "Disallow: /search",
+          ].join("\n"),
+        ),
+      ).toEqual([]);
+    });
+
+    it("reads the field name case-insensitively", async () => {
+      const findings = await robots("user-agent: *\ndisallow: /backup\n");
+      expect(findings).toHaveLength(1);
+      expect(findings[0].evidence).toContain("/backup");
+    });
+
+    it.each([
+      "/backup",
+      "/.env",
+      "/.git/",
+      "/admin-portal-2024/",
+      "/db/dump.sql",
+      "/staging",
+      "/exports/customers.zip",
+      "/private/",
+    ])("flags %s", async (path) => {
+      const findings = await robots(`User-agent: *\nDisallow: ${path}\n`);
+      expect(findings).toHaveLength(1);
+    });
+
+    it("lists only the revealing lines when stock and revealing paths are mixed", async () => {
+      const findings = await robots(
+        "User-agent: *\nDisallow: /admin\nDisallow: /cart\nDisallow: /backup-2024/\n",
+      );
+      expect(findings).toHaveLength(1);
+      expect(findings[0].evidence).toContain("found 1 sensitive path(s)");
+      expect(findings[0].evidence).toContain("/backup-2024/");
+      expect(findings[0].evidence).not.toMatch(/Disallow:\s*\/admin\s/);
+      expect(findings[0].evidence).not.toContain("/cart");
+    });
+
+    it("ignores trailing comments and wildcards when comparing against the stock list", async () => {
+      expect(
+        await robots("User-agent: *\nDisallow: /admin/* # keep out\n"),
+      ).toEqual([]);
+    });
   });
 
   it("returns no findings when robots.txt only blocks public paths", async () => {
@@ -2270,6 +2749,56 @@ describe("checkLiveFetch: service exposure probes", () => {
     );
     expect(grafana).toBeDefined();
     expect(grafana!.evidence).not.toContain("Payments production");
+  });
+
+  describe("IIS web.config", () => {
+    const real =
+      '<?xml version="1.0" encoding="utf-8"?>\n<configuration>\n  <connectionStrings><add name="Db" connectionString="Server=x;Password=y" /></connectionStrings>\n</configuration>';
+
+    it("reports a real web.config", async () => {
+      answer("/web.config", 200, real, "application/xml");
+      expect(await titles()).toContain("IIS web.config File Exposed");
+    });
+
+    it("reports one served without an XML declaration or a content type that says XML", async () => {
+      answer(
+        "/web.config",
+        200,
+        "<configuration><system.web></system.web></configuration>",
+        "text/plain",
+      );
+      expect(await titles()).toContain("IIS web.config File Exposed");
+    });
+
+    it("does not report a catch-all HTML page that happens to mention the tags", async () => {
+      answer(
+        "/web.config",
+        200,
+        "<!doctype html><html><body><pre>&lt;configuration&gt;</pre><code><configuration></code></body></html>",
+        "text/html",
+      );
+      expect(await titles()).not.toContain("IIS web.config File Exposed");
+    });
+
+    it("does not report HTML served without a content type", async () => {
+      answer(
+        "/web.config",
+        200,
+        "<html><body>How to edit <configuration> in IIS</body></html>",
+        "text/plain",
+      );
+      expect(await titles()).not.toContain("IIS web.config File Exposed");
+    });
+
+    it("does not report a document that has <configuration> only somewhere inside", async () => {
+      answer(
+        "/web.config",
+        200,
+        '<?xml version="1.0"?><error>unknown element <configuration> here</error>',
+        "application/xml",
+      );
+      expect(await titles()).not.toContain("IIS web.config File Exposed");
+    });
   });
 
   it("does not take another application's JSON at /api/search for Grafana", async () => {
