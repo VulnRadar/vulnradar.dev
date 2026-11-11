@@ -434,6 +434,12 @@ describe("POST /api/v3/admin/staff-invites — invite lifecycle", () => {
     const [tokenHash, storedEmail, storedRole] = insertCall[1] as string[];
     expect(storedEmail).toBe("new@example.com");
     expect(storedRole).toBe("support");
+    // The same statement clears this address's lapsed, unaccepted invites, so
+    // re-inviting someone also clears the Overview's expired-invite warning.
+    // What Postgres deletes is proven in tests/integration/staff-invites.test.ts.
+    expect(insertCall[0]).toMatch(
+      /DELETE FROM staff_invites\s+WHERE LOWER\(email\) = \$2 AND accepted_at IS NULL AND expires_at <= NOW\(\)/,
+    );
     // 64 hex chars = SHA-256 digest, never the raw mailed token.
     expect(tokenHash).toMatch(/^[a-f0-9]{64}$/);
 
@@ -536,16 +542,29 @@ describe("GET /api/v3/admin/staff-invites — authorization", () => {
 });
 
 describe("GET /api/v3/admin/staff-invites — listing", () => {
-  it("returns only pending (unaccepted, unexpired) invites for an admin", async () => {
+  it("returns every unaccepted invite, expired ones flagged, for an admin", async () => {
+    // Expired rows used to be filtered out, so the Overview counted them as
+    // a warning that no screen could show or clear.
     queueRole("admin");
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
-          id: 7,
+          id: 8,
           email: "pending@example.com",
           role: "support",
           created_at: "2026-08-18T00:00:00.000Z",
           expires_at: "2026-08-25T00:00:00.000Z",
+          expired: false,
+          invited_by_name: "Root Admin",
+          invited_by_email: "root@example.com",
+        },
+        {
+          id: 7,
+          email: "lapsed@example.com",
+          role: "ops",
+          created_at: "2026-08-01T00:00:00.000Z",
+          expires_at: "2026-08-08T00:00:00.000Z",
+          expired: true,
           invited_by_name: "Root Admin",
           invited_by_email: "root@example.com",
         },
@@ -555,14 +574,24 @@ describe("GET /api/v3/admin/staff-invites — listing", () => {
     const res = await GET();
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.invites).toHaveLength(1);
-    expect(json.invites[0].email).toBe("pending@example.com");
+    expect(
+      json.invites.map((i: { email: string; expired: boolean }) => [
+        i.email,
+        i.expired,
+      ]),
+    ).toEqual([
+      ["pending@example.com", false],
+      ["lapsed@example.com", true],
+    ]);
 
-    // The listing query filters to still-actionable rows only.
     const selectCall = mockQuery.mock.calls[1];
     expect(selectCall[0]).toContain("FROM staff_invites");
     expect(selectCall[0]).toContain("accepted_at IS NULL");
-    expect(selectCall[0]).toContain("expires_at > NOW()");
+    expect(selectCall[0]).not.toContain("expires_at > NOW()");
+    // The flag is computed by the database clock, not the browser's.
+    expect(selectCall[0]).toContain("expires_at <= NOW() AS expired");
+    // A tie-breaker, so two invites sent in the same instant keep an order.
+    expect(selectCall[0]).toMatch(/ORDER BY si\.created_at DESC, si\.id DESC/);
   });
 
   it("returns an empty list when nothing is pending", async () => {

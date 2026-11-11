@@ -156,8 +156,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const tokenHash = hashStaffInviteToken(token);
   const expiresAt = staffInviteExpiresAt();
 
+  // A new invite replaces any that lapsed for the same address. Those rows
+  // can never be accepted, and left behind they kept the Overview's "Staff
+  // invites" row amber for good after the person had been invited again. One
+  // statement, so the clear and the insert land together or not at all; the
+  // pending check above already refused the request if a live one exists.
   const insertRes = await pool.query<{ id: number }>(
-    `INSERT INTO staff_invites (token, email, role, invited_by, expires_at)
+    `WITH lapsed AS (
+       DELETE FROM staff_invites
+        WHERE LOWER(email) = $2 AND accepted_at IS NULL AND expires_at <= NOW()
+     )
+     INSERT INTO staff_invites (token, email, role, invited_by, expires_at)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
     [tokenHash, email, role, admin.id, expiresAt],
   );
@@ -204,19 +213,22 @@ interface PendingInviteRow {
   role: string;
   created_at: string;
   expires_at: string;
+  /** Past expires_at by the database's clock, so the link no longer works. */
+  expired: boolean;
   invited_by_name: string | null;
   invited_by_email: string | null;
 }
 
 /**
- * GET /api/v3/admin/staff-invites -- list the invites that are still
- * outstanding (never accepted, not yet expired). Same admin gate the POST
- * uses: only an admin (or the super_admin) can see who has a pending staff
- * invite, since the list is a map of who is about to gain a staff role.
+ * GET /api/v3/admin/staff-invites -- list every invite nobody has accepted:
+ * the live ones and the ones that lapsed, each flagged with `expired`. Same
+ * admin gate the POST uses: only an admin (or the super_admin) can see who
+ * has a staff invite, since the list is a map of who is about to gain a role.
  *
- * Accepted or expired rows are deliberately omitted -- there is nothing to
- * act on for them, and an accepted invite's role change already shows up in
- * the staff directory.
+ * Expired rows used to be left out as having nothing to act on. They do: the
+ * Overview counts them as a warning, and with no list to find them in and no
+ * way to revoke one, that warning could never be cleared. Accepted rows stay
+ * out, since an accepted invite's role change shows in the staff directory.
  */
 export const GET = withErrorHandling(async () => {
   const admin = await requireAdmin();
@@ -224,18 +236,20 @@ export const GET = withErrorHandling(async () => {
 
   const { rows } = await pool.query<PendingInviteRow>(
     `SELECT si.id, si.email, si.role, si.created_at, si.expires_at,
+            si.expires_at <= NOW() AS expired,
             u.name AS invited_by_name, u.email AS invited_by_email
        FROM staff_invites si
        LEFT JOIN users u ON u.id = si.invited_by
-      WHERE si.accepted_at IS NULL AND si.expires_at > NOW()
-      ORDER BY si.created_at DESC`,
+      WHERE si.accepted_at IS NULL
+      ORDER BY si.created_at DESC, si.id DESC`,
   );
 
   return ApiResponse.success({ invites: rows });
 });
 
 /**
- * DELETE /api/v3/admin/staff-invites -- revoke a pending invite by id. The
+ * DELETE /api/v3/admin/staff-invites -- revoke an unaccepted invite by id,
+ * live or expired (clearing an expired one is what quiets the Overview). The
  * emailed token is single-use and only ever validated against the row (its
  * SHA-256 hash), so deleting the row is the revoke: the link in the email
  * stops resolving the moment the row is gone. Same admin gate as POST/GET.

@@ -552,6 +552,15 @@ describe("other checks", () => {
     ).toBe("warn");
   });
 
+  it("says how to clear an expired invite, now that Staff lists them", () => {
+    const detail = rowFor(
+      metrics({ staffInvites: { pending: 0, expired: 1 } }),
+      "staff-invites",
+    )?.detail;
+    expect(detail).toContain("Revoke it on Staff");
+    expect(detail).toContain("send a new invite, which replaces it");
+  });
+
   it("reports email failures against the day's send volume", () => {
     expect(
       rowFor(

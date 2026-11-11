@@ -68,10 +68,14 @@ import { ModalShell } from "@/components/ui/modal-shell";
 import {
   API,
   STAFF_ROLES,
+  STAFF_ROLE_HIERARCHY,
   STAFF_ROLE_LABELS,
   ROLE_BADGE_STYLES,
   type StaffRole,
 } from "@/lib/config/client-constants";
+import { getRoleLevel } from "@/lib/auth/permissions-client";
+import { pluralize } from "@/lib/ui/plural";
+import { useAuth } from "@/components/providers/auth-provider";
 import type { ActiveAdmin } from "@/components/admin/types";
 
 interface StaffListProps {
@@ -96,15 +100,28 @@ const INVITABLE_STAFF_ROLES: readonly StaffRole[] = Object.values(
   (role) => role !== STAFF_ROLES.USER && role !== STAFF_ROLES.SUPER_ADMIN,
 );
 
-// One outstanding staff invite, as returned by GET /api/v3/admin/staff-invites.
+// One unaccepted staff invite, as returned by GET /api/v3/admin/staff-invites.
 interface PendingInvite {
   id: number;
   email: string;
   role: string;
   created_at: string;
   expires_at: string;
+  /** Lapsed by the server's clock. The list includes these so they can be
+   *  revoked, which is what clears the Overview's expired-invite warning. */
+  expired?: boolean;
   invited_by_name: string | null;
   invited_by_email: string | null;
+}
+
+/**
+ * Whether this role can send, list and revoke staff invites. Every invite
+ * endpoint is requireAdmin, and the Staff tab is open to anyone holding
+ * VIEW_AUDIT_LOG, so a moderator or security analyst was offered an Invite
+ * button that ended in a password prompt and a refusal.
+ */
+export function canManageStaffInvites(role: string | null | undefined) {
+  return getRoleLevel(role) >= STAFF_ROLE_HIERARCHY.admin;
 }
 
 /**
@@ -114,10 +131,15 @@ interface PendingInvite {
  */
 const INVITE_EXPIRING_SOON_MS = 48 * 60 * 60 * 1000;
 
-function inviteExpiry(expiresAt: string): {
+function inviteExpiry(
+  expiresAt: string,
+  expired?: boolean,
+): {
   state: "expired" | "soon" | "ok";
   label: string;
 } {
+  // The server's verdict wins over this tab's clock, which can be off.
+  if (expired === true) return { state: "expired", label: "Expired" };
   const ms = new Date(expiresAt).getTime();
   if (Number.isNaN(ms)) return { state: "ok", label: "No expiry on record" };
   const remaining = ms - Date.now();
@@ -170,6 +192,8 @@ export function StaffList({
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+  const { me } = useAuth();
+  const canInvite = canManageStaffInvites(me?.role);
 
   // Invite staff modal (AUDIT-010: invite-by-email instead of requiring
   // the invitee to self-register first, then be promoted separately).
@@ -211,17 +235,19 @@ export function StaffList({
   // opens: the health overview links here specifically when invites have
   // expired unaccepted, and the operator arriving from it must see that
   // without first opening an unrelated dialog.
+  //
+  // Not asked for at all below the admin tier: the endpoint refuses it.
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
-    fetchPendingInvites();
-  }, [fetchPendingInvites]);
+    if (canInvite) fetchPendingInvites();
+  }, [canInvite, fetchPendingInvites]);
 
   // Reload whenever the modal opens, so it reflects invites sent from another
   // admin's session too, not just this tab's own sends.
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-open: kicks off an async load when the modal opens; the loading flag it sets is for that request, not synchronous derived state
-    if (inviteOpen) fetchPendingInvites();
-  }, [inviteOpen, fetchPendingInvites]);
+    if (inviteOpen && canInvite) fetchPendingInvites();
+  }, [inviteOpen, canInvite, fetchPendingInvites]);
 
   function closeInviteModal() {
     setInviteOpen(false);
@@ -335,8 +361,10 @@ export function StaffList({
   const with2FA = activeAdmins.filter((a) => a.totp_enabled).length;
 
   const expiredInvites = pendingInvites.filter(
-    (invite) => inviteExpiry(invite.expires_at).state === "expired",
+    (invite) =>
+      inviteExpiry(invite.expires_at, invite.expired).state === "expired",
   ).length;
+  const liveInvites = pendingInvites.length - expiredInvites;
 
   const handleStatusFilter = (filter: StatusFilter) => {
     setStatusFilter(filter);
@@ -715,7 +743,7 @@ export function StaffList({
       )}
 
       {/* Invite staff modal */}
-      {inviteOpen && (
+      {inviteOpen && canInvite && (
         <ModalShell
           open
           onClose={closeInviteModal}
@@ -791,13 +819,14 @@ export function StaffList({
             </select>
           </div>
 
-          {/* Pending invites: the outstanding ones nobody has accepted
-                  yet. Revoke deletes the row, which is the whole revoke --
-                  the emailed link stops resolving the moment it is gone. */}
+          {/* Every invite nobody has accepted, the expired ones included so
+                  they can be cleared. Revoke deletes the row, which is the
+                  whole revoke: the emailed link stops resolving the moment
+                  it is gone. */}
           <div className="pt-4 border-t border-border/50">
             <div className="flex items-center justify-between gap-2 mb-3">
               <h3 className="text-sm font-semibold text-foreground">
-                Pending invites
+                Unaccepted invites
               </h3>
               {pendingInvites.length > 0 && (
                 <Badge
@@ -813,7 +842,7 @@ export function StaffList({
               // The invite rows' own shape. A centred spinner over one line of
               // text says nothing about what is coming and collapses to a
               // third of the height the list arrives at.
-              <SkeletonRegion label="Loading pending invites">
+              <SkeletonRegion label="Loading invites">
                 <RowListSkeleton rows={2} lead="none" lines={1} boxed />
               </SkeletonRegion>
             ) : pendingInvites.length === 0 ? (
@@ -823,7 +852,10 @@ export function StaffList({
             ) : (
               <ul className="flex flex-col gap-2">
                 {pendingInvites.map((invite) => {
-                  const expiry = inviteExpiry(invite.expires_at);
+                  const expiry = inviteExpiry(
+                    invite.expires_at,
+                    invite.expired,
+                  );
                   return (
                     <li
                       key={invite.id}
@@ -973,14 +1005,14 @@ export function StaffList({
                     modal, below the send form. An invite is a live grant of a
                     staff role, so its count belongs on the directory header,
                     and it opens the modal that manages them. */}
-                {pendingInvites.length > 0 && (
+                {canInvite && pendingInvites.length > 0 && (
                   <button
                     type="button"
                     onClick={() => setInviteOpen(true)}
                     aria-label={
                       expiredInvites > 0
-                        ? `${expiredInvites} staff invites expired unaccepted, open pending invites`
-                        : `${pendingInvites.length} staff invites pending, open pending invites`
+                        ? `${pluralize(expiredInvites, "staff invite")} expired unaccepted, open invites`
+                        : `${pluralize(liveInvites, "staff invite")} pending, open invites`
                     }
                     className="rounded-full focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
@@ -990,7 +1022,7 @@ export function StaffList({
                     >
                       {expiredInvites > 0
                         ? `${expiredInvites} expired`
-                        : `${pendingInvites.length} pending`}
+                        : `${liveInvites} pending`}
                     </StatusPill>
                   </button>
                 )}
@@ -998,15 +1030,17 @@ export function StaffList({
             }
             actions={
               <>
-                <Button
-                  size="sm"
-                  className="h-9 px-3 gap-2"
-                  onClick={() => setInviteOpen(true)}
-                  aria-label="Invite staff"
-                >
-                  <UserPlus className="h-4 w-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">Invite staff</span>
-                </Button>
+                {canInvite && (
+                  <Button
+                    size="sm"
+                    className="h-9 px-3 gap-2"
+                    onClick={() => setInviteOpen(true)}
+                    aria-label="Invite staff"
+                  >
+                    <UserPlus className="h-4 w-4" aria-hidden="true" />
+                    <span className="hidden sm:inline">Invite staff</span>
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"

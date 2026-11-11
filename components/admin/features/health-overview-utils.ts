@@ -539,7 +539,7 @@ function staffInvitesRow(
     value: `${m.pending} pending`,
     detail:
       m.expired > 0
-        ? `${m.expired} expired without ever being accepted. Either the invitee never saw the mail or the accept flow did not work for them.`
+        ? `${m.expired} expired without ever being accepted. Either the invitee never saw the mail or the accept flow did not work for them. ${m.expired === 1 ? "Revoke it on Staff, or send a new invite, which replaces it." : "Revoke them on Staff, or send new invites, which replace them."}`
         : m.pending === 0
           ? "No outstanding invites."
           : "Outstanding invites are still inside their expiry window.",

@@ -145,6 +145,59 @@ describe("GET /api/v3/admin/health", () => {
     expect(json).not.toHaveProperty("errorLogs");
   });
 
+  // The Staff tab opens for VIEW_AUDIT_LOG, but the invites in it are
+  // admin-only, so a moderator was shown an amber row about invites they
+  // could neither list nor revoke.
+  it.each(["moderator", "security_analyst"])(
+    "withholds the staff invite row from %s, which cannot manage invites",
+    async (role) => {
+      signInAs(role);
+      respondByTable({ invites: { rows: [{ pending: 0, expired: 3 }] } });
+
+      const json = await (await GET()).json();
+
+      expect(json).not.toHaveProperty("staffInvites");
+      expect(
+        mockQuery.mock.calls.some((c) =>
+          String(c[0]).includes("staff_invites"),
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it.each(["admin", "super_admin"])(
+    "gives %s the staff invite row",
+    async (role) => {
+      signInAs(role);
+      respondByTable({ invites: { rows: [{ pending: 1, expired: 2 }] } });
+
+      const json = await (await GET()).json();
+
+      expect(json.staffInvites).toEqual({ pending: 1, expired: 2 });
+    },
+  );
+
+  it("counts only the newest invite for each address", async () => {
+    // An address invited again, or accepted on a later invite, has been dealt
+    // with: its older lapsed row must not hold the row amber.
+    signInAs("admin");
+    respondByTable();
+
+    await GET();
+
+    const sql = String(
+      mockQuery.mock.calls.find((c) =>
+        String(c[0]).includes("staff_invites"),
+      )?.[0],
+    );
+    expect(sql).toMatch(/DISTINCT ON \(LOWER\(email\)\)/);
+    expect(sql).toMatch(/ORDER BY LOWER\(email\), created_at DESC, id DESC/);
+    // The accepted filter applies to the newest row, not before choosing it.
+    expect(sql.indexOf("WHERE accepted_at IS NULL")).toBeGreaterThan(
+      sql.indexOf(") latest"),
+    );
+  });
+
   it("returns null for a metric whose query failed instead of failing the request", async () => {
     signInAs("admin");
     // A deployment that has never opened the staff tab may not have the

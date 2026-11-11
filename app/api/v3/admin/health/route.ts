@@ -4,10 +4,12 @@ import { readdir, stat } from "node:fs/promises";
 import pool from "@/lib/database/db";
 import { requireStaff } from "@/lib/auth/authorization";
 import {
+  getRoleLevel,
   hasStaffPermission,
   STAFF_PERMISSIONS,
   type StaffPermission,
 } from "@/lib/auth/permissions-client";
+import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { CONFIG_SCHEDULED_BACKUP_INTERVAL_MS } from "@/lib/config/config-values";
 import { withErrorHandling } from "@/lib/api/api-utils";
@@ -122,8 +124,13 @@ export const GET = withErrorHandling(async () => {
   const wantsMaintenance = can(STAFF_PERMISSIONS.TRIGGER_MAINTENANCE);
   const wantsErrors = can(STAFF_PERMISSIONS.VIEW_ERROR_LOGS);
   const wantsTickets = can(STAFF_PERMISSIONS.MANAGE_SUPPORT_TICKETS);
-  // The Active Staff tab (where invites live) is gated on VIEW_AUDIT_LOG.
-  const wantsInvites = can(STAFF_PERMISSIONS.VIEW_AUDIT_LOG);
+  // The Active Staff tab is gated on VIEW_AUDIT_LOG, but the invites in it
+  // are admin-only (requireAdmin in /api/v3/admin/staff-invites). A
+  // moderator or security analyst was shown a count of expired invites they
+  // could neither open nor revoke, so the row needs the admin tier as well.
+  const wantsInvites =
+    can(STAFF_PERMISSIONS.VIEW_AUDIT_LOG) &&
+    getRoleLevel(session.role) >= STAFF_ROLE_HIERARCHY.admin;
 
   const [
     queue,
@@ -364,10 +371,19 @@ export const GET = withErrorHandling(async () => {
           // console.errors and continues) will not have it. safe() turns
           // that into an "unknown" row rather than a 500 for the whole
           // page; REQUIRED_TABLES is what actually reports it as a fault.
+          //
+          // Only the newest invite per address counts. An address invited
+          // again, or accepted on a later invite, has been dealt with, and
+          // its older lapsed row is history rather than an invite somebody
+          // is still waiting on.
           const res = await pool.query<{ pending: string; expired: string }>(
             `SELECT COUNT(*) FILTER (WHERE expires_at > NOW())::int AS pending,
                       COUNT(*) FILTER (WHERE expires_at <= NOW())::int AS expired
-                 FROM staff_invites
+                 FROM (
+                   SELECT DISTINCT ON (LOWER(email)) accepted_at, expires_at
+                     FROM staff_invites
+                    ORDER BY LOWER(email), created_at DESC, id DESC
+                 ) latest
                 WHERE accepted_at IS NULL`,
           );
           return {
