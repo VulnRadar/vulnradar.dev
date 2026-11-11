@@ -73,6 +73,14 @@ describe("buildUserDetailSql", () => {
     },
   );
 
+  it("keeps a note whose author's account was deleted", () => {
+    // admin_user_notes.admin_id is SET NULL when the author is deleted, and an
+    // inner join to users made those notes vanish from the account view.
+    const sql = buildUserDetailSql(NONE);
+    expect(sql).toContain("LEFT JOIN users a ON n.admin_id = a.id");
+    expect(sql).toContain("'Former staff member'");
+  });
+
   it("never selects a connection's access or refresh token", () => {
     const sql = buildUserDetailSql(ALL);
     expect(sql).not.toMatch(/access_token|refresh_token/);

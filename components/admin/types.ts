@@ -74,7 +74,9 @@ export interface AdminNote {
   id: number;
   note: string;
   created_at: string;
-  admin_id: number;
+  /** Null once the author's account is deleted; the note is kept. Its
+   *  admin_email is then "" and admin_name "Former staff member". */
+  admin_id: number | null;
   admin_email: string;
   admin_name: string | null;
   admin_avatar_url: string | null;

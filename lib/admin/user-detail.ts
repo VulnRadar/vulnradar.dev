@@ -138,11 +138,18 @@ export function buildUserDetailSql(flags: UserDetailFlags): string {
          WHERE ub.user_id = u.id`,
       "bd.priority DESC",
     )} AS ${COLUMN.badges}`,
+    // A LEFT JOIN: deleting a staff account keeps the notes it wrote, with
+    // admin_id set to NULL, and an inner join made those notes vanish from
+    // the account they are about. The author is shown as a former staff
+    // member (owner decision D4).
     `${jsonList(
       "nt",
-      `SELECT n.id, n.note, n.created_at, a.id AS admin_id, a.email AS admin_email, a.name AS admin_name, a.avatar_url AS admin_avatar_url
+      `SELECT n.id, n.note, n.created_at, a.id AS admin_id,
+              COALESCE(a.email, '') AS admin_email,
+              CASE WHEN a.id IS NULL THEN 'Former staff member' ELSE a.name END AS admin_name,
+              a.avatar_url AS admin_avatar_url
          FROM admin_user_notes n
-         JOIN users a ON n.admin_id = a.id
+         LEFT JOIN users a ON n.admin_id = a.id
          WHERE n.user_id = u.id`,
       "nt.created_at DESC",
     )} AS ${COLUMN.notes}`,

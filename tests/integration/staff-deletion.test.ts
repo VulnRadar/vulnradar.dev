@@ -2,6 +2,7 @@ import { it, expect } from "vitest";
 import pool from "@/lib/database/db";
 import { applyBootSchema } from "@/lib/database/boot/apply-boot-schema";
 import { deleteUserAccountData } from "@/lib/auth/account-deletion";
+import { fetchUserDetailBundle } from "@/lib/admin/user-detail";
 import { describeIntegration, createUser } from "./_db";
 
 /**
@@ -80,6 +81,23 @@ describeIntegration("deleting a staff account", () => {
     const { admin, member, noteId, giftId } = await seed();
     await deleteAccount(admin.id);
     await expectSurvived(noteId, giftId);
+
+    // And the admin view of the account still lists it, by a former staff
+    // member, rather than dropping it on an inner join to the deleted author.
+    const bundle = await fetchUserDetailBundle(member.id, {
+      scans: false,
+      apiKeys: false,
+      webhooks: false,
+      sessions: false,
+      credits: false,
+    });
+    expect(bundle?.notes).toEqual([
+      expect.objectContaining({
+        id: noteId,
+        admin_id: null,
+        admin_name: "Former staff member",
+      }),
+    ]);
     await pool.query("DELETE FROM users WHERE id = $1", [member.id]);
   });
 
