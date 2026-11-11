@@ -558,6 +558,34 @@ describe("PATCH /api/v3/account/discord", () => {
     expect(res.status).toBe(401);
   });
 
+  // Owner decision D23: the sync rewrites the account's name and avatar from
+  // a linked identity, which an impersonation session must not do on the
+  // account holder's behalf, the same rule linking follows.
+  it("is refused during an impersonation and writes nothing", async () => {
+    mockGetSession.mockResolvedValue({ userId: 7, impersonatedBy: 1 });
+    const res = await PATCH(patchRequest({ syncAvatar: true, syncName: true }));
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.impersonationBlocked).toBe(true);
+    expect(json.error).toMatch(/admin/i);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("still syncs for the account holder's own session", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { discord_id: "99", discord_username: "Holder", discord_avatar: null },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await PATCH(patchRequest({ syncName: true }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).updated).toEqual(["name"]);
+    expect(
+      mockQuery.mock.calls.some((c) => /UPDATE users SET/.test(String(c[0]))),
+    ).toBe(true);
+  });
+
   it("rejects an invalid JSON body", async () => {
     const req = new Request("http://localhost/api/v3/account/discord", {
       method: "PATCH",

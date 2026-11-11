@@ -7,6 +7,7 @@ import {
   STAFF_PLAN_FLOOR_ROLES,
 } from "@/lib/billing/staff-plan";
 import { isStaffRole } from "@/lib/auth/permissions-client";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 
 // POST /api/v3/billing/subscription/cancel - Cancel user's subscription
 export async function POST(request: NextRequest) {
@@ -47,6 +48,14 @@ export async function POST(request: NextRequest) {
     );
   }
   const { immediate } = fields;
+  // Same rule as POST /api/v3/billing's cancel_immediately.
+  if (immediate) {
+    const refused = refuseWhileImpersonating(
+      session,
+      "Cancelling the subscription immediately",
+    );
+    if (refused) return refused;
+  }
 
   try {
     // Get user's subscription

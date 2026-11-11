@@ -7,6 +7,7 @@ import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
 import { stripeKeyMode } from "@/lib/billing/stripe-mode";
 import { withErrorHandling } from "@/lib/api/api-utils";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 import { logError } from "@/lib/logging/log";
 import { sendAdminAlert } from "@/lib/admin/alert-webhook";
 import { canMakeRequest } from "@/lib/rate-limiting/daily-limits";
@@ -460,6 +461,15 @@ export const POST = withErrorHandling(async (request: Request) => {
     }
 
     if (action === "cancel_immediately") {
+      // Ending the subscription now forfeits the period the customer already
+      // paid for, and they cannot undo it. A period-end cancel stays open to
+      // an impersonation because reactivating reverses it.
+      const refused = refuseWhileImpersonating(
+        session,
+        "Cancelling the subscription immediately",
+      );
+      if (refused) return refused;
+
       // Get user's subscription ID (or customer ID to look it up)
       const userResult = await pool.query(
         `SELECT stripe_subscription_id, stripe_customer_id FROM users WHERE id = $1`,

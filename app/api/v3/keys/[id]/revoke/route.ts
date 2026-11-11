@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 import { revokeApiKey, getUserApiKeys } from "@/lib/api/api-keys";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { apiKeyDeletedEmail } from "@/lib/email/email";
@@ -17,6 +18,10 @@ export async function POST(
       { status: 401 },
     );
   }
+  // Revoking breaks whatever the customer wired the key into, and only they
+  // know what that is.
+  const refused = refuseWhileImpersonating(session, "Revoking an API key");
+  if (refused) return refused;
 
   const { id } = await params;
   const keyId = parseInt(id, 10);

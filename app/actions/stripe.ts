@@ -26,6 +26,7 @@ import {
 } from "@/lib/billing/subscription-status";
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import { getSession } from "@/lib/auth/auth";
+import { throwIfImpersonating } from "@/lib/auth/impersonation-guard";
 import { isStaffRole } from "@/lib/auth/permissions-client";
 import { planMeetsMinimum, planRank } from "@/lib/billing/plan-limits";
 import { syncPreStaffPlanForManualPlanChange } from "@/lib/billing/staff-plan";
@@ -210,6 +211,10 @@ export async function createSubscription(
       existingSubscription &&
       ACTIVE_SUBSCRIPTION_STATUSES.includes(existingSubscription.status)
     ) {
+      // A switch prorates against the card already on file with no payment
+      // step the customer sees, so an impersonation would be spending their
+      // money. A new subscription still needs a card confirmed in the form.
+      throwIfImpersonating(sessionUser, "Changing the account's plan");
       const priceId = await getOrCreateStripePriceId(stripe, product);
 
       const updated = await stripe.subscriptions.update(
@@ -632,6 +637,9 @@ export async function createBillingPortalSession(): Promise<{ url: string }> {
   if (!sessionUser) {
     throw new Error("User must be logged in to manage billing");
   }
+  // The portal cancels, switches plans, replaces the card and lists every
+  // invoice, all outside anything this app records.
+  throwIfImpersonating(sessionUser, "Opening the billing portal");
 
   const stripe = getStripe();
   if (!stripe) {

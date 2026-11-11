@@ -345,6 +345,13 @@ export async function PATCH(req: Request) {
   if (!session) {
     return ApiResponse.unauthorized();
   }
+  // Rewriting the account's name and avatar from a linked identity is the
+  // account holder's call, the same as linking it was.
+  const refused = refuseWhileImpersonating(
+    session,
+    "Syncing the profile from Discord",
+  );
+  if (refused) return refused;
 
   let body: { syncAvatar?: boolean; syncName?: boolean } | null;
   try {

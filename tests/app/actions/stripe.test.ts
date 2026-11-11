@@ -1238,3 +1238,59 @@ describe("confirmBrowserbaseCreditPurchase", () => {
     expect(result.minutes).toBe(0);
   });
 });
+
+// A plan switch prorates against the card already on file and the billing
+// portal can cancel, change the card or download every invoice: neither is
+// for a staff member who opened the account to reproduce a bug. Both refuse
+// with the impersonation guard's sentence, thrown because a server action has
+// no response to return it in.
+describe("during an impersonation", () => {
+  const IMPERSONATED = { userId: 7, impersonatedBy: 2 };
+  const switchable = {
+    email: "user@example.com",
+    name: "User",
+    stripe_customer_id: "cus_1",
+    stripe_subscription_id: "sub_existing",
+    subscription_status: "active",
+  };
+
+  it("refuses to switch the customer's live subscription to another price", async () => {
+    mockGetSession.mockResolvedValue(IMPERSONATED);
+    mockQuery.mockResolvedValueOnce({ rows: [switchable] });
+    mockSubscriptionsRetrieve.mockResolvedValue({
+      id: "sub_existing",
+      status: "active",
+      items: { data: [{ id: "si_existing" }] },
+    });
+
+    await expect(createSubscription("elite_supporter_monthly")).rejects.toThrow(
+      /impersonation session.*admin/i,
+    );
+    expect(mockSubscriptionsUpdate).not.toHaveBeenCalled();
+    expect(mockSubscriptionsCreate).not.toHaveBeenCalled();
+  });
+
+  it("refuses to open the customer's billing portal", async () => {
+    mockGetSession.mockResolvedValue(IMPERSONATED);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ stripe_customer_id: "cus_1" }],
+    });
+
+    await expect(createBillingPortalSession()).rejects.toThrow(
+      /impersonation session.*admin/i,
+    );
+    expect(mockBillingPortalSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it("still opens the portal for the account holder", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ stripe_customer_id: "cus_1" }],
+    });
+    mockBillingPortalSessionsCreate.mockResolvedValue({
+      url: "https://billing.stripe.test/s",
+    });
+    await expect(createBillingPortalSession()).resolves.toEqual({
+      url: "https://billing.stripe.test/s",
+    });
+  });
+});
