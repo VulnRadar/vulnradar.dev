@@ -1,3 +1,4 @@
+import { isPublicScanId, parseIdParam } from "@/lib/api/path-id";
 import { API } from "@/lib/config/client-constants";
 
 /**
@@ -13,17 +14,17 @@ import { API } from "@/lib/config/client-constants";
  */
 export type ScanId = string & { readonly __brand: "ScanId" };
 
-// public_id is gen_random_uuid() with its hyphens removed, filled by the
-// column default (lib/database/schema/02-features.mjs), so 32 lowercase hex.
-const PUBLIC_ID = /^[0-9a-f]{32}$/;
-// The legacy SERIAL primary key that old ?scan=456 bookmarks and the
-// dashboard's just-saved result still carry; resolveScanRow accepts both.
-const LEGACY_ID = /^[0-9]{1,10}$/;
-
+/**
+ * The rule is the server's, from lib/api/path-id (which imports nothing, so it
+ * is safe here): a 32 character public_id, or the legacy SERIAL primary key
+ * that old ?scan=456 bookmarks and the dashboard's just-saved result carry,
+ * with no leading zero and nothing above INT4. A looser client rule sent
+ * /history?scan=007 as a request that always answered 404.
+ */
 export function parseScanId(raw: unknown): ScanId | null {
   const value = typeof raw === "number" ? String(raw) : raw;
   if (typeof value !== "string") return null;
-  return PUBLIC_ID.test(value) || LEGACY_ID.test(value)
+  return isPublicScanId(value) || parseIdParam(value) !== null
     ? (value as ScanId)
     : null;
 }
