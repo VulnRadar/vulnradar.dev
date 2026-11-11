@@ -8,6 +8,7 @@ import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 import { revokeDiscordTokens } from "@/lib/discord/revoke";
 import { noticeProfileNameChanged } from "@/lib/notifications/profile-name-changed";
 import {
+  DISCORD_TOKEN_TIMEOUT_MS,
   DiscordReauthRequiredError,
   refreshDiscordAccessToken,
 } from "@/lib/discord/discord-utils";
@@ -75,6 +76,7 @@ async function attemptGuildJoin(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ access_token: accessToken }),
+      signal: AbortSignal.timeout(DISCORD_TOKEN_TIMEOUT_MS),
     },
   );
   if (res.ok || res.status === 204) {
@@ -108,7 +110,10 @@ async function checkGuildMembership(
   try {
     const memberRes = await fetch(
       `https://discord.com/api/guilds/${guildId}/members/${discordId}`,
-      { headers: { Authorization: `Bot ${botToken}` } },
+      {
+        headers: { Authorization: `Bot ${botToken}` },
+        signal: AbortSignal.timeout(DISCORD_TOKEN_TIMEOUT_MS),
+      },
     );
     if (memberRes.status === 200) {
       guildJoined = true;

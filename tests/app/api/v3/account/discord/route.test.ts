@@ -52,6 +52,7 @@ const discordUtils = vi.hoisted(() => {
     }
   }
   return {
+    DISCORD_TOKEN_TIMEOUT_MS: 10_000,
     DiscordReauthRequiredError,
     refreshDiscordAccessToken: vi.fn(),
   };
@@ -416,6 +417,8 @@ describe("POST /api/v3/account/discord", () => {
     const [url, options] = mockFetch.mock.calls[0];
     expect(url).toBe("https://discord.com/api/guilds/guild-1/members/123");
     expect(options.method).toBe("PUT");
+    // Bounded: a quiet Discord used to hold the request open indefinitely.
+    expect(options.signal).toBeInstanceOf(AbortSignal);
     expect(JSON.parse(options.body)).toEqual({
       access_token: "decrypted:enc-token",
     });
