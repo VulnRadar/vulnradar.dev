@@ -121,7 +121,7 @@ export function audienceFilterNote(segment: string, category: string): string {
 
 export function MassEmailManager() {
   const [messages, setMessages] = useState<Broadcast[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Broadcast | null>(null);
@@ -156,13 +156,9 @@ export function MassEmailManager() {
   const templateNameId = useId();
   const templateDescriptionId = useId();
 
-  useEffect(() => {
-    fetchMessages();
-    fetchTemplates();
-  }, []);
-
-  async function fetchMessages() {
-    setLoading(true);
+  // The mount effect below calls loadMessages, which sets no state before its
+  // first await, so loading starts true and only a refresh turns it back on.
+  async function loadMessages() {
     try {
       const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
@@ -176,6 +172,11 @@ export function MassEmailManager() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function fetchMessages() {
+    setLoading(true);
+    await loadMessages();
   }
 
   /**
@@ -247,6 +248,12 @@ export function MassEmailManager() {
       console.error("Error fetching templates:", err);
     }
   }
+
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: loadMessages sets state only after its request resolves, not synchronously in this effect
+    loadMessages();
+    fetchTemplates();
+  }, []);
 
   async function handleSaveTemplate() {
     if (!templateName.trim() || !title || !content) return;
