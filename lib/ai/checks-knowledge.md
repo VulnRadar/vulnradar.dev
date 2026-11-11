@@ -21,10 +21,10 @@ in this file and quote the title, description, and fix steps.
 - **Total checks:** 804
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - medium: 221
+  - medium: 220
   - high: 192
   - low: 188
-  - info: 103
+  - info: 104
   - critical: 100
 - **By type:**
   - body-pattern: 465
@@ -11481,6 +11481,8 @@ res.setHeader('Set-Cookie', `session=abc123; Max-Age=<value>; Expires=<value>; S
 
 No Certification Authority Authorization (CAA) DNS record exists for this domain. CAA records restrict which CAs are permitted to issue certificates for your domain, reducing the risk of misissued certificates.
 
+**Finding ids:** a scan does not report `dns-caa-record-missing` as a finding id. Its findings carry an id starting `async-caa-record-missing`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Without a CAA record, any publicly trusted CA can issue a certificate for your domain. A compromised or rogue CA could issue a certificate that allows MITM attacks on your site.
 
 **Why it matters:** CAA records (RFC 8659) let domain owners declare which CAs are authorized to issue certificates. When a CA checks for CAA before issuance (now mandatory per CA/Browser Forum), only listed CAs can issue. An empty policy defaults to permitting all CAs.
@@ -11510,6 +11512,8 @@ dig +short CAA example.com
 
 RFC 1035 requires at least two authoritative nameservers for redundancy. A single NS means the entire domain goes dark when that server is unreachable.
 
+**Finding ids:** a scan does not report `dns-ns-record-count` as a finding id. Its findings carry an id starting `async-single-authoritative-nameserver`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** If the single authoritative nameserver goes offline, the entire domain becomes unreachable. Attackers who DoS or compromise one server can take your domain offline.
 
 **Why it matters:** DNS relies on redundant nameservers to prevent single points of failure. Having only one NS means any outage, DDoS, or maintenance window makes your entire domain unreachable for all users.
@@ -11531,10 +11535,12 @@ example.com. IN NS ns1.example.com.
 example.com. IN NS ns2.example-backup.com.
 ```
 
-### `dns-mx-record-missing` [dns / medium / header]
+### `dns-mx-record-missing` [dns / low / header]
 **MX Record Missing**
 
 No MX record exists for this domain. Domains that send or receive email must have an MX record. Without it, mail delivery to this domain fails and email spoofing countermeasures (SPF/DMARC) lack a target.
+
+**Finding ids:** a scan does not report `dns-mx-record-missing` as a finding id. Its findings carry an id starting `async-mx-record-missing`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** Without MX records, inbound mail to this domain bounces. If the domain is used to send mail without an MX record, receiving servers may treat it as a red flag and mark mail as spam.
 
@@ -11562,6 +11568,8 @@ dig +short MX example.com
 
 Only a single MX server exists with no higher-priority fallback. If the primary MX goes down, inbound mail is lost or deferred until the server recovers.
 
+**Finding ids:** a scan does not report `dns-mx-backup-record` as a finding id. Its findings carry an id starting `async-no-backup-mx-server`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** During primary MX outages, inbound mail queues at the sender for minutes or hours. If the outage is long enough, senders give up and mail is permanently lost.
 
 **Why it matters:** Multiple MX records with different priorities provide redundancy. When the primary MX (lowest number) is unreachable, senders try the next MX (higher number). This prevents mail loss during maintenance or outages.
@@ -11583,6 +11591,8 @@ example.com. IN MX 20 backup-mail.example.com. ; backup
 **DNSSEC DS Record Missing**
 
 The zone is signed with DNSSEC (it publishes DNSKEY records), but no DS (Delegation Signer) record exists in the parent zone, so nothing validates those signatures. Only reported for a signed zone: a domain that has never enabled DNSSEC is covered by the DNSSEC Not Enabled note instead.
+
+**Finding ids:** a scan does not report `dns-ds-record-missing` as a finding id. Its findings carry an id starting `async-dnssec-ds-record-missing`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** A signed zone with no DS record in the parent is treated as unsigned by every resolver. All of the cost of running DNSSEC is paid and none of the protection is received: responses can still be spoofed exactly as if the zone had never been signed.
 
@@ -11609,6 +11619,8 @@ dig +dnssec +multiline A example.com | grep -E '(RRSIG|NSEC|ad)'
 **SOA Refresh Interval Too High**
 
 The SOA refresh interval is above 24 hours. This slows propagation of zone changes to secondary nameservers, increasing the time it takes for NS record updates to take effect.
+
+**Finding ids:** a scan does not report `dns-soa-refresh-high` as a finding id. Its findings carry an id starting `async-soa-refresh-interval-too-high`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** During incident response or planned NS rollover, stale secondary nameservers continue serving old data for up to the refresh interval, delaying changes and potentially causing resolution failures.
 
@@ -11641,6 +11653,8 @@ dig +short SOA example.com
 
 None of the mail exchangers for yourdomain.com publish a TLSA record at _25._tcp, so a sending mail server cannot verify the certificate it is handed over SMTP. This is only reported for a domain that both accepts mail and is DNSSEC-signed: DANE has no verifiable meaning without DNSSEC, and no web browser implements it, so a missing TLSA record on a web host is the correct configuration rather than a gap.
 
+**Finding ids:** a scan does not report `dns-tlsa-record-missing` as a finding id. Its findings carry an id starting `async-tlsa-dane-record-missing`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** A sending mail server that cannot verify the receiving server certificate has no way to tell a real MX from an attacker who has redirected the connection, and SMTP opportunistic TLS falls back to plaintext rather than failing, so the downgrade is silent on both ends.
 
 **Why it matters:** DANE (DNS-Based Authentication of Named Entities) uses DNSSEC-secured TLSA records to bind a certificate or public key to a DNS name, letting a client verify what it is handed independently of the CA ecosystem. Its deployed home is SMTP, where a large share of sending infrastructure checks it. On the web it is effectively dead: no browser has ever implemented DANE, and pinning a certificate that an ACME client rotates automatically breaks TLS at the next renewal unless republishing is automated.
@@ -11669,6 +11683,8 @@ _25._tcp.mx.example.com. IN TLSA 3 1 1 <sha256-hash-of-pubkey>
 
 A CNAME record points to a hostname that no longer resolves. If the target service (e.g., Heroku, AWS, Fastly) is unregistered, an attacker can register it and serve content from your subdomain.
 
+**Finding ids:** a scan does not report `dns-dangling-cname` as a finding id. Its findings carry an id starting `async-dangling-cname-record`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Subdomain takeover lets attackers serve malicious content on your subdomain, steal session cookies scoped to the parent domain, bypass CSP using your origin, and conduct phishing attacks that appear to originate from your domain.
 
 **Why it matters:** When a CNAME points to an abandoned cloud resource (defunct Heroku app, removed S3 bucket, cancelled Azure CDN), the DNS entry remains while the cloud resource is gone. Anyone who claims that cloud resource now controls what is served from your subdomain.
@@ -11695,6 +11711,8 @@ done
 
 A CNAME points to GitHub Pages (github.io), Heroku (herokuapp.com), AWS CloudFront, Azure CDN (azurewebsites.net/azureedge.net), Fastly, or Netlify, and the target no longer resolves. Attackers can register the orphan resource and serve content from your subdomain.
 
+**Finding ids:** a scan does not report `dns-dangling-cname-cdn-paas` as a finding id. Its findings carry an id starting `async-potential-subdomain-takeover-via-dangling-cname`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Subdomain takeover via CDN/PaaS enables phishing using your domain name, cookie theft for cookies scoped to the parent domain, bypass of CSP using your origin, and Content Security Policy violations.
 
 **Why it matters:** When you remove a CDN resource (delete a Heroku app, unpublish a GitHub Pages site, remove a CloudFront distribution) without removing the DNS CNAME record, the record still points at a now-unclaimed namespace. Anyone who registers a new resource at that provider can then claim your subdomain.
@@ -11718,6 +11736,8 @@ curl -I https://myapp.herokuapp.com/
 **Dangling CNAME (SaaS Takeover)**
 
 A CNAME points to a SaaS provider (Zendesk, HelpScout, Intercom, Drift, statuspage.io, Pingdom, Pantheon, Acquia, WP Engine) and the target no longer resolves. Attackers can claim the namespace on your subdomain.
+
+**Finding ids:** a scan does not report `dns-dangling-cname-saas` as a finding id. Its findings carry an id starting `async-potential-subdomain-takeover-via-dangling-cname`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** SaaS subdomain takeover enables phishing and impersonation of your support and help-center pages (help.example.com, status.example.com), eroding customer trust and enabling credential theft.
 
@@ -11743,6 +11763,8 @@ dig +short A $target || echo "Target does not resolve: possible takeover"
 **DNS Zone Transfer (AXFR) Allowed from Public IPs**
 
 The authoritative nameserver responds to AXFR (zone transfer) requests from arbitrary sources. Zone transfers expose every hostname, IP, and record in the zone to anyone who asks.
+
+**Finding ids:** a scan does not report `dns-zone-transfer-allowed` as a finding id. Its findings carry an id starting `async-dns-zone-transfer-axfr-allowed-from-public-ips`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** An attacker who downloads the full zone file gains a complete map of all hostnames and IP addresses in your domain, including internal services, staging environments, and management interfaces not intended for public discovery.
 
@@ -11774,6 +11796,8 @@ dig AXFR example.com @ns1.example.com
 
 The parent zone publishes a DS record for this domain, but the zone itself publishes no DNSKEY records, so the DNSSEC chain of trust is broken at the zone. Checked with DNSSEC validation disabled, so a zone that is signed but failing validation is reported as DNSSEC Validation Failing instead.
 
+**Finding ids:** a scan does not report `dns-dnskey-record-missing` as a finding id. Its findings carry an id starting `async-dnskey-record-missing`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** A DS record in the parent is a promise that the zone is signed. Every validating resolver that sees it demands signatures, gets none, and returns SERVFAIL instead of the address, so the domain stops resolving for clients behind a validating resolver while still working from anywhere that does not validate.
 
 **Why it matters:** DNSKEY records hold the public keys matching the private keys that sign the zone's records (RRSIG). The usual cause of this state is DNSSEC being switched off at the DNS host, or the zone moving to a new provider, without the DS record first being withdrawn at the registrar.
@@ -11804,6 +11828,8 @@ dnssec-keygen -a ECDSAP256SHA256 -n ZONE example.com
 
 A CAA record set exists for this domain, but none of its records use the 'issue' property tag. Per RFC 8659, the absence of an 'issue' tag means non-wildcard certificate issuance is unrestricted, so the CAA record provides no actual protection against certificate misissuance.
 
+**Finding ids:** a scan does not report `dns-caa-no-issue-restriction` as a finding id. Its findings carry an id starting `async-caa-record-present-but-restricts-no-certificate-authority`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Despite a CAA record existing, any publicly trusted CA can still issue a certificate for this domain, the same exposure as having no CAA record at all. Anyone auditing DNS and seeing a CAA record present may mistakenly assume issuance is restricted.
 
 **Why it matters:** RFC 8659 defines the 'issue' property tag to authorize CAs for non-wildcard certificates and 'issuewild' for wildcard certificates, falling back to 'issue' when 'issuewild' is absent. If a CAA record set contains only other tags, for example an 'iodef' violation-reporting address, with no 'issue' tag at all, there is no applicable restriction and any CA may issue.
@@ -11828,6 +11854,8 @@ example.com. IN CAA 0 issue "letsencrypt.org"              ; add this to actuall
 
 The CAA record set for this domain includes an 'issuewild' property tag but no 'issue' property tag. Per RFC 8659, 'issuewild' only governs wildcard certificate requests, so ordinary (non-wildcard) certificate issuance remains unrestricted.
 
+**Finding ids:** a scan does not report `dns-caa-wildcard-only-restriction` as a finding id. Its findings carry an id starting `async-caa-record-restricts-wildcard-certificates-only`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Any publicly trusted CA can still issue a standard, non-wildcard certificate for this domain, even though wildcard issuance is correctly restricted. This is a narrower gap than having no CAA record, but a single misissued non-wildcard certificate is enough for a MITM against a specific hostname.
 
 **Why it matters:** RFC 8659 S4.2 defines 'issue' as the property tag that authorizes CAs for non-wildcard certificates. 'issuewild' only applies to wildcard requests: when present it takes over from 'issue' for those requests, but it never substitutes for a missing 'issue' tag on ordinary certificates.
@@ -11849,6 +11877,8 @@ example.com. IN CAA 0 issue "letsencrypt.org"      ; add this for non-wildcard c
 **SOA Serial Looks Stale (Date-Based Convention)**
 
 The SOA serial number follows the common YYYYMMDDnn convention and decodes to a date more than 3 years in the past. This is a soft, informational signal: not every DNS provider uses a date-based serial, and a stable serial does not necessarily mean the zone is unmaintained.
+
+**Finding ids:** a scan does not report `dns-soa-serial-stale` as a finding id. Its findings carry an id starting `async-soa-serial-looks-stale-date-based-convention-`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** On its own this is not a vulnerability. It can be a hint that the zone is managed by hand rather than through an automated provider, worth a second look if other DNS hygiene findings are also present.
 
@@ -11893,7 +11923,7 @@ Every authoritative NS record for this domain shares the same registrable domain
 dig +short NS example.com
 ```
 
-### `dns-wildcard-record-present` [dns / low / header]
+### `dns-wildcard-record-present` [dns / info / header]
 **Wildcard DNS Record Detected**
 
 A randomly generated, never-created subdomain resolved successfully, meaning this domain has a wildcard DNS record (*.example.com) that answers for any subdomain, whether or not it was intentionally created.
@@ -12185,6 +12215,8 @@ dig +short TXT example.com | grep -i -E 'verification|verify|challenge'
 
 The zone publishes DNSKEY records and the parent publishes a DS record, but validating resolvers refuse to answer for the domain: its DNSSEC signatures do not validate. Confirmed by the same query succeeding once DNSSEC checking is disabled, which rules out an unreachable nameserver.
 
+**Finding ids:** a scan does not report `dns-dnssec-validation-failing` as a finding id. Its findings carry an id starting `async-dnssec-validation-failing`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Every client behind a validating resolver gets no address for the domain at all. Google Public DNS, Cloudflare 1.1.1.1, Quad9 and many ISP resolvers validate, so this is a partial outage that usually cannot be reproduced from the operator's own machine.
 
 **Why it matters:** Validation fails when the chain from the parent's DS record to the zone's own signatures breaks. The usual causes are a DS record at the registrar that no longer matches any DNSKEY after a key rollover or a move to a new DNS provider, and RRSIG signatures that expired because the zone stopped being re-signed.
@@ -12213,6 +12245,8 @@ dig +short +cd DNSKEY example.com
 
 One or more of the domain's MX records name a mail server host that does not exist. When that host is under a different domain, the finding is raised to high, because whoever registers that domain can receive this domain's email.
 
+**Finding ids:** a scan does not report `dns-mx-host-does-not-exist` as a finding id. Its findings carry an id starting `async-mail-server-host-does-not-exist`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Mail to the domain is delayed or bounces when its mail servers do not exist. When a missing host belongs to another domain, anyone able to register that domain can publish the host and receive email meant for this one, including password reset and verification messages.
 
 **Why it matters:** MX records usually outlive a change of email provider or a decommissioned server. Only a definite NXDOMAIN answer for both address types counts as missing: a timeout or server failure is not treated as evidence. Whether the other domain is actually available to register is not checked.
@@ -12238,6 +12272,8 @@ dig +short A mail.old-provider.example
 
 The DMARC record does not include an rua= tag. Without aggregate reports, you have no visibility into how receivers are handling mail from your domain, and you cannot see if your legitimate mail is failing authentication.
 
+**Finding ids:** a scan does not report `email-dmarc-rua-missing` as a finding id. Its findings carry an id starting `async-dmarc-missing-aggregate-report-address-rua-`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Without rua= aggregate reports, you cannot detect SPF/DKIM misconfigurations in your mail stack, identify unauthorized senders using your domain, or track the effectiveness of your DMARC policy rollout.
 
 **Why it matters:** DMARC aggregate reports (rua=) are sent daily by receivers that process mail claiming to come from your domain. They summarize how many messages passed and failed SPF and DKIM checks. Without them, you are flying blind: your policy may be blocking legitimate mail or letting through spoofed mail without you knowing.
@@ -12260,6 +12296,8 @@ _dmarc.example.com. IN TXT "v=DMARC1; p=none; rua=mailto:dmarc-reports@example.c
 **MTA-STS Record Missing**
 
 The domain publishes no _mta-sts TXT record (v=STSv1), so sending mail servers are not told to require TLS when delivering to it. Whether a published policy file is reachable, and whether its mode enforces, are reported by the MTA-STS policy checks.
+
+**Finding ids:** a scan does not report `mta-sts` as a finding id. Its findings carry an id starting `async-mta-sts-record-missing`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** Without MTA-STS, inbound SMTP sessions can be downgraded from STARTTLS to plaintext by a network attacker, exposing all email content and credentials.
 
@@ -12290,6 +12328,8 @@ _mta-sts.example.com. IN TXT "v=STSv1; id=20240101000000"
 
 Async check: a v=TLSRPTv1 TXT record exists at _smtp._tls.<domain>, but it has no rua= tag specifying where to send reports. Without rua=, the record has no effect.
 
+**Finding ids:** a scan does not report `email-tls-rpt-rua-missing` as a finding id. Its findings carry an id starting `async-tls-rpt-record-missing-rua-reporting-uri`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Without a working rua= reporting address, TLS-RPT reports cannot be delivered, so you have no visibility into SMTP TLS failures even though the TXT record looks present.
 
 **Why it matters:** TLS-RPT is a companion to MTA-STS: it tells receivers where to send aggregate reports about SMTP TLS negotiation failures. The rua= tag specifies that destination; a record without it publishes the protocol version but never actually receives reports.
@@ -12309,6 +12349,8 @@ _smtp._tls.example.com. IN TXT "v=TLSRPTv1; rua=mailto:tls-reports@example.com"
 **SPF Exceeds 10 DNS Lookup Limit**
 
 The SPF record triggers more than 10 DNS lookups during evaluation. RFC 7208 mandates a maximum of 10 DNS lookups; exceeding this causes a permerror, causing SPF to fail for all messages.
+
+**Finding ids:** a scan does not report `email-spf-lookup-count-too-high` as a finding id. Its findings carry an id starting `async-spf-exceeds-10-dns-lookup-limit`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** When SPF returns permerror due to too many lookups, receivers may treat all mail from your domain as unauthenticated. Combined with a DMARC p=reject policy, this causes legitimate mail to be rejected.
 
@@ -12332,6 +12374,8 @@ example.com. IN TXT "v=spf1 ip4:203.0.113.0/24 ip4:198.51.100.10 include:_spf.go
 
 The SPF record contains a redirect= modifier that creates a circular reference back to the original domain, causing infinite recursion and a permerror.
 
+**Finding ids:** a scan does not report `email-spf-redirect-loop` as a finding id. Its findings carry an id starting `async-spf-redirect-loop`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** A redirect loop causes permerror on every SPF check, making all mail from your domain unauthenticated and subject to rejection by strict DMARC policies.
 
 **Why it matters:** The SPF redirect= modifier replaces the current domain's SPF policy with another domain's policy. If that domain's SPF record redirects back to the original domain (directly or via a chain), SPF evaluators detect the loop and return permerror.
@@ -12354,6 +12398,8 @@ dig +short TXT redirecttarget.com | grep v=spf1
 
 The DMARC record specifies pct= less than 100, meaning the declared policy (quarantine or reject) is only applied to a percentage of failing messages. The remainder are delivered as if no DMARC policy exists.
 
+**Finding ids:** a scan does not report `email-dmarc-pct-not-100` as a finding id. Its findings carry an id starting `async-dmarc-pct-below-100`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Spoofed messages that fail DMARC have a (100 - pct)% chance of being delivered to recipients, bypassing the protection DMARC is supposed to provide.
 
 **Why it matters:** pct= is intended as a gradual rollout mechanism. Set it to 100 once you are confident that all legitimate mail passes SPF and DKIM. Leaving it below 100 indefinitely creates a partial protection gap.
@@ -12374,6 +12420,8 @@ _dmarc.example.com. IN TXT "v=DMARC1; p=reject; pct=100; rua=mailto:dmarc@exampl
 **DMARC Policy Set to Monitor-Only (p=none)**
 
 A DMARC record exists for this domain, but its p= tag is set to "none". Receivers apply no enforcement action to mail that fails DMARC; failing messages are delivered exactly as if no DMARC record existed at all, with reports (if configured) as the only effect.
+
+**Finding ids:** a scan does not report `email-dmarc-p-none` as a finding id. Its findings carry an id starting `async-dmarc-policy-set-to-none`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** Spoofed mail that fails SPF and DKIM alignment is still delivered to recipients unchanged. p=none is the single most common DMARC misconfiguration: teams publish a record to start collecting reports, then never progress past it, leaving the domain with the appearance of DMARC protection but none of its enforcement.
 
@@ -12403,6 +12451,8 @@ _dmarc.example.com. IN TXT "v=DMARC1; p=quarantine; pct=100; rua=mailto:dmarc@ex
 
 An MTA-STS TXT record exists but the policy file at https://mta-sts.<domain>/.well-known/mta-sts.txt is not reachable. Without the policy file, the MTA-STS declaration has no effect.
 
+**Finding ids:** a scan does not report `email-mta-sts-policy-missing` as a finding id. Its findings carry an id starting `async-mta-sts-policy-file-missing`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Without a retrievable policy file, sending servers that check MTA-STS will not enforce TLS for mail delivery to your domain. STARTTLS downgrade attacks remain possible.
 
 **Why it matters:** MTA-STS works in two parts: a DNS TXT record at _mta-sts.<domain> declares the policy ID, and the actual policy file is served over HTTPS at a well-known path. If the policy file is unreachable, the MTA-STS declaration is incomplete and sending servers will not enforce TLS.
@@ -12428,6 +12478,8 @@ max_age: 604800
 
 The MTA-STS policy is set to mode: none or mode: testing. These modes do not enforce TLS for inbound SMTP connections, so STARTTLS downgrade attacks remain possible.
 
+**Finding ids:** a scan does not report `email-mta-sts-mode-none` as a finding id. Its findings carry an id starting `async-mta-sts-mode-not-enforcing`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Attackers can downgrade inbound SMTP sessions from STARTTLS to plaintext, exposing email content and relay credentials. The MTA-STS declaration provides false assurance without enforcement.
 
 **Why it matters:** MTA-STS mode: none and mode: testing tell sending servers to check the policy but not enforce it. Only mode: enforce causes sending servers to abort delivery if TLS cannot be established.
@@ -12451,6 +12503,8 @@ max_age: 604800
 **MX Hostname Is a CNAME (RFC Violation)**
 
 An MX record points to a hostname that is a CNAME alias rather than an A/AAAA record. RFC 5321 explicitly prohibits MX targets from being CNAME records.
+
+**Finding ids:** a scan does not report `email-mx-hostname-cname` as a finding id. Its findings carry an id starting `async-mx-hostname-is-a-cname-rfc-violation-`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** Mail servers that strictly follow RFC 5321 will reject or skip this MX record, causing mail delivery failures for a subset of senders.
 
@@ -12478,6 +12532,8 @@ mail.example.com. IN A 198.51.100.10
 
 No SPF record was found at the domain apex. SPF is one of three email authentication mechanisms (SPF, DKIM, DMARC) that prevent unauthorized senders from sending mail as your domain.
 
+**Finding ids:** a scan does not report `spf-record` as a finding id. Its findings carry an id starting `async-missing-spf-record`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Without SPF, any server on the Internet can send email appearing to come from your domain. Phishing, business email compromise (BEC), and spam campaigns regularly exploit domains without SPF.
 
 **Why it matters:** SPF (RFC 7208) publishes an allowlist of servers authorized to send email from your domain as a TXT record at the apex. When a receiving server gets mail claiming to be from your domain, it checks whether the sending server's IP is in your SPF record. Without SPF, this check cannot be performed.
@@ -12500,6 +12556,8 @@ example.com. IN TXT "v=spf1 include:_spf.google.com include:sendgrid.net ip4:203
 **DMARC Record Missing**
 
 No DMARC record exists at _dmarc.<domain>. Without DMARC, there is no policy telling receivers what to do with mail that fails SPF or DKIM authentication, and you receive no reports about authentication failures.
+
+**Finding ids:** a scan does not report `dmarc-record` as a finding id. Its findings carry an id starting `async-missing-dmarc-record`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** Without DMARC, spoofed mail that fails SPF or DKIM is still delivered to recipients. You have no visibility into who is sending email as your domain, making phishing and BEC attacks undetectable.
 
@@ -12526,6 +12584,8 @@ _dmarc.example.com. IN TXT "v=DMARC1; p=reject; pct=100; rua=mailto:dmarc@exampl
 **DKIM Record Missing**
 
 No DKIM public key record was found for this domain. DKIM (DomainKeys Identified Mail) cryptographically signs outgoing messages, allowing receivers to verify the signature has not been tampered with.
+
+**Finding ids:** a scan does not report `dkim-record` as a finding id. Its findings carry an id starting `async-no-dkim-records-found`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** Without DKIM, your email messages have no cryptographic signature. DMARC alignment relies on either SPF or DKIM passing; without DKIM, SPF-only alignment is more easily broken by mail forwarding, weakening your overall protection.
 
@@ -12555,6 +12615,8 @@ opendkim-genkey -b 2048 -d example.com -s mail -t
 
 DNSSEC is not enabled for this domain's DNS zone. Without DNSSEC, DNS responses can be forged by cache poisoning attacks, redirecting email to attacker-controlled servers.
 
+**Finding ids:** a scan does not report `dnssec-enabled` as a finding id. Its findings carry an id starting `async-dnssec-not-enabled`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Without DNSSEC, attackers can poison DNS caches to forge MX records, redirecting inbound email to attacker-controlled mail servers. SPF and DMARC DNS lookups can also be spoofed, undermining email authentication.
 
 **Why it matters:** DNSSEC (RFC 4034/4035) uses public-key cryptography to sign DNS records. When DNSSEC is enabled and a DS record is published at the parent TLD, DNSSEC-validating resolvers can verify that DNS responses have not been tampered with. This is particularly important for email since MX, SPF, DKIM, and DMARC all rely on DNS lookups.
@@ -12577,6 +12639,8 @@ dig +dnssec A example.com | grep -E '(RRSIG|flags.*ad)'
 
 No TLS-RPT record exists at _smtp._tls.<domain>. TLS-RPT (RFC 8460) is a companion to MTA-STS that receives aggregate reports about SMTP TLS negotiation failures.
 
+**Finding ids:** a scan does not report `tls-rpt` as a finding id. Its findings carry an id starting `async-tls-rpt-record-missing`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Without TLS-RPT, you have no visibility into SMTP TLS failures. Certificate expiry, policy misconfiguration, and potential STARTTLS downgrade attacks go undetected until mail delivery fails.
 
 **Why it matters:** TLS-RPT collects daily aggregate reports from mail senders about TLS connection failures when delivering to your mail servers. Reports include MX hostnames, failure reasons, and counts. They are essential for monitoring the health of MTA-STS enforcement.
@@ -12596,6 +12660,8 @@ _smtp._tls.example.com. IN TXT "v=TLSRPTv1; rua=mailto:tls-reports@example.com"
 **SPF Uses Deprecated ptr: Mechanism**
 
 The SPF record uses the ptr: mechanism. RFC 7208 explicitly deprecates ptr: because it triggers expensive and unreliable reverse DNS lookups that slow SPF evaluation and may cause timeouts.
+
+**Finding ids:** a scan does not report `email-spf-ptr-mechanism` as a finding id. Its findings carry an id starting `async-spf-uses-deprecated-ptr-mechanism`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** ptr: lookups can timeout or fail intermittently, causing SPF to return temperror. Some receivers treat temperror as a pass (accepting mail), others may defer or fail delivery.
 
@@ -12620,6 +12686,8 @@ example.com. IN TXT "v=spf1 ip4:203.0.113.0/24 include:_spf.google.com -all"
 **SPF Record Uses +all (Explicitly Permits Any Sender)**
 
 The SPF record's terminal mechanism is +all (or has no all mechanism and defaults permissively), which explicitly authorizes every server on the Internet to send mail as this domain. This is stronger, and worse, than simply omitting -all: it is an affirmative statement that any sender is allowed, not just the absence of a restriction.
+
+**Finding ids:** a scan does not report `email-spf-plus-all` as a finding id. Its findings carry an id starting `async-weak-spf-record-all-`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** Any server anywhere can send email that passes SPF for this domain. Combined with a weak or absent DMARC policy, this makes phishing and business email compromise (BEC) using this domain's name trivial, since the SPF check that receivers rely on to filter spoofed mail is explicitly disabled rather than merely missing.
 
@@ -12648,6 +12716,8 @@ example.com. IN TXT "v=spf1 include:_spf.google.com -all"
 
 A BIMI record exists at default._bimi.<domain>, but its logo location (l=) tag is malformed, not served over HTTPS, or points at a non-SVG image file. Mail providers that support BIMI (Gmail, Yahoo, Fastmail, Apple Mail) will not display the brand logo when this happens.
 
+**Finding ids:** a scan does not report `email-bimi-logo-invalid` as a finding id. Its findings carry an id starting `async-bimi-logo-url-does-not-meet-bimi-requirements`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** The BIMI record looks configured but silently fails to render, so the intended brand-trust indicator never appears in recipient inboxes. This is a functional and branding gap, not itself an authentication weakness.
 
 **Why it matters:** BIMI (Brand Indicators for Message Identification) requires the l= tag to be an absolute HTTPS URL pointing to an SVG Tiny Portable/Secure profile image. A non-HTTPS URL, an unparsable URL, or a common raster format (PNG/JPEG/GIF/WEBP) all fail BIMI validation at the receiving mail provider even though the DNS record itself resolves. Absence of a BIMI record entirely is not flagged: BIMI is opt-in branding, not a security control.
@@ -12670,6 +12740,8 @@ default._bimi.example.com. IN TXT "v=BIMI1; l=https://example.com/brand/logo.svg
 
 The DMARC record includes an sp= tag whose policy (none/quarantine/reject) is weaker than the p= tag governing the organizational domain itself. Subdomains fall back to the weaker sp= policy instead of inheriting the stronger domain-wide policy.
 
+**Finding ids:** a scan does not report `email-dmarc-subdomain-policy-weaker` as a finding id. Its findings carry an id starting `async-dmarc-subdomain-policy-weaker-than-domain-policy`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** An attacker can spoof mail from an arbitrary, even nonexistent, subdomain of this domain and have it evaluated against the weaker sp= policy instead of the stronger p= policy, bypassing the protection the organizational domain otherwise enforces.
 
 **Why it matters:** RFC 7489 S6.3 defines sp= as the policy applied to subdomains that do not publish their own DMARC record. When sp= is set to a weaker value than p= (for example p=reject; sp=none), mail claiming to be from any subdomain is only held to the weaker policy, undermining the organizational domain's own protection.
@@ -12690,6 +12762,8 @@ _dmarc.example.com. IN TXT "v=DMARC1; p=reject; sp=reject; rua=mailto:dmarc@exam
 **DKIM Public Key Uses a Weak RSA Key Size**
 
 A DKIM selector was found publishing an RSA public key below 2048 bits. Keys under 1024 bits are treated as a high-severity finding since they are within range of practical factoring attacks; keys from 1024 up to 2047 bits are deprecated but not immediately breakable.
+
+**Finding ids:** a scan does not report `email-dkim-weak-key` as a finding id. Its findings carry an id starting `async-dkim-public-key-uses-a-weak-rsa-key-size`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** A factored DKIM private key lets an attacker forge a valid DKIM signature for the domain, defeating DKIM-based spoofing protection and, depending on the DMARC alignment mode in use, potentially DMARC as well.
 
@@ -22577,6 +22651,8 @@ EOF
 
 Async check: opens a TLS connection to :443 and reports the certificate validity window, expiry, self-signing, and incomplete chains.
 
+**Finding ids:** a scan does not report `tls-certificate-expiry` as a finding id. Its findings carry an id starting `async-expired-tls-certificate` or `async-tls-certificate-expiring-soon` or `async-tls-certificate-expiring-within-30-days`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** An expired or self-signed certificate breaks HTTPS trust and exposes users to MITM attacks.
 
 **Why it matters:** TLS certificates are short-lived by design. The scan opens a TLS connection (not just an HTTP request) so it can inspect the leaf certificate and chain directly.
@@ -22598,6 +22674,8 @@ openssl s_client -connect example.com:443 -showcerts < /dev/null | openssl x509 
 **Weak TLS Protocol Version**
 
 Async check: reports whether the negotiated TLS protocol is TLS 1.2+ or older (TLS 1.0/1.1/SSLv3).
+
+**Finding ids:** a scan does not report `tls-protocol-version` as a finding id. Its findings carry an id starting `async-weak-tls-protocol-version`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** Older TLS versions have known attacks (POODLE, BEAST, ROBOT) and lack modern AEAD cipher suites. Clients negotiating TLS 1.0 or 1.1 are vulnerable to downgrade attacks.
 
@@ -22622,6 +22700,8 @@ ssl_prefer_server_ciphers off;
 **RSA Key Size Below 2048 Bits**
 
 The TLS certificate uses an RSA key smaller than 2048 bits. Keys below this threshold are practically factorable with modern compute resources.
+
+**Finding ids:** a scan does not report `tls-cert-key-size-rsa` as a finding id. Its findings carry an id starting `async-weak-tls-certificate-key-size`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** An RSA key below 1024 bits can be factored offline. Keys between 1024 and 2048 bits are at risk from well-resourced attackers, allowing session decryption and impersonation.
 
@@ -22649,6 +22729,8 @@ openssl req -new -key server.key -out server.csr -subj '/CN=example.com'
 
 The TLS certificate is self-signed (issuer equals subject with no trusted CA chain). Browsers display a hard error and require users to manually bypass the warning.
 
+**Finding ids:** a scan does not report `tls-cert-self-signed` as a finding id. Its findings carry an id starting `async-self-signed-tls-certificate`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Users who bypass the self-signed certificate warning receive no guarantee of server identity. Attackers can present any self-signed certificate during a MITM attack and users are trained to click through the warning.
 
 **Why it matters:** Self-signed certificates are appropriate for development environments but must never be used in production. They provide encryption but no authentication, which defeats half the purpose of TLS.
@@ -22672,6 +22754,8 @@ certbot renew --dry-run
 
 The server does not offer TLS 1.3. Connections fall back to TLS 1.2, which lacks TLS 1.3's 0-RTT resumption, reduced round-trip handshake, and mandatory forward-secrecy-only cipher suites.
 
+**Finding ids:** a scan does not report `tls-tls-1-3-not-supported` as a finding id. Its findings carry an id starting `async-tls-1-3-not-supported`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Without TLS 1.3, clients miss improved forward secrecy and the cleaner cipher-suite design that eliminates weak algorithms at the protocol level. TLS 1.2 remains safe but requires more careful cipher configuration.
 
 **Why it matters:** TLS 1.3 removes support for all non-AEAD ciphers, weak key exchange, and the legacy handshake format. It also adds 0-RTT resumption and reduces handshake latency by one round-trip. Enabling it alongside TLS 1.2 is backward compatible.
@@ -22694,6 +22778,8 @@ ssl_prefer_server_ciphers off;
 **Subject Alternative Name (SAN) Missing**
 
 The TLS certificate does not include a Subject Alternative Name (SAN) extension. Modern browsers and APIs only trust certificates that list hostnames in SAN. The legacy CN field is ignored.
+
+**Finding ids:** a scan does not report `tls-cert-san-missing` as a finding id. Its findings carry an id starting `async-subject-alternative-name-san-missing`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** A certificate without SAN is treated as untrusted by current browsers and modern TLS libraries, breaking HTTPS for end users with a hard error page.
 
@@ -22722,6 +22808,8 @@ openssl req -new -key server.key -out server.csr \
 
 The TLS certificate uses an ECDSA key on a curve smaller than P-256 (secp256r1). Curves below P-256 provide less than 128-bit equivalent security and should be avoided in new certificates.
 
+**Finding ids:** a scan does not report `tls-cert-key-size-ecdsa` as a finding id. Its findings carry an id starting `async-ecdsa-key-size-below-p-256`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Smaller ECDSA curves provide weaker cryptographic guarantees. While not yet practically broken, they offer a smaller security margin than modern recommendations require.
 
 **Why it matters:** NIST recommends P-256 (secp256r1) as the minimum ECDSA curve for new certificates. P-256 provides 128-bit equivalent security. Curves below this (e.g., secp192r1) are considered substandard by modern standards.
@@ -22747,6 +22835,8 @@ openssl x509 -in cert.pem -noout -text | grep -A2 'Public Key Algorithm'
 **Expired Certificate in CA Chain**
 
 One or more intermediate or root certificates in the TLS chain have expired. An expired CA certificate in the chain causes strict verifiers to reject the entire chain even if the leaf certificate is still valid.
+
+**Finding ids:** a scan does not report `tls-cert-expired-ca-chain` as a finding id. Its findings carry an id starting `async-expired-certificate-in-ca-chain`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** Browsers and API clients that enforce strict chain validation will refuse connections with an expired intermediate CA, breaking HTTPS for all affected users.
 
@@ -23168,6 +23258,8 @@ openssl s_client -connect example.com:443 -tls1_1 </dev/null
 
 The server presents a TLS certificate whose Subject Alternative Names do not include the hostname that was requested.
 
+**Finding ids:** a scan does not report `tls-cert-hostname-mismatch` as a finding id. Its findings carry an id starting `async-tls-certificate-does-not-match-the-hostname`, followed by `--` and a hash of the scanned URL.
+
 **Risk:** Browsers block the page with a full-screen warning. A user who clicks through has no assurance they reached this site rather than an interceptor presenting its own certificate.
 
 **Why it matters:** A certificate proves identity only for the names it lists. The usual causes are a shared IP or load balancer serving another site's certificate because SNI is misconfigured, a certificate that was renewed without one of the site's names, or a DNS record still pointing at shared hosting.
@@ -23190,6 +23282,8 @@ openssl s_client -connect example.com:443 -servername example.com </dev/null 2>/
 **Certificate Not Trusted**
 
 The TLS certificate failed verification for a reason other than expiry, self-signing, a missing intermediate or a hostname mismatch, for example a private CA, an unknown issuer, or a certificate that is not yet valid or has been revoked.
+
+**Finding ids:** a scan does not report `tls-cert-untrusted` as a finding id. Its findings carry an id starting `async-untrusted-tls-certificate`, followed by `--` and a hash of the scanned URL.
 
 **Risk:** Clients that verify certificates, which includes every browser and most API clients, refuse the connection or warn the user.
 

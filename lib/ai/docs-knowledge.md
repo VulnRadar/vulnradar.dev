@@ -2596,7 +2596,9 @@ scanner is useful before any money changes hands.
 > If a credit purchase is fully refunded or charged back, the credits
 it bought are removed from the balance, floored at zero so a spent
 balance cannot go negative. A partial refund is recorded but does
-not remove credits.
+not remove credits. A refund that arrives before the credits do
+stops them from being granted, and a dispute decided in your favour
+gives back exactly the credits it took.
 
 > **INFO: Cancelling never deletes anything**
 > Your scans, findings, API keys, webhooks, schedules and team

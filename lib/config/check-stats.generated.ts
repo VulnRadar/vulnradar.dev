@@ -21,8 +21,8 @@ export const CHECK_CATEGORY_LAST_MODIFIED: Record<string, string> = {
   configuration: "2026-11-08",
   content: "2026-11-08",
   cookies: "2026-09-16",
-  dns: "2026-09-16",
-  email: "2026-09-16",
+  dns: "2026-11-11",
+  email: "2026-11-11",
   headers: "2026-11-08",
   "host-validation": "2026-08-13",
   "information-disclosure": "2026-09-16",
@@ -30,6 +30,6 @@ export const CHECK_CATEGORY_LAST_MODIFIED: Record<string, string> = {
   "secrets-extended": "2026-11-08",
   ssl: "2026-09-16",
   "supply-chain": "2026-09-16",
-  tls: "2026-09-16",
+  tls: "2026-11-11",
   "vibe-code": "2026-09-16",
 };
