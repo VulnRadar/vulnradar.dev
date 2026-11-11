@@ -4,7 +4,7 @@ import { parseIdParam } from "@/lib/api/path-id";
 import { parseRowId } from "@/lib/teams/parse-id";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { ERROR_MESSAGES, TEAM_ROLES } from "@/lib/config/constants";
 import { getAssignableTeamIds } from "@/lib/auth/team-resource-access";
 
 /**
@@ -27,6 +27,9 @@ import { getAssignableTeamIds } from "@/lib/auth/team-resource-access";
  * a domain that is not the caller's own is deliberate -- there is no
  * read-only variant of this action, so a non-owner learns nothing about
  * whether the id exists.
+ *
+ * The one exception is `teamId: null` from an owner or admin of the team the
+ * row is shared with, which un-shares it (see below).
  */
 export const PATCH = withErrorHandling(
   async (
@@ -84,10 +87,43 @@ export const PATCH = withErrorHandling(
       [teamId, id, session.userId],
     );
 
-    if (result.rows.length === 0) {
-      return NextResponse.json({ error: "Domain not found" }, { status: 404 });
+    if (result.rows.length > 0) return NextResponse.json(result.rows[0]);
+
+    // Not the caller's own row. The one thing anyone else may do is take it
+    // OUT of a team they run: DELETE /domains is owner-only, and un-sharing is
+    // how a team owner or admin gets a teammate's domain off the team without
+    // destroying the ownership proof (gap-domain-verification-active-gating-7).
+    // Moving it into a team, or between teams, stays the owner's call.
+    if (teamId === null) {
+      const shared = await pool.query<{ team_id: number; role: string }>(
+        `SELECT d.team_id, tm.role
+           FROM domains d
+           JOIN team_members tm
+             ON tm.team_id = d.team_id AND tm.user_id = $2
+          WHERE d.id = $1`,
+        [id, session.userId],
+      );
+      const membership = shared.rows[0];
+      if (
+        membership &&
+        (membership.role === TEAM_ROLES.OWNER ||
+          membership.role === TEAM_ROLES.ADMIN)
+      ) {
+        // Scoped to the team the caller runs, so a row the owner moved
+        // elsewhere in the meantime is left where it is.
+        const unshared = await pool.query(
+          `UPDATE domains SET team_id = NULL
+            WHERE id = $1 AND team_id = $2
+            RETURNING id, domain, user_id, team_id, status, verification_method, created_at,
+                      verified_at, last_checked_at, last_check_error`,
+          [id, membership.team_id],
+        );
+        if (unshared.rows.length > 0) {
+          return NextResponse.json(unshared.rows[0]);
+        }
+      }
     }
 
-    return NextResponse.json(result.rows[0]);
+    return NextResponse.json({ error: "Domain not found" }, { status: 404 });
   },
 );

@@ -110,3 +110,80 @@ describe("PATCH /api/v3/domains/[id]", () => {
     expect(res.status).toBe(404);
   });
 });
+
+/**
+ * gap-domain-verification-active-gating-7: DELETE /domains is owner-only now,
+ * so a team admin who wants a teammate's domain out of the team un-shares it
+ * instead. That moves the row back to personal and keeps the ownership proof,
+ * which a delete would have destroyed.
+ */
+describe("PATCH /api/v3/domains/[id], a team admin un-sharing", () => {
+  /** Answers by statement: the owner UPDATE misses (not the caller's row). */
+  function sharedRow(callerRole: string | null) {
+    mockQuery.mockImplementation(async (sql: string) => {
+      const q = String(sql);
+      if (q.includes("WHERE id = $2 AND user_id = $3")) return { rows: [] };
+      if (q.startsWith("SELECT d.team_id")) {
+        return {
+          rows: callerRole ? [{ team_id: 5, role: callerRole }] : [],
+        };
+      }
+      if (q.includes("SET team_id = NULL")) {
+        return { rows: [{ id: 9, domain: "example.com", team_id: null }] };
+      }
+      return { rows: [] };
+    });
+  }
+
+  const unshare = () =>
+    mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("SET team_id = NULL"),
+    );
+
+  it.each(["owner", "admin"])(
+    "lets a team %s move a teammate's domain out of the team",
+    async (role) => {
+      sharedRow(role);
+
+      const res = await PATCH(patchRequest({ teamId: null }), params("9"));
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ id: 9, team_id: null });
+      const [sql, values] = unshare()!;
+      // Scoped to the team the caller administers, so a row moved to another
+      // team in the meantime is left alone.
+      expect(sql).toContain("WHERE id = $1 AND team_id = $2");
+      expect(values).toEqual([9, 5]);
+    },
+  );
+
+  it.each(["manager", "operator", "member", "viewer"])(
+    "does not let a %s un-share it",
+    async (role) => {
+      sharedRow(role);
+
+      const res = await PATCH(patchRequest({ teamId: null }), params("9"));
+
+      expect(res.status).toBe(404);
+      expect(unshare()).toBeUndefined();
+    },
+  );
+
+  it("404s for someone who is not on the row's team", async () => {
+    sharedRow(null);
+
+    const res = await PATCH(patchRequest({ teamId: null }), params("9"));
+
+    expect(res.status).toBe(404);
+    expect(unshare()).toBeUndefined();
+  });
+
+  it("never lets a team admin move someone else's domain INTO a team", async () => {
+    sharedRow("admin");
+
+    const res = await PATCH(patchRequest({ teamId: 7 }), params("9"));
+
+    expect(res.status).toBe(404);
+    expect(unshare()).toBeUndefined();
+  });
+});

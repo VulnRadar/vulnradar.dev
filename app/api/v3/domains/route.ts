@@ -6,7 +6,10 @@ import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
+import {
+  getAssignableTeamIds,
+  getTeamResourceAccess,
+} from "@/lib/auth/team-resource-access";
 import {
   normalizeDomainInput,
   generateVerificationToken,
@@ -31,19 +34,48 @@ export const GET = withErrorHandling(async () => {
   // ones a teammate verified and shared, and PATCH /domains/[id] is scoped to
   // the owner (`WHERE id = $2 AND user_id = $3`, 404 for anyone else). The
   // client needs to know which rows it may offer a team control on.
-  const result = await pool.query(
+  //
+  // A teammate's row is listed only while its owner is still on that team,
+  // the same rule getTeamResourceAccess and lib/domains/scope.ts apply: a
+  // domain somebody shared before they left is no longer the team's.
+  const result = await pool.query<{
+    domain: string;
+    user_id: number;
+    team_id: number | null;
+    status: string;
+  }>(
     `SELECT id, domain, user_id, team_id, status, verification_method,
             created_at, verified_at, last_checked_at, last_check_error
      FROM domains
      WHERE user_id = $1
-        OR team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+        OR (team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+            AND EXISTS (SELECT 1 FROM team_members o
+                         WHERE o.team_id = domains.team_id
+                           AND o.user_id = domains.user_id))
      ORDER BY created_at DESC`,
     [session.userId],
   );
+
+  // usableForScanning: whether this row would let the caller run an active
+  // probe or a port sweep, answered by the rule lib/domains/scope.ts enforces
+  // (isUrlOwnedByUser). Being able to SEE a teammate's row is not that: a
+  // viewer or a manager reads every team row but cannot scan under the team,
+  // and the scan form, which counted every verified row, promised them a port
+  // sweep that then 403'd the whole scan
+  // (gap-domain-verification-active-gating-6).
+  const featureOn = Boolean(await getSetting("FEATURE_DOMAIN_VERIFICATION"));
+  const assignable = featureOn
+    ? new Set(await getAssignableTeamIds(session.userId))
+    : new Set<number>();
   return NextResponse.json({
     domains: result.rows.map((row) => ({
       ...row,
       verificationRecordName: verificationRecordName(row.domain),
+      usableForScanning:
+        featureOn &&
+        row.status === "verified" &&
+        (row.user_id === session.userId ||
+          (row.team_id !== null && assignable.has(row.team_id))),
     })),
   });
 });
@@ -151,7 +183,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   );
 });
 
-/** DELETE /api/v3/domains?id=123 */
+/**
+ * DELETE /api/v3/domains?id=123
+ *
+ * Owner-only, like PATCH /domains/[id]. This used to accept anyone the team
+ * write rule let through, so any teammate with manage_scans could destroy a
+ * domain somebody else had proven they own, which costs that person a new DNS
+ * record and a wait to put back, although only they may decide which team it
+ * is shared with (gap-domain-verification-active-gating-7). A team admin who
+ * wants it out of the team un-shares it instead (PATCH /domains/[id] with
+ * teamId null), which keeps the proof.
+ */
 export const DELETE = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session)
@@ -181,18 +223,30 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
     return NextResponse.json({ error: "Domain not found." }, { status: 404 });
   }
 
-  const access = await getTeamResourceAccess(
-    session.userId,
-    row.user_id,
-    row.team_id,
-  );
-  if (!access.canWrite) {
+  if (row.user_id !== session.userId) {
+    // A teammate who can see the row is told why; anyone else learns nothing
+    // about whether the id exists.
+    const access = await getTeamResourceAccess(
+      session.userId,
+      row.user_id,
+      row.team_id,
+    );
     return NextResponse.json(
-      { error: "You don't have permission to remove this domain." },
+      access.canRead
+        ? {
+            error:
+              "Only the person who verified this domain can remove it. A team owner or admin can stop sharing it with the team instead.",
+          }
+        : { error: "Domain not found." },
       { status: access.canRead ? 403 : 404 },
     );
   }
 
-  await pool.query(`DELETE FROM domains WHERE id = $1`, [id]);
+  // Scoped to the owner in the statement too, so the answer above cannot go
+  // stale between the read and the write.
+  await pool.query(`DELETE FROM domains WHERE id = $1 AND user_id = $2`, [
+    id,
+    session.userId,
+  ]);
   return NextResponse.json({ success: true });
 });

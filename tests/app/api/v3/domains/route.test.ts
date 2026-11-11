@@ -40,9 +40,12 @@ vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
 });
 
 const mockGetTeamResourceAccess = vi.fn();
+const mockGetAssignableTeamIds = vi.fn();
 vi.mock("@/lib/auth/team-resource-access", () => ({
   getTeamResourceAccess: (...args: unknown[]) =>
     mockGetTeamResourceAccess(...args),
+  getAssignableTeamIds: (...args: unknown[]) =>
+    mockGetAssignableTeamIds(...args),
 }));
 
 const { GET, POST, DELETE } = await import("@/app/api/v3/domains/route");
@@ -67,6 +70,8 @@ beforeEach(() => {
     canRead: true,
     canWrite: true,
   });
+  mockGetAssignableTeamIds.mockReset();
+  mockGetAssignableTeamIds.mockResolvedValue([]);
 });
 
 function postRequest(body: unknown): NextRequest {
@@ -130,6 +135,83 @@ describe("GET /api/v3/domains", () => {
 
     const [sql] = mockQuery.mock.calls[0];
     expect(sql).toContain("user_id, team_id");
+  });
+});
+
+/**
+ * gap-domain-verification-active-gating-6: the scan form's "this domain is
+ * verified" hint counted every verified row in this list, including a
+ * teammate's domain shared into a team where the caller is only a viewer or a
+ * manager. lib/domains/scope.ts honours a team row only for a team the caller
+ * may assign scans to (getAssignableTeamIds), so ticking the port sweep for
+ * such a host 403'd the whole scan. Each row now says whether it would pass.
+ */
+describe("GET /api/v3/domains, usableForScanning", () => {
+  const row = (over: Record<string, unknown>) => ({
+    id: 1,
+    domain: "example.com",
+    user_id: 42,
+    team_id: null,
+    status: "verified",
+    ...over,
+  });
+
+  async function usable(rows: Record<string, unknown>[]) {
+    mockQuery.mockResolvedValueOnce({ rows });
+    const res = await GET();
+    const json = await res.json();
+    return (json.domains as { id: number; usableForScanning: boolean }[]).map(
+      (d) => [d.id, d.usableForScanning],
+    );
+  }
+
+  it("marks the caller's own verified domain usable", async () => {
+    expect(await usable([row({ id: 1 })])).toEqual([[1, true]]);
+  });
+
+  it("marks a teammate's domain usable for a member of the team it is shared with", async () => {
+    // A member holds manage_scans, so getAssignableTeamIds lists the team.
+    mockGetAssignableTeamIds.mockResolvedValue([5]);
+    expect(await usable([row({ id: 2, user_id: 7, team_id: 5 })])).toEqual([
+      [2, true],
+    ]);
+    expect(mockGetAssignableTeamIds).toHaveBeenCalledWith(42);
+  });
+
+  it("marks the same domain not usable for a viewer of that team", async () => {
+    // A viewer can see the row (it is listed) but cannot scan under the team.
+    mockGetAssignableTeamIds.mockResolvedValue([]);
+    expect(await usable([row({ id: 2, user_id: 7, team_id: 5 })])).toEqual([
+      [2, false],
+    ]);
+  });
+
+  it("never marks a pending or lapsed row usable, not even the caller's own", async () => {
+    mockGetAssignableTeamIds.mockResolvedValue([5]);
+    expect(
+      await usable([
+        row({ id: 3, status: "pending" }),
+        row({ id: 4, status: "reverify_failed", user_id: 7, team_id: 5 }),
+      ]),
+    ).toEqual([
+      [3, false],
+      [4, false],
+    ]);
+  });
+
+  it("marks nothing usable while domain verification is turned off", async () => {
+    // isUrlOwnedByUser fails closed with the flag off, so the hint must too.
+    mockGetSetting.mockResolvedValue(false);
+    expect(await usable([row({ id: 1 })])).toEqual([[1, false]]);
+  });
+
+  it("lists a teammate's row only while its owner is still on that team", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await GET();
+    const [sql] = mockQuery.mock.calls[0];
+    expect(String(sql).replace(/\s+/g, " ")).toMatch(
+      /EXISTS \( ?SELECT 1 FROM team_members \w+ WHERE \w+\.team_id = domains\.team_id AND \w+\.user_id = domains\.user_id ?\)/,
+    );
   });
 });
 
@@ -260,6 +342,55 @@ describe("DELETE /api/v3/domains", () => {
     expect(res.status).toBe(404);
   });
 
+  // gap-domain-verification-active-gating-7: deleting went through
+  // getTeamResourceAccess's write rule, so any teammate with manage_scans
+  // could destroy a domain somebody else had proven they own, although only
+  // that person may decide which team it is shared with.
+  it("refuses a teammate deleting a domain someone else verified, without a DELETE", async () => {
+    // Member 2 of team 5 tries to delete user 1's row shared into team 5.
+    mockGetSession.mockResolvedValue({ ...SESSION, userId: 2 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 1, team_id: 5 }] });
+    mockGetTeamResourceAccess.mockResolvedValue({
+      canRead: true,
+      canWrite: true,
+    });
+
+    const res = await DELETE(deleteRequest("9"));
+
+    expect([403, 404]).toContain(res.status);
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("DELETE FROM domains"),
+      ),
+    ).toBe(false);
+  });
+
+  it("tells a teammate who can see the row that it is not theirs to remove", async () => {
+    mockGetSession.mockResolvedValue({ ...SESSION, userId: 2 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 1, team_id: 5 }] });
+    mockGetTeamResourceAccess.mockResolvedValue({
+      canRead: true,
+      canWrite: false,
+    });
+
+    const res = await DELETE(deleteRequest("9"));
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toContain("verified");
+  });
+
+  it("scopes the DELETE itself to the owner, not only the check above it", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 42, team_id: 5 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const res = await DELETE(deleteRequest("9"));
+
+    expect(res.status).toBe(200);
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain("DELETE FROM domains WHERE id = $1 AND user_id = $2");
+    expect(params).toEqual([9, 42]);
+  });
+
   it("removes a domain the caller owns", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ user_id: 42, team_id: null }],
@@ -270,6 +401,6 @@ describe("DELETE /api/v3/domains", () => {
     expect(json.success).toBe(true);
     const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("DELETE FROM domains WHERE id = $1");
-    expect(params).toEqual([1]);
+    expect(params).toEqual([1, 42]);
   });
 });

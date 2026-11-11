@@ -26,12 +26,38 @@ import { domainListCovers } from "@/lib/domains/covering";
  * note, which is what it said before this existed.
  */
 export interface VerifiedDomains {
-  /** The verified domain names on this account, lowercased. */
+  /** The verified domain names this account may scan under, lowercased. */
   domains: string[];
   /** False until the fetch settles, so nothing flashes an answer it does not have. */
   loaded: boolean;
   /** Whether a verified domain covers this host, under the zone-control rule. */
   covers: (host: string | null) => boolean;
+}
+
+/**
+ * The domain names, lowercased, from GET /api/v3/domains rows that would let
+ * this account scan with active probes or a port sweep.
+ *
+ * `usableForScanning` and not `status`: the list also holds teammates' rows
+ * shared into a team where this account is only a viewer or a manager, and
+ * those are verified but do not let it scan (lib/domains/scope.ts honours a
+ * team row only for a team it may assign scans to). Counting them promised a
+ * port sweep the server then refused, which 403'd the whole scan
+ * (gap-domain-verification-active-gating-6). Strictly `true`, so a row from a
+ * server that does not send the flag reads as "cannot claim it", the same
+ * answer as loading or an error.
+ */
+export function usableDomainNames(rows: unknown): string[] {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .filter(
+      (r): r is { domain: string } =>
+        !!r &&
+        typeof r === "object" &&
+        (r as { usableForScanning?: unknown }).usableForScanning === true &&
+        typeof (r as { domain?: unknown }).domain === "string",
+    )
+    .map((r) => r.domain.toLowerCase());
 }
 
 export function useVerifiedDomains(enabled = true): VerifiedDomains {
@@ -47,16 +73,8 @@ export function useVerifiedDomains(enabled = true): VerifiedDomains {
         const res = await fetch(API.DOMAINS);
         if (!res.ok) throw new Error(String(res.status));
         const data = await res.json();
-        const rows: Array<{ domain?: unknown; status?: unknown }> =
-          Array.isArray(data?.domains) ? data.domains : [];
         if (cancelled) return;
-        setDomains(
-          rows
-            .filter(
-              (r) => r.status === "verified" && typeof r.domain === "string",
-            )
-            .map((r) => String(r.domain).toLowerCase()),
-        );
+        setDomains(usableDomainNames(data?.domains));
       } catch {
         // Signed out, verification turned off, or the request failed. All
         // three mean "we cannot claim this host is covered", which is the
