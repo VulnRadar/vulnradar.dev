@@ -289,21 +289,32 @@ different on /pricing, /repos, /teams and the support inbox.
 Each of these replaced several drifting local copies. A new call site that
 writes its own version is the drift coming back.
 
-| Need                                           | Use                                                                                 |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Absolute date                                  | `formatDate` / `formatDateTime` / `formatMonthDay` from `lib/ui/format-date.ts`     |
-| Relative time                                  | `lib/ui/relative-time.ts`                                                           |
-| "3 scans"                                      | `pluralize` / `plural` from `lib/ui/plural.ts`                                      |
-| Copy button state + screen-reader confirmation | `useCopyFeedback` + `CopiedAnnouncement` from `components/shared/copy-feedback.tsx` |
-| List search box                                | `ListSearchInput` from `components/shared/list-filter-bar.tsx`                      |
-| Icon beside text that may wrap                 | `LeadingIcon` (never inside a `Button`: the primitive already centres its icon)     |
-| Error / warning / success box                  | `InlineAlert` from `components/shared/inline-alert.tsx`                             |
-| API path                                       | the `API` map in `lib/config/client-constants.ts`, never a literal `/api/v3/...`    |
+| Need                                           | Use                                                                                                                                                                                                                        |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Absolute date                                  | `formatDate` / `formatDateTime` / `formatMonthDay` from `lib/ui/format-date.ts`                                                                                                                                            |
+| Relative time                                  | `lib/ui/relative-time.ts`                                                                                                                                                                                                  |
+| "3 scans"                                      | `pluralize` / `plural` from `lib/ui/plural.ts`                                                                                                                                                                             |
+| Copy button state + screen-reader confirmation | `useCopyFeedback` + `CopiedAnnouncement` from `components/shared/copy-feedback.tsx`                                                                                                                                        |
+| List search box                                | `ListSearchInput` from `components/shared/list-filter-bar.tsx`                                                                                                                                                             |
+| Icon beside text that may wrap                 | `LeadingIcon` (never inside a `Button`: the primitive already centres its icon)                                                                                                                                            |
+| Error / warning / success box                  | `InlineAlert` from `components/shared/inline-alert.tsx`                                                                                                                                                                    |
+| API path                                       | the `API` map in `lib/config/client-constants.ts`, never a literal `/api/v3/...`                                                                                                                                           |
+| An explanation the reader can skip             | `InfoHint` from `components/shared/info-hint.tsx`, beside the heading, never inside it. Text only, and `label` names the subject. Never for a warning, an error, a consequence or anything that must be read before acting |
 
 Base-layer rules in `app/globals.css` set plain `line-height`, never
 `@apply leading-*`: a leading utility sets `--tw-leading`, which overrides the
 line height of every `text-*` class on that element and clipped descenders
 app-wide. Admin text is never below 11px (`tests/components/admin/admin-type-floor.test.ts`).
+
+### Info hints
+
+An explanation that a reader can skip sits behind an info icon, not under the
+heading. The icon opens on hover and on keyboard focus, and on tap or click it
+stays open until Escape, an outside press, or a page scroll. The visible line
+next to the heading says what the thing is in under 70 characters; the hint
+says how it works. Warnings, errors, empty states, consequences of an
+irreversible action, the reason a control is disabled, credential handling,
+cost at the point of spending, and anything with a link stay on the page.
 
 ### Spacing conventions
 
