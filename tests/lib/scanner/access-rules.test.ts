@@ -39,11 +39,23 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
+// ip rules are matched against what a hostname resolves to, so DNS is a
+// boundary here too. By default nothing resolves, which leaves a hostname with
+// only its url rules: the shape every test written before that change expects.
+const mockLookup = vi.fn();
+vi.mock("node:dns/promises", () => ({
+  lookup: (...args: unknown[]) => mockLookup(...args),
+}));
+
 const { checkAccessRules, checkAccessRulesMultiple, clearAccessRulesCache } =
   await import("@/lib/scanner/access-rules");
 
 beforeEach(() => {
   mockQuery.mockReset();
+  mockLookup.mockReset();
+  mockLookup.mockRejectedValue(
+    Object.assign(new Error("getaddrinfo ENOTFOUND"), { code: "ENOTFOUND" }),
+  );
   // The module memoizes a completed evaluation per hostname for a short TTL
   // (AUDIT-012#perf-23). Every test below drives its own query sequence, so
   // the memo has to start empty or one test's decision answers the next.
@@ -109,7 +121,8 @@ describe("checkAccessRules: URL/domain normalization before hitting the query", 
       // "127.0.0.1" by the WHATWG URL parser by the time this module
       // runs its own regex — it never has to un-obfuscate anything itself.
       expect(params[0]).toBe("127.0.0.1");
-      expect(params[1]).toBe("127.0.0.1");
+      // And the ip arm of the query is live for it.
+      expect(String(mockQuery.mock.calls[0][0])).toContain("value_type = 'ip'");
     },
   );
 
@@ -133,23 +146,184 @@ describe("checkAccessRules: URL/domain normalization before hitting the query", 
     expect(result.matchedValue).toBe("127.0.0.1");
   });
 
-  it("does not extract an IP parameter for a non-IPv4-literal hostname", async () => {
+  it("passes no address for a hostname that does not resolve, leaving only url rules", async () => {
     mockNoRulesConfigured();
     await checkAccessRules("https://example.com/");
     const [, params] = mockQuery.mock.calls[0];
     expect(params).toEqual(["example.com"]);
   });
 
-  it("IPv6 literals are not recognized by the ip-type regex (dotted-decimal only), so an ip-type rule cannot match them", async () => {
-    mockNoRulesConfigured();
-    await checkAccessRules("http://[2001:4860:4860::8888]/");
-    const [, params] = mockQuery.mock.calls[0];
-    // No second query param -> ipCondition stayed "false" in the SQL,
-    // meaning an admin cannot write an ip-type rule to block/allow this
-    // IPv6 literal through this module. (validateScanTarget still
-    // classifies IPv6 literals correctly; this is a narrower limitation
-    // of the admin rule-matching feature, not an SSRF bypass.)
-    expect(params).toEqual(["[2001:4860:4860::8888]"]);
+  it("matches ip rules against an IPv6 literal, brackets stripped", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ value: "2001:4860::/32", value_type: "ip", reason: null }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // hit_count UPDATE
+
+    const result = await checkAccessRules("http://[2001:4860:4860::8888]/");
+
+    expect(result.allowed).toBe(false);
+    expect(result.matchedValue).toBe("2001:4860::/32");
+    expect(mockLookup).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * gap-domain-verification-active-gating-2. An ip rule used to be compared only
+ * with a target that WAS an IP literal: for every hostname the ip arm of the
+ * query was the constant `false`, so a complainant's blocked range was
+ * scanned freely by name. The fake below is a table holding one ip rule,
+ * 203.0.113.0/24: the query returns it whenever the ip arm is live, and
+ * whether it covers the target is decided in the module.
+ */
+describe("checkAccessRules: ip rules against the addresses a hostname resolves to", () => {
+  const RANGE = "203.0.113.0/24";
+
+  function blacklistWithRange() {
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("SELECT value, value_type, reason")) {
+        const ipArmLive = /OR\s+value_type = 'ip'/.test(String(sql));
+        return ipArmLive
+          ? { rows: [{ value: RANGE, value_type: "ip", reason: null }] }
+          : { rows: [] };
+      }
+      if (String(sql).includes("COUNT(*)")) return { rows: [{ count: 0 }] };
+      return { rows: [] };
+    });
+  }
+
+  it("blocks a hostname that resolves into a blocked range", async () => {
+    blacklistWithRange();
+    mockLookup.mockResolvedValue([{ address: "203.0.113.7", family: 4 }]);
+
+    const result = await checkAccessRules("https://a.example/");
+
+    expect(result.allowed).toBe(false);
+    expect(result.ruleType).toBe("blacklist");
+    expect(result.matchedValue).toBe(RANGE);
+    expect(result.reason).toMatch(/IP address/i);
+  });
+
+  it("blocks when any one of several resolved addresses is in the range", async () => {
+    blacklistWithRange();
+    mockLookup.mockResolvedValue([
+      { address: "198.51.100.1", family: 4 },
+      { address: "203.0.113.9", family: 4 },
+    ]);
+
+    const result = await checkAccessRules("https://multi.example/");
+
+    expect(result.allowed).toBe(false);
+  });
+
+  it("uses the addresses the caller already resolved instead of asking DNS again", async () => {
+    blacklistWithRange();
+
+    const result = await checkAccessRules("https://a.example/", {
+      resolvedAddresses: ["203.0.113.7"],
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(mockLookup).not.toHaveBeenCalled();
+  });
+
+  it("allows a hostname whose addresses are all outside the range", async () => {
+    blacklistWithRange();
+    mockLookup.mockResolvedValue([{ address: "198.51.100.1", family: 4 }]);
+
+    const result = await checkAccessRules("https://elsewhere.example/");
+
+    expect(result.allowed).toBe(true);
+  });
+
+  it("memoizes per hostname AND address, so a host that moves into the range is caught", async () => {
+    blacklistWithRange();
+    mockLookup.mockResolvedValueOnce([{ address: "198.51.100.1", family: 4 }]);
+    mockLookup.mockResolvedValueOnce([{ address: "203.0.113.7", family: 4 }]);
+
+    const before = await checkAccessRules("https://moving.example/");
+    const after = await checkAccessRules("https://moving.example/");
+
+    expect(before.allowed).toBe(true);
+    expect(after.allowed).toBe(false);
+  });
+
+  it("answers a repeat check of the same host at the same address from the memo", async () => {
+    blacklistWithRange();
+    mockLookup.mockResolvedValue([{ address: "198.51.100.1", family: 4 }]);
+
+    await checkAccessRules("https://steady.example/one");
+    await checkAccessRules("https://steady.example/two");
+
+    // One blacklist SELECT and one whitelist COUNT, not two of each.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores a malformed ip rule instead of failing every scan closed", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { value: "not-an-ip", value_type: "ip", reason: null },
+        { value: "999.1.1.1", value_type: "ip", reason: null },
+        { value: ":::", value_type: "ip", reason: null },
+        { value: "203.0.113.0/99", value_type: "ip", reason: null },
+        { value: "203.0.113.0/24/8", value_type: "ip", reason: null },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+    mockLookup.mockResolvedValue([{ address: "203.0.113.7", family: 4 }]);
+
+    const result = await checkAccessRules("https://guarded.example/");
+
+    expect(result.allowed).toBe(true);
+    // The value never reaches a cast in SQL, so it cannot raise there either.
+    expect(String(mockQuery.mock.calls[0][0])).not.toContain("::inet");
+  });
+
+  it("matches a single-address ip rule and an IPv6 range against resolved addresses", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ value: "2001:db8::/32", value_type: "ip", reason: null }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // hit_count UPDATE
+    mockLookup.mockResolvedValue([{ address: "2001:db8::5", family: 6 }]);
+
+    const v6 = await checkAccessRules("https://six.example/");
+    expect(v6.allowed).toBe(false);
+
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ value: "198.51.100.1", value_type: "ip", reason: null }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockLookup.mockResolvedValue([{ address: "198.51.100.1", family: 4 }]);
+
+    const exact = await checkAccessRules("https://exact.example/");
+    expect(exact.allowed).toBe(false);
+    expect(exact.matchedValue).toBe("198.51.100.1");
+  });
+
+  it("lets a whitelist ip range admit a hostname that resolves into it", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // blacklist: nothing
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 1 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ value: "203.0.113.0/24", value_type: "ip", reason: null }],
+    });
+    mockLookup.mockResolvedValue([{ address: "203.0.113.7", family: 4 }]);
+
+    const result = await checkAccessRules("https://inside.example/");
+
+    expect(result.allowed).toBe(true);
+  });
+
+  it("keeps a whitelist ip range from admitting a hostname outside it", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 1 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ value: "203.0.113.0/24", value_type: "ip", reason: null }],
+    });
+    mockLookup.mockResolvedValue([{ address: "198.51.100.1", family: 4 }]);
+
+    const result = await checkAccessRules("https://outside.example/");
+
+    expect(result.allowed).toBe(false);
+    expect(result.ruleType).toBe("whitelist");
   });
 });
 
