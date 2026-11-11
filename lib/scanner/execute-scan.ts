@@ -127,8 +127,11 @@ export const SUPPORTED_PROTOCOLS = [
 export function normalizeUrl(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) return trimmed;
+  // A scheme may carry digits (pop3://, pop3s://), the same rule
+  // lib/scanner/scan-identity.ts reads: [a-z]+ alone took pop3://host for a
+  // bare host and prefixed https:// to it.
   return canonicalScanUrl(
-    /^[a-z]+:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`,
+    /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`,
   );
 }
 

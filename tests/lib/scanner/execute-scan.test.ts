@@ -189,6 +189,18 @@ describe("normalizeUrl", () => {
     expect(normalizeUrl("")).toBe("");
   });
 
+  it("keeps a scheme with digits in it instead of prefixing https://", () => {
+    // pop3:// and pop3s:// are advertised protocols; the scheduled and demo
+    // callers reach the scanner through normalizeUrl, and "https://pop3://..."
+    // is no target at all.
+    expect(normalizeUrl("pop3://Mail.example.com")).toBe(
+      "pop3://mail.example.com/",
+    );
+    expect(normalizeUrl("pop3s://mail.example.com:995")).toBe(
+      "pop3s://mail.example.com:995/",
+    );
+  });
+
   // gap-ai-trust-boundary-4: whatever text a URL can carry used to ride into
   // scan_history.url as typed, and from there into the AI summary prompt. The
   // stored form is the parser's, with the fragment gone and spaces encoded.
