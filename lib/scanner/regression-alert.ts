@@ -42,6 +42,18 @@ import pool from "@/lib/database/db";
 import type { Vulnerability } from "./types";
 import { diffFindingsByKey } from "./finding-diff";
 import { HUMAN_FEEDBACK_SQL } from "./feedback-source";
+import { scanUrlLookupForms } from "./scan-identity";
+
+/**
+ * Every stored spelling of `url`. Scans are stored in their canonical form
+ * now, root slash included, while rows from before that hold the root without
+ * it, so a lookup by one spelling alone read the first scan after the change
+ * as the site's first and re-alerted on everything already known.
+ */
+function urlForms(url: string): string[] {
+  const forms = scanUrlLookupForms(url);
+  return forms.length > 0 ? forms : [url];
+}
 
 function isCriticalOrHigh(f: Vulnerability): boolean {
   return f.severity === "critical" || f.severity === "high";
@@ -56,9 +68,10 @@ async function getSuppressedFindingIds(
 ): Promise<Set<string>> {
   const result = await pool.query<{ finding_id: string }>(
     `SELECT finding_id FROM scan_finding_feedback
-     WHERE user_id = $1 AND finding_url = $2 AND verdict = 'false_positive'
+     WHERE user_id = $1 AND finding_url = ANY($2::text[])
+       AND verdict = 'false_positive'
        AND ${HUMAN_FEEDBACK_SQL}`,
-    [userId, findingUrl],
+    [userId, urlForms(findingUrl)],
   );
   return new Set(result.rows.map((r) => r.finding_id));
 }
@@ -83,9 +96,9 @@ async function getTriagedFindingIds(
   try {
     const result = await pool.query<{ finding_id: string }>(
       `SELECT finding_id FROM finding_remediation
-       WHERE user_id = $1 AND finding_url = $2
+       WHERE user_id = $1 AND finding_url = ANY($2::text[])
          AND status IN ('accepted_risk', 'wont_fix')`,
-      [userId, findingUrl],
+      [userId, urlForms(findingUrl)],
     );
     return new Set(result.rows.map((r) => r.finding_id));
   } catch (err) {
@@ -107,10 +120,11 @@ async function getPreviousScanFindings(
 ): Promise<Vulnerability[]> {
   const result = await pool.query<{ findings: unknown }>(
     `SELECT findings FROM scan_history
-     WHERE user_id = $1 AND url = $2 AND id != $3 AND status = 'completed'
+     WHERE user_id = $1 AND url = ANY($2::text[]) AND id != $3
+       AND status = 'completed'
      ORDER BY scanned_at DESC
      LIMIT 1`,
-    [userId, url, excludeScanId],
+    [userId, urlForms(url), excludeScanId],
   );
   const raw = result.rows[0]?.findings;
   if (!raw) return [];

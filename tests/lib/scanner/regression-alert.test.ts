@@ -361,7 +361,12 @@ describe("checkForNewCriticalOrHighFindings", () => {
     expect(sql).toContain("'accepted_risk'");
     expect(sql).toContain("'wont_fix'");
     expect(sql).not.toContain("'fixed'");
-    expect(params).toEqual([7, "https://example.com/"]);
+    // Both stored spellings of the root: rows from before canonical URLs hold
+    // it without the slash.
+    expect(params).toEqual([
+      7,
+      ["https://example.com/", "https://example.com"],
+    ]);
   });
 
   it("keeps alerting when the remediation table is missing", async () => {
@@ -396,6 +401,10 @@ describe("checkForNewCriticalOrHighFindings", () => {
     const [sql, params] = call!;
     expect(sql).toContain("status = 'completed'");
     expect(sql).toContain("id != $3");
-    expect(params).toEqual([7, "https://example.com/", 42]);
+    expect(params).toEqual([
+      7,
+      ["https://example.com/", "https://example.com"],
+      42,
+    ]);
   });
 });
