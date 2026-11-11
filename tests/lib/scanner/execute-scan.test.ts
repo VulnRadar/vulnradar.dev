@@ -118,6 +118,7 @@ vi.mock("@/lib/scanner/cve-enrichment", () => ({
 
 const { executeScan, normalizeUrl } =
   await import("@/lib/scanner/execute-scan");
+const { canonicalScanUrl } = await import("@/lib/scanner/scan-identity");
 const { REFUSED_RESPONSES } = await import("./refused-page-fixtures");
 const { userAgentOf } = await import("./_user-agent-of");
 const { SCANNER_UA } = await import("@/lib/scanner/user-agent");
@@ -226,6 +227,22 @@ describe("normalizeUrl", () => {
   it("leaves a string the URL parser refuses for the caller's validation", () => {
     const input = `https://exa\u0001mple.com${BACKSLASH}x`;
     expect(normalizeUrl(input)).toBe(input);
+  });
+
+  // normalizeUrl was a third copy of the rule scan_history.url is stored
+  // under, with the scheme test pasted in. It now calls that rule, and has to
+  // agree with it on everything the rule accepts.
+  it.each([
+    "example.com",
+    "Example.com/Docs/",
+    "  https://Example.com/docs  ",
+    "https://example.com/docs?page=2#install",
+    "http://example.com:80/a/b?c=d",
+    "ssh://LOC%61LHOST",
+    "pop3s://mail.example.com:995",
+    "mongodb://db.example:27017/",
+  ])("stores %j exactly as scan-identity spells it", (input) => {
+    expect(normalizeUrl(input)).toBe(canonicalScanUrl(input));
   });
 });
 

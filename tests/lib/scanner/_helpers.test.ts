@@ -11,6 +11,7 @@ import {
   legacyFindingId,
   withDeadline,
 } from "@/lib/scanner/_helpers";
+import * as identity from "@/lib/scanner/scan-identity";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -110,6 +111,74 @@ describe("canonicalScanUrl", () => {
     expect(canonicalScanUrl("mailto:a@example.com")).toBe(
       "mailto:a@example.com",
     );
+  });
+
+  it("hashes a bare host as given rather than adding https://, so its ids do not move", () => {
+    expect(canonicalScanUrl("example.com")).toBe("example.com");
+    expect(canonicalScanUrl("/var/www/app.js")).toBe("/var/www/app.js");
+  });
+});
+
+/**
+ * Finding ids hash the URL through _helpers.canonicalScanUrl, scan_history.url
+ * stores scan-identity's canonicalScanUrl, and triage is keyed on both. This
+ * was a second copy of the rule that had already drifted from the stored one
+ * (no trim, no control-character refusal), so the two now share one
+ * implementation, and every URL the stored rule accepts must come out of the
+ * id rule identically. normalizeUrl, the third place, is held to the same
+ * corpus in tests/lib/scanner/execute-scan.test.ts.
+ */
+describe("one canonical spelling for ids and stored URLs", () => {
+  const CANONICAL_CORPUS = [
+    "https://example.com",
+    "https://example.com/",
+    "HTTPS://EXAMPLE.COM/",
+    "  https://Example.com/docs  ",
+    "https://example.com/docs/",
+    "https://example.com/docs?page=2#install",
+    "https://example.com:443/",
+    "http://example.com:80/a/b?c=d",
+    "https://user:pass@Example.com/private",
+    "https://xn--bcher-kva.example/",
+    "https://B\u00fccher.example/",
+    "https://evil.com\\@victim.com/",
+    "https://127.0.0.1:8443/admin",
+    "https://[::1]/",
+    "ssh://Host.example:22",
+    "ssh://LOC%61LHOST",
+    "pop3://Mail.example.com",
+    "pop3s://mail.example.com:995",
+    "mongodb://db.example:27017/",
+    "ftp://files.example.com/pub/",
+    "smtp://mail.example.com:587",
+  ];
+
+  it.each(CANONICAL_CORPUS)(
+    "gives %j the same answer in both places",
+    (input) => {
+      const stored = identity.canonicalScanUrl(input);
+      expect(stored).not.toBeNull();
+      expect(canonicalScanUrl(input)).toBe(stored);
+    },
+  );
+
+  it("keeps a URL the stored rule refuses out of the id rule's reach", () => {
+    // A control character is refused at every entry point; the id rule must
+    // not quietly read it as some other address. The old copy here handed a
+    // tab to the URL parser, which drops it, and hashed victim.com for it.
+    for (const withControl of [
+      "https://vic\ttim.com/",
+      "https://exa\u0001mple.com/",
+    ]) {
+      expect(identity.canonicalScanUrl(withControl)).toBeNull();
+      expect(canonicalScanUrl(withControl)).toBe(withControl);
+    }
+  });
+
+  it("hashes a stored bare host exactly as it was stored", () => {
+    const stored = identity.canonicalScanUrl("Example.com");
+    expect(stored).toBe("https://example.com/");
+    expect(canonicalScanUrl(stored!)).toBe(stored);
   });
 });
 

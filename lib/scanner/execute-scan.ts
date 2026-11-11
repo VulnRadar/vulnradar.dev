@@ -17,7 +17,8 @@ import {
 } from "./engine";
 import { startAsyncPhase } from "./async-phase";
 import { classifyRedirect } from "./scan-target-classify";
-import { canonicalScanUrl } from "./_helpers";
+import { HAS_SCHEME, canonicalScanUrl } from "./scan-identity";
+import { parsedFormOf } from "./canonical-url";
 import { BOT_CHALLENGE_INCOMPLETE, detectBotChallenge } from "./bot-challenge";
 import { detectUnusablePage } from "./response-classifier";
 import { SCANNER_UA } from "./user-agent";
@@ -127,11 +128,20 @@ export const SUPPORTED_PROTOCOLS = [
 export function normalizeUrl(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) return trimmed;
-  // A scheme may carry digits (pop3://, pop3s://), the same rule
-  // lib/scanner/scan-identity.ts reads: [a-z]+ alone took pop3://host for a
-  // bare host and prefixed https:// to it.
-  return canonicalScanUrl(
-    /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`,
+  // The same rule the routes store scan_history.url under, which also gives a
+  // bare host its https:// and keeps a scheme with digits in it (pop3://).
+  // This used to be a third copy of it with the scheme test pasted in.
+  //
+  // That rule refuses a tab or a newline, which the routes answer with a 400
+  // before they get here. The callers that do not (a stored schedule, a bulk
+  // entry) still must not store one, so input the rule refuses is read the
+  // way the parser fetches it (it drops both) and given the same rule again.
+  return (
+    canonicalScanUrl(trimmed) ??
+    canonicalScanUrl(
+      parsedFormOf(HAS_SCHEME.test(trimmed) ? trimmed : `https://${trimmed}`),
+    ) ??
+    trimmed
   );
 }
 

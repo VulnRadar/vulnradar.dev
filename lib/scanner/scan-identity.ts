@@ -21,8 +21,12 @@
 // oxlint-disable-next-line no-control-regex -- finding them is the point
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/;
 
-/** A scheme the input already names, digits included (pop3://, pop3s://). */
-const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
+/**
+ * A scheme the input already names, digits included (pop3://, pop3s://).
+ * Exported so the two other places that ask "is this already a URL"
+ * (lib/scanner/_helpers.ts and normalizeUrl) ask it the same way.
+ */
+export const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
 
 export function hasControlCharacters(input: string): boolean {
   return CONTROL_CHARACTER.test(input);

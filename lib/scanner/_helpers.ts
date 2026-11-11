@@ -16,6 +16,10 @@ import {
   tagElementContents,
 } from "./checks/_tag-scan";
 import { startTagAttributes } from "./html/tokenizer";
+import {
+  HAS_SCHEME,
+  canonicalScanUrl as canonicalScanTarget,
+} from "./scan-identity";
 
 /**
  * FNV-1a 32-bit hash → base-36 string.
@@ -32,44 +36,27 @@ function fnvHash(s: string): string {
 }
 
 /**
- * One spelling per scanned address: the host lower-cased, the fragment
- * dropped, and an empty path given the root slash. "https://example.com",
- * "https://Example.com/" and "https://example.com/#top" are one site, and
- * storing or hashing them as typed gave the dashboard, the CLI and a crawl
- * three baselines and three sets of finding ids for it, so triage reset and
- * the regression email re-alerted on every switch of entry point.
+ * One spelling per scanned address, for hashing finding ids:
+ * lib/scanner/scan-identity.ts's canonicalScanUrl, the rule scan_history.url
+ * is stored under, applied only to input that already names a scheme.
  *
- * The rest of the path is kept as given, trailing slash included: this is
- * also the address that gets fetched, and "/docs/" and "/docs" can be two
- * different responses (a static host that serves the index only under the
- * slash, an app that routes them apart). The query string is kept for the
- * same reason, and userinfo because it is part of the request. A string the
- * URL parser refuses, or one with no host, comes back unchanged, so the
- * caller's validation still sees what was sent.
+ * "https://example.com", "https://Example.com/" and "https://example.com/#top"
+ * are one site, and hashing them as typed gave the dashboard, the CLI and a
+ * crawl three sets of finding ids for it, so triage reset and the regression
+ * email re-alerted on every switch of entry point. The ids have to be hashed
+ * from exactly the string the routes store, and this was a second copy of
+ * that rule that had already drifted: it did not trim, did not refuse control
+ * characters, and read input the other copy refused. One rule now, so an edit
+ * to it cannot split ids from stored URLs.
  *
- * This is the local copy of canonicalScanUrl in lib/scanner/scan-identity.ts
- * (scan-routes-entry), and it has to give the same answer for every URL that
- * one accepts: the scan routes store that one in scan_history.url and pass it
- * here as the address finding ids are hashed from, and two rules would hash a
- * page under one spelling while its triage rows are keyed under the other.
- * Once that module lands, this becomes a re-export of it.
+ * Anything that is not already a URL (a bare host, a file path, a string the
+ * parser refuses) comes back unchanged rather than gaining https://, so an id
+ * that was hashed from it does not move, and the caller's validation still
+ * sees what was sent.
  */
 export function canonicalScanUrl(input: string): string {
-  let url: URL;
-  try {
-    url = new URL(input);
-  } catch {
-    return input;
-  }
-  if (!url.hostname) return input;
-  try {
-    url.hostname = new URL(`http://${url.hostname}`).hostname;
-  } catch {
-    return input;
-  }
-  url.hash = "";
-  if (url.pathname === "") url.pathname = "/";
-  return url.href;
+  if (!HAS_SCHEME.test(input.trim())) return input;
+  return canonicalScanTarget(input) ?? input;
 }
 
 /**
