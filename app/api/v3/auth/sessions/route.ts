@@ -6,6 +6,7 @@ import {
   listUserSessions,
   hashSessionId,
 } from "@/lib/auth";
+import { destroyParkedAdminSession } from "@/lib/auth/auth";
 import { AUTH_SESSION_COOKIE_NAME } from "@/lib/config/constants";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { summarizeUserAgent } from "@/lib/auth/user-agent-summary";
@@ -14,6 +15,7 @@ import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { sessionRevokedEmail } from "@/lib/email/email";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
+import { logError } from "@/lib/logging/log";
 
 /**
  * List the caller's own active sessions. Session-owner-only: always
@@ -66,6 +68,16 @@ export const DELETE = withErrorHandling(async () => {
 
   // Delete all sessions for this user (including current one)
   await deleteAllSessions(session.userId);
+  // And every remembered device. "Sign out everywhere" is what someone does
+  // after spotting a device they do not recognise, and a trusted-device row
+  // left behind let that same browser skip the second factor on its next
+  // sign-in.
+  await pool.query("DELETE FROM device_trust WHERE user_id = $1", [
+    session.userId,
+  ]);
+  // Signed out of an impersonation: the admin session parked in this
+  // browser goes too (see destroyParkedAdminSession).
+  await destroyParkedAdminSession();
 
   // clear the actual session cookie. The
   // previous code used the literal "session" name, which doesn't match
@@ -86,10 +98,17 @@ export const DELETE = withErrorHandling(async () => {
   // the request context is still live; the send itself is deferred and
   // best-effort so a mail failure never affects the sign-out that already
   // happened above.
-  const [emailRes, ipAddress, userAgent] = await Promise.all([
+  const [emailRes, keysRes, ipAddress, userAgent] = await Promise.all([
     pool.query<{ email: string }>("SELECT email FROM users WHERE id = $1", [
       session.userId,
     ]),
+    // API keys are not sessions and keep working after this. The count lets
+    // the page say so and offer to revoke them, rather than promising a full
+    // sign-out while Bearer access is still live.
+    pool.query<{ count: number }>(
+      "SELECT COUNT(*)::int AS count FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL",
+      [session.userId],
+    ),
     getClientIp(),
     getUserAgent(),
   ]);
@@ -102,7 +121,9 @@ export const DELETE = withErrorHandling(async () => {
         type: "session_alerts",
         emailContent: sessionRevokedEmail({ ipAddress, userAgent }),
       }).catch((err) =>
-        console.error("Failed to send session revoked email:", err),
+        logError("auth", "session revoked email failed", err, {
+          userId: session.userId,
+        }),
       );
     });
   }
@@ -110,5 +131,6 @@ export const DELETE = withErrorHandling(async () => {
   return NextResponse.json({
     success: true,
     message: "All sessions revoked",
+    activeApiKeys: Number(keysRes.rows[0]?.count ?? 0),
   });
 });

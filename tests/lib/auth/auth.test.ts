@@ -19,10 +19,16 @@ let sessionRow: Row | null = null;
 let settingsRows: Row[] = [];
 let sessionsListRows: Row[] = [];
 let deleteByIdAndUserRowCount = 0;
+// What `SELECT EXISTS (SELECT 1 FROM users)` answers: false on a fresh
+// install, where the first account decides who becomes super_admin.
+let usersTableHasRows = true;
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   queries.push({ sql, params });
   const s = sql.trim();
+  if (s.startsWith("SELECT EXISTS (SELECT 1 FROM users)")) {
+    return { rows: [{ has_users: usersTableHasRows }] };
+  }
   if (s.startsWith("DELETE FROM sessions WHERE expires_at")) {
     return { rows: [] };
   }
@@ -53,9 +59,22 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   return { rows: [] };
 });
 
+// Statements run on a checked-out client, so a test can see which of them
+// shared one transaction.
+const clientStatements: { sql: string; params: unknown[] }[] = [];
+let clientReleases = 0;
 vi.mock("@/lib/database/db", () => ({
   default: {
     query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
+    connect: async () => ({
+      query: (sql: string, params: unknown[] = []) => {
+        clientStatements.push({ sql: sql.trim(), params });
+        return mockQuery(sql, params);
+      },
+      release: () => {
+        clientReleases += 1;
+      },
+    }),
   },
 }));
 
@@ -129,6 +148,9 @@ beforeEach(() => {
   settingsRows = []; // no rows -> every setting resolves to its shipped default (disabled)
   sessionsListRows = [];
   deleteByIdAndUserRowCount = 0;
+  usersTableHasRows = true;
+  clientStatements.length = 0;
+  clientReleases = 0;
   currentIp = "unknown";
   currentUserAgent = "test-agent";
   invalidateSettingsCache();
@@ -391,8 +413,10 @@ describe("createUser", () => {
   }, 20000);
 
   it("returns the role reported back by the database (server-decided, not client-decided)", async () => {
-    mockQuery.mockImplementationOnce(
+    const answer = mockQuery.getMockImplementation()!;
+    mockQuery.mockImplementation(
       async (sql: string, params: unknown[] = []) => {
+        if (!sql.includes("INSERT INTO users")) return answer(sql, params);
         queries.push({ sql, params });
         return {
           rows: [
@@ -408,9 +432,80 @@ describe("createUser", () => {
         };
       },
     );
-    const user = await createUser("first@example.com", "password123");
-    expect(user.role).toBe("super_admin");
-    expect(user.id).toBe(1);
+    try {
+      const user = await createUser("first@example.com", "password123");
+      expect(user.role).toBe("super_admin");
+      expect(user.id).toBe(1);
+    } finally {
+      mockQuery.mockImplementation(answer);
+    }
+  }, 20000);
+
+  // Two first signups at once could both see an empty table inside their
+  // INSERT and both become super_admin. On an empty table the INSERT now runs
+  // in a transaction behind one advisory lock, so the second waits, then
+  // sees the first account and gets 'user'.
+  describe("on an empty users table", () => {
+    beforeEach(() => {
+      usersTableHasRows = false;
+    });
+
+    it("decides the first account's role behind an advisory lock, in one transaction", async () => {
+      await createUser("first@example.com", "password123", "First User");
+
+      const sqls = clientStatements.map((q) => q.sql);
+      expect(sqls[0]).toBe("BEGIN");
+      expect(sqls[1]).toBe("SELECT pg_advisory_xact_lock(hashtext($1))");
+      expect(clientStatements[1].params).toEqual(["users:first-account-role"]);
+      expect(sqls[2]).toContain("INSERT INTO users");
+      expect(sqls[2]).toContain(
+        "CASE WHEN NOT EXISTS (SELECT 1 FROM users) THEN 'super_admin' ELSE 'user' END",
+      );
+      expect(sqls[3]).toBe("COMMIT");
+      expect(clientReleases).toBe(1);
+    }, 20000);
+
+    it("does the same for an OAuth sign-up", async () => {
+      await createOAuthUser("new@example.com", "New User", "google", {
+        id: "g-1",
+        avatarUrl: null,
+      });
+
+      const sqls = clientStatements.map((q) => q.sql);
+      expect(sqls[0]).toBe("BEGIN");
+      expect(sqls[1]).toBe("SELECT pg_advisory_xact_lock(hashtext($1))");
+      expect(sqls[2]).toContain("INSERT INTO users");
+      expect(sqls[3]).toBe("COMMIT");
+    });
+
+    it("rolls back and releases the client when the INSERT fails", async () => {
+      const answer = mockQuery.getMockImplementation()!;
+      mockQuery.mockImplementation(
+        async (sql: string, params: unknown[] = []) => {
+          if (sql.includes("INSERT INTO users")) {
+            throw new Error("duplicate key value violates unique constraint");
+          }
+          return answer(sql, params);
+        },
+      );
+      try {
+        await expect(
+          createOAuthUser("new@example.com", "New User", "github"),
+        ).rejects.toThrow("duplicate key");
+      } finally {
+        mockQuery.mockImplementation(answer);
+      }
+
+      expect(clientStatements.map((q) => q.sql)).toContain("ROLLBACK");
+      expect(clientReleases).toBe(1);
+    });
+  });
+
+  it("takes no lock once any account exists", async () => {
+    await createUser("second@example.com", "password123");
+
+    expect(clientStatements).toHaveLength(0);
+    expect(queries.some((q) => q.sql.includes("INSERT INTO users"))).toBe(true);
   }, 20000);
 
   it("lowercases and trims the email before inserting", async () => {

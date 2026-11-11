@@ -1,5 +1,13 @@
-import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
-import { createHash } from "node:crypto";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterEach,
+  vi,
+} from "vitest";
+import { createHash, randomBytes, scryptSync } from "node:crypto";
 
 /**
  * The per-account lockout key.
@@ -50,6 +58,13 @@ let settingsRows: { key: string; value: string }[] = [];
 // When set, the users-by-email lookup rejects, as it does while the database
 // is down or failing over.
 let usersLookupError: Error | null = null;
+// When set, the login-fail:<hash> buckets are counted per key, the way
+// Postgres counts them, and every other limiter always allows. The shared
+// rateLimitCount above cannot tell two buckets apart, which is exactly what
+// the uniform-lockout tests need to see.
+let keyedFailCounts: Map<string, number> | null = null;
+// When set, the opportunistic rehash UPDATE rejects.
+let rehashError: Error | null = null;
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
@@ -64,6 +79,22 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   }
 
   if (s.startsWith("DELETE FROM rate_limits")) return { rows: [] };
+  if (keyedFailCounts && s.startsWith("INSERT INTO rate_limits")) {
+    const key = params[0] as string;
+    if (!key.startsWith("login-fail:")) return { rows: [{ count: "2" }] };
+    const current = keyedFailCounts.get(key) ?? 0;
+    if (current >= (params[2] as number)) return { rows: [] };
+    keyedFailCounts.set(key, current + 1);
+    return { rows: [{ count: String(current + 1) }] };
+  }
+  if (keyedFailCounts && s.startsWith('SELECT "count" FROM rate_limits')) {
+    const count = keyedFailCounts.get(params[0] as string);
+    return { rows: count === undefined ? [] : [{ count: String(count) }] };
+  }
+  if (s.startsWith("UPDATE users SET password_hash")) {
+    if (rehashError) throw rehashError;
+    return { rows: [], rowCount: 1 };
+  }
   if (s.startsWith("INSERT INTO rate_limits")) {
     if (rateLimitCount >= (params[2] as number)) return { rows: [] };
     rateLimitCount += 1;
@@ -204,6 +235,8 @@ beforeEach(async () => {
   sessionInsertCalls = [];
   email2FAInsertCalls = [];
   usersLookupError = null;
+  keyedFailCounts = null;
+  rehashError = null;
   invalidateSettingsCache();
 });
 
@@ -371,9 +404,15 @@ describe("POST /api/v3/auth/login", () => {
 
     expect(res.status).toBe(500);
     expect(sessionInsertCalls).toHaveLength(0);
-    // Nobody checked a password, so no failed-login counter moved.
+    // Nobody checked a password, so no failed-login counter moved. The
+    // address's bucket is read before the lookup (the read is what makes the
+    // lock answer the same for every address), but nothing is written to it.
     expect(
-      queries.some((q) => q.params.includes(accountKey("user@example.com"))),
+      queries.some(
+        (q) =>
+          q.sql.startsWith("INSERT INTO rate_limits") &&
+          q.params.includes(accountKey("user@example.com")),
+      ),
     ).toBe(false);
     // The failure is on record, not silent.
     expect(logged).toHaveBeenCalled();
@@ -518,5 +557,252 @@ describe("POST /api/v3/auth/login", () => {
     expect(json.requires2FA).toBeUndefined();
     expect(json.user.email).toBe("user@example.com");
     expect(sessionInsertCalls).toHaveLength(1);
+  });
+
+  it("words the per-IP refusal without a '(s)' plural", async () => {
+    userRow = baseUser();
+    rateLimitCount = 5;
+
+    const res = await POST(
+      postLogin({ email: "user@example.com", password: REAL_PASSWORD }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(json.error).toMatch(/^Too many login attempts\. Try again in /);
+    expect(json.error).not.toContain("(s)");
+  });
+
+  it("clears the OAuth and Discord pending sign-ins when it starts a password one", async () => {
+    // With two pending cookies the 2FA verify and email-send routes could
+    // resolve different accounts, so the code was mailed to one and checked
+    // against the other. Starting a password sign-in ends the other two.
+    userRow = baseUser();
+    userInfoRow = baseUserInfo({
+      totp_enabled: true,
+      two_factor_method: "app",
+    });
+
+    const res = await POST(
+      postLogin(
+        { email: "user@example.com", password: REAL_PASSWORD },
+        { oauth_pending_login: "stale-oauth", discord_pending_login: "stale" },
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    const setCookies = res.headers.getSetCookie();
+    const expired = (name: string) =>
+      setCookies.find(
+        (c) =>
+          c.startsWith(`${name}=;`) &&
+          c.includes("Expires=Thu, 01 Jan 1970 00:00:00 GMT"),
+      );
+    expect(expired("oauth_pending_login")).toBeDefined();
+    expect(expired("discord_pending_login")).toBeDefined();
+    expect(
+      setCookies.find((c) => c.startsWith(`${AUTH_2FA_PENDING_COOKIE}=`)),
+    ).toMatch(/Max-Age=[1-9]/);
+  });
+
+  describe("the per-address lock answers the same for every address", () => {
+    // The account bucket is the per-IP login cap times five, over four of
+    // its windows: 25 failures an hour at the shipped 5 per 15 minutes.
+    const ACCOUNT_CAP = 25;
+
+    beforeEach(() => {
+      keyedFailCounts = new Map();
+      // One fixed clock, so the two refusals compared below are computed
+      // from the same instant and their retry times cannot differ by a tick.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-11T10:20:00.000Z"));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    // The bucket starts with all but one of its failures in it: the attempts
+    // before those are the same request repeated and would only add scrypt
+    // time. The last wrong password fills it, and the next attempt is the
+    // refusal.
+    // Every response carries its own requestId; the rest has to match.
+    async function refusal(res: Response) {
+      const { requestId, ...body } = await res.json();
+      expect(typeof requestId).toBe("string");
+      return body;
+    }
+
+    async function failUntilLocked(email: string, password: string) {
+      keyedFailCounts!.set(accountKey(email), ACCOUNT_CAP - 1);
+      const last = await POST(postLogin({ email, password: "wrong-pass-1" }));
+      expect(last.status).toBe(401);
+      expect(keyedFailCounts!.get(accountKey(email))).toBe(ACCOUNT_CAP);
+      return POST(postLogin({ email, password }));
+    }
+
+    it("counts failures for an address with no account in the same hashed bucket", async () => {
+      userRow = null;
+
+      const first = await POST(
+        postLogin({ email: "Nobody@Example.com", password: "wrong-pass-1" }),
+      );
+
+      expect(first.status).toBe(401);
+      expect(keyedFailCounts!.get(accountKey("nobody@example.com"))).toBe(1);
+      // Hashed, so the rate-limit table never holds the address itself.
+      expect(
+        queries
+          .filter((q) => q.sql.includes("rate_limits"))
+          .some((q) =>
+            q.params.some(
+              (p) => typeof p === "string" && p.includes("nobody@"),
+            ),
+          ),
+      ).toBe(false);
+    });
+
+    it("refuses an unknown address with the same 429 an existing account gets", async () => {
+      userRow = null;
+      const unknown = await failUntilLocked(
+        "nobody@example.com",
+        "wrong-pass-2",
+      );
+      const unknownBody = await refusal(unknown);
+
+      userRow = baseUser();
+      userInfoRow = baseUserInfo({ totp_enabled: false });
+      const known = await failUntilLocked("user@example.com", REAL_PASSWORD);
+      const knownBody = await refusal(known);
+
+      expect(unknown.status).toBe(429);
+      expect(known.status).toBe(429);
+      expect(unknownBody).toEqual(knownBody);
+      expect(unknown.headers.get("retry-after")).toBe(
+        known.headers.get("retry-after"),
+      );
+      // Locked even with the right password, and no session was made.
+      expect(sessionInsertCalls).toHaveLength(0);
+      // Nothing in the refusal says an account exists.
+      expect(knownBody.error).not.toMatch(/account/i);
+      expect(knownBody.error).not.toContain("(s)");
+    }, 30_000);
+
+    it("refuses an OAuth-only account with the same 429 too", async () => {
+      userRow = null;
+      const unknown = await failUntilLocked(
+        "nobody@example.com",
+        "wrong-pass-2",
+      );
+
+      userRow = baseUser({ email: "social@example.com", password_hash: null });
+      const oauthOnly = await failUntilLocked(
+        "social@example.com",
+        "wrong-pass-2",
+      );
+
+      expect(oauthOnly.status).toBe(429);
+      expect(await refusal(oauthOnly)).toEqual(await refusal(unknown));
+    }, 30_000);
+
+    it("refuses a locked address without counting the attempt again", async () => {
+      userRow = baseUser();
+      keyedFailCounts!.set(accountKey("user@example.com"), ACCOUNT_CAP);
+
+      const res = await POST(
+        postLogin({ email: "user@example.com", password: REAL_PASSWORD }),
+      );
+
+      expect(res.status).toBe(429);
+      expect(keyedFailCounts!.get(accountKey("user@example.com"))).toBe(
+        ACCOUNT_CAP,
+      );
+      expect(
+        queries.some(
+          (q) =>
+            q.sql.startsWith("INSERT INTO rate_limits") &&
+            q.params[0] === accountKey("user@example.com"),
+        ),
+      ).toBe(false);
+    });
+  });
+
+  describe("upgrading an old password hash", () => {
+    // What hashPassword wrote before 2.3.0: "salt:hash", scrypt at Node's
+    // defaults (N=16384), about an eighth of today's cost.
+    function legacyHash(password: string): string {
+      const salt = randomBytes(16).toString("hex");
+      return `${salt}:${scryptSync(password, salt, 64).toString("hex")}`;
+    }
+
+    it("rewrites a legacy hash at the current cost after a correct password", async () => {
+      const oldHash = legacyHash(REAL_PASSWORD);
+      userRow = baseUser({ password_hash: oldHash });
+      userInfoRow = baseUserInfo({ totp_enabled: false });
+
+      const res = await POST(
+        postLogin({ email: "user@example.com", password: REAL_PASSWORD }),
+      );
+
+      expect(res.status).toBe(200);
+      const update = queries.find((q) =>
+        q.sql.startsWith("UPDATE users SET password_hash"),
+      );
+      expect(update).toBeDefined();
+      const [newHash, userId, replaced] = update!.params as [
+        string,
+        number,
+        string,
+      ];
+      expect(newHash.split(":")).toHaveLength(5);
+      expect(newHash.startsWith(`${1 << 17}:8:1:`)).toBe(true);
+      expect(userId).toBe(1);
+      // Guarded on the hash it replaces, so a password change that lands in
+      // between is never overwritten with the old password.
+      expect(replaced).toBe(oldHash);
+      const { verifyPassword } = await import("@/lib/auth/password-hash");
+      expect(await verifyPassword(REAL_PASSWORD, newHash)).toBe(true);
+    }, 30_000);
+
+    it("still signs in when the rewrite fails", async () => {
+      const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+      rehashError = new Error("deadlock detected");
+      userRow = baseUser({ password_hash: legacyHash(REAL_PASSWORD) });
+      userInfoRow = baseUserInfo({ totp_enabled: false });
+
+      const res = await POST(
+        postLogin({ email: "user@example.com", password: REAL_PASSWORD }),
+      );
+
+      expect(res.status).toBe(200);
+      expect(sessionInsertCalls).toHaveLength(1);
+      expect(logged).toHaveBeenCalled();
+      logged.mockRestore();
+    }, 30_000);
+
+    it("leaves a current hash alone", async () => {
+      userRow = baseUser();
+      userInfoRow = baseUserInfo({ totp_enabled: false });
+
+      await POST(
+        postLogin({ email: "user@example.com", password: REAL_PASSWORD }),
+      );
+
+      expect(
+        queries.some((q) => q.sql.startsWith("UPDATE users SET password_hash")),
+      ).toBe(false);
+    });
+
+    it("never rewrites on a wrong password", async () => {
+      userRow = baseUser({ password_hash: legacyHash(REAL_PASSWORD) });
+
+      const res = await POST(
+        postLogin({ email: "user@example.com", password: "wrong-pass-1" }),
+      );
+
+      expect(res.status).toBe(401);
+      expect(
+        queries.some((q) => q.sql.startsWith("UPDATE users SET password_hash")),
+      ).toBe(false);
+    });
   });
 });

@@ -18,11 +18,25 @@ import {
 let sessionRow: Record<string, unknown> | null = null;
 let sessionsDeleteCalls: unknown[][] = [];
 let userSessionsRows: Record<string, unknown>[] = [];
+let deviceTrustDeleteCalls: unknown[][] = [];
+let sessionByIdDeleteCalls: unknown[][] = [];
+let activeApiKeyCount = 0;
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
   if (s.startsWith("DELETE FROM sessions WHERE expires_at"))
     return { rows: [] };
+  if (s.startsWith("DELETE FROM device_trust WHERE user_id = $1")) {
+    deviceTrustDeleteCalls.push(params);
+    return { rows: [] };
+  }
+  if (s.startsWith("DELETE FROM sessions WHERE id = $1")) {
+    sessionByIdDeleteCalls.push(params);
+    return { rows: [] };
+  }
+  if (s.includes("FROM api_keys") && s.includes("revoked_at IS NULL")) {
+    return { rows: [{ count: activeApiKeyCount }] };
+  }
   if (s.includes("SELECT s.user_id"))
     return { rows: sessionRow ? [sessionRow] : [] };
   if (s.startsWith("SELECT key, value FROM system_settings"))
@@ -60,6 +74,9 @@ beforeEach(() => {
   sessionRow = null;
   sessionsDeleteCalls = [];
   userSessionsRows = [];
+  deviceTrustDeleteCalls = [];
+  sessionByIdDeleteCalls = [];
+  activeApiKeyCount = 0;
   invalidateSettingsCache();
 });
 
@@ -148,5 +165,47 @@ describe("DELETE /api/v3/auth/sessions", () => {
     expect(sessionsDeleteCalls).toEqual([[33]]);
     // Cleared with an empty value (maxAge: 0), not merely left as-is.
     expect(cookieState.get(AUTH_SESSION_COOKIE_NAME)).toBe("");
+  });
+
+  // "Sign out everywhere" used to leave every remembered device in place, so
+  // a browser that had been trusted skipped the second factor on its next
+  // sign-in, which is the one thing a full sign-out is meant to undo.
+  it("forgets every trusted device as well", async () => {
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+    sessionRow = defaultSessionRow({ user_id: 33 });
+
+    const res = await DELETE();
+
+    expect(res.status).toBe(200);
+    expect(deviceTrustDeleteCalls).toEqual([[33]]);
+  });
+
+  // API keys are not sessions and keep working; the answer says how many
+  // so the page can say so and offer to revoke them.
+  it("reports how many API keys are still active", async () => {
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+    sessionRow = defaultSessionRow({ user_id: 33 });
+    activeApiKeyCount = 2;
+
+    const res = await DELETE();
+    const json = await res.json();
+
+    expect(json.activeApiKeys).toBe(2);
+    const countQuery = mockQuery.mock.calls.find(([sql]) =>
+      sql.includes("FROM api_keys"),
+    );
+    expect(countQuery?.[1]).toEqual([33]);
+  });
+
+  it("ends a parked admin session when signing out everywhere during an impersonation", async () => {
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "imp-token");
+    cookieState.set("imp_return_session", "admin-token");
+    sessionRow = defaultSessionRow({ user_id: 33, impersonated_by: 7 });
+
+    const res = await DELETE();
+
+    expect(res.status).toBe(200);
+    expect(sessionByIdDeleteCalls).toEqual([[hashSessionId("admin-token")]]);
+    expect(cookieState.has("imp_return_session")).toBe(false);
   });
 });

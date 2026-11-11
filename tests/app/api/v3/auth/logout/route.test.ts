@@ -76,4 +76,35 @@ describe("POST /api/v3/auth/logout", () => {
     expect(json.message).toBeTruthy();
     expect(sessionDeleteCalls).toHaveLength(0);
   });
+
+  // Signing out while impersonating used to end only the impersonation: the
+  // admin's own session lived on for days, and its raw token stayed in the
+  // imp_return_session cookie, where pasting it back gave full admin access.
+  it("ends the admin's parked session too when signing out of an impersonation", async () => {
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "imp-token");
+    cookieState.set("imp_return_session", "admin-token");
+
+    const res = await POST();
+
+    expect(res.status).toBe(200);
+    expect(sessionDeleteCalls).toEqual(
+      expect.arrayContaining([
+        [hashSessionId("imp-token")],
+        [hashSessionId("admin-token")],
+      ]),
+    );
+    // Keyed on digests only, never the raw tokens.
+    expect(sessionDeleteCalls.flat()).not.toContain("admin-token");
+    expect(cookieState.has(AUTH_SESSION_COOKIE_NAME)).toBe(false);
+    expect(cookieState.has("imp_return_session")).toBe(false);
+  });
+
+  it("drops a parked admin token even when the impersonation cookie is already gone", async () => {
+    cookieState.set("imp_return_session", "admin-token");
+
+    await POST();
+
+    expect(sessionDeleteCalls).toEqual([[hashSessionId("admin-token")]]);
+    expect(cookieState.has("imp_return_session")).toBe(false);
+  });
 });

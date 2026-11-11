@@ -42,6 +42,19 @@ import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { findTrustedDevice } from "@/lib/auth/device-trust";
 import { loginsPausedResponseFor } from "@/lib/admin/service-state";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
+import { upgradePasswordHash } from "@/lib/auth/auth";
+import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
+import { logError } from "@/lib/logging/log";
+
+// The pending sign-ins the OAuth and Discord callbacks park while they wait
+// for a second factor (app/api/v3/auth/oauth/[provider]/callback and
+// app/api/v3/auth/discord/callback). Only one sign-in can be pending per
+// browser: with two cookies, 2FA verify and email-send resolved different
+// accounts, so the code went to one inbox and was checked against the other.
+const OTHER_PENDING_LOGIN_COOKIES = [
+  "oauth_pending_login",
+  "discord_pending_login",
+] as const;
 
 // auth: module-scoped cache for the dummy scrypt hash used to equalize
 // timing between user-exists and user-doesn't-exist login paths.
@@ -95,48 +108,34 @@ export const POST = withErrorHandling(async (request: Request) => {
     ...RATE_LIMITS.login,
   });
   if (!rl.allowed) {
-    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
     return ApiResponse.tooManyRequests(
-      `Too many login attempts. Try again in ${minutes} minute(s).`,
+      TOO_MANY_ATTEMPTS("login attempts", rl.retryAfterSeconds),
       rl.retryAfterSeconds,
     );
   }
 
-  // Keyed on the submitted address, hashed, rather than on users.id.
-  //
-  // The id keying was an account-existence oracle, and an unusually reliable
-  // one: only a real account could ever have a login-fail counter, so the
-  // "Too many failed attempts for this account" message was proof the address
-  // exists. Everything else on this surface is scrupulously non-enumerating
-  // (one 401 for both no-user and wrong-password, a dummy scrypt to equalise
-  // the timing, a fixed string from signup and forgot-password), and this one
-  // message undid all of it for the price of filling the account bucket.
-  //
-  // Hashed so the rate-limit table does not become a list of every address
-  // anyone has tried to sign in as.
+  // Keyed on the submitted address, hashed, rather than on users.id: only a
+  // real account could ever have had an id-keyed counter, which made the
+  // lock message proof the address exists. Hashed so the rate-limit table
+  // does not become a list of every address anyone has tried to sign in as.
   const accountKey = createHash("sha256")
     .update(email.trim().toLowerCase())
     .digest("hex");
 
-  const user = await getUserByEmail(email);
-
-  if (!user || !user.password_hash) {
-    // No user, or an OAuth-only account with no password to check against
-    // (see lib/auth/auth.ts's createOAuthUser). Both cases run the same
-    // dummy check to equalize timing and return the same generic 401 --
-    // revealing "this email exists but signs in with Google" would let an
-    // attacker enumerate which provider owns a given address.
-    await verifyPassword(password, await getDummyHash());
-    return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
-  }
-
-  // Per-account lockout gate. The failed-password branch below records
-  // login-fail:<address> across IPs; once that counter is exhausted the
-  // account is temporarily locked here, before the expensive scrypt verify,
-  // so a distributed brute-force spread across many IPs is actually
-  // throttled (the IP gate above alone would miss it) and stops burning CPU
-  // on a locked account. The window auto-expires, so the backoff is
-  // temporary. Read-only peek so this gate does not itself inflate the count.
+  // Per-address lockout gate, read before the account is even looked up.
+  // The failed-password bookkeeping below records login-fail:<hash> across
+  // IPs; once it is full the address is refused here, before the expensive
+  // scrypt verify, so a distributed brute force spread over many IPs is
+  // throttled (the IP gate above alone misses it) and stops burning CPU on
+  // a locked address. The window expires on its own, and the peek does not
+  // itself count.
+  //
+  // Every address goes through this gate and every failure below fills it,
+  // whether or not an account exists or has a password. When only existing
+  // password accounts were counted, a 429 here was proof the address was
+  // registered, and the two IPs it takes to fill the bucket could lock out
+  // only the accounts that really existed. The refusal text names no
+  // account for the same reason.
   //
   // Deliberately NOT the same bucket size as the per-IP gate above. Sharing
   // it made the lock trivially weaponizable: one attacker IP is allowed
@@ -153,34 +152,49 @@ export const POST = withErrorHandling(async (request: Request) => {
     ...accountLockLimit,
   });
   if (!accountLock.allowed) {
-    const minutes = Math.ceil(accountLock.retryAfterSeconds / 60);
     return ApiResponse.tooManyRequests(
-      `Too many failed attempts for this account. Try again in ${minutes} minute(s).`,
+      TOO_MANY_ATTEMPTS(
+        "failed sign-in attempts",
+        accountLock.retryAfterSeconds,
+      ),
       accountLock.retryAfterSeconds,
     );
   }
 
-  const valid = await verifyPassword(password, user.password_hash);
-  if (!valid) {
-    // Per-account brute-force detection. The gate at the top of this handler
+  const user = await getUserByEmail(email);
+
+  // No user, or an OAuth-only account with no password to check against
+  // (see lib/auth/auth.ts's createOAuthUser), runs a dummy check to equalize
+  // timing and gets the same generic 401 as a wrong password: revealing
+  // "this email exists but signs in with Google" would let an attacker
+  // enumerate which provider owns a given address.
+  const passwordHash = user?.password_hash ?? null;
+  let valid = false;
+  if (passwordHash) valid = await verifyPassword(password, passwordHash);
+  else await verifyPassword(password, await getDummyHash());
+  if (!user || !passwordHash || !valid) {
+    // Per-address brute-force detection. The gate at the top of this handler
     // is keyed by IP, so it stops a single address hammering the form but
     // misses a distributed attempt spread across many IPs at one account.
-    // This second counter is keyed by the account and accumulates across
-    // IPs; once it crosses the login threshold we email the owner, at most
-    // once an hour (a separate one-shot key). Entirely best-effort: a
-    // mail/DB failure here must never change the 401 the caller receives.
+    // This second counter is keyed by the address and accumulates across
+    // IPs; once it crosses the login threshold we email the owner, if there
+    // is one, at most once an hour (a separate one-shot key). Entirely
+    // best-effort: a mail/DB failure here must never change the 401 the
+    // caller receives.
     try {
       const fail = await checkRateLimit({
         key: `login-fail:${accountKey}`,
         ...accountLockLimit,
       });
       if (!fail.allowed) {
+        // The one-shot key is spent for unknown addresses too, so whether
+        // anyone is mailed costs no extra round trip an attacker could time.
         const alertGate = await checkRateLimit({
           key: `login-fail-alert:${accountKey}`,
           maxAttempts: 1,
           windowSeconds: 3600,
         });
-        if (alertGate.allowed) {
+        if (alertGate.allowed && user) {
           const { maxAttempts } = await getRateLimit("login");
           const userAgent = await getUserAgent();
           setImmediate(() => {
@@ -193,16 +207,24 @@ export const POST = withErrorHandling(async (request: Request) => {
                 userAgent,
               }),
             }).catch((err) =>
-              console.error("Failed to send failed-login alert:", err),
+              logError("auth", "failed-login alert email failed", err, {
+                userId: user.id,
+              }),
             );
           });
         }
       }
     } catch (err) {
-      console.error("Failed-login detection error:", err);
+      logError("auth", "failed-login detection failed", err, {
+        userId: user?.id,
+      });
     }
     return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
   }
+
+  // The password is in hand only here, so this is where an old hash is
+  // brought up to the current cost.
+  await upgradePasswordHash(user.id, password, passwordHash);
 
   // The password was correct, so forgive the account's failure counter. The
   // counter exists to detect a brute-force in progress; leaving it standing
@@ -282,7 +304,11 @@ export const POST = withErrorHandling(async (request: Request) => {
             ipAddress: ip,
             userAgent,
           }),
-        }).catch((err) => console.error("Failed to send login alert:", err));
+        }).catch((err) =>
+          logError("auth", "login alert email failed", err, {
+            userId: user.id,
+          }),
+        );
       });
 
       return ApiResponse.success({
@@ -323,7 +349,9 @@ export const POST = withErrorHandling(async (request: Request) => {
         sendEmail({
           to: user.email,
           ...emailContent,
-        }).catch((err) => console.error("Failed to send 2FA email code:", err));
+        }).catch((err) =>
+          logError("auth", "2FA code email failed", err, { userId: user.id }),
+        );
       });
     }
 
@@ -359,6 +387,9 @@ export const POST = withErrorHandling(async (request: Request) => {
         maxAge: pendingMaxAgeSeconds, // seconds
       },
     );
+    for (const name of OTHER_PENDING_LOGIN_COOKIES) {
+      response.cookies.delete(name);
+    }
     return response;
   }
 
@@ -376,7 +407,9 @@ export const POST = withErrorHandling(async (request: Request) => {
         ipAddress: ip,
         userAgent: ua,
       }),
-    }).catch((err) => console.error("Failed to send login alert:", err));
+    }).catch((err) =>
+      logError("auth", "login alert email failed", err, { userId: user.id }),
+    );
   });
 
   return ApiResponse.success({

@@ -5,7 +5,7 @@ import {
   isLocale,
 } from "@/lib/i18n/config";
 import { randomBytes, createHash } from "node:crypto";
-import { hashPassword } from "@/lib/auth/password-hash";
+import { hashPassword, needsRehash } from "@/lib/auth/password-hash";
 import pool from "@/lib/database/db";
 import {
   AUTH_SESSION_COOKIE_NAME,
@@ -20,6 +20,7 @@ import { getSettings } from "@/lib/config/runtime-config";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { newLoginEmail, isEmailConfigured } from "@/lib/email/email";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
+import { logError } from "@/lib/logging/log";
 
 const SESSION_COOKIE = AUTH_SESSION_COOKIE_NAME;
 const CLEANUP_INTERVAL = AUTH_CLEANUP_INTERVAL;
@@ -33,6 +34,35 @@ export {
   verifyPassword,
   needsRehash,
 } from "@/lib/auth/password-hash";
+
+/**
+ * Rewrite a stored hash at the current scrypt cost, after `password` has
+ * just been verified against it. Called by login, the one place the password
+ * is in hand.
+ *
+ * Pre-2.3.0 hashes ("salt:hash" at N=16384) are about eight times cheaper to
+ * crack than current ones, and the accounts still holding them are the
+ * oldest, which tend to be the most privileged. Nothing ever upgraded them.
+ *
+ * Guarded on the hash it replaces, so a password change landing in between
+ * is never overwritten with the old password. Best effort: the owner has
+ * proved the password, and a failed upgrade is simply tried again next time.
+ */
+export async function upgradePasswordHash(
+  userId: number,
+  password: string,
+  storedHash: string,
+): Promise<void> {
+  if (!needsRehash(storedHash)) return;
+  try {
+    await pool.query(
+      "UPDATE users SET password_hash = $1 WHERE id = $2 AND password_hash = $3",
+      [await hashPassword(password), userId, storedHash],
+    );
+  } catch (err) {
+    logError("auth", "password rehash failed", err, { userId });
+  }
+}
 
 // Session management
 //
@@ -161,7 +191,7 @@ export async function getSession(): Promise<{
   if (now - lastCleanupTime > CLEANUP_INTERVAL) {
     lastCleanupTime = now;
     cleanupExpiredSessions().catch((err) =>
-      console.error("Session cleanup error:", err),
+      logError("auth", "expired session cleanup failed", err),
     );
   }
 
@@ -307,7 +337,9 @@ async function notifySessionIpMismatch(params: {
       ],
     )
     .catch((err) =>
-      console.error("[auth] Failed to record session_ip_mismatch alert:", err),
+      logError("auth", "session_ip_mismatch alert insert failed", err, {
+        userId,
+      }),
     );
 
   try {
@@ -322,7 +354,7 @@ async function notifySessionIpMismatch(params: {
       emailContent,
     });
   } catch (err) {
-    console.error("[auth] Failed to send session_ip_mismatch email:", err);
+    logError("auth", "session_ip_mismatch email failed", err, { userId });
   }
 }
 
@@ -365,6 +397,88 @@ export async function destroySession(): Promise<void> {
     ]);
     cookieStore.delete(SESSION_COOKIE);
   }
+  await destroyParkedAdminSession();
+}
+
+/**
+ * The cookie lib/auth/impersonation.ts parks the admin's own session token in
+ * while they act as someone else. It holds a raw bearer token.
+ */
+export const IMPERSONATION_RETURN_COOKIE = "imp_return_session";
+
+/**
+ * End the admin session parked by an impersonation, if this browser holds
+ * one. Signing out (here or everywhere) while impersonating used to end only
+ * the impersonation: the admin's own row lived on for days and its raw token
+ * stayed in the cookie, where pasting it back into the session cookie gave
+ * full admin access. Keyed on the cookie alone, not on the current row's
+ * impersonated_by, so it still works once the hour-long impersonation row
+ * has expired and only the parked token is left.
+ */
+export async function destroyParkedAdminSession(): Promise<void> {
+  const cookieStore = await cookies();
+  const returnToken = cookieStore.get(IMPERSONATION_RETURN_COOKIE)?.value;
+  if (!returnToken) return;
+  await pool.query("DELETE FROM sessions WHERE id = $1", [
+    hashSessionId(returnToken),
+  ]);
+  cookieStore.delete(IMPERSONATION_RETURN_COOKIE);
+}
+
+export const FIRST_ACCOUNT_LOCK = "users:first-account-role";
+
+/** What every account-creating INSERT here returns. */
+export interface NewUserRow {
+  id: number;
+  email: string;
+  name: string | null;
+  plan: string;
+  beta_access: boolean;
+  role: string;
+}
+
+/**
+ * Run a users INSERT whose role is decided by
+ * `CASE WHEN NOT EXISTS (SELECT 1 FROM users) THEN 'super_admin' ...`.
+ *
+ * The very first account is promoted so a fresh self-hosted install ends up
+ * with a super_admin without any manual step. The subquery alone is not
+ * enough for that: two first signups at once both evaluate it before either
+ * commits, and both become super_admin. On an empty table the INSERT
+ * therefore runs in a transaction behind one advisory lock, so the second
+ * waits for the first to commit, and its statement, which takes its
+ * snapshot only once the lock is held, sees that account and gets 'user'.
+ *
+ * Once any account exists the subquery can only answer 'user', so the lock
+ * and the transaction are skipped and a signup costs one statement as
+ * before. Only an answer that the table is empty takes the locked path.
+ */
+async function insertUserRow(
+  sql: string,
+  params: unknown[],
+): Promise<NewUserRow> {
+  const probe = await pool.query<{ has_users: boolean }>(
+    "SELECT EXISTS (SELECT 1 FROM users) AS has_users",
+  );
+  if (probe.rows[0]?.has_users !== false) {
+    return (await pool.query<NewUserRow>(sql, params)).rows[0];
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      FIRST_ACCOUNT_LOCK,
+    ]);
+    const result = await client.query<NewUserRow>(sql, params);
+    await client.query("COMMIT");
+    return result.rows[0];
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // User management
@@ -375,18 +489,8 @@ export async function createUser(
 ) {
   const passwordHash = await hashPassword(password);
 
-  // super-admin: the very first account ever created is automatically
-  // promoted, so a fresh self-hosted install always ends up with exactly
-  // one super_admin without any manual step. The "is the table empty"
-  // check runs as a subquery inside the same INSERT (rather than a
-  // separate SELECT COUNT(*) beforehand) so there's no gap between
-  // "check" and "insert" for a second concurrent signup to also observe
-  // zero rows. That's not airtight under true concurrency (two INSERTs can
-  // both evaluate the subquery before either commits), the
-  // 5.5.0-to-5.6.0 migration exists as a self-healing, idempotent sweep
-  // that pins the role to whichever row ends up with MIN(id), covering
-  // both that theoretical race and upgrading an existing production
-  // database that already has users.
+  // The role is decided by the database, see insertUserRow.
+  //
   // Email verification proves control of an address by sending to it. On a
   // deployment with no SMTP configured that proof is impossible, so requiring
   // it is not a stricter posture, it is a permanent lockout: the account is
@@ -397,7 +501,7 @@ export async function createUser(
   // still required.
   const autoVerify = !isEmailConfigured();
 
-  const result = await pool.query(
+  return insertUserRow(
     `INSERT INTO users (email, password_hash, name, plan, beta_access, role, auth_provider, email_verified_at)
        VALUES ($1, $2, $3, 'free', false,
          CASE WHEN NOT EXISTS (SELECT 1 FROM users) THEN 'super_admin' ELSE 'user' END,
@@ -406,8 +510,6 @@ export async function createUser(
        RETURNING id, email, name, plan, beta_access, role`,
     [email.toLowerCase().trim(), passwordHash, name || null, autoVerify],
   );
-
-  return result.rows[0];
 }
 
 /**
@@ -476,7 +578,7 @@ export async function createOAuthUser(
   const columns = OAUTH_IDENTITY_COLUMNS[provider];
 
   if (columns && providerIdentity?.id) {
-    const result = await pool.query(
+    return insertUserRow(
       `INSERT INTO users (
          email, password_hash, name, plan, beta_access, role, auth_provider, email_verified_at,
          ${columns.id}, ${columns.email}, ${columns.name}, ${columns.avatarUrl}
@@ -495,10 +597,9 @@ export async function createOAuthUser(
         providerIdentity.avatarUrl || null,
       ],
     );
-    return result.rows[0];
   }
 
-  const result = await pool.query(
+  return insertUserRow(
     `INSERT INTO users (email, password_hash, name, plan, beta_access, role, auth_provider, email_verified_at)
        VALUES ($1, NULL, $2, 'free', false,
          CASE WHEN NOT EXISTS (SELECT 1 FROM users) THEN 'super_admin' ELSE 'user' END,
@@ -506,8 +607,6 @@ export async function createOAuthUser(
        RETURNING id, email, name, plan, beta_access, role`,
     [normalizedEmail, name || null, provider],
   );
-
-  return result.rows[0];
 }
 
 export { getUserByEmail } from "@/lib/database/db-utils";

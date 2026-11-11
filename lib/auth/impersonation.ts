@@ -25,7 +25,10 @@ import { randomBytes } from "node:crypto";
 import pool from "@/lib/database/db";
 import { AUTH_SESSION_COOKIE_NAME } from "@/lib/config/constants";
 import { STAFF_ROLE_HIERARCHY } from "@/lib/config/client-constants";
-import { hashSessionId } from "@/lib/auth/auth";
+import {
+  hashSessionId,
+  IMPERSONATION_RETURN_COOKIE as RETURN_SESSION_COOKIE,
+} from "@/lib/auth/auth";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 import { getSetting } from "@/lib/config/runtime-config";
 import {
@@ -35,7 +38,6 @@ import {
 } from "@/lib/i18n/config";
 
 const IMPERSONATION_SESSION_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
-const RETURN_SESSION_COOKIE = "imp_return_session";
 
 function generateSessionId(): string {
   return randomBytes(32).toString("hex");
