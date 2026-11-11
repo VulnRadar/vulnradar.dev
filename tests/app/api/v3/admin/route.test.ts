@@ -223,6 +223,26 @@ vi.mock("@/lib/discord/revoke", async (importOriginal) => ({
   revokeStoredDiscordTokens: (...args: unknown[]) => mockRevokeDiscord(...args),
 }));
 
+// Mocked at the module boundary: which rows the two statements touch is
+// Postgres's answer and is proved in tests/integration/account-schedules.test.ts.
+// Here only the wiring is in question.
+const mockSuspendSchedules = vi.fn();
+const mockResumeSchedules = vi.fn();
+vi.mock("@/lib/admin/account-schedules", () => ({
+  suspendAccountSchedules: (...args: unknown[]) =>
+    mockSuspendSchedules(...args),
+  resumeAccountSchedules: (...args: unknown[]) => mockResumeSchedules(...args),
+}));
+
+// The refund is one statement against rate_limits, proved against a real
+// table in tests/integration/rate-limit-refund.test.ts. Mocked so it does not
+// take a turn at the queued pool results below.
+const mockRefundRateLimitAttempt = vi.fn();
+vi.mock("@/lib/rate-limiting/refund-attempt", () => ({
+  refundRateLimitAttempt: (...args: unknown[]) =>
+    mockRefundRateLimitAttempt(...args),
+}));
+
 const routeModule = await import("@/app/api/v3/admin/route");
 const { GET, PATCH } = routeModule;
 const { POST: resetPasswordPOST } =
@@ -329,6 +349,12 @@ beforeEach(() => {
   mockDeleteAvatarFilesIfLocal.mockResolvedValue(undefined);
   mockSyncPlanForRoleChange.mockReset();
   mockSyncPlanForRoleChange.mockResolvedValue(undefined);
+  mockSuspendSchedules.mockReset();
+  mockSuspendSchedules.mockResolvedValue(0);
+  mockResumeSchedules.mockReset();
+  mockResumeSchedules.mockResolvedValue(0);
+  mockRefundRateLimitAttempt.mockReset();
+  mockRefundRateLimitAttempt.mockResolvedValue(undefined);
 
   // Generic default for any query this suite doesn't specifically assert
   // on (e.g. getAdminName/getUserName lookups fired inside action handlers).
@@ -1897,7 +1923,7 @@ describe("PATCH /api/v3/admin — spot checks across other actions (audit loggin
       unsubscribe_token: null,
     });
     mockQuery.mockResolvedValueOnce({ rows: [{ admin_id: 999 }] }); // authored by someone else
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 }); // UPDATE
     const res = await PATCH(
       patchRequest({
         action: "edit_note",
@@ -3531,7 +3557,7 @@ describe("PATCH /api/v3/admin, super_admin caller passes every check an admin pa
       unsubscribe_token: null,
     });
     mockQuery.mockResolvedValueOnce({ rows: [{ admin_id: 999 }] }); // authored by someone else
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 }); // UPDATE
     const res = await PATCH(
       patchRequest({
         action: "edit_note",
@@ -3689,5 +3715,839 @@ describe("GET and PATCH /api/v3/admin, errors", () => {
       }),
     );
     expect(res.status).toBe(400);
+  });
+});
+
+/** Every statement the pool saw, collapsed to one line each. */
+function statements(): { sql: string; params: unknown[] }[] {
+  return mockQuery.mock.calls.map((c) => ({
+    sql: String(c[0]).replace(/\s+/g, " ").trim(),
+    params: (c[1] as unknown[]) ?? [],
+  }));
+}
+
+function ranStatement(pattern: RegExp): { sql: string; params: unknown[] } {
+  const hit = statements().find((s) => pattern.test(s.sql));
+  if (!hit) throw new Error(`no statement matched ${pattern}`);
+  return hit;
+}
+
+const USER_TARGET = {
+  email: "t@example.com",
+  role: "user",
+  plan: "free",
+  unsubscribe_token: null,
+};
+
+/**
+ * The re-auth throttle is a fixed-window counter keyed per admin and IP. This
+ * fake keeps the count the way checkRateLimit's guarded upsert does (refuse
+ * at the cap, write nothing when refusing), and the refund takes one back.
+ */
+function statefulReauthBucket(max = 10) {
+  const buckets = new Map<string, number>();
+  mockCheckRateLimit.mockImplementation(async ({ key }: { key: string }) => {
+    const n = buckets.get(key) ?? 0;
+    if (n >= max) {
+      return { allowed: false, remaining: 0, retryAfterSeconds: 600 };
+    }
+    buckets.set(key, n + 1);
+    return { allowed: true, remaining: max - n - 1, retryAfterSeconds: 0 };
+  });
+  mockRefundRateLimitAttempt.mockImplementation(async (key: string) => {
+    buckets.set(key, Math.max(0, (buckets.get(key) ?? 0) - 1));
+  });
+  return buckets;
+}
+
+describe("PATCH /api/v3/admin, the re-auth throttle counts failed passwords only", () => {
+  // It was charged on every PATCH before the action was even known, so a
+  // moderator working through an abusive account (note, clear avatar, revoke
+  // a badge, note again) was refused everything on the eleventh click, and a
+  // multi-field save from the panel failed halfway through.
+  it("never refuses twelve consecutive add_note calls", async () => {
+    statefulReauthBucket();
+    for (let i = 0; i < 12; i++) {
+      queueRole("moderator");
+      queueTarget(USER_TARGET);
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 }); // INSERT
+      const res = await PATCH(
+        patchRequest({ action: "add_note", userId: 5, note: `note ${i}` }),
+      );
+      expect(res.status, `call ${i + 1}`).toBe(200);
+    }
+  });
+
+  it("refuses the eleventh gated call after ten wrong passwords", async () => {
+    statefulReauthBucket();
+    for (let i = 0; i < 10; i++) {
+      queueRole("admin");
+      queueTarget(USER_TARGET);
+      queueAdminPassword(adminHash);
+      const res = await PATCH(
+        patchRequest({
+          action: "revoke_sessions",
+          userId: 5,
+          currentAdminPassword: "wrong-guess",
+        }),
+      );
+      expect(res.status, `guess ${i + 1}`).toBe(403);
+    }
+    queueRole("admin");
+    queueTarget(USER_TARGET);
+    const res = await PATCH(
+      patchRequest({
+        action: "revoke_sessions",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(429);
+    expect(mockLogAction).not.toHaveBeenCalled();
+    // Refused before the password was looked at, let alone hashed.
+    expect(
+      statements().filter((s) => /SELECT password_hash/.test(s.sql)),
+    ).toHaveLength(10);
+  }, 60000);
+
+  it("does not count a gated call whose password was right", async () => {
+    statefulReauthBucket();
+    for (let i = 0; i < 12; i++) {
+      queueRole("admin");
+      queueTarget(USER_TARGET);
+      queueAdminPassword(adminHash);
+      const res = await PATCH(
+        patchRequest({
+          action: "revoke_sessions",
+          userId: 5,
+          currentAdminPassword: ADMIN_PASSWORD,
+        }),
+      );
+      expect(res.status, `call ${i + 1}`).toBe(200);
+    }
+    expect(mockRefundRateLimitAttempt).toHaveBeenCalledWith(
+      "admin-reauth:2:127.0.0.1",
+    );
+  }, 60000);
+
+  it("does not count a gated call that sent no password, which is not a guess", async () => {
+    statefulReauthBucket();
+    for (let i = 0; i < 12; i++) {
+      queueRole("admin");
+      queueTarget(USER_TARGET);
+      queueAdminPassword(adminHash);
+      const res = await PATCH(
+        patchRequest({ action: "revoke_sessions", userId: 5 }),
+      );
+      expect(res.status, `call ${i + 1}`).toBe(403);
+      expect((await res.json()).error).toMatch(/Re-enter your password/);
+    }
+  });
+
+  it("does not let ungated calls spend a wrong-password allowance", async () => {
+    statefulReauthBucket();
+    for (let i = 0; i < 9; i++) {
+      queueRole("admin");
+      queueTarget(USER_TARGET);
+      queueAdminPassword(adminHash);
+      await PATCH(
+        patchRequest({
+          action: "revoke_sessions",
+          userId: 5,
+          currentAdminPassword: "wrong-guess",
+        }),
+      );
+    }
+    for (let i = 0; i < 3; i++) {
+      queueRole("admin");
+      queueTarget(USER_TARGET);
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      await PATCH(patchRequest({ action: "add_note", userId: 5, note: "n" }));
+    }
+    queueRole("admin");
+    queueTarget(USER_TARGET);
+    queueAdminPassword(adminHash);
+    const tenth = await PATCH(
+      patchRequest({
+        action: "revoke_sessions",
+        userId: 5,
+        currentAdminPassword: "wrong-guess",
+      }),
+    );
+    expect(tenth.status).toBe(403);
+  }, 60000);
+});
+
+describe("PATCH /api/v3/admin, force_logout_all says what it did", () => {
+  it.each([
+    ["admin", true],
+    ["super_admin", true],
+    ["moderator", false],
+  ] as const)(
+    "%s: ends every session, revokes keys only with REVOKE_USER_API_KEYS",
+    async (role, revokesKeys) => {
+      queueRole(role);
+      queueTarget(USER_TARGET);
+      queueAdminPassword(adminHash);
+      const res = await PATCH(
+        patchRequest({
+          action: "force_logout_all",
+          userId: 5,
+          currentAdminPassword: ADMIN_PASSWORD,
+        }),
+      );
+      const json = await res.json();
+      expect(res.status).toBe(200);
+      expect(
+        ranStatement(/^DELETE FROM sessions WHERE user_id = \$1/).params,
+      ).toEqual([5]);
+      const keyRevokes = statements().filter((s) =>
+        s.sql.startsWith("UPDATE api_keys SET revoked_at"),
+      );
+      expect(keyRevokes).toHaveLength(revokesKeys ? 1 : 0);
+      expect(json.apiKeysRevoked).toBe(revokesKeys);
+      expect(json.message).toBe(
+        revokesKeys
+          ? "Sessions ended and every API key revoked."
+          : "Sessions ended. API keys were left in place: your role cannot revoke them.",
+      );
+      expect(mockLogAction).toHaveBeenCalledWith(
+        2,
+        5,
+        "force_logout_all",
+        revokesKeys
+          ? expect.stringContaining("revoked all API keys")
+          : expect.stringContaining("API keys left in place"),
+        "127.0.0.1",
+      );
+    },
+    20000,
+  );
+});
+
+describe("PATCH /api/v3/admin, gift_subscription refuses an expiry that has passed", () => {
+  it.each([
+    ["a minute ago", () => new Date(Date.now() - 60_000).toISOString()],
+    ["right now", () => new Date().toISOString()],
+    ["a date-only value for a past day", () => "2020-01-01"],
+  ])(
+    "rejects %s with 400 and leaves the existing gift alone",
+    async (_label, when) => {
+      queueRole("admin");
+      queueTarget(USER_TARGET);
+      const res = await PATCH(
+        patchRequest({
+          action: "gift_subscription",
+          userId: 5,
+          giftPlan: "pro_supporter",
+          giftEndDate: when(),
+        }),
+      );
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(/future/);
+      expect(
+        statements().filter((s) =>
+          /gifted_subscriptions|user_badges/.test(s.sql),
+        ),
+      ).toEqual([]);
+      expect(mockLogAction).not.toHaveBeenCalled();
+    },
+  );
+
+  it("replaces the gift and awards the premium badge for a future expiry", async () => {
+    queueRole("admin");
+    queueTarget(USER_TARGET);
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 }); // revoke old gift
+    mockQuery.mockResolvedValueOnce({ rows: [{ active: true }], rowCount: 1 }); // INSERT
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 42 }] }); // premium badge id
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // not already awarded
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 }); // award
+    const expiry = new Date(Date.now() + 30 * 86_400_000).toISOString();
+    const res = await PATCH(
+      patchRequest({
+        action: "gift_subscription",
+        userId: 5,
+        giftPlan: "pro_supporter",
+        giftEndDate: expiry,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(
+      ranStatement(/^UPDATE gifted_subscriptions SET revoked_at/).params,
+    ).toEqual([5, 2]);
+    const insert = ranStatement(/^INSERT INTO gifted_subscriptions/);
+    expect(insert.params.slice(0, 2)).toEqual([5, "pro_supporter"]);
+    expect(ranStatement(/^INSERT INTO user_badges/).params).toEqual([5, 42, 2]);
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      5,
+      "gift_subscription",
+      expect.stringContaining("pro_supporter"),
+      "127.0.0.1",
+    );
+  });
+
+  it("awards no badge when the database does not see the new gift as active", async () => {
+    queueRole("admin");
+    queueTarget(USER_TARGET);
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 }); // revoke old gift
+    mockQuery.mockResolvedValueOnce({ rows: [{ active: false }], rowCount: 1 }); // INSERT
+    const res = await PATCH(
+      patchRequest({
+        action: "gift_subscription",
+        userId: 5,
+        giftPlan: "pro_supporter",
+        giftEndDate: new Date(Date.now() + 5_000).toISOString(),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(statements().filter((s) => /badges/.test(s.sql))).toEqual([]);
+  });
+});
+
+describe("GET /api/v3/admin?section=user-detail, panel refreshes are not new views", () => {
+  const detailUrl =
+    "http://localhost/api/v3/admin?section=user-detail&userId=9";
+
+  it("writes no view row for a refresh when this admin's view is already on record", async () => {
+    queueRole("support");
+    queueBundle();
+    mockQuery.mockResolvedValueOnce({ rows: [{ viewed: 1 }] }); // recent view
+    const res = await GET(getRequest(`${detailUrl}&refresh=1`));
+    expect(res.status).toBe(200);
+    expect(mockLogAction).not.toHaveBeenCalled();
+    const lookup = ranStatement(/FROM admin_audit_log/);
+    expect(lookup.sql).toContain("view_user_detail");
+    expect(lookup.params.slice(0, 2)).toEqual([2, 9]);
+  });
+
+  // The flag comes from the client, so it cannot be what decides whether a
+  // read is recorded: an insider adding refresh=1 to a first look at an
+  // account would otherwise read it without a trace.
+  it("still writes the view row for a refresh with no recent view on record", async () => {
+    queueRole("support");
+    queueBundle();
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // no recent view
+    await GET(getRequest(`${detailUrl}&refresh=1`));
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      9,
+      "view_user_detail",
+      expect.any(String),
+      expect.anything(),
+    );
+  });
+
+  it("writes the view row for an ordinary open without looking anything up", async () => {
+    queueRole("support");
+    queueBundle();
+    await GET(getRequest(detailUrl));
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      9,
+      "view_user_detail",
+      expect.any(String),
+      expect.anything(),
+    );
+    expect(statements().filter((s) => /admin_audit_log/.test(s.sql))).toEqual(
+      [],
+    );
+  });
+});
+
+describe("PATCH /api/v3/admin, disabling an account stops its scheduled scans", () => {
+  it.each(["admin", "moderator", "super_admin"])(
+    "%s: disable pauses the account's schedules and says how many",
+    async (role) => {
+      queueRole(role);
+      queueTarget(USER_TARGET);
+      queueAdminPassword(adminHash);
+      mockSuspendSchedules.mockResolvedValueOnce(3);
+      const res = await PATCH(
+        patchRequest({
+          action: "disable",
+          userId: 5,
+          currentAdminPassword: ADMIN_PASSWORD,
+        }),
+      );
+      expect(res.status).toBe(200);
+      expect(mockSuspendSchedules).toHaveBeenCalledWith(5);
+      expect((await res.json()).schedulesPaused).toBe(3);
+      expect(mockLogAction).toHaveBeenCalledWith(
+        2,
+        5,
+        "disable_user",
+        expect.stringContaining("paused 3 scheduled scans"),
+        "127.0.0.1",
+      );
+    },
+    20000,
+  );
+
+  it.each(["admin", "moderator", "super_admin"])(
+    "%s: enable resumes the schedules the disable paused",
+    async (role) => {
+      queueRole(role);
+      queueTarget(USER_TARGET);
+      mockResumeSchedules.mockResolvedValueOnce(2);
+      const res = await PATCH(patchRequest({ action: "enable", userId: 5 }));
+      expect(res.status).toBe(200);
+      expect(mockResumeSchedules).toHaveBeenCalledWith(5);
+      expect((await res.json()).schedulesResumed).toBe(2);
+      expect(mockSuspendSchedules).not.toHaveBeenCalled();
+    },
+  );
+
+  it("pauses nothing when the password check fails", async () => {
+    queueRole("admin");
+    queueTarget(USER_TARGET);
+    queueAdminPassword(adminHash);
+    const res = await PATCH(
+      patchRequest({
+        action: "disable",
+        userId: 5,
+        currentAdminPassword: "wrong-guess",
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(mockSuspendSchedules).not.toHaveBeenCalled();
+  }, 20000);
+});
+
+// The moderator-denial cases above prove what each role may not do. These
+// prove what the action does once it is allowed, so a regression in the body
+// of the case is not invisible behind a passing permission check.
+describe("PATCH /api/v3/admin, allowed paths", () => {
+  describe("revoke_badge", () => {
+    it.each(["admin", "moderator", "super_admin"])(
+      "%s: 400 without a badgeId",
+      async (role) => {
+        queueRole(role);
+        queueTarget(USER_TARGET);
+        const res = await PATCH(
+          patchRequest({ action: "revoke_badge", userId: 5 }),
+        );
+        expect(res.status).toBe(400);
+        expect(mockLogAction).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(["admin", "moderator", "super_admin"])(
+      "%s: 404 for a badge that does not exist",
+      async (role) => {
+        queueRole(role);
+        queueTarget(USER_TARGET);
+        mockQuery.mockResolvedValueOnce({ rows: [] });
+        const res = await PATCH(
+          patchRequest({ action: "revoke_badge", userId: 5, badgeId: 3 }),
+        );
+        expect(res.status).toBe(404);
+        expect(statements().filter((s) => s.sql.startsWith("DELETE"))).toEqual(
+          [],
+        );
+      },
+    );
+
+    it.each(["admin", "moderator", "super_admin"])(
+      "%s: removes that badge from that account and audit-logs it",
+      async (role) => {
+        queueRole(role);
+        queueTarget(USER_TARGET);
+        mockQuery.mockResolvedValueOnce({
+          rows: [{ display_name: "Founder" }],
+        });
+        const res = await PATCH(
+          patchRequest({ action: "revoke_badge", userId: 5, badgeId: 3 }),
+        );
+        expect(res.status).toBe(200);
+        expect(ranStatement(/^DELETE FROM user_badges/).params).toEqual([5, 3]);
+        expect(mockLogAction).toHaveBeenCalledWith(
+          2,
+          5,
+          "revoke_badge",
+          expect.stringContaining("Founder"),
+          "127.0.0.1",
+        );
+      },
+    );
+  });
+
+  describe("export_data", () => {
+    it.each(["admin", "super_admin"])(
+      "%s: returns the account's record, scans, keys and badges, and audit-logs it",
+      async (role) => {
+        queueRole(role);
+        queueTarget(USER_TARGET);
+        mockQuery.mockResolvedValueOnce({
+          rows: [{ id: 5, email: "t@example.com", name: "T", role: "user" }],
+        });
+        mockQuery.mockResolvedValueOnce({
+          rows: [{ url: "https://a.example", findings_count: 2 }],
+        });
+        mockQuery.mockResolvedValueOnce({
+          rows: [{ name: "ci", key_prefix: "vr_abc" }],
+        });
+        mockQuery.mockResolvedValueOnce({ rows: [{ name: "founder" }] });
+        const res = await PATCH(
+          patchRequest({ action: "export_data", userId: 5 }),
+        );
+        const json = await res.json();
+        expect(res.status).toBe(200);
+        expect(Object.keys(json.data).sort()).toEqual(
+          [
+            "apiKeys",
+            "badges",
+            "exportedAt",
+            "exportedBy",
+            "scans",
+            "user",
+          ].sort(),
+        );
+        expect(json.data.user.id).toBe(5);
+        expect(json.data.scans).toHaveLength(1);
+        expect(json.data.apiKeys[0].key_prefix).toBe("vr_abc");
+        expect(json.data.badges[0].name).toBe("founder");
+        expect(json.data.exportedBy).toBe("caller@example.com");
+        expect(Number.isNaN(Date.parse(json.data.exportedAt))).toBe(false);
+        // No secret column rides along in any of the four reads.
+        for (const s of statements().slice(2, 6)) {
+          expect(s.sql).not.toMatch(/password_hash|key_hash|totp_secret/);
+          expect(s.params).toEqual([5]);
+        }
+        expect(mockLogAction).toHaveBeenCalledWith(
+          2,
+          5,
+          "export_data",
+          expect.any(String),
+          "127.0.0.1",
+        );
+      },
+    );
+
+    it("is refused to a moderator, which does not hold EXPORT_SCAN_DATA", async () => {
+      queueRole("moderator");
+      const res = await PATCH(
+        patchRequest({ action: "export_data", userId: 5 }),
+      );
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe("badge catalogue", () => {
+    it.each(["admin", "super_admin"])(
+      "%s: create_badge inserts and returns the id",
+      async (role) => {
+        queueRole(role);
+        queueTarget(USER_TARGET);
+        mockQuery.mockResolvedValueOnce({ rows: [] }); // name is free
+        mockQuery.mockResolvedValueOnce({ rows: [{ id: 77 }] }); // INSERT
+        const res = await PATCH(
+          patchRequest({
+            action: "create_badge",
+            userId: 5,
+            name: "early",
+            displayName: "Early",
+          }),
+        );
+        expect(res.status).toBe(200);
+        expect((await res.json()).badgeId).toBe(77);
+        expect(ranStatement(/^INSERT INTO badges/).params).toEqual([
+          "early",
+          "Early",
+          "",
+          "#6366f1",
+        ]);
+        expect(mockLogAction).toHaveBeenCalledWith(
+          2,
+          5,
+          "create_badge",
+          expect.any(String),
+          "127.0.0.1",
+        );
+      },
+    );
+
+    it("create_badge: 400 without both names, 409 for a name in use", async () => {
+      queueRole("admin");
+      queueTarget(USER_TARGET);
+      const missing = await PATCH(
+        patchRequest({ action: "create_badge", userId: 5, name: "x" }),
+      );
+      expect(missing.status).toBe(400);
+      queueRole("admin");
+      queueTarget(USER_TARGET);
+      mockQuery.mockResolvedValueOnce({ rows: [{}] }); // taken
+      const taken = await PATCH(
+        patchRequest({
+          action: "create_badge",
+          userId: 5,
+          name: "x",
+          displayName: "X",
+        }),
+      );
+      expect(taken.status).toBe(409);
+      expect(statements().filter((s) => s.sql.startsWith("INSERT"))).toEqual(
+        [],
+      );
+    });
+
+    it.each(["admin", "super_admin"])(
+      "%s: delete_badge removes it from the catalogue",
+      async (role) => {
+        queueRole(role);
+        queueTarget(USER_TARGET);
+        mockQuery.mockResolvedValueOnce({ rows: [{ display_name: "Early" }] });
+        const res = await PATCH(
+          patchRequest({ action: "delete_badge", userId: 5, badgeId: 8 }),
+        );
+        expect(res.status).toBe(200);
+        expect(
+          ranStatement(/^DELETE FROM badges WHERE id = \$1/).params,
+        ).toEqual([8]);
+        expect(mockLogAction).toHaveBeenCalledWith(
+          2,
+          5,
+          "delete_badge",
+          expect.stringContaining("Early"),
+          "127.0.0.1",
+        );
+      },
+    );
+
+    it("delete_badge: 404 for a badge that does not exist", async () => {
+      queueRole("admin");
+      queueTarget(USER_TARGET);
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+      const res = await PATCH(
+        patchRequest({ action: "delete_badge", userId: 5, badgeId: 8 }),
+      );
+      expect(res.status).toBe(404);
+      expect(statements().filter((s) => s.sql.startsWith("DELETE"))).toEqual(
+        [],
+      );
+    });
+  });
+
+  describe("integrations", () => {
+    it.each(["admin", "super_admin"])(
+      "%s: revoke_api_keys revokes every live key on that account",
+      async (role) => {
+        queueRole(role);
+        queueTarget(USER_TARGET);
+        queueAdminPassword(adminHash);
+        const res = await PATCH(
+          patchRequest({
+            action: "revoke_api_keys",
+            userId: 5,
+            currentAdminPassword: ADMIN_PASSWORD,
+          }),
+        );
+        expect(res.status).toBe(200);
+        const revoke = ranStatement(
+          /^UPDATE api_keys SET revoked_at = NOW\(\)/,
+        );
+        expect(revoke.sql).toContain("revoked_at IS NULL");
+        expect(revoke.params).toEqual([5]);
+        expect(mockLogAction).toHaveBeenCalledWith(
+          2,
+          5,
+          "revoke_api_keys",
+          expect.any(String),
+          "127.0.0.1",
+        );
+      },
+      20000,
+    );
+
+    it.each([
+      ["delete_webhooks", "webhooks", "webhooks"],
+      ["delete_schedules", "scheduled_scans", "scheduled scans"],
+    ])(
+      "%s deletes the account's rows and logs how many",
+      async (action, table, noun) => {
+        queueRole("admin");
+        queueTarget(USER_TARGET);
+        queueAdminPassword(adminHash);
+        mockQuery.mockResolvedValueOnce({ rows: [{ count: "4" }] });
+        const res = await PATCH(
+          patchRequest({
+            action,
+            userId: 5,
+            currentAdminPassword: ADMIN_PASSWORD,
+          }),
+        );
+        expect(res.status).toBe(200);
+        expect(
+          ranStatement(new RegExp(`^DELETE FROM ${table} WHERE user_id = \\$1`))
+            .params,
+        ).toEqual([5]);
+        expect(mockLogAction).toHaveBeenCalledWith(
+          2,
+          5,
+          action,
+          expect.stringContaining(`4 ${noun}`),
+          "127.0.0.1",
+        );
+      },
+      20000,
+    );
+  });
+
+  describe("messages", () => {
+    it.each(["admin", "super_admin"])(
+      "%s: send_notification mails the account and audit-logs the title",
+      async (role) => {
+        queueRole(role);
+        queueTarget(USER_TARGET);
+        const res = await PATCH(
+          patchRequest({
+            action: "send_notification",
+            userId: 5,
+            title: "Heads up",
+            message: "Your scan quota changes on Monday.",
+          }),
+        );
+        expect(res.status).toBe(200);
+        expect(mockSendEmail).toHaveBeenCalledWith(
+          expect.objectContaining({ to: "t@example.com" }),
+        );
+        expect(mockLogAction).toHaveBeenCalledWith(
+          2,
+          5,
+          "send_notification",
+          expect.stringContaining("Heads up"),
+          "127.0.0.1",
+        );
+      },
+    );
+
+    it("send_notification: 400 without a title and message, and nothing sent", async () => {
+      queueRole("admin");
+      queueTarget(USER_TARGET);
+      const res = await PATCH(
+        patchRequest({ action: "send_notification", userId: 5, title: "x" }),
+      );
+      expect(res.status).toBe(400);
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+
+    it("send_notification: sends nothing when the admin turns the notice off", async () => {
+      queueRole("admin");
+      queueTarget(USER_TARGET);
+      const res = await PATCH(
+        patchRequest({
+          action: "send_notification",
+          userId: 5,
+          title: "x",
+          message: "y",
+          notifyUser: false,
+        }),
+      );
+      expect(res.status).toBe(200);
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+
+    it.each(["admin", "super_admin"])(
+      "%s: notify_account_changes mails one summary, capped at twenty changes",
+      async (role) => {
+        queueRole(role);
+        queueTarget(USER_TARGET);
+        const { adminAccountChangeEmail } = await import("@/lib/email/email");
+        vi.mocked(adminAccountChangeEmail).mockClear();
+        const changes = Array.from({ length: 25 }, (_, i) => ({
+          field: `Field ${i}`,
+          oldValue: "a",
+          newValue: "b",
+        }));
+        const res = await PATCH(
+          patchRequest({
+            action: "notify_account_changes",
+            userId: 5,
+            changes,
+          }),
+        );
+        expect(res.status).toBe(200);
+        expect(mockSendEmail).toHaveBeenCalledTimes(1);
+        const arg = vi.mocked(adminAccountChangeEmail).mock.calls[0][0] as {
+          changes: unknown[];
+        };
+        expect(arg.changes).toHaveLength(20);
+      },
+    );
+
+    it("notify_account_changes: sends nothing for an empty list", async () => {
+      queueRole("admin");
+      queueTarget(USER_TARGET);
+      const res = await PATCH(
+        patchRequest({
+          action: "notify_account_changes",
+          userId: 5,
+          changes: [],
+        }),
+      );
+      expect(res.status).toBe(200);
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("billing and verification", () => {
+    it.each([
+      ["free", true],
+      ["pro_supporter", false],
+    ])(
+      "revoke_gift on a %s account ends the gift (badge removed: %s)",
+      async (plan, removesBadge) => {
+        queueRole("admin");
+        queueTarget({ ...USER_TARGET, plan });
+        mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 }); // revoke
+        if (removesBadge) {
+          mockQuery.mockResolvedValueOnce({ rows: [{ id: 42 }] });
+        }
+        const res = await PATCH(
+          patchRequest({ action: "revoke_gift", userId: 5 }),
+        );
+        expect(res.status).toBe(200);
+        expect(
+          ranStatement(/^UPDATE gifted_subscriptions SET revoked_at/).params,
+        ).toEqual([5, 2]);
+        const badgeDeletes = statements().filter((s) =>
+          s.sql.startsWith("DELETE FROM user_badges"),
+        );
+        expect(badgeDeletes).toHaveLength(removesBadge ? 1 : 0);
+        if (removesBadge) expect(badgeDeletes[0].params).toEqual([5, 42]);
+        expect(mockLogAction).toHaveBeenCalledWith(
+          2,
+          5,
+          "revoke_gift",
+          expect.any(String),
+          "127.0.0.1",
+        );
+      },
+    );
+
+    it.each([
+      ["verify_email", /SET email_verified_at = NOW\(\)/],
+      ["unverify_email", /SET email_verified_at = NULL/],
+    ])(
+      "%s writes the column for that account and audit-logs",
+      async (action, pattern) => {
+        for (const role of ["admin", "super_admin"]) {
+          mockQuery.mockClear();
+          mockLogAction.mockClear();
+          queueRole(role);
+          queueTarget(USER_TARGET);
+          const res = await PATCH(patchRequest({ action, userId: 5 }));
+          expect(res.status).toBe(200);
+          expect(ranStatement(pattern).params).toEqual([5]);
+          expect(mockLogAction).toHaveBeenCalledWith(
+            2,
+            5,
+            action,
+            expect.any(String),
+            "127.0.0.1",
+          );
+        }
+      },
+    );
   });
 });

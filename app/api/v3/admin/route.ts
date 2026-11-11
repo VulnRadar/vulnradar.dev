@@ -20,6 +20,7 @@ import { startImpersonation } from "@/lib/auth/impersonation";
 import { revokeStoredGithubToken } from "@/lib/github/github-connections";
 import { revokeStoredDiscordTokens } from "@/lib/discord/revoke";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { refundRateLimitAttempt } from "@/lib/rate-limiting/refund-attempt";
 import {
   syncPlanForRoleChange,
   syncPreStaffPlanForManualPlanChange,
@@ -71,6 +72,11 @@ import {
 import { purgeUserScans } from "@/lib/admin/purge-user-scans";
 import { getUserUsage } from "@/lib/admin/user-usage";
 import { fetchUserDetailBundle } from "@/lib/admin/user-detail";
+import { hasRecentUserDetailView } from "@/lib/admin/user-detail-view";
+import {
+  suspendAccountSchedules,
+  resumeAccountSchedules,
+} from "@/lib/admin/account-schedules";
 import { logError } from "@/lib/logging/log";
 import { pluralize } from "@/lib/ui/plural";
 
@@ -251,14 +257,29 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     // search box. The details string names the target id only -- logAction
     // redacts embedded emails, and the target_user_id column already joins
     // back to the account.
+    //
+    // The panel reloads the record after each of its own saves and marks
+    // those requests refresh=1, so one look at an account is one row rather
+    // than one per field saved. The flag only counts when this staff
+    // member's view of this account is already on record (see
+    // lib/admin/user-detail-view.ts): it is client input, and on its own it
+    // would let a first read go unlogged. A lookup that fails counts as
+    // "not on record", so an error can only add a row, never drop one.
+    const alreadyRecorded =
+      searchParams.get("refresh") === "1" &&
+      (await hasRecentUserDetailView(session.userId, detailUserId).catch(
+        () => false,
+      ));
     try {
-      await logAction(
-        session.userId,
-        detailUserId,
-        "view_user_detail",
-        `Viewed the full account record for user #${detailUserId}`,
-        await getClientIp(),
-      );
+      if (!alreadyRecorded) {
+        await logAction(
+          session.userId,
+          detailUserId,
+          "view_user_detail",
+          `Viewed the full account record for user #${detailUserId}`,
+          await getClientIp(),
+        );
+      }
     } catch (err) {
       // A failed audit write must never turn a read into an error page.
       logError("admin", "Could not record a user-detail read", err, {
@@ -493,6 +514,51 @@ function canPerformAction(role: string, action: string): boolean {
   return hasActionPermission(role, action);
 }
 
+/**
+ * The checks edit_note and delete_note share before they touch a note.
+ *
+ * The note is looked up within the target account, not by its id alone. The
+ * rank rule and the god-mode guard above run against the body's userId, so an
+ * id-only lookup let an admin name any account it may act on as the target
+ * and any note id as the object: a note about a peer admin, or one the super
+ * admin wrote about the caller, was rewritten or deleted, and the audit row
+ * named the harmless account. Every statement on the note is now scoped to
+ * that account as well, and a note on any other account is a 404.
+ *
+ * A note about the caller is theirs to change only if they wrote it. Acting on
+ * your own account is exempt from the rank rule, which is right for awarding
+ * yourself a badge and wrong for editing what someone senior recorded about
+ * you.
+ */
+async function loadEditableNote(
+  noteId: unknown,
+  userId: number,
+  session: { userId: number; role: string },
+): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
+  const found = await pool.query<{ admin_id: number }>(
+    "SELECT admin_id FROM admin_user_notes WHERE id = $1 AND user_id = $2",
+    [noteId, userId],
+  );
+  const row = found.rows[0];
+  if (!row) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Note not found" }, { status: 404 }),
+    };
+  }
+  const isAuthor = row.admin_id === session.userId;
+  const isAdmin =
+    session.role === STAFF_ROLES.ADMIN ||
+    session.role === STAFF_ROLES.SUPER_ADMIN;
+  if (!isAuthor && (userId === session.userId || !isAdmin)) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+  return { ok: true };
+}
+
 // PATCH: Admin actions on users
 export const PATCH = withErrorHandling(async (request: NextRequest) => {
   const session = await requireStaff();
@@ -644,21 +710,6 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  // rate-limit: cap re-auth attempts per admin to prevent brute-forcing the
-  // admin password through repeated PATCH requests.
-  const adminRl = await checkRateLimit({
-    key: `admin-reauth:${session.userId}:${ip}`,
-    ...RATE_LIMITS.adminReauth,
-  });
-  if (!adminRl.allowed) {
-    return NextResponse.json(
-      {
-        error: `Too many admin attempts. Try again in ${Math.ceil(adminRl.retryAfterSeconds / 60)} minute(s).`,
-      },
-      { status: 429 },
-    );
-  }
-
   // auth: require password re-entry before any sensitive action. Gate lives
   // OUTSIDE the action switch so it runs before action handlers — the old
   // in-switch gate broke all gated actions (break exited the switch and the
@@ -683,6 +734,31 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
     isPasswordGatedAction(action) &&
     !(action === "toggle_ai_ban" && targetUser.ai_chat_banned === true);
   if (needsPasswordGate) {
+    // rate-limit: caps guesses at the admin's password. It used to run for
+    // every PATCH before the action was known, so ungated work (a note, a
+    // badge, a name) spent the same 10-per-15-minutes allowance, and a
+    // moderator cleaning up an abusive account, or a multi-field save from
+    // the panel, was refused halfway through.
+    //
+    // Counted here, for gated actions only, and only for wrong passwords.
+    // The attempt is reserved before the check and handed back when it was
+    // not a guess, rather than recorded after a failure: reserving keeps the
+    // cap atomic, so a parallel burst of guesses cannot all get past a
+    // read-then-record check before any of them is counted.
+    const reauthKey = `admin-reauth:${session.userId}:${ip}`;
+    const adminRl = await checkRateLimit({
+      key: reauthKey,
+      ...RATE_LIMITS.adminReauth,
+    });
+    if (!adminRl.allowed) {
+      return NextResponse.json(
+        {
+          error: `Too many admin attempts. Try again in ${Math.ceil(adminRl.retryAfterSeconds / 60)} minute(s).`,
+        },
+        { status: 429 },
+      );
+    }
+
     // Shared helper rather than a sixth hand-rolled copy of the same check.
     // The inline version this replaces read password_hash directly and
     // treated a NULL hash as a wrong password, so a staff account created
@@ -699,6 +775,12 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
         wrong: "Password is incorrect.",
       },
     );
+    // Only a password that was supplied and wrong stays counted. A right one,
+    // an OAuth-only account with none, or a request that sent none (400 from
+    // the helper) made no guess.
+    if (reauth.ok || reauth.status === 400) {
+      await refundRateLimitAttempt(reauthKey);
+    }
     // Pinned to 403 for both the missing and the wrong case, which is what
     // this route has always returned and what the panel's re-auth dialog
     // branches on (verifyReauthPassword itself distinguishes 400/403).
@@ -1069,11 +1151,15 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
         userId,
       ]);
       await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
+      // Ending the sessions did not stop the account's scheduled scans, so an
+      // account disabled for abuse kept scanning, emailing and firing
+      // webhooks. Enable resumes exactly the ones paused here.
+      const schedulesPaused = await suspendAccountSchedules(userId);
       await logAction(
         session.userId,
         userId,
         "disable_user",
-        `Disabled account for ${targetUser.email}`,
+        `Disabled account for ${targetUser.email} and paused ${pluralize(schedulesPaused, "scheduled scan")}`,
         ip,
       );
 
@@ -1097,7 +1183,7 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
         targetUser.unsubscribe_token,
       );
 
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, schedulesPaused });
     }
 
     // Same alias hazard, no security consequence here, removed for the same
@@ -1107,11 +1193,12 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
       await pool.query("UPDATE users SET disabled_at = NULL WHERE id = $1", [
         userId,
       ]);
+      const schedulesResumed = await resumeAccountSchedules(userId);
       await logAction(
         session.userId,
         userId,
         "enable_user",
-        `Re-enabled account for ${targetUser.email}`,
+        `Re-enabled account for ${targetUser.email} and resumed ${pluralize(schedulesResumed, "scheduled scan")}`,
         ip,
       );
 
@@ -1135,7 +1222,7 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
         targetUser.unsubscribe_token,
       );
 
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, schedulesResumed });
     }
 
     case "award_badge": {
@@ -1844,9 +1931,16 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
         targetUser.unsubscribe_token,
       );
 
+      // The panel used to show its own fixed label, which claimed every key
+      // was revoked, so a moderator handling a leaked credential was told the
+      // keys were dead while they kept working. The sentence comes from here
+      // now, beside the branch that decided it.
       return NextResponse.json({
         success: true,
         apiKeysRevoked: mayRevokeKeys,
+        message: mayRevokeKeys
+          ? "Sessions ended and every API key revoked."
+          : "Sessions ended. API keys were left in place: your role cannot revoke them.",
       });
     }
 
@@ -1893,23 +1987,14 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
         );
       const maxDescriptionLength = await getSetting("MAX_DESCRIPTION_LENGTH");
       const safeNote = note.trim().slice(0, maxDescriptionLength);
-      const ownerCheck = await pool.query(
-        "SELECT admin_id FROM admin_user_notes WHERE id = $1",
-        [noteId],
+      const editable = await loadEditableNote(noteId, userId, session);
+      if (!editable.ok) return editable.response;
+      const edited = await pool.query(
+        "UPDATE admin_user_notes SET note = $1 WHERE id = $2 AND user_id = $3",
+        [safeNote, noteId, userId],
       );
-      if (!ownerCheck.rows[0])
+      if (edited.rowCount === 0)
         return NextResponse.json({ error: "Note not found" }, { status: 404 });
-      const isOwner = ownerCheck.rows[0].admin_id === session.userId;
-      if (
-        !isOwner &&
-        session.role !== STAFF_ROLES.ADMIN &&
-        session.role !== STAFF_ROLES.SUPER_ADMIN
-      )
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      await pool.query("UPDATE admin_user_notes SET note = $1 WHERE id = $2", [
-        safeNote,
-        noteId,
-      ]);
       await logAction(
         session.userId,
         userId,
@@ -1923,20 +2008,14 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
     case "delete_note": {
       if (!noteId)
         return NextResponse.json({ error: "noteId required" }, { status: 400 });
-      const ownerCheck = await pool.query(
-        "SELECT admin_id FROM admin_user_notes WHERE id = $1",
-        [noteId],
+      const deletable = await loadEditableNote(noteId, userId, session);
+      if (!deletable.ok) return deletable.response;
+      const deleted = await pool.query(
+        "DELETE FROM admin_user_notes WHERE id = $1 AND user_id = $2",
+        [noteId, userId],
       );
-      if (!ownerCheck.rows[0])
+      if (deleted.rowCount === 0)
         return NextResponse.json({ error: "Note not found" }, { status: 404 });
-      const isOwner = ownerCheck.rows[0].admin_id === session.userId;
-      if (
-        !isOwner &&
-        session.role !== STAFF_ROLES.ADMIN &&
-        session.role !== STAFF_ROLES.SUPER_ADMIN
-      )
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      await pool.query("DELETE FROM admin_user_notes WHERE id = $1", [noteId]);
       await logAction(
         session.userId,
         userId,
@@ -1984,20 +2063,37 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
           { status: 400 },
         );
       }
+      // Checked before anything is written. A past expiry used to be accepted:
+      // the active gift was revoked, a row that had already expired took its
+      // place, and the account dropped to its own plan while the panel
+      // reported success. A mistyped date destroyed the gift it meant to edit.
+      if (expiresAt.getTime() <= Date.now()) {
+        return NextResponse.json(
+          { error: "giftEndDate must be in the future." },
+          { status: 400 },
+        );
+      }
       // Revoke any existing active gift first, then insert new one
       await pool.query(
         "UPDATE gifted_subscriptions SET revoked_at = NOW(), revoked_by = $2 WHERE user_id = $1 AND revoked_at IS NULL",
         [userId, session.userId],
       );
-      await pool.query(
-        "INSERT INTO gifted_subscriptions (user_id, plan, expires_at, gifted_by) VALUES ($1, $2, $3, $4)",
+      // `active` is the database's own reading of the new row, on the clock
+      // every reader of gifted_subscriptions compares against, so the badge
+      // below follows what the account actually has.
+      const insertedGift = await pool.query<{ active: boolean }>(
+        "INSERT INTO gifted_subscriptions (user_id, plan, expires_at, gifted_by) VALUES ($1, $2, $3, $4) RETURNING expires_at > NOW() AS active",
         [userId, giftPlan, expiresAt, session.userId],
       );
+      const giftIsActive = insertedGift.rows[0]?.active === true;
 
-      // Award premium badge if they don't already have it
-      const premiumBadgeGift = await pool.query(
-        "SELECT id FROM badges WHERE name = 'premium' LIMIT 1",
-      );
+      // Award premium badge if they don't already have it, and only for a
+      // gift that is in force.
+      const premiumBadgeGift = giftIsActive
+        ? await pool.query(
+            "SELECT id FROM badges WHERE name = 'premium' LIMIT 1",
+          )
+        : { rows: [] };
       if (premiumBadgeGift.rows.length > 0) {
         const badgeIdGift = premiumBadgeGift.rows[0].id;
         const existingBadgeGift = await pool.query(
