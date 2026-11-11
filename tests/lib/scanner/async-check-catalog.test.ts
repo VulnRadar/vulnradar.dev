@@ -94,6 +94,20 @@ describe("async check catalog", () => {
     }
   });
 
+  it("rates a missing MX record and a robots.txt that lists paths as low", () => {
+    // Neither lets anyone in: a domain that sends mail without receiving it is
+    // a hygiene gap, and robots.txt is public by design. The ids are title
+    // slugs, so the severity is the only thing that moved.
+    expect(ASYNC_CHECKS.mxRecordMissing.severity).toBe("low");
+    expect(ASYNC_CHECKS.mxRecordMissing.checkId).toBe(
+      "async-mx-record-missing",
+    );
+    expect(ASYNC_CHECKS.sensitivePathsExposedInRobotsTxt.severity).toBe("low");
+    expect(ASYNC_CHECKS.sensitivePathsExposedInRobotsTxt.checkId).toBe(
+      "async-sensitive-paths-exposed-in-robots-txt",
+    );
+  });
+
   it("returns undefined for an id that is not an async check", () => {
     expect(getAsyncCheckDef("hsts-missing")).toBeUndefined();
     expect(getAsyncCheckDef("async-not-a-real-check")).toBeUndefined();

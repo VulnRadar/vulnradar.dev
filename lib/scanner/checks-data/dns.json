@@ -32,7 +32,8 @@
       "https://letsencrypt.org/docs/caa/"
     ],
     "cwe": "CWE-295",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "emittedAs": ["async-caa-record-missing"]
   },
   {
     "id": "dns-ns-record-count",
@@ -64,7 +65,8 @@
       "https://datatracker.ietf.org/doc/html/rfc1034",
       "https://datatracker.ietf.org/doc/html/rfc1035"
     ],
-    "_idx": 1
+    "_idx": 1,
+    "emittedAs": ["async-single-authoritative-nameserver"]
   },
   {
     "id": "dns-mx-record-missing",
@@ -96,7 +98,8 @@
       "https://datatracker.ietf.org/doc/html/rfc1034",
       "https://datatracker.ietf.org/doc/html/rfc5321"
     ],
-    "_idx": 2
+    "_idx": 2,
+    "emittedAs": ["async-mx-record-missing"]
   },
   {
     "id": "dns-mx-backup-record",
@@ -123,7 +126,8 @@
       "https://datatracker.ietf.org/doc/html/rfc1034",
       "https://datatracker.ietf.org/doc/html/rfc5321"
     ],
-    "_idx": 3
+    "_idx": 3,
+    "emittedAs": ["async-no-backup-mx-server"]
   },
   {
     "id": "dns-ds-record-missing",
@@ -156,7 +160,8 @@
       "https://datatracker.ietf.org/doc/html/rfc4034",
       "https://datatracker.ietf.org/doc/html/rfc4035"
     ],
-    "_idx": 4
+    "_idx": 4,
+    "emittedAs": ["async-dnssec-ds-record-missing"]
   },
   {
     "id": "dns-soa-refresh-high",
@@ -188,7 +193,8 @@
       "https://datatracker.ietf.org/doc/html/rfc1035",
       "https://datatracker.ietf.org/doc/html/rfc2182"
     ],
-    "_idx": 5
+    "_idx": 5,
+    "emittedAs": ["async-soa-refresh-interval-too-high"]
   },
   {
     "id": "dns-tlsa-record-missing",
@@ -224,7 +230,8 @@
     ],
     "_idx": 6,
     "cwe": "CWE-295",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "emittedAs": ["async-tlsa-dane-record-missing"]
   },
   {
     "id": "dns-dangling-cname",
@@ -254,7 +261,8 @@
     ],
     "_idx": 7,
     "cwe": "CWE-350",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "emittedAs": ["async-dangling-cname-record"]
   },
   {
     "id": "dns-dangling-cname-cdn-paas",
@@ -284,7 +292,8 @@
     ],
     "_idx": 9,
     "cwe": "CWE-350",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "emittedAs": ["async-potential-subdomain-takeover-via-dangling-cname"]
   },
   {
     "id": "dns-dangling-cname-saas",
@@ -314,7 +323,8 @@
     ],
     "_idx": 10,
     "cwe": "CWE-350",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "emittedAs": ["async-potential-subdomain-takeover-via-dangling-cname"]
   },
   {
     "id": "dns-zone-transfer-allowed",
@@ -348,7 +358,8 @@
     ],
     "cwe": "CWE-200",
     "owasp": "A05:2021",
-    "_idx": 11
+    "_idx": 11,
+    "emittedAs": ["async-dns-zone-transfer-axfr-allowed-from-public-ips"]
   },
   {
     "id": "dns-dnskey-record-missing",
@@ -383,7 +394,8 @@
     ],
     "cwe": "CWE-345",
     "owasp": "A08:2021",
-    "_idx": 12
+    "_idx": 12,
+    "emittedAs": ["async-dnskey-record-missing"]
   },
   {
     "id": "dns-caa-no-issue-restriction",
@@ -414,7 +426,10 @@
       "https://letsencrypt.org/docs/caa/"
     ],
     "cwe": "CWE-295",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "emittedAs": [
+      "async-caa-record-present-but-restricts-no-certificate-authority"
+    ]
   },
   {
     "id": "dns-caa-wildcard-only-restriction",
@@ -441,7 +456,8 @@
     "_idx": 14,
     "references": ["https://datatracker.ietf.org/doc/html/rfc8659#section-4.2"],
     "cwe": "CWE-295",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "emittedAs": ["async-caa-record-restricts-wildcard-certificates-only"]
   },
   {
     "id": "dns-soa-serial-stale",
@@ -468,7 +484,8 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc1035#section-3.3.13",
       "https://datatracker.ietf.org/doc/html/rfc1912#section-2.2"
-    ]
+    ],
+    "emittedAs": ["async-soa-serial-looks-stale-date-based-convention-"]
   },
   {
     "id": "dns-ns-single-provider-concentration",
@@ -885,7 +902,8 @@
     ],
     "cwe": "CWE-345",
     "owasp": "A05:2021",
-    "_idx": 28
+    "_idx": 28,
+    "emittedAs": ["async-dnssec-validation-failing"]
   },
   {
     "id": "dns-mx-host-does-not-exist",
@@ -911,6 +929,7 @@
     "references": ["https://datatracker.ietf.org/doc/html/rfc5321#section-5.1"],
     "cwe": "CWE-350",
     "owasp": "A05:2021",
-    "_idx": 29
+    "_idx": 29,
+    "emittedAs": ["async-mail-server-host-does-not-exist"]
   }
 ]

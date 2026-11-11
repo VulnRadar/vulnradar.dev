@@ -27,7 +27,8 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
     ],
     "cwe": "CWE-290",
-    "owasp": "A07:2021"
+    "owasp": "A07:2021",
+    "emittedAs": ["async-dmarc-missing-aggregate-report-address-rua-"]
   },
   {
     "id": "mta-sts",
@@ -62,7 +63,8 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
     ],
     "cwe": "CWE-319",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "emittedAs": ["async-mta-sts-record-missing"]
   },
   {
     "id": "email-tls-rpt-rua-missing",
@@ -90,7 +92,8 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
     ],
     "cwe": "CWE-319",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "emittedAs": ["async-tls-rpt-record-missing-rua-reporting-uri"]
   },
   {
     "id": "email-spf-lookup-count-too-high",
@@ -117,7 +120,8 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4"
     ],
-    "_idx": 4
+    "_idx": 4,
+    "emittedAs": ["async-spf-exceeds-10-dns-lookup-limit"]
   },
   {
     "id": "email-spf-redirect-loop",
@@ -141,7 +145,8 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7208#section-6.1"],
-    "_idx": 5
+    "_idx": 5,
+    "emittedAs": ["async-spf-redirect-loop"]
   },
   {
     "id": "email-dmarc-pct-not-100",
@@ -168,7 +173,8 @@
     "references": ["https://datatracker.ietf.org/doc/html/rfc7489#section-6.3"],
     "_idx": 6,
     "cwe": "CWE-290",
-    "owasp": "A07:2021"
+    "owasp": "A07:2021",
+    "emittedAs": ["async-dmarc-pct-below-100"]
   },
   {
     "id": "email-dmarc-p-none",
@@ -203,7 +209,8 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
     ],
     "cwe": "CWE-290",
-    "owasp": "A07:2021"
+    "owasp": "A07:2021",
+    "emittedAs": ["async-dmarc-policy-set-to-none"]
   },
   {
     "id": "email-mta-sts-policy-missing",
@@ -230,7 +237,8 @@
     "references": ["https://datatracker.ietf.org/doc/html/rfc8461"],
     "_idx": 8,
     "cwe": "CWE-319",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "emittedAs": ["async-mta-sts-policy-file-missing"]
   },
   {
     "id": "email-mta-sts-mode-none",
@@ -257,7 +265,8 @@
     "references": ["https://datatracker.ietf.org/doc/html/rfc8461#section-5"],
     "_idx": 9,
     "cwe": "CWE-319",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "emittedAs": ["async-mta-sts-mode-not-enforcing"]
   },
   {
     "id": "email-mx-hostname-cname",
@@ -281,7 +290,8 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc5321#section-5.1"],
-    "_idx": 11
+    "_idx": 11,
+    "emittedAs": ["async-mx-hostname-is-a-cname-rfc-violation-"]
   },
   {
     "id": "spf-record",
@@ -312,7 +322,8 @@
     ],
     "cwe": "CWE-290",
     "owasp": "A07:2021",
-    "_idx": 12
+    "_idx": 12,
+    "emittedAs": ["async-missing-spf-record"]
   },
   {
     "id": "dmarc-record",
@@ -347,7 +358,8 @@
     ],
     "cwe": "CWE-290",
     "owasp": "A07:2021",
-    "_idx": 13
+    "_idx": 13,
+    "emittedAs": ["async-missing-dmarc-record"]
   },
   {
     "id": "dkim-record",
@@ -382,7 +394,8 @@
     ],
     "cwe": "CWE-290",
     "owasp": "A07:2021",
-    "_idx": 14
+    "_idx": 14,
+    "emittedAs": ["async-no-dkim-records-found"]
   },
   {
     "id": "dnssec-enabled",
@@ -412,7 +425,8 @@
     ],
     "cwe": "CWE-345",
     "owasp": "A08:2021",
-    "_idx": 15
+    "_idx": 15,
+    "emittedAs": ["async-dnssec-not-enabled"]
   },
   {
     "id": "tls-rpt",
@@ -438,7 +452,8 @@
     "references": ["https://datatracker.ietf.org/doc/html/rfc8460"],
     "cwe": "CWE-319",
     "owasp": "A02:2021",
-    "_idx": 16
+    "_idx": 16,
+    "emittedAs": ["async-tls-rpt-record-missing"]
   },
   {
     "id": "email-spf-ptr-mechanism",
@@ -462,7 +477,8 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7208#section-5.5"],
-    "_idx": 17
+    "_idx": 17,
+    "emittedAs": ["async-spf-uses-deprecated-ptr-mechanism"]
   },
   {
     "id": "email-spf-plus-all",
@@ -497,7 +513,8 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
     ],
     "cwe": "CWE-290",
-    "owasp": "A07:2021"
+    "owasp": "A07:2021",
+    "emittedAs": ["async-weak-spf-record-all-"]
   },
   {
     "id": "email-bimi-logo-invalid",
@@ -525,7 +542,8 @@
     "references": [
       "https://datatracker.ietf.org/doc/draft-brand-indicators-for-message-identification/",
       "https://bimigroup.org/"
-    ]
+    ],
+    "emittedAs": ["async-bimi-logo-url-does-not-meet-bimi-requirements"]
   },
   {
     "id": "email-dmarc-subdomain-policy-weaker",
@@ -552,7 +570,8 @@
     "_idx": 20,
     "references": ["https://datatracker.ietf.org/doc/html/rfc7489#section-6.3"],
     "cwe": "CWE-290",
-    "owasp": "A07:2021"
+    "owasp": "A07:2021",
+    "emittedAs": ["async-dmarc-subdomain-policy-weaker-than-domain-policy"]
   },
   {
     "id": "email-dkim-weak-key",
@@ -582,7 +601,8 @@
       "https://csrc.nist.gov/pubs/sp/800/131/a/r2/final"
     ],
     "cwe": "CWE-326",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "emittedAs": ["async-dkim-public-key-uses-a-weak-rsa-key-size"]
   },
   {
     "id": "email-spf-multiple-records",

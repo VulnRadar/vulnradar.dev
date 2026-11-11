@@ -211,7 +211,7 @@ export const ASYNC_CHECKS = {
     "low",
     "email",
   ),
-  mxRecordMissing: def("MX Record Missing", "medium", "configuration"),
+  mxRecordMissing: def("MX Record Missing", "low", "configuration"),
   noBackupMxServer: def("No Backup MX Server", "low", "dns"),
   mailServerHostDoesNotExist: def(
     "Mail Server Host Does Not Exist",
@@ -336,7 +336,7 @@ export const ASYNC_CHECKS = {
   // robots.txt / security.txt
   sensitivePathsExposedInRobotsTxt: def(
     "Sensitive Paths Exposed in robots.txt",
-    "medium",
+    "low",
     "information-disclosure",
   ),
   missingSecurityTxt: def("Missing security.txt", "info", "configuration"),
