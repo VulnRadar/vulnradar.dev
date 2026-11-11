@@ -24,7 +24,7 @@ vi.mock("@/components/providers/auth-provider", () => ({
   clearAuthCache: vi.fn(),
 }));
 const clientConfig = vi.hoisted(() => ({
-  value: {} as Record<string, unknown>,
+  value: { emailConfigured: true } as Record<string, unknown>,
 }));
 vi.mock("@/lib/hooks/use-client-config", () => ({
   useClientConfig: () => clientConfig.value,
@@ -51,7 +51,7 @@ function continueButton() {
 beforeEach(() => {
   mockFetch.mockReset();
   vi.stubGlobal("fetch", mockFetch);
-  clientConfig.value = {};
+  clientConfig.value = { emailConfigured: true };
   // jsdom reports window.location assignment as "not implemented".
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });

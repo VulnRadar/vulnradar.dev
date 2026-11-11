@@ -11,9 +11,15 @@ vi.mock("@/lib/config/runtime-config", () => ({
   getSettings: (...args: unknown[]) => mockGetSettings(...args),
 }));
 
+let emailConfigured = true;
+vi.mock("@/lib/email/email", () => ({
+  isEmailConfigured: () => emailConfigured,
+}));
+
 const { GET } = await import("@/app/api/v3/config/client/route");
 
 beforeEach(() => {
+  emailConfigured = true;
   mockGetSettings.mockReset();
   mockGetSettings.mockImplementation(async (keys: readonly string[]) =>
     Object.fromEntries(keys.map((k) => [k, k])),
@@ -42,6 +48,14 @@ describe("GET /api/v3/config/client", () => {
     const body = await (await GET()).json();
     expect(body.scanStatusPollIntervalMs).toBe("SCAN_STATUS_POLL_INTERVAL_MS");
     expect(body.featureBulkScans).toBe("FEATURE_BULK_SCANS");
+  });
+
+  it("says whether this server can send mail", async () => {
+    // The Security tab hides email codes on a server without mail, and an
+    // account with no password is offered a fresh sign-in instead of a code.
+    expect((await (await GET()).json()).emailConfigured).toBe(true);
+    emailConfigured = false;
+    expect((await (await GET()).json()).emailConfigured).toBe(false);
   });
 
   it("is cacheable for a minute", async () => {

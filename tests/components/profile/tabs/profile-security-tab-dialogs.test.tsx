@@ -88,9 +88,9 @@ const dialogError = vi.hoisted(() => ({
   errorId: "edit-dialog-error" as string | undefined,
 }));
 
-/** The client config the tab reads; emailConfigured is absent by default. */
+/** The client config the tab reads: a server that sends mail by default. */
 const clientConfig = vi.hoisted(() => ({
-  value: {} as Record<string, unknown>,
+  value: { emailConfigured: true } as Record<string, unknown>,
 }));
 
 vi.mock("@/lib/hooks/use-client-config", () => ({
@@ -328,7 +328,7 @@ beforeEach(() => {
   hooks.index = 0;
   vi.mocked(refreshAuthCache).mockClear();
   dialogError.error = null;
-  clientConfig.value = {};
+  clientConfig.value = { emailConfigured: true };
 });
 
 afterEach(() => {
@@ -1386,7 +1386,7 @@ describe("email codes on a server that cannot send mail", () => {
     expect(byText(tree, "Turn off email codes")).toBeDefined();
   });
 
-  it("offers them while the config says nothing either way", () => {
+  it("offers them on a server that sends mail", () => {
     const tree = direct(ProfileSecurityTab, baseProps());
     expect(byText(tree, "Turn on email codes")).toBeDefined();
   });

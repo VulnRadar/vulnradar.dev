@@ -38,10 +38,7 @@ import {
   useEditDialogError,
 } from "@/components/shared/edit-dialog";
 import { EmailStepUp, stepUpCanSave } from "@/components/shared/email-step-up";
-import {
-  useClientConfig,
-  type ClientConfig,
-} from "@/lib/hooks/use-client-config";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useConfirm } from "@/components/shared/use-confirm";
@@ -1139,11 +1136,7 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
   // so every dialog below shows the mailed step-up where that field would be
   // (components/shared/email-step-up.tsx, lib/auth/reauth.ts).
   const hasPassword = user?.hasPassword ?? true;
-  // Read optionally until the client config carries it: an older response
-  // without the field means mail works, which is the server's own default.
-  const clientConfig: ClientConfig & { emailConfigured?: boolean } =
-    useClientConfig();
-  const emailConfigured = clientConfig.emailConfigured !== false;
+  const { emailConfigured } = useClientConfig();
   const reauthProps = { hasPassword, emailConfigured };
 
   async function handleForceLogout() {

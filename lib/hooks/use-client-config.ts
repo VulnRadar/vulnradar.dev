@@ -36,6 +36,10 @@ export interface ClientConfig {
   featureBulkScans: boolean;
   featureEmailNotifications: boolean;
   featureDomainVerification: boolean;
+  // Whether the server can send mail (SMTP configured). Not a feature flag:
+  // it decides whether email codes are offered and how an account with no
+  // password confirms a security change (components/shared/email-step-up).
+  emailConfigured: boolean;
 }
 
 // Compiled-constant fallback: same values a client component used before
@@ -60,6 +64,9 @@ export const DEFAULT_CLIENT_CONFIG: ClientConfig = {
   // FEATURES (lib/config/constants.ts) has no DOMAIN_VERIFICATION entry, so
   // the pre-fetch fallback is the registry default: on.
   featureDomainVerification: true,
+  // The server refuses email codes without mail (409) whatever this says, so
+  // assuming it works until the answer arrives costs a refusal, never a lockout.
+  emailConfigured: true,
 };
 
 /**
@@ -124,6 +131,9 @@ export function parseClientConfig(data: unknown): ClientConfig {
     featureBulkScans: Boolean(d.featureBulkScans),
     featureEmailNotifications: Boolean(d.featureEmailNotifications),
     featureDomainVerification: Boolean(d.featureDomainVerification),
+    // Only an explicit false: a response from before the field existed came
+    // from a server that offered email codes regardless.
+    emailConfigured: d.emailConfigured !== false,
   };
 }
 

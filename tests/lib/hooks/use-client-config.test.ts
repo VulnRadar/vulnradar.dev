@@ -111,6 +111,19 @@ describe("parseClientConfig", () => {
     expect(parsed.featureWebhooks).toBe(false);
   });
 
+  it("reads emailConfigured as off only when the server says false", () => {
+    // A missing field is a server from before it existed, which offered
+    // email codes regardless; anything but an explicit false keeps them.
+    expect(parseClientConfig({ emailConfigured: false }).emailConfigured).toBe(
+      false,
+    );
+    expect(parseClientConfig({ emailConfigured: true }).emailConfigured).toBe(
+      true,
+    );
+    expect(parseClientConfig({}).emailConfigured).toBe(true);
+    expect(DEFAULT_CLIENT_CONFIG.emailConfigured).toBe(true);
+  });
+
   it("ships every flag the config route sends", () => {
     // A flag added to the route but forgotten here would leave its UI stuck
     // on the compiled default forever.

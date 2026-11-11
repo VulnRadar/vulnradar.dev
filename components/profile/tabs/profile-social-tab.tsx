@@ -36,10 +36,7 @@ import {
 } from "@/components/ui/dialog";
 import { InlineAlert } from "@/components/shared/inline-alert";
 import { EmailStepUp, stepUpCanSave } from "@/components/shared/email-step-up";
-import {
-  useClientConfig,
-  type ClientConfig,
-} from "@/lib/hooks/use-client-config";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 import {
   ProviderReauthDialog,
   requestProviderStart,
@@ -65,11 +62,7 @@ export function ProviderStepUpDialog({
   onStarted?: () => void;
   onClose: () => void;
 }) {
-  // Read optionally until the client config carries it; missing means mail
-  // works, which is the server's own default.
-  const config: ClientConfig & { emailConfigured?: boolean } =
-    useClientConfig();
-  const emailConfigured = config.emailConfigured !== false;
+  const { emailConfigured } = useClientConfig();
   const [stepUpDone, setStepUpDone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

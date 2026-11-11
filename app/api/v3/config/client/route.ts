@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSettings } from "@/lib/config/runtime-config";
+import { isEmailConfigured } from "@/lib/email/email";
 
 // A handful of runtime-tier settings only matter to client components
 // ("use client", can't call the server-only getSetting()/getSettings()
@@ -56,6 +57,11 @@ export async function GET() {
       featureBulkScans: settings.FEATURE_BULK_SCANS,
       featureEmailNotifications: settings.FEATURE_EMAIL_NOTIFICATIONS,
       featureDomainVerification: settings.FEATURE_DOMAIN_VERIFICATION,
+      // Whether this server can send mail at all. The Security tab hides
+      // email codes without it (the first sign-in after turning them on
+      // would wait for a code that never arrives), and the step-up for an
+      // account with no password offers a fresh sign-in instead of a code.
+      emailConfigured: isEmailConfigured(),
     },
     // Client components already have a compiled-constant fallback for
     // every one of these values, so a short cache is fine -- this is a
