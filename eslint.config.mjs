@@ -297,11 +297,19 @@ export default [
     // deliberately single-level: it covers the orchestrators that await
     // things, not the thousands of lines of pure detector bodies under
     // lib/scanner/checks/, which would multiply lint time for no benefit.
+    //
+    // The internal and v4 globs are listed before any file lives there, so
+    // the auth, account and admin routes keep the rule on the day the Move
+    // puts them under their new paths. The Move prunes the v3 ones.
     files: [
       "lib/auth/**/*.ts",
       "app/api/v3/auth/**/*.ts",
       "app/api/v3/account/**/*.ts",
       "app/api/v3/admin/**/*.ts",
+      "app/api/internal/auth/**/*.ts",
+      "app/api/internal/account/**/*.ts",
+      "app/api/internal/admin/**/*.ts",
+      "app/api/v4/auth/**/*.ts",
       "lib/billing/**/*.ts",
       "lib/webhooks/**/*.ts",
       "lib/email/**/*.ts",
