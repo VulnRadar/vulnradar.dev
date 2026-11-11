@@ -3,8 +3,8 @@ import {
   resolveAiBaseUrl,
   resolveAiDefaultModel,
 } from "@/lib/ai/provider";
+import { isAiDisabledForUser } from "@/lib/ai/user-ai-config";
 import { getSession } from "@/lib/auth";
-import pool from "@/lib/database/db";
 
 export const runtime = "nodejs";
 
@@ -12,18 +12,17 @@ export async function GET() {
   const baseUrl = resolveAiBaseUrl();
   const configured = !!baseUrl && !!process.env.AI_API_KEY;
 
+  // The chat widget, the dashboard and the scan menu hide their AI actions on
+  // aiDisabled. When the switch cannot be read, it is reported as off: this
+  // route answering "on" was how a database error offered AI to someone who
+  // had turned it off. The AI routes themselves refuse on the same failure.
   let aiDisabled = false;
   try {
     const session = await getSession();
-    if (session) {
-      const result = await pool.query(
-        `SELECT ai_disabled FROM user_ai_configs WHERE user_id = $1`,
-        [session.userId],
-      );
-      aiDisabled = result.rows[0]?.ai_disabled ?? false;
-    }
-  } catch {
-    /* non-fatal */
+    if (session) aiDisabled = await isAiDisabledForUser(session.userId);
+  } catch (error) {
+    console.error("AI info: could not read the AI setting:", error);
+    aiDisabled = true;
   }
 
   return Response.json({

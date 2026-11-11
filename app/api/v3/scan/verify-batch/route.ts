@@ -14,7 +14,7 @@ import {
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { reserveAiTokens } from "@/lib/billing/ai-usage";
 import { getSettings } from "@/lib/config/runtime-config";
-import pool from "@/lib/database/db";
+import { isAiDisabledForUser } from "@/lib/ai/user-ai-config";
 import type { Vulnerability } from "@/lib/scanner/types";
 
 export const runtime = "nodejs";
@@ -74,19 +74,13 @@ export const POST = versioned(
     // applies. Kept consistent since this route runs the identical per-finding
     // AI verification pipeline (lib/ai/verify-findings.ts) against a
     // caller-supplied findings array instead of one read from scan_history.
-    try {
-      const configResult = await pool.query(
-        `SELECT ai_disabled FROM user_ai_configs WHERE user_id = $1`,
-        [userId],
+    // A failed read throws to withErrorHandling's 500 rather than reading as
+    // "AI on": see isAiDisabledForUser.
+    if (await isAiDisabledForUser(userId)) {
+      return NextResponse.json(
+        { error: "AI is disabled in your settings." },
+        { status: 403 },
       );
-      if (configResult.rows[0]?.ai_disabled) {
-        return NextResponse.json(
-          { error: "AI is disabled in your settings." },
-          { status: 403 },
-        );
-      }
-    } catch {
-      /* no row = AI enabled by default */
     }
 
     const parsed = await readJsonObject(req);
@@ -177,14 +171,16 @@ export const POST = versioned(
   }),
 );
 
-// Mirrors the probe, which prefixes https:// to a bare host, so a bare host
-// stays accepted and only what cannot become a web address is refused.
+// The probe prefixes https:// to a bare host, so a bare host stays accepted
+// and only what cannot become a web address is refused.
+function asProbeUrl(value: string): string {
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
 function isWebTarget(value: unknown): value is string {
   if (typeof value !== "string") return false;
   try {
-    const { protocol } = new URL(
-      /^https?:\/\//i.test(value) ? value : `https://${value}`,
-    );
+    const { protocol } = new URL(asProbeUrl(value));
     return protocol === "http:" || protocol === "https:";
   } catch {
     return false;

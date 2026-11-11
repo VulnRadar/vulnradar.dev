@@ -14,6 +14,7 @@ import {
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { reserveAiTokens } from "@/lib/billing/ai-usage";
 import { scanNumericId } from "@/lib/history/resolve-scan";
+import { isAiDisabledForUser } from "@/lib/ai/user-ai-config";
 
 export const runtime = "nodejs";
 // Must stay above CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS (lib/config/config-values.ts)
@@ -84,20 +85,13 @@ export const POST = versioned(
       );
     }
 
-    // Check user hasn't disabled AI
-    try {
-      const configResult = await pool.query(
-        `SELECT ai_disabled FROM user_ai_configs WHERE user_id = $1`,
-        [userId],
+    // A failed read throws to withErrorHandling's 500 rather than reading as
+    // "AI on": see isAiDisabledForUser.
+    if (await isAiDisabledForUser(userId)) {
+      return NextResponse.json(
+        { error: "AI is disabled in your settings." },
+        { status: 403 },
       );
-      if (configResult.rows[0]?.ai_disabled) {
-        return NextResponse.json(
-          { error: "AI is disabled in your settings." },
-          { status: 403 },
-        );
-      }
-    } catch {
-      /* no row = AI enabled by default */
     }
 
     // Fetch the scan — must belong to this user. Resolves the opaque public_id

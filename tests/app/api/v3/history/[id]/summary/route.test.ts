@@ -245,15 +245,22 @@ describe("POST /api/v3/history/[id]/summary: AI-disabled setting", () => {
     expect(res.status).toBe(200);
   });
 
-  it("treats a failure reading the AI config as AI enabled by default", async () => {
+  // The opt-out is a privacy setting. A read that fails cannot say the user
+  // left AI on, so the summary is refused rather than generated.
+  it("refuses, without fetching the scan or calling the AI, when the AI setting cannot be read", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
     mockQuery
       .mockRejectedValueOnce(new Error("config query failed"))
-      .mockResolvedValueOnce({ rows: [scanRow] })
-      .mockResolvedValueOnce({ rows: [] }); // UPDATE
+      .mockResolvedValue({ rows: [scanRow] });
 
     const res = await POST(postRequest(), params());
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    expect(mockGenerateScanSummary).not.toHaveBeenCalled();
+    const scanReads = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("FROM scan_history"),
+    );
+    expect(scanReads).toHaveLength(0);
   });
 });
 

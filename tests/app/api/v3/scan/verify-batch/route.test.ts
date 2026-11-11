@@ -74,6 +74,11 @@ vi.mock("@/lib/config/runtime-config", async () => {
   };
 });
 
+const mockCheckAccessRules = vi.fn();
+vi.mock("@/lib/scanner/access-rules", () => ({
+  checkAccessRules: (...args: unknown[]) => mockCheckAccessRules(...args),
+}));
+
 const mockReserveAiTokens = vi.fn();
 vi.mock("@/lib/billing/ai-usage", () => ({
   reserveAiTokens: (...args: unknown[]) => mockReserveAiTokens(...args),
@@ -145,6 +150,8 @@ beforeEach(() => {
     allowed: true,
     reservation: RESERVATION,
   });
+  mockCheckAccessRules.mockReset();
+  mockCheckAccessRules.mockResolvedValue({ allowed: true });
 });
 
 describe("POST /api/v3/scan/verify-batch: auth", () => {
@@ -288,13 +295,18 @@ describe("POST /api/v3/scan/verify-batch: AI-disabled setting", () => {
     expect(res.status).toBe(200);
   });
 
-  it("treats a failure reading the AI config as AI enabled by default", async () => {
+  // The opt-out is a privacy setting. A read that fails cannot say the user
+  // left AI on, so the batch is refused rather than sent to the provider.
+  it("refuses, without probing or calling the AI, when the AI setting cannot be read", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
     mockQuery.mockRejectedValueOnce(new Error("config query failed"));
 
     const res = await POST(
       postRequest({ url: "https://example.com", findings }),
     );
-    expect(res.status).toBe(200);
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    expect(mockReserveAiTokens).not.toHaveBeenCalled();
+    expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
   });
 });
 

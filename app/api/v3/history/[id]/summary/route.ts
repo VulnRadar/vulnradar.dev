@@ -10,6 +10,7 @@ import { versioned } from "@/lib/api/v4/wrap";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import pool from "@/lib/database/db";
 import { generateScanSummary } from "@/lib/ai/scan-summary";
+import { isAiDisabledForUser } from "@/lib/ai/user-ai-config";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
 import type { ScanResult } from "@/lib/scanner/types";
@@ -65,20 +66,13 @@ async function handler(
     return NextResponse.json({ error: "Scan not found." }, { status: 404 });
   }
 
-  // Check the user hasn't disabled AI, same check scan/verify/route.ts makes.
-  try {
-    const configResult = await pool.query(
-      `SELECT ai_disabled FROM user_ai_configs WHERE user_id = $1`,
-      [userId],
+  // A failed read throws to withErrorHandling's 500 rather than reading as
+  // "AI on": see isAiDisabledForUser.
+  if (await isAiDisabledForUser(userId)) {
+    return NextResponse.json(
+      { error: "AI is disabled in your settings." },
+      { status: 403 },
     );
-    if (configResult.rows[0]?.ai_disabled) {
-      return NextResponse.json(
-        { error: "AI is disabled in your settings." },
-        { status: 403 },
-      );
-    }
-  } catch {
-    /* no row = AI enabled by default */
   }
 
   // Resolve by opaque public_id, or a legacy numeric id, still scoped to the
@@ -127,10 +121,12 @@ async function handler(
     );
   }
 
-  // AI scan summaries are free/unmetered -- not gated on the
-  // aiTokensPerWindow cap. Still resolves usingOwnAi (used below to pick
-  // which AI provider generateScanSummary calls) and usage is still
-  // recorded for admin cost visibility; it just never blocks the request.
+  // A summary is free: nothing here gates it on the plan's AI allowance, and
+  // it never spends purchased credits. The quota is read only for usingOwnAi,
+  // which picks the provider generateScanSummary calls; `allowed` is ignored
+  // on purpose. The tokens are still recorded in the account's usage window
+  // for cost reporting (scan-summary.ts records them without charging), and
+  // that window is the same one verification is held to.
   const quota = await checkAiUsageQuota(userId);
 
   const result: ScanResult = {
