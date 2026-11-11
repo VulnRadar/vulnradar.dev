@@ -347,6 +347,15 @@ describe("iframe-allow-scripts-allow-same-origin", () => {
     ).toBeNull();
   });
 
+  it("a vbscript: frame fires like a javascript: one", () => {
+    expect(
+      run(
+        "iframe-allow-scripts-allow-same-origin",
+        `<iframe src="vbscript:msgbox(1)" sandbox="allow-scripts allow-same-origin"></iframe>`,
+      ),
+    ).not.toBeNull();
+  });
+
   it("one flag alone, or no sandbox, is not this check", () => {
     expect(
       run(

@@ -2568,9 +2568,14 @@ const rawDetectors: Record<string, DetectFn> = {
         bad++;
         continue;
       }
+      // A data: document gets an opaque origin even with allow-same-origin,
+      // so it cannot reach this page; blob:, javascript: and vbscript: run in
+      // the origin that made them.
+      if (target.protocol === "data:") continue;
       if (
         target.protocol === "blob:" ||
         target.protocol === "javascript:" ||
+        target.protocol === "vbscript:" ||
         target.origin === pageOrigin
       ) {
         bad++;
