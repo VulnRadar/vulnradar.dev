@@ -177,6 +177,15 @@ describe("an id that is not exactly a row id", () => {
     });
   }
 
+  it("DELETE /webhooks asks for an id that is missing", async () => {
+    // It used to look up `undefined`, find nothing and answer 404 as if a
+    // webhook had been named.
+    const res = await webhooks.DELETE(jsonRequest("DELETE", {}));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Webhook ID is required");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
   for (const teamId of [9999999999, 1.5, 0, -1, "5"]) {
     it(`PATCH /webhooks/[id] answers 400 to teamId ${JSON.stringify(teamId)}`, async () => {
       const res = await webhook.PATCH(

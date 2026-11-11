@@ -91,6 +91,12 @@ describe("PATCH /api/v3/notifications", () => {
     expect(res.status).toBe(200);
     expect(mockMarkRead).toHaveBeenCalledWith(42, 7);
   });
+
+  it("takes the id as digits too, and hands on the number", async () => {
+    const res = await PATCH(rawRequest(JSON.stringify({ id: "7" })));
+    expect(res.status).toBe(200);
+    expect(mockMarkRead).toHaveBeenCalledWith(42, 7);
+  });
 });
 
 describe("a dependency that throws", () => {
