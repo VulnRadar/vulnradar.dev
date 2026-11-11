@@ -3405,7 +3405,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Webhook,
         label: "Stripe Webhooks Need the Dispute Closed Event",
-        desc: "Self-hosted instances that take payments must add charge.dispute.closed to their Stripe webhook endpoint, by running the admin webhook setup again or by editing the endpoint in the Stripe dashboard, or a won dispute never reaches the app. A restricted Stripe key also needs Disputes write permission to record what a dispute took; without it the reversal still happens and a later win raises an admin alert to restore the credit by hand.",
+        desc: "Self-hosted instances that take payments must add charge.dispute.closed to the existing Stripe webhook endpoint in the Stripe dashboard, or a won dispute never reaches the app. Running the admin webhook setup again does not do it: that route registers events only while STRIPE_WEBHOOK_SECRET is still unset, and answers without calling Stripe once it is set. A restricted Stripe key also needs Disputes write permission to record what a dispute took; without it the reversal still happens and a later win raises an admin alert to restore the credit by hand.",
         category: "selfhost",
       },
       {
