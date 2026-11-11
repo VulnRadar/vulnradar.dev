@@ -3,8 +3,13 @@ import { prepareMessageTranslation } from "@/lib/support/translate";
 import { getUserLocale } from "@/lib/i18n/translate";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
-import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import {
+  ApiResponse,
+  readJsonObject,
+  withErrorHandling,
+} from "@/lib/api/api-utils";
 import { getClientIp } from "@/lib/api/request-utils";
+import { verifyTurnstile } from "@/lib/auth/turnstile";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { TURNSTILE_ENABLED } from "@/lib/config/constants";
 import {
@@ -37,7 +42,7 @@ const TICKET_LIST_LIMIT = 100;
 export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
 
   // The caller's own tickets, plus any a teammate explicitly shared with them.
@@ -83,7 +88,7 @@ export const GET = withErrorHandling(async () => {
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
 
   // Each ticket emails staff and the opener, and runs a language-detection
@@ -113,37 +118,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (!parsed.ok) return parsed.response;
   const body = parsed.data;
 
-  // Cloudflare Turnstile: bot/abuse gate on ticket creation, verified the same
-  // way /api/v3/contact does. No-op when Turnstile isn't configured.
+  // Cloudflare Turnstile: bot/abuse gate on ticket creation, through the same
+  // helper /api/v3/contact uses. No-op when Turnstile isn't configured.
   if (TURNSTILE_ENABLED) {
-    const turnstileToken =
-      typeof body.turnstileToken === "string" ? body.turnstileToken.trim() : "";
-    if (!turnstileToken) {
-      return NextResponse.json(
-        { error: "Captcha verification required." },
-        { status: 400 },
-      );
-    }
-    const ip = await getClientIp();
-    const turnstileRes = await fetch(
-      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          secret: process.env.TURNSTILE_SECRET_KEY,
-          response: turnstileToken,
-          remoteip: ip,
-        }),
-      },
+    const captcha = await verifyTurnstile(
+      typeof body.turnstileToken === "string" ? body.turnstileToken : null,
+      await getClientIp(),
     );
-    const turnstileData = await turnstileRes.json();
-    if (!turnstileData.success) {
-      return NextResponse.json(
-        { error: "Captcha verification failed. Please try again." },
-        { status: 400 },
-      );
-    }
+    if (!captcha.ok) return ApiResponse.error(captcha.error, captcha.status);
   }
 
   const subject = typeof body.subject === "string" ? body.subject.trim() : "";

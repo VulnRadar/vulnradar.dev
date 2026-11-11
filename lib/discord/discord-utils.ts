@@ -4,6 +4,9 @@ import { encryptApiKey, decryptApiKey } from "@/lib/auth/crypto";
 import { getSetting } from "@/lib/config/runtime-config";
 import { randomInt, randomBytes, createHash } from "node:crypto";
 
+/** How long the token-refresh call to Discord may take. */
+export const DISCORD_TOKEN_TIMEOUT_MS = 10_000;
+
 /**
  * Generate and send email 2FA code for Discord login
  * Runs asynchronously in background without blocking the response
@@ -182,6 +185,11 @@ export async function refreshDiscordAccessToken(
       grant_type: "refresh_token",
       refresh_token: stored.refreshToken,
     }),
+    // A quiet Discord used to hold the caller for as long as the socket
+    // lived. A timeout rejects as a plain (transient) error, never as
+    // DiscordReauthRequiredError: Discord not answering says nothing about
+    // whether the authorization is still good.
+    signal: AbortSignal.timeout(DISCORD_TOKEN_TIMEOUT_MS),
   });
 
   if (!response.ok) {

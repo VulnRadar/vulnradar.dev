@@ -11,7 +11,15 @@
  * The HTTP boundary is the only thing mocked: everything else, including the
  * URL shapes and the request bodies, is the real code.
  */
-import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  afterAll,
+} from "vitest";
 
 const mockGetSetting = vi.fn();
 vi.mock("@/lib/config/runtime-config", () => ({
@@ -363,5 +371,90 @@ describe("parseNetworkRequests", () => {
     ]);
     expect(out).toHaveLength(1);
     expect(out[0].status).toBeUndefined();
+  });
+});
+
+/**
+ * No REST call here had a timeout, so a Browserbase that accepted the
+ * connection and went quiet held the request, and the concurrency slot the
+ * route reserved for it, for as long as the socket lived.
+ */
+describe("Browserbase call timeouts", () => {
+  /** Rejects only when its signal aborts, like the real fetch on a quiet host. */
+  function hangUntilAborted(_url: unknown, init?: RequestInit) {
+    return new Promise<never>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () =>
+        reject(init.signal?.reason),
+      );
+    });
+  }
+
+  // AbortSignal.timeout runs on Node's internal timers, which fake timers do
+  // not reach: the same signal, built on the faked setTimeout.
+  function fakeTimeoutSignals() {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((ms: number) => {
+      const controller = new AbortController();
+      setTimeout(
+        () =>
+          controller.abort(
+            new DOMException("The operation timed out.", "TimeoutError"),
+          ),
+        ms,
+      );
+      return controller.signal;
+    });
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ["createBrowserSession", () => createBrowserSession({})],
+    ["getBrowserSession", () => getBrowserSession("sess_1")],
+    ["getBrowserLiveUrls", () => getBrowserLiveUrls("sess_1")],
+    ["getBrowserSessionLogs", () => getBrowserSessionLogs("sess_1")],
+    ["endBrowserSession", () => endBrowserSession("sess_1")],
+  ])("%s bounds its call with a ten second signal", async (_name, call) => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    fetchMock.mockResolvedValue(jsonResponse({ id: "sess_1" }));
+
+    await call();
+
+    expect(timeout).toHaveBeenCalledWith(10_000);
+    expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("createBrowserSession rejects with a TimeoutError when Browserbase never answers", async () => {
+    fakeTimeoutSignals();
+    fetchMock.mockImplementation(hangUntilAborted);
+
+    const pending = createBrowserSession({}).then(
+      () => "resolved",
+      (err: unknown) => err,
+    );
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(await pending).toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("endBrowserSession still never throws when the release times out, and logs it", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    fakeTimeoutSignals();
+    fetchMock.mockImplementation(hangUntilAborted);
+
+    let done = false;
+    void endBrowserSession("sess_slow").then(() => {
+      done = true;
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(done).toBe(true);
+    const row = errSpy.mock.calls.find((c) =>
+      String(c[0]).startsWith("[browserbase]"),
+    );
+    expect(row?.[1]).toEqual({ sessionId: "sess_slow" });
   });
 });

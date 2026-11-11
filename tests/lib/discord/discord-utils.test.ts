@@ -369,6 +369,74 @@ describe("refreshDiscordAccessToken", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  // The token call had no timeout, so a Discord that went quiet held the
+  // request that needed the fresh token for as long as the socket lived.
+  it("bounds the token call with a ten second signal", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    mockQuery.mockResolvedValueOnce(storedConnection());
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        access_token: "fresh-access",
+        refresh_token: "fresh-refresh",
+        expires_in: 604800,
+      }),
+    });
+
+    await refreshDiscordAccessToken(7);
+
+    expect(timeout).toHaveBeenCalledWith(10_000);
+    const [, init] = mockFetch.mock.calls[0];
+    expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal);
+    timeout.mockRestore();
+  });
+
+  it("gives up after the timeout as a transient failure, not a revoked authorization", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    // AbortSignal.timeout runs on Node's internal timers, which fake timers do
+    // not reach: the same signal, built on the faked setTimeout.
+    const timeout = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation((ms: number) => {
+        const controller = new AbortController();
+        setTimeout(
+          () =>
+            controller.abort(
+              new DOMException("The operation timed out.", "TimeoutError"),
+            ),
+          ms,
+        );
+        return controller.signal;
+      });
+    try {
+      mockQuery.mockResolvedValueOnce(storedConnection());
+      mockFetch.mockImplementationOnce(
+        (_url: unknown, init?: RequestInit) =>
+          new Promise<never>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () =>
+              reject(init.signal?.reason),
+            );
+          }),
+      );
+
+      let error: unknown;
+      void refreshDiscordAccessToken(7).catch((e: unknown) => {
+        error = e;
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(error).toMatchObject({ name: "TimeoutError" });
+      expect(error).not.toBeInstanceOf(DiscordReauthRequiredError);
+      // Nothing was written: the stored pair is still the one to retry with.
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    } finally {
+      timeout.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("refuses to call Discord at all when the OAuth app is not configured", async () => {
     delete process.env.DISCORD_CLIENT_SECRET;
     await expect(refreshDiscordAccessToken(7)).rejects.toThrow(

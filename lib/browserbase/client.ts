@@ -43,6 +43,16 @@ import { logError } from "@/lib/logging/log";
 
 const BROWSERBASE_BASE_URL = "https://api.browserbase.com/v1";
 
+/**
+ * How long one REST call may take. None of them had a timeout, so a Browserbase
+ * that accepted the connection and went quiet held the request open for as
+ * long as the socket lived, and a stalled create also held the global
+ * concurrency slot the sessions route reserved for it, shrinking live-browser
+ * capacity for every user. A call that times out rejects with the
+ * DOMException named "TimeoutError" that AbortSignal.timeout raises.
+ */
+export const BROWSERBASE_TIMEOUT_MS = 10_000;
+
 export interface BrowserBaseSession {
   id: string;
   status: string;
@@ -148,6 +158,7 @@ export async function createBrowserSession(
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(BROWSERBASE_TIMEOUT_MS),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -171,7 +182,11 @@ export async function getBrowserSession(
   }
   const res = await fetch(
     `${BROWSERBASE_BASE_URL}/sessions/${encodeURIComponent(id)}`,
-    { method: "GET", headers: authHeaders() },
+    {
+      method: "GET",
+      headers: authHeaders(),
+      signal: AbortSignal.timeout(BROWSERBASE_TIMEOUT_MS),
+    },
   );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -195,7 +210,11 @@ export async function getBrowserLiveUrls(
   }
   const res = await fetch(
     `${BROWSERBASE_BASE_URL}/sessions/${encodeURIComponent(id)}/debug`,
-    { method: "GET", headers: authHeaders() },
+    {
+      method: "GET",
+      headers: authHeaders(),
+      signal: AbortSignal.timeout(BROWSERBASE_TIMEOUT_MS),
+    },
   );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -230,6 +249,7 @@ export async function endBrowserSession(id: string): Promise<void> {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({ status: "REQUEST_RELEASE" }),
+        signal: AbortSignal.timeout(BROWSERBASE_TIMEOUT_MS),
       },
     );
     // 404 and 409 mean the session is gone or already ending: nothing is
@@ -598,7 +618,11 @@ export async function getBrowserSessionLogs(id: string): Promise<SessionLog[]> {
   }
   const res = await fetch(
     `${BROWSERBASE_BASE_URL}/sessions/${encodeURIComponent(id)}/logs`,
-    { method: "GET", headers: authHeaders() },
+    {
+      method: "GET",
+      headers: authHeaders(),
+      signal: AbortSignal.timeout(BROWSERBASE_TIMEOUT_MS),
+    },
   );
   if (!res.ok) {
     const text = await res.text().catch(() => "");

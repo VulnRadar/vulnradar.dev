@@ -3,7 +3,7 @@
  * pool and getSession are mocked; the outbound staff notification is stubbed so
  * no email is attempted.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockQuery = vi.fn();
@@ -13,6 +13,12 @@ vi.mock("@/lib/database/db", () => ({
 
 const mockGetSession = vi.fn();
 vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
+
+// Reached only on the Turnstile path, to send the caller's address along.
+vi.mock("@/lib/api/request-utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api/request-utils")>()),
+  getClientIp: async () => "203.0.113.7",
+}));
 
 vi.mock("@/lib/support/ticket-notify", () => ({
   notifyStaffOfTicketActivity: vi.fn(),
@@ -38,6 +44,7 @@ vi.mock("@/lib/rate-limiting/rate-limit", () => ({
 }));
 
 const { GET, POST } = await import("@/app/api/v3/support-tickets/route");
+const { ERROR_MESSAGES } = await import("@/lib/config/constants");
 
 function postRequest(body: unknown) {
   return new NextRequest("http://localhost/api/v3/support-tickets", {
@@ -71,6 +78,15 @@ describe("GET /api/v3/support-tickets", () => {
     expect(res.status).toBe(401);
   });
 
+  // A bare "Unauthorized" reached the page as that one word when a session
+  // expired, which tells the person nothing about signing back in.
+  it("says to sign in rather than answering a bare 'Unauthorized'", async () => {
+    mockGetSession.mockResolvedValueOnce(null);
+    const body = await (await GET()).json();
+    expect(body.error).toBe(ERROR_MESSAGES.UNAUTHORIZED);
+    expect(body.code).toBe("UNAUTHENTICATED");
+  });
+
   it("returns only the caller's own tickets", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 1, subject: "Help", status: "open", message_count: 2 }],
@@ -95,6 +111,7 @@ describe("POST /api/v3/support-tickets", () => {
     mockGetSession.mockResolvedValueOnce(null);
     const res = await POST(postRequest({ subject: "x", message: "y" }));
     expect(res.status).toBe(401);
+    expect((await res.json()).error).toBe(ERROR_MESSAGES.UNAUTHORIZED);
   });
 
   it("400s on a missing subject or message", async () => {
@@ -198,6 +215,143 @@ describe("POST /api/v3/support-tickets rate limit", () => {
     const res = await POST(postRequest({ subject: "s", message: "m" }));
     expect(res.status).toBe(401);
     expect(mockCheckRateLimit).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v3/support-tickets (Turnstile gating)", () => {
+  const originalSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+  const originalSecretKey = process.env.TURNSTILE_SECRET_KEY;
+  const realFetch = globalThis.fetch;
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    if (originalSiteKey === undefined) {
+      delete process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+    } else {
+      process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY = originalSiteKey;
+    }
+    if (originalSecretKey === undefined) {
+      delete process.env.TURNSTILE_SECRET_KEY;
+    } else {
+      process.env.TURNSTILE_SECRET_KEY = originalSecretKey;
+    }
+    vi.resetModules();
+  });
+
+  // TURNSTILE_ENABLED is read once at module load, so the route is imported
+  // fresh with the site key set.
+  async function importGatedPOST() {
+    process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY = "test-site-key";
+    process.env.TURNSTILE_SECRET_KEY = "test-secret-key";
+    vi.resetModules();
+    const mod = await import("@/app/api/v3/support-tickets/route");
+    return mod.POST;
+  }
+
+  const BODY = {
+    subject: "Billing help",
+    message: "I was double charged",
+    category: "billing",
+    turnstileToken: "good-token",
+  };
+
+  it("asks for a captcha token before calling Cloudflare", async () => {
+    const gatedPOST = await importGatedPOST();
+    const res = await gatedPOST(
+      postRequest({ ...BODY, turnstileToken: undefined }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Captcha verification required.");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a token Cloudflare says is invalid", async () => {
+    const gatedPOST = await importGatedPOST();
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: false }), { status: 200 }),
+    );
+    const res = await gatedPOST(postRequest(BODY));
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  // No timeout on siteverify meant a quiet Cloudflare held the request open
+  // for as long as the socket lived.
+  it("answers within the timeout with a 503 when siteverify never responds", async () => {
+    const gatedPOST = await importGatedPOST();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    // AbortSignal.timeout runs on Node's internal timers, which fake timers do
+    // not reach: the same signal, built on the faked setTimeout.
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((ms: number) => {
+      const controller = new AbortController();
+      setTimeout(
+        () =>
+          controller.abort(
+            new DOMException("The operation timed out.", "TimeoutError"),
+          ),
+        ms,
+      );
+      return controller.signal;
+    });
+    fetchMock.mockImplementationOnce(
+      (_url: unknown, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          );
+        }),
+    );
+
+    let res: Response | undefined;
+    void gatedPOST(postRequest(BODY)).then((r) => {
+      res = r;
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(res).toBeDefined();
+    expect(res?.status).toBe(503);
+    expect((await (res as Response).json()).error).toBe(
+      "We could not verify the captcha just now. Please try again.",
+    );
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("answers a non-JSON siteverify reply with a 503, not a 500", async () => {
+    const gatedPOST = await importGatedPOST();
+    fetchMock.mockResolvedValueOnce(
+      new Response("<html>cloudflare error</html>", { status: 200 }),
+    );
+    const res = await gatedPOST(postRequest(BODY));
+    expect(res.status).toBe(503);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("opens the ticket once Cloudflare verifies the token", async () => {
+    const gatedPOST = await importGatedPOST();
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: true }), { status: 200 }),
+    );
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 42 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 5 }] });
+    const res = await gatedPOST(postRequest(BODY));
+    expect(res.status).toBe(201);
+    const sent = JSON.parse(
+      (fetchMock.mock.calls[0][1] as RequestInit).body as string,
+    );
+    expect(sent).toMatchObject({
+      secret: "test-secret-key",
+      response: "good-token",
+    });
   });
 });
 
