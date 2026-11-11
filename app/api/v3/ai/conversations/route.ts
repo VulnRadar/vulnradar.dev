@@ -6,11 +6,18 @@ import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import { parsePagination } from "@/lib/api/pagination";
+import { escapeLikePattern } from "@/lib/history/list-filter";
 
 // A chat conversation blob is capped at 100 KB; reject anything materially
 // larger before we even parse it, so a hostile caller can't force a big JSON
 // parse. Read the raw body once (bounded) and parse from that.
 const MAX_BODY_BYTES = 110_000;
+
+/** The window the moderator tiles and the two quality filters share. */
+const SIGNAL_WINDOW_DAYS = 7;
+
+/** Longer than any name, email or session id the search is matched against. */
+const MAX_SEARCH_LENGTH = 200;
 
 // POST: upsert a conversation (called by chat widget after each exchange).
 // The widget is available to guests, so this intentionally accepts anonymous
@@ -249,24 +256,44 @@ export async function GET(req: NextRequest) {
     maxLimit: 200,
   });
   const userIdFilter = searchParams.get("userId");
+  const q = (searchParams.get("q") ?? "").trim().slice(0, MAX_SEARCH_LENGTH);
 
   const conditions: string[] = [];
   const params: (string | number)[] = [];
 
   if (userIdFilter) {
-    params.push(parseInt(userIdFilter, 10));
+    // A non-numeric id reached Postgres as NaN and came back a 500.
+    if (!/^\d+$/.test(userIdFilter)) {
+      return NextResponse.json(
+        { error: "userId must be a whole number." },
+        { status: 400 },
+      );
+    }
+    params.push(Number(userIdFilter));
     conditions.push(`c.user_id = $${params.length}`);
   }
+  // Searched here rather than in the browser, which could only search the
+  // page it had loaded, so a conversation on page two "did not exist".
+  if (q) {
+    params.push(`%${escapeLikePattern(q)}%`);
+    const like = `$${params.length}`;
+    conditions.push(
+      `(u.name ILIKE ${like} ESCAPE '\\' OR u.email ILIKE ${like} ESCAPE '\\' OR c.session_id::text ILIKE ${like} ESCAPE '\\')`,
+    );
+  }
   // The two questions a moderator brings to this list: which answers did
-  // people say were wrong, and which replies failed.
+  // people say were wrong, and which replies failed. Both over the same seven
+  // days as the tiles that open them, so a tile's number and the rows it
+  // filters to are the same set; unbounded, a tile reading 3 opened a list
+  // of every conversation ever rated down.
   if (searchParams.get("rating") === "down") {
     conditions.push(
-      `EXISTS (SELECT 1 FROM ai_message_feedback f WHERE f.conversation_id = c.id AND f.rating = -1)`,
+      `EXISTS (SELECT 1 FROM ai_message_feedback f WHERE f.conversation_id = c.id AND f.rating = -1 AND f.created_at > NOW() - INTERVAL '${SIGNAL_WINDOW_DAYS} days')`,
     );
   }
   if (searchParams.get("errored") === "1") {
     conditions.push(
-      `EXISTS (SELECT 1 FROM ai_chat_events e WHERE e.conversation_id = c.id AND e.error IS NOT NULL)`,
+      `EXISTS (SELECT 1 FROM ai_chat_events e WHERE e.conversation_id = c.id AND e.error IS NOT NULL AND e.created_at > NOW() - INTERVAL '${SIGNAL_WINDOW_DAYS} days')`,
     );
   }
 
@@ -285,17 +312,37 @@ export async function GET(req: NextRequest) {
        FROM ai_conversations c
        LEFT JOIN users u ON u.id = c.user_id
        ${where}
-       ORDER BY c.last_message_at DESC
+       ORDER BY c.last_message_at DESC, c.id DESC
        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset],
     ),
-    pool.query(`SELECT COUNT(*) FROM ai_conversations c ${where}`, params),
-    pool.query<{ unhelpful_7d: number; errors_7d: number }>(
+    // The join is there for the search, which matches on the user's name
+    // and email.
+    pool.query(
+      `SELECT COUNT(*) FROM ai_conversations c
+         LEFT JOIN users u ON u.id = c.user_id
+         ${where}`,
+      params,
+    ),
+    // The two *_conversations_7d counts are what the tiles show: the number
+    // of conversations their filter opens. The older two count ratings and
+    // failed replies, so one conversation with four bad replies read as 4 on
+    // a tile that opened 1 row; they stay in the payload unchanged.
+    pool.query<{
+      unhelpful_7d: number;
+      errors_7d: number;
+      unhelpful_conversations_7d: number;
+      errored_conversations_7d: number;
+    }>(
       `SELECT
          (SELECT COUNT(*) FROM ai_message_feedback
-           WHERE rating = -1 AND created_at > NOW() - INTERVAL '7 days')::int AS unhelpful_7d,
+           WHERE rating = -1 AND created_at > NOW() - INTERVAL '${SIGNAL_WINDOW_DAYS} days')::int AS unhelpful_7d,
          (SELECT COUNT(*) FROM ai_chat_events
-           WHERE error IS NOT NULL AND created_at > NOW() - INTERVAL '7 days')::int AS errors_7d`,
+           WHERE error IS NOT NULL AND created_at > NOW() - INTERVAL '${SIGNAL_WINDOW_DAYS} days')::int AS errors_7d,
+         (SELECT COUNT(DISTINCT conversation_id) FROM ai_message_feedback
+           WHERE rating = -1 AND created_at > NOW() - INTERVAL '${SIGNAL_WINDOW_DAYS} days')::int AS unhelpful_conversations_7d,
+         (SELECT COUNT(DISTINCT conversation_id) FROM ai_chat_events
+           WHERE error IS NOT NULL AND created_at > NOW() - INTERVAL '${SIGNAL_WINDOW_DAYS} days')::int AS errored_conversations_7d`,
     ),
   ]);
 
@@ -317,6 +364,10 @@ export async function GET(req: NextRequest) {
     signals: {
       unhelpfulLast7Days: signalResult.rows[0]?.unhelpful_7d ?? 0,
       errorsLast7Days: signalResult.rows[0]?.errors_7d ?? 0,
+      unhelpfulConversationsLast7Days:
+        signalResult.rows[0]?.unhelpful_conversations_7d ?? 0,
+      erroredConversationsLast7Days:
+        signalResult.rows[0]?.errored_conversations_7d ?? 0,
     },
     page,
     limit,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   MessageCircle,
@@ -67,15 +67,49 @@ type QualityFilter = "all" | "unhelpful" | "errored";
 type IdentityFilter = "all" | "signed-in" | "guest";
 type SortColumn = "messages" | "activity";
 
+type Signals = {
+  unhelpfulLast7Days: number;
+  errorsLast7Days: number;
+  /** Conversations, which is what the tiles' filters open. */
+  unhelpfulConversationsLast7Days?: number;
+  erroredConversationsLast7Days?: number;
+};
+
+/**
+ * The list request for a page, a quality filter and a search term.
+ *
+ * The search goes to the server: filtering the loaded rows in the browser
+ * meant a conversation on page two could not be found at all. "#42" or "42"
+ * is a user id, anything else matches name, email or session id.
+ */
+export function conversationListQuery(
+  page: number,
+  limit: number,
+  quality: QualityFilter,
+  term: string,
+): string {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  });
+  if (quality === "unhelpful") params.set("rating", "down");
+  if (quality === "errored") params.set("errored", "1");
+  const trimmed = term.trim();
+  const userId = /^#?(\d+)$/.exec(trimmed)?.[1];
+  if (userId) params.set("userId", userId);
+  else if (trimmed) params.set("q", trimmed);
+  return params.toString();
+}
+
 /**
  * List/overview of stored AI chat conversations. Each row links out to the
  * dedicated conversation page (app/admin/ai-chats/[id]/page.tsx), which is
  * where messages actually get rendered through the same pipeline as the
  * live chat widget. This view only ever shows metadata the list endpoint
- * returns (no message content), so search/sort/identity counts below are
- * scoped to the page currently loaded, the same way other admin stat bars
- * in this codebase summarize whatever is currently fetched rather than the
- * whole table.
+ * returns (no message content). Search and the two quality filters run on
+ * the server; sort and the signed-in/guest split are scoped to the page
+ * currently loaded, the same way other admin stat bars in this codebase
+ * summarize whatever is currently fetched rather than the whole table.
  */
 export function AIChatsManager() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -84,29 +118,30 @@ export function AIChatsManager() {
   const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  // What was last sent, 300ms behind the box, the same debounce the other
+  // admin searches use.
+  const [term, setTerm] = useState("");
   const [identityFilter, setIdentityFilter] = useState<IdentityFilter>("all");
   const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [quality, setQuality] = useState<QualityFilter>("all");
-  const [signals, setSignals] = useState({
+  const [signals, setSignals] = useState<Signals>({
     unhelpfulLast7Days: 0,
     errorsLast7Days: 0,
   });
   const [loadError, setLoadError] = useState<string | null>(null);
+  // A slow response to an earlier term must not overwrite a newer one.
+  const requestSeq = useRef(0);
 
   const fetchConversations = useCallback(
-    async (p: number, limit: number, q: QualityFilter) => {
+    async (p: number, limit: number, q: QualityFilter, t: string) => {
+      const seq = ++requestSeq.current;
       setLoading(true);
       try {
-        const filter =
-          q === "unhelpful"
-            ? "&rating=down"
-            : q === "errored"
-              ? "&errored=1"
-              : "";
         const res = await fetch(
-          `${API.AI_CONVERSATIONS}?page=${p}&limit=${limit}${filter}`,
+          `${API.AI_CONVERSATIONS}?${conversationListQuery(p, limit, q, t)}`,
         );
+        if (seq !== requestSeq.current) return;
         // A failed load used to leave the previous page on screen with no
         // word that it was stale, which read as "no new conversations".
         if (!res.ok) {
@@ -123,18 +158,20 @@ export function AIChatsManager() {
           total: number;
           page: number;
           limit: number;
-          signals?: { unhelpfulLast7Days: number; errorsLast7Days: number };
+          signals?: Signals;
         };
+        if (seq !== requestSeq.current) return;
         setConversations(data.conversations);
         setTotal(data.total);
         if (data.signals) setSignals(data.signals);
         setLoadError(null);
       } catch {
+        if (seq !== requestSeq.current) return;
         setLoadError(
           "Conversations did not load. Check the connection and refresh.",
         );
       } finally {
-        setLoading(false);
+        if (seq === requestSeq.current) setLoading(false);
       }
     },
     [],
@@ -142,8 +179,18 @@ export function AIChatsManager() {
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount/page-change: fetchConversations' setState calls only fire after its async request resolves, not synchronously in this effect
-    fetchConversations(page, pageSize, quality);
-  }, [page, pageSize, quality, fetchConversations]);
+    fetchConversations(page, pageSize, quality, term);
+  }, [page, pageSize, quality, term, fetchConversations]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      const next = search.trim();
+      if (next === term) return;
+      setPage(1);
+      setTerm(next);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [search, term]);
 
   const chooseQuality = (next: QualityFilter) => {
     setPage(1);
@@ -168,15 +215,6 @@ export function AIChatsManager() {
       rows = rows.filter((c) => c.userId !== null);
     else if (identityFilter === "guest")
       rows = rows.filter((c) => c.userId === null);
-    const term = search.trim().toLowerCase();
-    if (term) {
-      rows = rows.filter(
-        (c) =>
-          c.userName?.toLowerCase().includes(term) ||
-          c.userEmail?.toLowerCase().includes(term) ||
-          c.sessionId.toLowerCase().includes(term),
-      );
-    }
     if (sortColumn && sortDirection) {
       const dir = sortDirection === "asc" ? 1 : -1;
       rows = [...rows].sort((a, b) => {
@@ -190,7 +228,7 @@ export function AIChatsManager() {
       });
     }
     return rows;
-  }, [conversations, identityFilter, search, sortColumn, sortDirection]);
+  }, [conversations, identityFilter, sortColumn, sortDirection]);
 
   const handleSort = (column: SortColumn) => {
     const next = nextSortDirection(column, sortColumn, sortDirection);
@@ -252,17 +290,25 @@ export function AIChatsManager() {
             // Whole-table signals, and the two filters a moderator actually
             // needs: which answers people said were wrong, and which replies
             // failed. Both filter on the server, unlike the page-scoped ones.
+            //
+            // Each counts conversations, the rows its filter opens. They
+            // counted ratings and failed replies, so one chat with four bad
+            // replies read as 4 on a tile that opened one row.
             {
               label: "Rated unhelpful (7 days)",
-              value: signals.unhelpfulLast7Days,
+              value:
+                signals.unhelpfulConversationsLast7Days ??
+                signals.unhelpfulLast7Days,
               icon: ThumbsDown,
               tone: "severity-medium",
               onClick: () => chooseQuality("unhelpful"),
               active: quality === "unhelpful",
             },
             {
-              label: "Failed replies (7 days)",
-              value: signals.errorsLast7Days,
+              label: "With a failed reply (7 days)",
+              value:
+                signals.erroredConversationsLast7Days ??
+                signals.errorsLast7Days,
               icon: AlertTriangle,
               tone: "destructive",
               onClick: () => chooseQuality("errored"),
@@ -283,7 +329,7 @@ export function AIChatsManager() {
           // twice, formatted two ways, so at 1234 one read 1234 and the other
           // 1,234. The badge keeps the number and the subtitle says the thing
           // the number does not.
-          subtitle="Search and sort apply to the page currently loaded, not the whole table."
+          subtitle="Search covers every stored conversation. Sort and the signed-in and guest tiles apply to the page loaded."
           status={
             <Badge
               variant="secondary"
@@ -297,14 +343,14 @@ export function AIChatsManager() {
             <ListSearchInput
               value={search}
               onChange={setSearch}
-              placeholder="Search this page by name, email, or session id"
-              label="Search conversations on this page"
+              placeholder="Search by name, email, session id or #user id"
+              label="Search conversations"
             />
             <Button
               variant="outline"
               size="sm"
               className="h-9 px-3 gap-2 border-border/40 shrink-0"
-              onClick={() => fetchConversations(page, pageSize, quality)}
+              onClick={() => fetchConversations(page, pageSize, quality, term)}
               aria-label="Refresh conversations"
             >
               <RefreshCw
@@ -324,14 +370,20 @@ export function AIChatsManager() {
             <SkeletonRegion label="Loading conversations">
               <DataTableSkeleton rows={6} />
             </SkeletonRegion>
+          ) : conversations.length === 0 && term ? (
+            <EmptyState
+              icon={Search}
+              title="No conversations match"
+              description="Nothing stored matches that name, email, session id or user id."
+            />
           ) : conversations.length === 0 && quality !== "all" ? (
             <EmptyState
               icon={Search}
               title="Nothing matches this filter"
               description={
                 quality === "unhelpful"
-                  ? "No stored conversation has a reply rated unhelpful."
-                  : "No stored conversation has a failed reply."
+                  ? "No conversation had a reply rated unhelpful in the last 7 days."
+                  : "No conversation had a failed reply in the last 7 days."
               }
             />
           ) : conversations.length === 0 ? (
@@ -344,7 +396,7 @@ export function AIChatsManager() {
             <EmptyState
               icon={Search}
               title="No conversations match"
-              description="Try a different search term or filter."
+              description="None on this page match that filter."
             />
           ) : (
             <>
