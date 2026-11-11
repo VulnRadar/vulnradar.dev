@@ -649,12 +649,13 @@ export async function POST(_request: NextRequest) {
           [session.userId, EXPORT_MAX_ROWS],
         ),
 
-      // AI token usage per window.
+      // AI token usage per window, one row per feature (kind: verify, chat,
+      // summary, tag), so the export says what each row was spent on.
       () =>
         pool.query(
           `
-        SELECT window_start, tokens_used, updated_at
-        FROM ai_usage WHERE user_id = $1 ORDER BY window_start DESC
+        SELECT window_start, kind, tokens_used, updated_at
+        FROM ai_usage WHERE user_id = $1 ORDER BY window_start DESC, kind
         LIMIT $2
       `,
           [session.userId, EXPORT_MAX_ROWS],
