@@ -3,7 +3,7 @@ import { prepareMessageTranslation } from "@/lib/support/translate";
 import { getUserLocale } from "@/lib/i18n/translate";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
-import { withErrorHandling } from "@/lib/api/api-utils";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 import { getClientIp } from "@/lib/api/request-utils";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { TURNSTILE_ENABLED } from "@/lib/config/constants";
@@ -66,15 +66,17 @@ export const GET = withErrorHandling(async () => {
         )
      ORDER BY t.last_message_at DESC
      LIMIT $2`,
-    [session.userId, TICKET_LIST_LIMIT],
+    [session.userId, TICKET_LIST_LIMIT + 1],
   );
   // The cap is reported rather than silently applied, so a long-running
   // account can be told its history is truncated instead of just seeing it
-  // stop (AUDIT-014#magic-20).
+  // stop (AUDIT-014#magic-20). One row past the page is what tells a list of
+  // exactly 100 apart from a longer one; comparing the count to the limit
+  // called both truncated.
   return NextResponse.json({
-    tickets: result.rows,
+    tickets: result.rows.slice(0, TICKET_LIST_LIMIT),
     limit: TICKET_LIST_LIMIT,
-    truncated: result.rows.length === TICKET_LIST_LIMIT,
+    truncated: result.rows.length > TICKET_LIST_LIMIT,
   });
 });
 
@@ -100,24 +102,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           rl.retryAfterSeconds / 60,
         )} minute(s) and try again.`,
       },
-      { status: 429 },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfterSeconds) },
+      },
     );
   }
 
-  let body: {
-    subject?: unknown;
-    category?: unknown;
-    message?: unknown;
-    turnstileToken?: unknown;
-  };
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid request body." },
-      { status: 400 },
-    );
-  }
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
 
   // Cloudflare Turnstile: bot/abuse gate on ticket creation, verified the same
   // way /api/v3/contact does. No-op when Turnstile isn't configured.

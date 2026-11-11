@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
@@ -10,7 +11,7 @@ import { isStaffRole } from "@/lib/auth/permissions-client";
 import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 
 // POST /api/v3/billing/subscription/cancel - Cancel user's subscription
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -24,24 +25,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { error: "Send a JSON body with an immediate boolean." },
-      { status: 400 },
-    );
-  }
-  const fields =
-    body && typeof body === "object" && !Array.isArray(body)
-      ? (body as { immediate?: unknown })
-      : null;
+  const parsed = await readJsonObject<{ immediate?: unknown }>(request);
+  if (!parsed.ok) return parsed.response;
+  const fields = parsed.data;
   // {"immediate":"false"} is truthy, so the branch below would end the
   // subscription on the spot. A falsy value has always meant the period end
   // and still does: refusing one would fix nothing and only break a request
   // that works today.
-  if (!fields || (fields.immediate && fields.immediate !== true)) {
+  if (fields.immediate && fields.immediate !== true) {
     return NextResponse.json(
       { error: "Send a JSON body with an immediate boolean." },
       { status: 400 },
@@ -144,4 +135,4 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
-}
+});

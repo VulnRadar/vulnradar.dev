@@ -173,6 +173,24 @@ describe("POST /api/v3/auth/2fa/backup-codes", () => {
     expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
   });
 
+  it.each([
+    ["malformed JSON", "{not json"],
+    ["a JSON null", "null"],
+    ["a JSON array", "[]"],
+  ])("answers %s with a 400 and regenerates nothing", async (_label, raw) => {
+    login();
+    userRow = { password_hash: realPasswordHash, totp_enabled: true };
+    const res = await POST(
+      new NextRequest("http://localhost/api/v3/auth/2fa/backup-codes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: raw,
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(backupCodesUpdateCalls).toHaveLength(0);
+  });
+
   it("requires a password", async () => {
     login();
     const res = await POST(postReq({}));

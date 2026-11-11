@@ -3,6 +3,8 @@ import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { getClientIp } from "@/lib/api/request-utils";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { parseRowId } from "@/lib/teams/parse-id";
 import { parsePagination } from "@/lib/api/pagination";
 import {
   requirePermission,
@@ -12,7 +14,7 @@ import {
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 
 // List all teams with stats
-export async function GET(request: Request) {
+export const GET = withErrorHandling(async (request: Request) => {
   // VIEW_ALL_TEAMS is an admin-only grant (moderators don't hold it), so use
   // the granular permission rather than a coarse moderator-tier floor, which
   // over-granted the cross-tenant team list to moderators. (The
@@ -89,10 +91,10 @@ export async function GET(request: Request) {
     totalPages,
     total,
   });
-}
+});
 
 // Update team (admin override)
-export async function PATCH(request: Request) {
+export const PATCH = withErrorHandling(async (request: Request) => {
   // Renaming any team is an admin-only capability (MANAGE_ANY_TEAM), not a
   // moderator one -- match the permission model rather than the coarse floor.
   const admin = await requirePermission(STAFF_PERMISSIONS.MANAGE_ANY_TEAM);
@@ -102,8 +104,11 @@ export async function PATCH(request: Request) {
       { status: 403 },
     );
 
-  const { teamId, name } = await request.json();
-  if (!teamId)
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { name } = parsed.data;
+  const teamId = parseRowId(parsed.data.teamId);
+  if (teamId === null)
     return NextResponse.json({ error: "teamId required" }, { status: 400 });
   const maxTeamNameLength = await getSetting("MAX_TEAM_NAME_LENGTH");
   if (
@@ -146,10 +151,10 @@ export async function PATCH(request: Request) {
   );
 
   return NextResponse.json({ success: true, name: name.trim() });
-}
+});
 
 // Delete team (admin override)
-export async function DELETE(request: Request) {
+export const DELETE = withErrorHandling(async (request: Request) => {
   // Only full admins (or the super admin) can delete teams -- requireAdmin
   // enforces that stricter hierarchy floor.
   const admin = await requireAdmin();
@@ -159,8 +164,10 @@ export async function DELETE(request: Request) {
       { status: 403 },
     );
 
-  const { teamId } = await request.json();
-  if (!teamId)
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const teamId = parseRowId(parsed.data.teamId);
+  if (teamId === null)
     return NextResponse.json({ error: "teamId required" }, { status: 400 });
 
   // Get team data for audit
@@ -214,4 +221,4 @@ export async function DELETE(request: Request) {
   );
 
   return NextResponse.json({ success: true });
-}
+});

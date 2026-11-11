@@ -9,6 +9,7 @@ import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 
 function generateBackupCodes(count = 8): string[] {
   const codes: string[] = [];
@@ -26,7 +27,7 @@ function generateBackupCodes(count = 8): string[] {
 }
 
 // GET: Get remaining backup code count
-export async function GET() {
+export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -55,10 +56,10 @@ export async function GET() {
     }
   }
   return NextResponse.json({ remaining });
-}
+});
 
 // POST: Regenerate backup codes (requires password)
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -92,7 +93,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { password } = await request.json();
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { password } = parsed.data;
 
   const result = await pool.query(
     "SELECT totp_enabled FROM users WHERE id = $1",
@@ -146,4 +149,4 @@ export async function POST(request: NextRequest) {
   );
 
   return NextResponse.json({ backupCodes });
-}
+});

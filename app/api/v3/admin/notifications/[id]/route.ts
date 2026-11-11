@@ -2,77 +2,87 @@ import { NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getClientIp } from "@/lib/api/request-utils";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { parseIdParam } from "@/lib/api/path-id";
 import { logAction, requirePermission } from "@/lib/auth/authorization";
 
-export async function PUT(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  try {
-    // requirePermission (not a raw getSession + hasStaffPermission) so this
-    // also honors ENFORCE_STAFF_2FA like every other gated admin route.
-    const admin = await requirePermission(STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS);
-    if (!admin) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+export const PUT = withErrorHandling(
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
+    try {
+      // requirePermission (not a raw getSession + hasStaffPermission) so this
+      // also honors ENFORCE_STAFF_2FA like every other gated admin route.
+      const admin = await requirePermission(
+        STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS,
+      );
+      if (!admin) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      }
 
-    // audit-log: trusted client IP only.
-    const ip = (await getClientIp()) || null;
-    const { id } = await params;
-    const body = await req.json();
-    const {
-      title,
-      message,
-      type,
-      variant,
-      audience,
-      path_pattern,
-      starts_at,
-      ends_at,
-      is_active,
-      is_dismissible,
-      dismiss_duration_hours,
-      action_label,
-      action_url,
-      action_external,
-      action_label_2,
-      action_url_2,
-      action_external_2,
-      priority,
-    } = body;
-
-    // SECURITY: action_url/action_url_2 are rendered as an <a href> by the
-    // client-side notification UI. Reject anything that isn't http(s) or a
-    // same-origin path so a moderator can't store a `javascript:` URL that
-    // would execute arbitrary JS in vulnradar.dev's origin.
-    for (const [field, value] of [
-      ["action_url", action_url],
-      ["action_url_2", action_url_2],
-    ] as const) {
-      if (value == null || value === "") continue;
-      if (typeof value !== "string") {
+      // audit-log: trusted client IP only.
+      const ip = (await getClientIp()) || null;
+      const id = parseIdParam((await params).id);
+      if (id === null) {
         return NextResponse.json(
-          { error: `${field} must be a string` },
+          { error: "Invalid notification id" },
           { status: 400 },
         );
       }
-      const lower = value.trim().toLowerCase();
-      const allowed =
-        lower.startsWith("https://") ||
-        lower.startsWith("http://") ||
-        (lower.startsWith("/") && !lower.startsWith("//"));
-      if (!allowed) {
-        return NextResponse.json(
-          {
-            error: `${field} must start with https://, http://, or / (no javascript:, data:, or other schemes)`,
-          },
-          { status: 400 },
-        );
-      }
-    }
+      const parsed = await readJsonObject(req);
+      if (!parsed.ok) return parsed.response;
+      const body = parsed.data;
+      const {
+        title,
+        message,
+        type,
+        variant,
+        audience,
+        path_pattern,
+        starts_at,
+        ends_at,
+        is_active,
+        is_dismissible,
+        dismiss_duration_hours,
+        action_label,
+        action_url,
+        action_external,
+        action_label_2,
+        action_url_2,
+        action_external_2,
+        priority,
+      } = body;
 
-    const result = await pool.query(
-      `UPDATE admin_notifications SET
+      // SECURITY: action_url/action_url_2 are rendered as an <a href> by the
+      // client-side notification UI. Reject anything that isn't http(s) or a
+      // same-origin path so a moderator can't store a `javascript:` URL that
+      // would execute arbitrary JS in vulnradar.dev's origin.
+      for (const [field, value] of [
+        ["action_url", action_url],
+        ["action_url_2", action_url_2],
+      ] as const) {
+        if (value == null || value === "") continue;
+        if (typeof value !== "string") {
+          return NextResponse.json(
+            { error: `${field} must be a string` },
+            { status: 400 },
+          );
+        }
+        const lower = value.trim().toLowerCase();
+        const allowed =
+          lower.startsWith("https://") ||
+          lower.startsWith("http://") ||
+          (lower.startsWith("/") && !lower.startsWith("//"));
+        if (!allowed) {
+          return NextResponse.json(
+            {
+              error: `${field} must start with https://, http://, or / (no javascript:, data:, or other schemes)`,
+            },
+            { status: 400 },
+          );
+        }
+      }
+
+      const result = await pool.query(
+        `UPDATE admin_notifications SET
         title = COALESCE($1, title),
         message = COALESCE($2, message),
         type = COALESCE($3, type),
@@ -94,104 +104,112 @@ export async function PUT(
         updated_at = NOW()
       WHERE id = $19
       RETURNING *`,
-      [
-        title,
-        message,
-        type,
-        variant,
-        audience,
-        path_pattern,
-        starts_at,
-        ends_at,
-        is_active,
-        is_dismissible,
-        dismiss_duration_hours,
-        action_label,
-        action_url,
-        action_external,
-        action_label_2,
-        action_url_2,
-        action_external_2,
-        priority,
-        id,
-      ],
-    );
+        [
+          title,
+          message,
+          type,
+          variant,
+          audience,
+          path_pattern,
+          starts_at,
+          ends_at,
+          is_active,
+          is_dismissible,
+          dismiss_duration_hours,
+          action_label,
+          action_url,
+          action_external,
+          action_label_2,
+          action_url_2,
+          action_external_2,
+          priority,
+          id,
+        ],
+      );
 
-    if (result.rows.length === 0) {
+      if (result.rows.length === 0) {
+        return NextResponse.json(
+          { error: "Notification not found" },
+          { status: 404 },
+        );
+      }
+
+      const updatedNotif = result.rows[0];
+      await logAction(
+        admin.userId,
+        null,
+        "notification_updated",
+        `Updated notification: "${updatedNotif.title}" (ID: ${id})`,
+        ip ?? undefined,
+      );
+
+      return NextResponse.json({ notification: result.rows[0] });
+    } catch (error) {
+      console.error("Error updating notification:", error);
       return NextResponse.json(
-        { error: "Notification not found" },
-        { status: 404 },
+        { error: "Failed to update notification" },
+        { status: 500 },
       );
     }
+  },
+);
 
-    const updatedNotif = result.rows[0];
-    await logAction(
-      admin.userId,
-      null,
-      "notification_updated",
-      `Updated notification: "${updatedNotif.title}" (ID: ${id})`,
-      ip ?? undefined,
-    );
+export const DELETE = withErrorHandling(
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
+    try {
+      // requirePermission (not a raw getSession + hasStaffPermission) so this
+      // also honors ENFORCE_STAFF_2FA like every other gated admin route.
+      const admin = await requirePermission(
+        STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS,
+      );
+      if (!admin) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      }
 
-    return NextResponse.json({ notification: result.rows[0] });
-  } catch (error) {
-    console.error("Error updating notification:", error);
-    return NextResponse.json(
-      { error: "Failed to update notification" },
-      { status: 500 },
-    );
-  }
-}
+      // audit-log: trusted client IP only.
+      const ip = (await getClientIp()) || null;
+      const id = parseIdParam((await params).id);
+      if (id === null) {
+        return NextResponse.json(
+          { error: "Invalid notification id" },
+          { status: 400 },
+        );
+      }
 
-export async function DELETE(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  try {
-    // requirePermission (not a raw getSession + hasStaffPermission) so this
-    // also honors ENFORCE_STAFF_2FA like every other gated admin route.
-    const admin = await requirePermission(STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS);
-    if (!admin) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+      // Get notification title before deleting for audit
+      const notifResult = await pool.query(
+        `SELECT title FROM admin_notifications WHERE id = $1`,
+        [id],
+      );
+      const notifTitle = notifResult.rows[0]?.title || "Unknown";
 
-    // audit-log: trusted client IP only.
-    const ip = (await getClientIp()) || null;
-    const { id } = await params;
+      const result = await pool.query(
+        `DELETE FROM admin_notifications WHERE id = $1 RETURNING id`,
+        [id],
+      );
 
-    // Get notification title before deleting for audit
-    const notifResult = await pool.query(
-      `SELECT title FROM admin_notifications WHERE id = $1`,
-      [id],
-    );
-    const notifTitle = notifResult.rows[0]?.title || "Unknown";
+      if (result.rows.length === 0) {
+        return NextResponse.json(
+          { error: "Notification not found" },
+          { status: 404 },
+        );
+      }
 
-    const result = await pool.query(
-      `DELETE FROM admin_notifications WHERE id = $1 RETURNING id`,
-      [id],
-    );
+      await logAction(
+        admin.userId,
+        null,
+        "notification_deleted",
+        `Deleted notification: "${notifTitle}" (ID: ${id})`,
+        ip ?? undefined,
+      );
 
-    if (result.rows.length === 0) {
+      return NextResponse.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting notification:", error);
       return NextResponse.json(
-        { error: "Notification not found" },
-        { status: 404 },
+        { error: "Failed to delete notification" },
+        { status: 500 },
       );
     }
-
-    await logAction(
-      admin.userId,
-      null,
-      "notification_deleted",
-      `Deleted notification: "${notifTitle}" (ID: ${id})`,
-      ip ?? undefined,
-    );
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Error deleting notification:", error);
-    return NextResponse.json(
-      { error: "Failed to delete notification" },
-      { status: 500 },
-    );
-  }
-}
+  },
+);

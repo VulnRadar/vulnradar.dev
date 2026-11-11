@@ -12,7 +12,11 @@ import {
 import { TURNSTILE_ENABLED } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
-import { withErrorHandling } from "@/lib/api/api-utils";
+import {
+  isValidEmailAddress,
+  readJsonObject,
+  withErrorHandling,
+} from "@/lib/api/api-utils";
 import { logError } from "@/lib/logging/log";
 
 // One label per category the form actually offers (components/contact/
@@ -94,21 +98,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  let body: Record<string, unknown> | null;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid request body." },
-      { status: 400 },
-    );
-  }
-  const name = asTrimmedString(body?.name);
-  const email = asTrimmedString(body?.email);
-  const subject = asTrimmedString(body?.subject);
-  const message = asTrimmedString(body?.message);
-  const category = asTrimmedString(body?.category);
-  const turnstileToken = asTrimmedString(body?.turnstileToken);
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.data;
+  const name = asTrimmedString(body.name);
+  const email = asTrimmedString(body.email);
+  const subject = asTrimmedString(body.subject);
+  const message = asTrimmedString(body.message);
+  const category = asTrimmedString(body.category);
+  const turnstileToken = asTrimmedString(body.turnstileToken);
 
   // Verify Turnstile token only if enabled
   if (TURNSTILE_ENABLED) {
@@ -152,12 +150,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Validate the address shape before we send anything. This route emails a
   // branded confirmation to whatever address is supplied, so accepting an
   // unvalidated string let an unauthenticated caller point that confirmation
-  // at any garbage or malformed value. Require a real local@domain.tld shape
-  // (rate limiting + Turnstile above already bound volume).
-  if (
-    normalizedEmail.length > 254 ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
-  ) {
+  // at any garbage or malformed value. It is an address given to us for the
+  // first time, so it gets the same rule as signup and staff invites (rate
+  // limiting + Turnstile above already bound volume).
+  if (!isValidEmailAddress(normalizedEmail)) {
     return NextResponse.json(
       { error: "Please enter a valid email address." },
       { status: 400 },

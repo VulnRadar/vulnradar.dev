@@ -3,7 +3,9 @@ import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
 import { areTeammates } from "@/lib/support/ticket-access";
 import { parseTicketId } from "@/lib/support/ticket-id";
-import { withErrorHandling } from "@/lib/api/api-utils";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { parseIdParam } from "@/lib/api/path-id";
+import { parseRowId } from "@/lib/teams/parse-id";
 
 type TicketRouteContext = { params: Promise<{ id: string }> };
 
@@ -117,18 +119,10 @@ export const POST = withErrorHandling(
       );
     }
 
-    let body: { userId?: unknown };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { error: "Invalid request body." },
-        { status: 400 },
-      );
-    }
-    const targetId =
-      typeof body.userId === "number" ? body.userId : Number(body.userId);
-    if (!Number.isInteger(targetId) || targetId <= 0) {
+    const parsed = await readJsonObject(request);
+    if (!parsed.ok) return parsed.response;
+    const targetId = parseRowId(parsed.data.userId);
+    if (targetId === null) {
       return NextResponse.json({ error: "Invalid user." }, { status: 400 });
     }
 
@@ -179,8 +173,8 @@ export const DELETE = withErrorHandling(
         { status: 400 },
       );
     }
-    const targetId = Number(request.nextUrl.searchParams.get("userId"));
-    if (!Number.isInteger(targetId) || targetId <= 0) {
+    const targetId = parseIdParam(request.nextUrl.searchParams.get("userId"));
+    if (targetId === null) {
       return NextResponse.json({ error: "Invalid user." }, { status: 400 });
     }
 

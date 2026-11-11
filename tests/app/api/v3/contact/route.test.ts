@@ -283,6 +283,39 @@ describe("POST /api/v3/contact (Turnstile disabled, the default test env state)"
     // sent to the client.
   });
 
+  // A new address someone gives us, so the strict rule signup and staff
+  // invites use, not the form's own looser pattern: that one let control
+  // characters and a domain starting with a dot through, and the route mails
+  // a confirmation to whatever passes.
+  it.each([
+    ["a domain that starts with a dot", "alex@.example.com"],
+    ["a domain that ends with a dot", "alex@example.com."],
+    ["a C0 control character", "al\u0001ex@example.com"],
+    ["a C1 control character", "al\u0085ex@example.com"],
+    ["no dot in the domain", "alex@localhost"],
+    ["two @ signs", "alex@one@example.com"],
+  ])("refuses an address with %s and sends nothing", async (_label, email) => {
+    const res = await POST(postRequest({ ...VALID_BODY, email }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe(
+      "Please enter a valid email address.",
+    );
+    await flushMicrotasks();
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockRecordSubmission).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a JSON null", "null"],
+    ["a JSON array", "[]"],
+    ["a JSON string", '"hello"'],
+  ])("answers %s with a 400 and sends nothing", async (_label, raw) => {
+    const res = await POST(postRawRequest(raw));
+    expect(res.status).toBe(400);
+    await flushMicrotasks();
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
   it("answers a malformed JSON body with a 400, not a server error", async () => {
     const res = await POST(postRawRequest("{not valid json"));
     const json = await res.json();

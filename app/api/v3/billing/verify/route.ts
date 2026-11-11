@@ -3,9 +3,10 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 
 // POST /api/v3/billing/verify - Verify code and return sensitive billing data
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -32,7 +33,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { code } = await request.json();
+    const parsed = await readJsonObject(request);
+    if (!parsed.ok) return parsed.response;
+    const { code } = parsed.data;
 
     if (!code || typeof code !== "string" || code.length !== 6) {
       return NextResponse.json(
@@ -379,4 +382,4 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
-}
+});

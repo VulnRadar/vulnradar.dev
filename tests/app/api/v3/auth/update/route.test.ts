@@ -236,6 +236,34 @@ describe("PATCH /api/v3/auth/update", () => {
     );
   });
 
+  it.each([
+    ["malformed JSON", "{not json"],
+    ["a JSON null", "null"],
+    ["a JSON array", "[]"],
+    ["a JSON string", '"name"'],
+  ])("answers %s with a 400 and changes nothing", async (_label, raw) => {
+    logIn();
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/v3/auth/update", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: raw,
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(nameUpdateCalls).toHaveLength(0);
+    expect(emailUpdateCalls).toHaveLength(0);
+  });
+
+  it("answers 400 for a new password that is not text, before checking the current one", async () => {
+    logIn();
+    const res = await PATCH(
+      updateRequest({ newPassword: 123456789012, currentPassword: "x" }),
+    );
+    expect(res.status).toBe(400);
+    expect(rateLimitCounts.get("profile-reauth:7:unknown")).toBeUndefined();
+  });
+
   it("says when to retry once the current-password check is rate limited", async () => {
     logIn();
     rateLimitCounts.set("profile-reauth:7:unknown", 100);

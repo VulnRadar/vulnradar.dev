@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 import {
   requireAdmin as _requireAdmin,
   logAction,
@@ -21,7 +22,7 @@ async function requireAdmin() {
   return _requireAdmin();
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandling(async (request: NextRequest) => {
   try {
     const user = await requireAdmin();
     if (!user) {
@@ -29,8 +30,11 @@ export async function POST(request: NextRequest) {
     }
 
     const ip = await getClientIp();
-    const body = await request.json();
-    const { action, value } = body;
+    const parsed = await readJsonObject(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
+    const { action } = body;
+    const value = typeof body.value === "string" ? body.value : "";
 
     if (!action) {
       return NextResponse.json({ error: "Missing action" }, { status: 400 });
@@ -132,4 +136,4 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
-}
+});
