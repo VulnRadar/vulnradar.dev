@@ -4,6 +4,7 @@ import { isMissingStripeResource } from "@/lib/billing/stripe-errors";
 import { invoicePaymentIntentId } from "@/lib/billing/invoice-payment-intent";
 import { invoiceSubscriptionId } from "@/lib/billing/invoice-subscription";
 import { getPlanFromProductId } from "@/lib/billing/products";
+import { resolvePlanFromStripeSubscription } from "@/lib/billing/stripe-catalog";
 import { getPaidPlans, getPlanById, type PlanId } from "@/lib/billing/catalog";
 import {
   sendEmail,
@@ -50,34 +51,39 @@ import { sendAdminAlert } from "@/lib/admin/alert-webhook";
 import { withErrorHandling } from "@/lib/api/api-utils";
 import { logError } from "@/lib/logging/log";
 
-// getPlanFromProductId() only recognizes our own catalog ids (e.g.
-// "core_supporter_monthly"), never a raw Stripe product id like
-// "prod_abc123". createSubscription() stamps our id into the Stripe
-// product's own metadata at creation time (product_data.metadata.productId
-// in app/actions/stripe.ts), so when all we have is the raw Stripe product
-// id (e.g. after a Billing Portal-initiated plan change didn't carry our
-// subscription metadata forward), look it up there instead of silently
-// falling back to "free".
-async function resolvePlanFromStripeProductId(
+/**
+ * The subscription as Stripe has it now, rather than as the event saw it.
+ *
+ * Stripe promises delivery, not order, so an event's snapshot can be older
+ * than something already applied. A customer.subscription.updated taken while
+ * the subscription was still active, delivered after it was cancelled, used to
+ * write the paid plan back onto a row the cancellation had freed, and the
+ * ownership guard let it, because a cancelled row is bound to nothing. Writing
+ * the live object instead makes the order of delivery irrelevant: whichever
+ * event is processed last writes what is true at that moment.
+ *
+ * The price's product is expanded so the plan can be read from what is billed
+ * without a second request.
+ *
+ * A subscription Stripe genuinely does not have is not billing anyone, so it is
+ * treated as cancelled. Any other failure is thrown: the handler answers 500,
+ * the idempotency marker is rolled back and Stripe redelivers.
+ */
+async function retrieveLiveSubscription(
   stripe: Stripe,
-  rawStripeProductId: string,
-): Promise<PlanId | ""> {
-  if (!rawStripeProductId) return "";
+  subscriptionId: string,
+  snapshot?: Stripe.Subscription,
+): Promise<Stripe.Subscription> {
   try {
-    const product = await stripe.products.retrieve(rawStripeProductId);
-    const ourProductId = product.metadata?.productId || "";
-    return ourProductId ? getPlanFromProductId(ourProductId) : "";
+    return await stripe.subscriptions.retrieve(subscriptionId, {
+      expand: ["items.data.price.product"],
+    });
   } catch (err) {
-    // "" is the answer for a product Stripe genuinely does not have, and it
-    // resolves the caller to the free plan. That is the right outcome for a
-    // deleted product and a catastrophic one for a timeout: an active
-    // subscriber whose metadata happened to be missing would be downgraded
-    // and have their badge revoked because a single API call blipped. Let a
-    // transient failure out so the webhook 500s, the idempotency marker is
-    // rolled back, and Stripe redelivers.
     if (!isMissingStripeResource(err)) throw err;
-    console.error("[Stripe] Failed to resolve plan from product id:", err);
-    return "";
+    return {
+      ...(snapshot ?? { id: subscriptionId, metadata: {} }),
+      status: "canceled",
+    } as Stripe.Subscription;
   }
 }
 
@@ -398,26 +404,18 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
         // Validate the plan is a valid supporter plan
         if (!plan || !PAID_PLAN_IDS.includes(plan as PlanId)) {
-          // Try to get from subscription metadata
+          // Fall back to what the subscription is billed for. This used to
+          // guess from the price's nickname, which nothing in this app ever
+          // sets.
           if (subscriptionId) {
-            const subscription =
-              await stripe.subscriptions.retrieve(subscriptionId);
-            plan =
-              subscription.metadata?.planId ||
-              subscription.metadata?.productId ||
-              "";
-
-            // Last resort: check product name
-            if (!plan && subscription.items?.data?.[0]) {
-              const productName =
-                subscription.items.data[0].price?.nickname || "";
-              if (productName.toLowerCase().includes("elite"))
-                plan = "elite_supporter";
-              else if (productName.toLowerCase().includes("pro"))
-                plan = "pro_supporter";
-              else if (productName.toLowerCase().includes("core"))
-                plan = "core_supporter";
-            }
+            const subscription = await retrieveLiveSubscription(
+              stripe,
+              subscriptionId,
+            );
+            plan = await resolvePlanFromStripeSubscription(
+              stripe,
+              subscription,
+            );
           }
         }
 
@@ -546,28 +544,15 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
 
-        // Get userId and planId from subscription metadata (set in startCheckoutSession)
         const userId = subscription.metadata?.userId
           ? parseInt(subscription.metadata.userId, 10)
           : null;
-        let plan = subscription.metadata?.planId || "";
-
-        // Fallback: try to get plan from productId
-        if (!plan || !PAID_PLAN_IDS.includes(plan as PlanId)) {
-          const productId = subscription.metadata?.productId || "";
-          plan = getPlanFromProductId(productId);
-        }
-
-        // Fallback: try to extract from price/product
-        if (!plan || plan === "free") {
-          const rawStripeProductId =
-            (subscription.items?.data?.[0]?.price?.product as string) || "";
-          plan =
-            (await resolvePlanFromStripeProductId(
-              stripe,
-              rawStripeProductId,
-            )) || plan;
-        }
+        // The billed price first, the checkout's metadata last: see
+        // resolvePlanFromStripeSubscription.
+        const plan = await resolvePlanFromStripeSubscription(
+          stripe,
+          subscription,
+        );
 
         // This event fires the instant Stripe creates the subscription
         // object, while it's still "incomplete" and nothing has been
@@ -708,23 +693,38 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       }
 
       case "customer.subscription.updated": {
-        const subscription = event.data.object as Stripe.Subscription;
-        const customerId = subscription.customer as string;
+        const snapshot = event.data.object as Stripe.Subscription;
+        const customerId = snapshot.customer as string;
+        const subscription = await retrieveLiveSubscription(
+          stripe,
+          snapshot.id,
+          snapshot,
+        );
 
-        // Get productId from subscription metadata first
-        let productId = subscription.metadata?.productId || "";
-        let plan = getPlanFromProductId(productId);
-
-        // Fallback: try to extract from price/product
-        if (!plan || plan === "free") {
-          const rawStripeProductId =
-            (subscription.items?.data?.[0]?.price?.product as string) || "";
-          plan =
-            (await resolvePlanFromStripeProductId(
-              stripe,
-              rawStripeProductId,
-            )) || plan;
+        // A cancelled subscription is the deleted event's business, and this
+        // gives it the same write: the staff floor rather than a flat "free",
+        // and the subscription id cleared rather than bound to something
+        // that has ended. Both events arrive for one cancellation, in either
+        // order, and the ownership guard keeps either from touching a row
+        // that has moved on to another live subscription.
+        if (subscription.status === "canceled") {
+          const ended = await applySubscriptionDeleted({
+            subscriptionId: subscription.id,
+            customerId,
+          });
+          if (ended.userId) {
+            await revokePremiumBadge(ended.userId);
+            console.log(
+              `[Stripe] Subscription ${subscription.id} is canceled in Stripe; customer ${customerId} is off the paid plan (event ${event.id})`,
+            );
+          }
+          break;
         }
+
+        const plan = await resolvePlanFromStripeSubscription(
+          stripe,
+          subscription,
+        );
 
         // A subscription created with payment_behavior: "default_incomplete"
         // (app/actions/stripe.ts) starts life "incomplete" --
@@ -946,10 +946,24 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           // which is the mirror image of the past_due problem below.
           const paidSubscriptionId = invoiceSubscriptionId(invoice);
           if (paidSubscriptionId) {
-            await markSubscriptionPaid({
-              subscriptionId: paidSubscriptionId,
-              customerId,
-            });
+            // A receipt can arrive after the subscription it paid for has
+            // ended, and the row it lands on is then bound to nothing, which
+            // the ownership guard lets any subscription write to. Only clear
+            // dunning when Stripe says the subscription is paying now.
+            const live = await retrieveLiveSubscription(
+              stripe,
+              paidSubscriptionId,
+            );
+            if (live.status === "active" || live.status === "trialing") {
+              await markSubscriptionPaid({
+                subscriptionId: paidSubscriptionId,
+                customerId,
+              });
+            } else {
+              console.log(
+                `[Stripe] Invoice ${invoice.id} paid but subscription ${paidSubscriptionId} is ${live.status}; leaving its status to the subscription events (event ${event.id})`,
+              );
+            }
           }
 
           // Try to record in billing history (optional - don't fail if table doesn't exist)
@@ -1037,15 +1051,25 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         // good. markSubscriptionPastDue reports whether it applied so the
         // dunning email follows the same rule instead of telling somebody
         // with no subscription that their payment failed.
+        //
+        // The live subscription is read for the same reason the updated
+        // handler reads it: a failure delivered after the subscription ended
+        // has nothing left to dun.
         const failedSubscriptionId = invoiceSubscriptionId(invoice);
-        const dunned = failedSubscriptionId
-          ? (
-              await markSubscriptionPastDue({
-                subscriptionId: failedSubscriptionId,
-                customerId,
-              })
-            ).userId !== null
-          : false;
+        const liveFailed = failedSubscriptionId
+          ? await retrieveLiveSubscription(stripe, failedSubscriptionId)
+          : null;
+        const dunned =
+          failedSubscriptionId &&
+          liveFailed &&
+          isLiveSubscriptionStatus(liveFailed.status)
+            ? (
+                await markSubscriptionPastDue({
+                  subscriptionId: failedSubscriptionId,
+                  customerId,
+                })
+              ).userId !== null
+            : false;
         console.log(
           dunned
             ? `[Stripe] Payment failed for customer ${customerId}`

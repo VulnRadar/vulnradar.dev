@@ -30,12 +30,40 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
+// The route reads the plan through lib/billing/stripe-catalog, which carries
+// Next's `server-only` marker. Under plain Node that package throws on load.
+vi.mock("server-only", () => ({}));
+
 const mockSubRetrieve = vi.fn();
+const mockSubCancel = vi.fn();
 const mockCustomerRetrieve = vi.fn();
 const mockProductRetrieve = vi.fn();
+const mockPaymentIntentRetrieve = vi.fn();
+const mockChargeRetrieve = vi.fn();
+const mockDisputeUpdate = vi.fn();
 const mockGetStripe = vi.fn();
 vi.mock("@/lib/billing/stripe", () => ({
   getStripe: () => mockGetStripe(),
+}));
+
+/**
+ * What stripe.subscriptions.retrieve answers, keyed by subscription id.
+ *
+ * The subscription and invoice handlers re-read the live subscription rather
+ * than trusting the event's snapshot, because Stripe does not deliver in order.
+ * signedRequest() records each subscription event's own object here, and an
+ * invoice's subscription as plainly active, unless the test already put
+ * something there: a test about a snapshot that has gone stale sets the live
+ * answer first.
+ */
+const liveSubscriptions = new Map<string, Record<string, unknown>>();
+
+// Billing emails are asserted on directly. The templates stay real, so a
+// test still sees exactly what would have been sent.
+const mockSendEmail = vi.fn();
+vi.mock("@/lib/email/email", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/email/email")>()),
+  sendEmail: (...args: unknown[]) => mockSendEmail(...args),
 }));
 
 // The three credit-reversal calls behind charge.refunded and
@@ -98,7 +126,36 @@ afterAll(() => {
   }
 });
 
+function recordLiveSubscription(payload: string): void {
+  let event: {
+    type?: string;
+    data?: { object?: Record<string, unknown> };
+  };
+  try {
+    event = JSON.parse(payload);
+  } catch {
+    return;
+  }
+  const object = event.data?.object;
+  if (!object || typeof event.type !== "string") return;
+  if (event.type.startsWith("customer.subscription.")) {
+    const id = object.id;
+    if (typeof id === "string" && !liveSubscriptions.has(id)) {
+      liveSubscriptions.set(id, object);
+    }
+  } else if (event.type.startsWith("invoice.")) {
+    const parent = object.parent as {
+      subscription_details?: { subscription?: unknown };
+    } | null;
+    const id = parent?.subscription_details?.subscription;
+    if (typeof id === "string" && !liveSubscriptions.has(id)) {
+      liveSubscriptions.set(id, { id, status: "active", metadata: {} });
+    }
+  }
+}
+
 function signedRequest(payload: string, secret = WEBHOOK_SECRET): NextRequest {
+  recordLiveSubscription(payload);
   const header = realWebhooks.generateTestHeaderString({ payload, secret });
   return new NextRequest("http://localhost/api/v3/webhooks/stripe", {
     method: "POST",
@@ -121,9 +178,12 @@ function unsignedRequest(
 function fakeStripe() {
   return {
     webhooks: realWebhooks,
-    subscriptions: { retrieve: mockSubRetrieve },
+    subscriptions: { retrieve: mockSubRetrieve, cancel: mockSubCancel },
     customers: { retrieve: mockCustomerRetrieve },
     products: { retrieve: mockProductRetrieve },
+    paymentIntents: { retrieve: mockPaymentIntentRetrieve },
+    charges: { retrieve: mockChargeRetrieve },
+    disputes: { update: mockDisputeUpdate },
   };
 }
 
@@ -141,10 +201,38 @@ function resourceMissing(message: string) {
 
 beforeEach(() => {
   mockQuery.mockReset();
+  liveSubscriptions.clear();
   mockSubRetrieve.mockReset();
+  mockSubRetrieve.mockImplementation(async (id: string) => {
+    const live = liveSubscriptions.get(id);
+    if (!live) throw resourceMissing(`No such subscription: '${id}'`);
+    return live;
+  });
+  mockSubCancel.mockReset();
+  mockSubCancel.mockImplementation(async (id: string) => ({
+    id,
+    status: "canceled",
+  }));
   mockCustomerRetrieve.mockReset();
   mockProductRetrieve.mockReset();
   mockProductRetrieve.mockResolvedValue({ metadata: {} });
+  mockPaymentIntentRetrieve.mockReset();
+  mockPaymentIntentRetrieve.mockImplementation(async (id: string) => ({
+    id,
+    metadata: {},
+  }));
+  mockChargeRetrieve.mockReset();
+  mockChargeRetrieve.mockImplementation(async (id: string) => ({
+    id,
+    amount: 0,
+    amount_refunded: 0,
+    refunded: false,
+    disputed: false,
+  }));
+  mockDisputeUpdate.mockReset();
+  mockDisputeUpdate.mockImplementation(async (id: string) => ({ id }));
+  mockSendEmail.mockReset();
+  mockSendEmail.mockResolvedValue(undefined);
   mockGetStripe.mockReset();
   mockGetStripe.mockReturnValue(fakeStripe());
   mockSendAdminAlert.mockReset();
@@ -358,7 +446,7 @@ describe("POST /api/v3/webhooks/stripe: checkout.session.completed", () => {
       ),
     );
     expect(res.status).toBe(200);
-    expect(mockSubRetrieve).toHaveBeenCalledWith("sub_9");
+    expect(mockSubRetrieve).toHaveBeenCalledWith("sub_9", expect.anything());
     expect(mockQuery).toHaveBeenCalledTimes(3); // idempotency + email UPDATE + account lookup, no badge queries
 
     const [sql, params] = mockQuery.mock.calls[1];
@@ -685,19 +773,20 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
     expect(mockQuery).toHaveBeenCalledTimes(4);
   });
 
-  it("BUG: when metadata is absent, the items[].price.product fallback compares Stripe's real product id against internal plan-name prefixes and silently resolves to 'free'", async () => {
-    // getPlanFromProductId (lib/billing/products.ts) only recognizes ids that
-    // literally start with "core_supporter" / "pro_supporter" /
-    // "elite_supporter" -- the internal catalog id format used in
-    // subscription.metadata.productId (set by our own checkout/create-session
-    // route). A raw Stripe product id like "prod_XXXXXXXXXXXX" never matches
-    // that prefix check, so this fallback can never actually recover the
-    // paid plan; it always resolves to "free" instead. See
-    // app/api/v3/webhooks/stripe/route.ts customer.subscription.created
-    // handler's second fallback branch (items?.data?.[0]?.price?.product).
+  it("recovers the plan from the Stripe product's vulnradar_id when the subscription carries no metadata", async () => {
+    // Products are stamped with metadata.vulnradar_id by getOrCreateStripePriceId
+    // (lib/billing/stripe-catalog.ts). The lookup used to read
+    // metadata.productId, a key no product has carried since the catalog was
+    // reused, so this fallback always answered "free" for a paying customer.
     withIdempotency("evt_sub_created_2");
-    mockProductRetrieve.mockResolvedValue({ metadata: {} });
+    mockProductRetrieve.mockResolvedValue({
+      id: "prod_REAL_STRIPE_ID",
+      metadata: { vulnradar_id: "elite_supporter_monthly" },
+    });
     mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 55 }] }); // UPDATE by stripe_customer_id
+    mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // badge INSERT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // recipient lookup
 
     const res = await POST(
       signedRequest(
@@ -717,11 +806,81 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
       ),
     );
     expect(res.status).toBe(200);
-    // Only the customer-id UPDATE ran; no badge grant because plan
-    // resolved (incorrectly) to "free".
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(mockProductRetrieve).toHaveBeenCalledWith("prod_REAL_STRIPE_ID");
     const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("WHERE stripe_customer_id = $4");
+    expect(params[0]).toBe("elite_supporter");
+    const [badgeInsertSql] = mockQuery.mock.calls[3];
+    expect(badgeInsertSql).toContain("user_badges");
+  });
+
+  it("takes the plan from the billed price over subscription metadata that a plan change left behind", async () => {
+    // A plan change made in Stripe (the dashboard, the billing portal) swaps
+    // the price and leaves the metadata stamped at checkout untouched. The
+    // price is what the customer is charged for, so it decides.
+    withIdempotency("evt_sub_created_price_first");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // UPDATE by userId
+    mockQuery.mockResolvedValueOnce(badgeRow);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // recipient lookup
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_sub_created_price_first",
+          type: "customer.subscription.created",
+          data: {
+            object: {
+              id: "sub_pf",
+              customer: "cus_pf",
+              status: "active",
+              metadata: { userId: "42", planId: "core_supporter" },
+              items: {
+                data: [
+                  {
+                    price: {
+                      product: "prod_pf",
+                      metadata: { vulnradar_id: "pro_supporter_monthly" },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    const [, params] = mockQuery.mock.calls[1];
+    expect(params[0]).toBe("pro_supporter");
+  });
+
+  it("still resolves to free when neither the price, the product nor the metadata names a plan", async () => {
+    withIdempotency("evt_sub_created_unknown");
+    mockProductRetrieve.mockResolvedValue({ id: "prod_x", metadata: {} });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 55 }] }); // UPDATE by stripe_customer_id
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_sub_created_unknown",
+          type: "customer.subscription.created",
+          data: {
+            object: {
+              id: "sub_x",
+              customer: "cus_x",
+              status: "active",
+              metadata: {},
+              items: { data: [{ price: { product: "prod_x" } }] },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    // No badge grant: nothing named a paid plan.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    const [, params] = mockQuery.mock.calls[1];
     expect(params[0]).toBe("free");
   });
 
@@ -1070,6 +1229,195 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
     // no-op UPDATE ran -- no badge SELECT/INSERT/DELETE, and no change email
     // (the UPDATE matched nothing).
     expect(mockQuery).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("POST /api/v3/webhooks/stripe: customer.subscription.updated reads the live subscription", () => {
+  function updatedEvent(id: string, object: Record<string, unknown>) {
+    return signedRequest(
+      JSON.stringify({
+        id,
+        type: "customer.subscription.updated",
+        data: { object },
+      }),
+    );
+  }
+
+  const eliteSnapshot = {
+    id: "sub_late",
+    customer: "cus_late",
+    status: "active",
+    metadata: { productId: "elite_supporter_monthly" },
+  };
+
+  it("keeps a cancelled account on free when an older active snapshot arrives after the cancellation", async () => {
+    // Stripe does not order its deliveries. The row was cancelled (free,
+    // canceled, no subscription id), so the ownership guard lets any
+    // subscription claim it, and an `updated` snapshot taken while the
+    // subscription was still active wrote Elite straight back. The live
+    // subscription says canceled, and that is what gets written.
+    liveSubscriptions.set("sub_late", { ...eliteSnapshot, status: "canceled" });
+    withIdempotency("evt_up_stale_active");
+    // The row is { plan: free, status: canceled, subscription id: null }. The
+    // write is the cancellation's own, which leaves it exactly that.
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // the write
+    mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // badge DELETE
+
+    const res = await POST(updatedEvent("evt_up_stale_active", eliteSnapshot));
+
+    expect(res.status).toBe(200);
+    expect(mockSubRetrieve).toHaveBeenCalledWith(
+      "sub_late",
+      expect.objectContaining({
+        expand: expect.arrayContaining(["items.data.price.product"]),
+      }),
+    );
+    for (const [, params] of mockQuery.mock.calls) {
+      expect(params ?? []).not.toContain("elite_supporter");
+    }
+    const writes = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).startsWith("UPDATE users"),
+    );
+    expect(writes).toHaveLength(1);
+    expect(writes[0][0]).toContain("subscription_status = 'canceled'");
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("writes free when the live subscription has expired unpaid, whatever the snapshot said", async () => {
+    liveSubscriptions.set("sub_late", {
+      ...eliteSnapshot,
+      status: "incomplete_expired",
+    });
+    withIdempotency("evt_up_stale_expired");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // pre-read
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // UPDATE
+    mockQuery.mockResolvedValueOnce(badgeRow);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await POST(updatedEvent("evt_up_stale_expired", eliteSnapshot));
+
+    expect(res.status).toBe(200);
+    const [, params] = mockQuery.mock.calls[2];
+    expect(params.slice(0, 2)).toEqual(["free", "incomplete_expired"]);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("treats a subscription Stripe no longer has as ended", async () => {
+    mockSubRetrieve.mockRejectedValue(
+      resourceMissing("No such subscription: 'sub_late'"),
+    );
+    withIdempotency("evt_up_gone");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // pre-read
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // the write
+
+    const res = await POST(updatedEvent("evt_up_gone", eliteSnapshot));
+
+    expect(res.status).toBe(200);
+    for (const [, params] of mockQuery.mock.calls) {
+      expect(params ?? []).not.toContain("elite_supporter");
+    }
+  });
+
+  it("answers 500 so Stripe redelivers when the live read cannot reach Stripe", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockSubRetrieve.mockRejectedValue(
+      Object.assign(new Error("Request timed out"), { statusCode: 500 }),
+    );
+    withIdempotency("evt_up_unreachable");
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    const res = await POST(updatedEvent("evt_up_unreachable", eliteSnapshot));
+
+    expect(res.status).toBe(500);
+    const writes = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).startsWith("UPDATE users"),
+    );
+    expect(writes).toHaveLength(0);
+    errorSpy.mockRestore();
+  });
+
+  it("takes the plan from the live billed price over stale subscription metadata", async () => {
+    liveSubscriptions.set("sub_late", {
+      ...eliteSnapshot,
+      metadata: { productId: "core_supporter_monthly" },
+      items: {
+        data: [
+          {
+            price: {
+              id: "price_elite",
+              product: {
+                id: "prod_elite",
+                object: "product",
+                metadata: { vulnradar_id: "elite_supporter_monthly" },
+              },
+            },
+          },
+        ],
+      },
+    });
+    withIdempotency("evt_up_price_first");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // pre-read
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // UPDATE
+
+    const res = await POST(
+      updatedEvent("evt_up_price_first", {
+        ...eliteSnapshot,
+        metadata: { productId: "core_supporter_monthly" },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const [, params] = mockQuery.mock.calls[2];
+    expect(params[0]).toBe("elite_supporter");
+    // The product came back expanded on the live read: no second lookup.
+    expect(mockProductRetrieve).not.toHaveBeenCalled();
+  });
+
+  it("recovers the plan from the expanded product when the subscription carries no metadata at all", async () => {
+    liveSubscriptions.set("sub_bare", {
+      id: "sub_bare",
+      customer: "cus_bare",
+      status: "active",
+      metadata: {},
+      items: {
+        data: [
+          {
+            price: {
+              id: "price_pro",
+              product: {
+                id: "prod_pro",
+                object: "product",
+                metadata: { vulnradar_id: "pro_supporter_yearly" },
+              },
+              recurring: { interval: "year" },
+            },
+          },
+        ],
+      },
+    });
+    withIdempotency("evt_up_bare");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // pre-read
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // UPDATE
+
+    const res = await POST(
+      updatedEvent("evt_up_bare", {
+        id: "sub_bare",
+        customer: "cus_bare",
+        status: "active",
+        metadata: {},
+        items: { data: [{ price: { product: "prod_pro" } }] },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const [, params] = mockQuery.mock.calls[2];
+    expect(params.slice(0, 4)).toEqual([
+      "pro_supporter",
+      "active",
+      "cus_bare",
+      "year",
+    ]);
   });
 });
 
@@ -1428,6 +1776,82 @@ describe("POST /api/v3/webhooks/stripe: invoice events", () => {
     expect(mockQuery).toHaveBeenCalledTimes(3);
     const [historySql] = mockQuery.mock.calls[1];
     expect(historySql).toContain("billing_history");
+  });
+});
+
+describe("POST /api/v3/webhooks/stripe: invoice events read the live subscription", () => {
+  it("invoice.payment_succeeded does not mark active a subscription that has since been cancelled", async () => {
+    // A late receipt for the last paid cycle of a subscription that is now
+    // over. The row is already free with no subscription id, which the
+    // ownership guard lets any subscription write to, so it was stamped
+    // "active" again.
+    liveSubscriptions.set("sub_over", {
+      id: "sub_over",
+      status: "canceled",
+      metadata: {},
+    });
+    withIdempotency("evt_inv_paid_late");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT billing_history
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // recipient lookup
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_inv_paid_late",
+          type: "invoice.payment_succeeded",
+          data: {
+            object: {
+              id: "in_late",
+              customer: "cus_over",
+              parent: { subscription_details: { subscription: "sub_over" } },
+              amount_paid: 500,
+              currency: "usd",
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockSubRetrieve).toHaveBeenCalledWith("sub_over", expect.anything());
+    const statusWrites = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("subscription_status = 'active'"),
+    );
+    expect(statusWrites).toHaveLength(0);
+    const [historySql] = mockQuery.mock.calls[1];
+    expect(historySql).toContain("billing_history");
+  });
+
+  it("invoice.payment_failed neither duns nor emails for a subscription that has already ended", async () => {
+    liveSubscriptions.set("sub_over", {
+      id: "sub_over",
+      status: "canceled",
+      metadata: {},
+    });
+    withIdempotency("evt_inv_failed_late");
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_inv_failed_late",
+          type: "invoice.payment_failed",
+          data: {
+            object: {
+              id: "in_late_fail",
+              customer: "cus_over",
+              parent: { subscription_details: { subscription: "sub_over" } },
+              attempt_count: 1,
+              billing_reason: "subscription_cycle",
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockSubCancel).not.toHaveBeenCalled();
   });
 });
 
