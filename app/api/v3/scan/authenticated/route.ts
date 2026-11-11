@@ -51,11 +51,7 @@ import {
   BOT_CHALLENGE_INCOMPLETE,
   detectBotChallenge,
 } from "@/lib/scanner/bot-challenge";
-import {
-  getPlannedAsyncBranches,
-  runAsyncChecksDetailed,
-  type AsyncCheckResult,
-} from "@/lib/scanner/async-checks";
+import { startAsyncPhase } from "@/lib/scanner/async-phase";
 import { normalizeUrl } from "@/lib/scanner/execute-scan";
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
@@ -524,53 +520,22 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         );
     const syncFindings: Vulnerability[] = syncResult.findings;
 
-    // runAsyncChecksDetailed, not runAsyncChecks: an authenticated scan is
-    // rendered through the same components as every other scan, so it needs
-    // the same completeness bookkeeping. The bookkeeping-free variant threw
-    // the `incomplete` list away and this route's own outer race resolved to
-    // a bare [] on the ceiling, so an authenticated scan whose DNS, TLS and
-    // live-fetch branches all ran out of time returned summary.total = 0
-    // with nothing marking it short, and the dashboard drew it as "Zero
-    // findings on this host. Every enabled check ran and none of them
-    // fired." That is the one thing a scanner must never say about a run it
-    // could not finish, and it is the same defect the single-page and crawl
-    // executors already fixed (lib/scanner/execute-scan.ts,
-    // lib/scanner/execute-crawl-scan.ts).
+    // The detailed variant behind the phase, not runAsyncChecks: an
+    // authenticated scan is rendered through the same components as every
+    // other scan, so it needs the same completeness bookkeeping. When the
+    // phase's ceiling wins, every planned branch is listed as not completed,
+    // so a run whose DNS, TLS and live-fetch branches all ran out of time is
+    // never drawn as "Zero findings on this host. Every enabled check ran and
+    // none of them fired." That is the one thing a scanner must never say
+    // about a run it could not finish.
     const asyncScope = botChallenge ? "network" : "all";
-    const plannedBranches = getPlannedAsyncBranches(
-      url,
-      scanners ?? null,
-      asyncScope,
-    );
-    let asyncFindings: Vulnerability[] = [];
-    let asyncIncomplete: string[] = [];
-    let asyncTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const asyncResult = await Promise.race<AsyncCheckResult>([
-        runAsyncChecksDetailed(
-          url,
-          scanners ?? null,
-          undefined,
-          undefined,
-          asyncScope,
-        ),
-        new Promise<AsyncCheckResult>((resolve) => {
-          asyncTimeoutHandle = setTimeout(
-            () => resolve({ findings: [], incomplete: plannedBranches }),
-            asyncChecksTimeoutMs,
-          );
-        }),
-      ]);
-      asyncFindings = asyncResult.findings;
-      asyncIncomplete = asyncResult.incomplete;
-    } catch {
-      // runAsyncChecksDetailed absorbs per-branch failures, so this is only
-      // reachable on something it cannot absorb. Either way the async layer
-      // contributed nothing, which is exactly what incomplete records.
-      asyncIncomplete = plannedBranches;
-    } finally {
-      if (asyncTimeoutHandle) clearTimeout(asyncTimeoutHandle);
-    }
+    const { findings: asyncFindings, incomplete: asyncIncomplete } =
+      await startAsyncPhase({
+        url,
+        scanners: scanners ?? null,
+        scope: asyncScope,
+        checksTimeoutMs: asyncChecksTimeoutMs,
+      });
 
     const findings = dedupeScanFindings([
       ...syncFindings,

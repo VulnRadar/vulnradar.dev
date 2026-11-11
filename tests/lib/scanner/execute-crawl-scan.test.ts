@@ -105,7 +105,7 @@ vi.mock("@/lib/email/email", () => ({
   criticalFindingsEmail: () => ({}),
 }));
 
-const { executeCrawlScan, crawlSoftDeadlineMs, asyncOuterTimeoutMs } =
+const { executeCrawlScan, crawlSoftDeadlineMs } =
   await import("@/lib/scanner/execute-crawl-scan");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { currentScanId } = await import("@/lib/database/request-context");
@@ -989,19 +989,6 @@ describe("crawlSoftDeadlineMs", () => {
     for (const budgetMs of [30_000, 120_000, 900_000, 21_600_000]) {
       expect(crawlSoftDeadlineMs(budgetMs)).toBeLessThan(budgetMs);
     }
-  });
-});
-
-describe("asyncOuterTimeoutMs", () => {
-  it("keeps the outer ceiling at least 2s past the branch timeout", () => {
-    // Configured below the branch timeout: the outer race would fire first
-    // and discard branches that had already finished.
-    expect(asyncOuterTimeoutMs(3_000, 12_000)).toBe(14_000);
-    expect(asyncOuterTimeoutMs(12_000, 12_000)).toBe(14_000);
-  });
-
-  it("leaves a ceiling that is already clear of the branch timeout alone", () => {
-    expect(asyncOuterTimeoutMs(15_000, 12_000)).toBe(15_000);
   });
 });
 

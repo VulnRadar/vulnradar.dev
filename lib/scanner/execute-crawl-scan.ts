@@ -24,6 +24,7 @@ import {
   getPlannedAsyncBranches,
   type AsyncCheckResult,
 } from "./async-checks";
+import { startAsyncPhase } from "./async-phase";
 import { readSslGrade } from "./ssl-grade";
 import { readThreatIntel } from "./reputation-lookup";
 import { readDnsRecords } from "./dns-records";
@@ -127,19 +128,6 @@ export function crawlSoftDeadlineMs(budgetMs: number): number {
   );
 }
 
-/**
- * How far past the async layer's per-branch timeout the outer race on a page
- * must be. The branch timer starts only after a settings read, so an outer
- * ceiling equal to the branch ceiling can fire first and discard branches that
- * had already finished. The two settings are edited independently, so the
- * order is enforced here rather than hoped for.
- */
-const ASYNC_OUTER_HEADROOM_MS = 2_000;
-
-export function asyncOuterTimeoutMs(outerMs: number, branchMs: number): number {
-  return Math.max(outerMs, branchMs + ASYNC_OUTER_HEADROOM_MS);
-}
-
 /** Why a page was not read, as shown beside it in the crawl result. */
 const BOT_CHALLENGE_REASON = "Blocked by a bot challenge";
 const FETCH_FAILURE_REASONS = new Map([
@@ -216,6 +204,8 @@ async function scanSingleUrl(
    * checks sat on a hardcoded 15000 whatever an admin set.
    */
   asyncChecksTimeoutMs: number,
+  /** SCANNER_ASYNC_BRANCH_TIMEOUT_MS, which the outer ceiling must stay above. */
+  asyncBranchTimeoutMs: number,
   scanners?: string[] | null,
   onProgress?: ScanProgressHook,
   cancelSignal?: AbortSignal,
@@ -371,40 +361,21 @@ async function scanSingleUrl(
   );
   const syncFindings = syncResult.findings;
 
-  // runAsyncChecksDetailed, not runAsyncChecks: the crawl result is rendered
-  // through the same components as a single scan, so it needs the same
-  // completeness bookkeeping. The bookkeeping-free variant was what made a
-  // deep scan structurally unable to say it came back short.
-  let asyncFindings: Vulnerability[] = [];
-  let asyncIncomplete: string[] = [];
-  let asyncTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const asyncResult = await Promise.race<AsyncCheckResult>([
-      runAsyncChecksDetailed(url, scanners, onProgress, cancelSignal, "page"),
-      new Promise<AsyncCheckResult>((resolve) => {
-        // On the ceiling, resolve to "every planned branch did not complete",
-        // never to a bare []. An empty findings array with no marker is
-        // indistinguishable from a page whose DNS, TLS and live-fetch checks
-        // all ran and found nothing, which is how a timed-out deep scan came
-        // back reading as clean. ref: AUDIT-014#state-03
-        asyncTimeoutHandle = setTimeout(
-          () => resolve({ findings: [], incomplete: plannedBranches }),
-          asyncChecksTimeoutMs,
-        );
-      }),
-    ]);
-    asyncFindings = asyncResult.findings;
-    asyncIncomplete = asyncResult.incomplete;
-  } catch {
-    // runAsyncChecksDetailed absorbs per-branch failures, so this is only
-    // reachable on something it cannot absorb. Either way this page's async
-    // layer contributed nothing, which is exactly what incomplete records.
-    asyncIncomplete = plannedBranches;
-  } finally {
-    // Cancel the per-page async timeout once the race settles so it can't stay
-    // pending across the rest of this page's work (and the next page's).
-    if (asyncTimeoutHandle) clearTimeout(asyncTimeoutHandle);
-  }
+  // The detailed variant behind the phase, not runAsyncChecks: the crawl
+  // result is rendered through the same components as a single scan, so it
+  // needs the same completeness bookkeeping. On the ceiling the phase reports
+  // every planned branch as not completed, never a bare [], which is how a
+  // timed-out deep scan came back reading as clean. ref: AUDIT-014#state-03
+  const { findings: asyncFindings, incomplete: asyncIncomplete } =
+    await startAsyncPhase({
+      url,
+      scanners,
+      scope: "page",
+      onProgress,
+      parentSignal: cancelSignal,
+      checksTimeoutMs: asyncChecksTimeoutMs,
+      branchTimeoutMs: asyncBranchTimeoutMs,
+    });
 
   // Worst first. SEVERITY_PRIORITY counts UP with severity, so this comparator
   // subtracts b from a, unlike the local table it replaced (which counted
@@ -570,7 +541,7 @@ async function runCrawlScan(params: ExecuteCrawlScanParams): Promise<void> {
     CRAWL_SCAN_MAX_PAGES: maxPagesCeiling,
     CRAWL_PAGE_FETCH_TIMEOUT_MS: fetchTimeoutMs,
     SCANNER_MAX_RESPONSE_BODY_BYTES: maxBodySize,
-    SCAN_ASYNC_CHECKS_TIMEOUT_MS: configuredAsyncChecksTimeoutMs,
+    SCAN_ASYNC_CHECKS_TIMEOUT_MS: asyncChecksTimeoutMs,
     SCANNER_ASYNC_BRANCH_TIMEOUT_MS: asyncBranchTimeoutMs,
   } = await getSettings([
     "CRAWL_SCAN_TIMEOUT_SECONDS",
@@ -580,10 +551,6 @@ async function runCrawlScan(params: ExecuteCrawlScanParams): Promise<void> {
     "SCAN_ASYNC_CHECKS_TIMEOUT_MS",
     "SCANNER_ASYNC_BRANCH_TIMEOUT_MS",
   ] as const);
-  const asyncChecksTimeoutMs = asyncOuterTimeoutMs(
-    configuredAsyncChecksTimeoutMs,
-    asyncBranchTimeoutMs,
-  );
   // The shipped ceiling (CRAWL_SCAN_MAX_PAGES) is a hard upper bound; the real
   // per-user governor is the plan's page-selection cap. min() of the two so a
   // plan can never exceed the ceiling and the ceiling never overrides a
@@ -826,6 +793,7 @@ async function runCrawlScan(params: ExecuteCrawlScanParams): Promise<void> {
           maxBodySize,
           fetchTimeoutMs,
           asyncChecksTimeoutMs,
+          asyncBranchTimeoutMs,
           scanners,
           onProgress,
           cancelSignal,

@@ -9,11 +9,7 @@ import {
   BOT_CHALLENGE_INCOMPLETE,
   detectBotChallenge,
 } from "@/lib/scanner/bot-challenge";
-import {
-  runAsyncChecksDetailed,
-  getPlannedAsyncBranches,
-  type AsyncCheckResult,
-} from "@/lib/scanner/async-checks";
+import { startAsyncPhase } from "@/lib/scanner/async-phase";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { summarizeFindings } from "@/lib/scanner/severity-summary";
@@ -72,9 +68,6 @@ async function safeReadBody(
   }
   return chunks.join("");
 }
-
-/** Distinguishes "the async phase timed out" from "it returned no findings". */
-const TIMED_OUT = Symbol("async-checks-timed-out");
 
 export async function POST(request: NextRequest) {
   try {
@@ -265,75 +258,20 @@ export async function POST(request: NextRequest) {
       cacheOnly: true,
     }).catch(() => {});
 
-    let asyncFindings: Vulnerability[] = [];
-    // What the report has to admit it did not manage to run.
-    //
-    // The race below resolves [] when the timeout wins, and the catch
-    // swallows a thrown branch the same way, so an async phase that never
-    // produced an answer was indistinguishable from one that ran and found
-    // nothing. The demo then reported DNS, TLS, reputation and the exposed
-    // -file probes as clean, to an anonymous visitor whose entire impression
-    // of the scanner is this one result. It is also the slowest phase, so
-    // the moment it gets cut short is exactly the moment it is claimed clear.
-    //
-    // Same fix as lib/scanner/execute-scan.ts, which had this and was
-    // corrected; the demo is the sibling that was left behind. Seeded with
-    // every branch that was planned, then emptied when the checks actually
-    // return.
-    let incomplete: string[] = getPlannedAsyncBranches(
+    // What the report has to admit it did not manage to run. The phase
+    // reports every planned branch as not completed when its ceiling wins or
+    // it fails, so an async layer that never answered is not shown to an
+    // anonymous visitor as DNS, TLS and the exposed-file probes all clean. It
+    // also aborts the losing side, so the live-fetch battery does not keep
+    // running against the caller's chosen target once nobody is waiting.
+    const asyncResult = await startAsyncPhase({
       url,
-      undefined,
-      asyncScope,
-    );
-    // abuse: the race used to abandon the losing side. When the timeout won,
-    // runAsyncChecks kept executing its whole live-fetch battery (the exposed
-    // -file probes, GraphQL, bucket listing, header probes) against an
-    // anonymous caller's chosen target with nothing left holding a reference
-    // to it and nothing accounting for it; and when the checks won, the
-    // timer was never cleared, so it survived its full window. Both sides are
-    // now cleaned up, the way lib/scanner/execute-scan.ts already does it.
-    const asyncAbort = new AbortController();
-    let asyncTimeoutHandle: NodeJS.Timeout | undefined;
-    try {
-      // Detailed, not the plain variant: its own docstring says to use this
-      // one "from a route that surfaces scan completeness to the user", which
-      // is exactly what the demo does, and it reports which individual
-      // branches timed out rather than only whether the phase as a whole did.
-      const asyncPromise = runAsyncChecksDetailed(
-        url,
-        undefined,
-        undefined,
-        asyncAbort.signal,
-        asyncScope,
-      );
-      // A sentinel rather than [], because "the checks ran and found nothing"
-      // and "the checks never finished" are the two answers this race has to
-      // tell apart, and both used to arrive as an empty array.
-      const timeoutPromise = new Promise<typeof TIMED_OUT>((resolve) => {
-        asyncTimeoutHandle = setTimeout(
-          () => resolve(TIMED_OUT),
-          asyncChecksTimeoutMs,
-        );
-      });
-      const raced: AsyncCheckResult | typeof TIMED_OUT = await Promise.race([
-        asyncPromise,
-        timeoutPromise,
-      ]);
-      if (raced !== TIMED_OUT) {
-        asyncFindings = raced.findings;
-        // The phase finished, so the only thing still unrun is whatever it
-        // reports for itself.
-        incomplete = raced.incomplete;
-      }
-      // Whichever side won, stop the other one. A rejection from the
-      // abandoned branch must not surface as an unhandled rejection.
-      void asyncPromise.catch(() => {});
-    } catch {
-      // Non-fatal
-    } finally {
-      if (asyncTimeoutHandle) clearTimeout(asyncTimeoutHandle);
-      asyncAbort.abort();
-    }
+      scanners: undefined,
+      scope: asyncScope,
+      checksTimeoutMs: asyncChecksTimeoutMs,
+    });
+    const asyncFindings: Vulnerability[] = asyncResult.findings;
+    const incomplete: string[] = [...asyncResult.incomplete];
 
     // Let discovery finish (bounded by its own internal timeout) and read the
     // cached snapshot it recorded, if any.
