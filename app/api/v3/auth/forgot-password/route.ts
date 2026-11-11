@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { createHash } from "node:crypto";
 import pool from "@/lib/database/db";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
@@ -13,6 +14,11 @@ import {
   withErrorHandling,
   Validate,
 } from "@/lib/api/api-utils";
+import { logError } from "@/lib/logging/log";
+
+// The longest address SMTP can carry, and the rule isValidEmailAddress holds
+// new addresses to. A longer string cannot name an account.
+const MAX_EMAIL_LENGTH = 254;
 
 // auth: the token is minted by lib/auth/password-reset-token.ts, which stores
 // only its keyed digest so a DB dump doesn't yield working reset tokens
@@ -42,6 +48,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (emailError) return ApiResponse.badRequest(emailError);
 
   const normalizedEmail = email.trim().toLowerCase();
+  if (normalizedEmail.length > MAX_EMAIL_LENGTH) {
+    return ApiResponse.badRequest("Please enter a valid email address");
+  }
 
   // rate-limit: per-email rate limit on top of the per-IP limit.
   // Stops a residential NAT or botnet from spamming password
@@ -49,8 +58,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Named (not inline numbers) so an operator responding to a reset flood can
   // tighten this bucket from the admin panel like every other limiter, rather
   // than being stuck with the compiled value (AUDIT-014#magic-08).
+  //
+  // Keyed on a digest of the address, as login's per-address bucket is. The
+  // address itself overflowed rate_limits.key (VARCHAR(255)) from 243
+  // characters on, which answered 500, and it kept a list of every address
+  // anyone had asked to reset.
   const emailRl = await checkRateLimit({
-    key: `forgot-email:${normalizedEmail}`,
+    key: `forgot-email:${createHash("sha256").update(normalizedEmail).digest("hex")}`,
     ...RATE_LIMITS.forgotPasswordEmail,
   });
   if (!emailRl.allowed) {
@@ -101,7 +115,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // the account holds.
   queueMicrotask(() => {
     sendEmail({ to: user.email, ...emailPayload }).catch((err) => {
-      console.error("[Email Error] Password reset email failed:", err);
+      logError("auth", "password reset email failed", err, {
+        userId: user.id,
+      });
     });
   });
 

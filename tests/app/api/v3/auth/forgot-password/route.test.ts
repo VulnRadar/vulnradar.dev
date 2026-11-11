@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 import { makeHeaderStore } from "../_test-harness";
 
@@ -31,6 +32,11 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   if (s.startsWith("DELETE FROM rate_limits")) return { rows: [] };
   if (s.startsWith("INSERT INTO rate_limits")) {
     const key = params[0] as string;
+    // rate_limits.key is VARCHAR(255), and Postgres refuses a longer value
+    // rather than truncating it.
+    if (key.length > 255) {
+      throw new Error("value too long for type character varying(255)");
+    }
     if ((rateLimitCounts.get(key) ?? 0) >= (params[2] as number)) {
       return { rows: [] };
     }
@@ -111,6 +117,10 @@ vi.mock("@/lib/email/email", async (importOriginal) => {
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { POST } = await import("@/app/api/v3/auth/forgot-password/route");
 
+/** The per-address reset bucket: a digest of the address, never the address. */
+const emailKey = (email: string) =>
+  `forgot-email:${createHash("sha256").update(email.trim().toLowerCase()).digest("hex")}`;
+
 function forgotRequest(body: unknown) {
   return new NextRequest("http://localhost/api/v3/auth/forgot-password", {
     method: "POST",
@@ -146,6 +156,36 @@ describe("POST /api/v3/auth/forgot-password", () => {
   it("rejects a malformed email", async () => {
     const res = await POST(forgotRequest({ email: "not-an-email" }));
     expect(res.status).toBe(400);
+  });
+
+  // The per-address bucket key used to carry the address itself, so anything
+  // past 242 characters overflowed rate_limits.key and answered 500, writing
+  // an error-log row every time.
+  it("refuses an address longer than any mailbox can be with a 400, before any limiter writes", async () => {
+    const res = await POST(forgotRequest({ email: "a".repeat(300) + "@x.io" }));
+
+    expect(res.status).toBe(400);
+    expect(
+      queries.some(
+        (q) =>
+          q.sql.startsWith("INSERT INTO rate_limits") &&
+          q.params[0] !== "forgot:203.0.113.11",
+      ),
+    ).toBe(false);
+  });
+
+  it("serves a long address that is still a possible one", async () => {
+    const email = "a".repeat(240) + "@example.com"; // 252 characters
+
+    const res = await POST(forgotRequest({ email }));
+
+    expect(res.status).toBe(200);
+    const keys = queries
+      .filter((q) => q.sql.startsWith("INSERT INTO rate_limits"))
+      .map((q) => q.params[0] as string);
+    expect(keys).toContain(emailKey(email));
+    // Hashed, so the table holds no address and every key has one length.
+    expect(keys.some((k) => k.includes("@"))).toBe(false);
   });
 
   it("returns the exact same response for an unknown email as for a known one, and only creates a token for the real account", async () => {
@@ -372,7 +412,7 @@ describe("POST /api/v3/auth/forgot-password", () => {
       id: 55,
       totp_enabled: false,
     });
-    rateLimitCounts.set("forgot-email:account-owner@example.com", 3); // maxAttempts is 3
+    rateLimitCounts.set(emailKey("account-owner@example.com"), 3); // maxAttempts is 3
 
     const res = await POST(
       forgotRequest({ email: "Account-Owner@Example.com" }),
@@ -396,7 +436,7 @@ describe("POST /api/v3/auth/forgot-password", () => {
     });
     // One prior attempt is under the shipped cap of 3, but at the admin's
     // tightened cap of 1 the next request must be refused.
-    rateLimitCounts.set("forgot-email:account-owner@example.com", 1);
+    rateLimitCounts.set(emailKey("account-owner@example.com"), 1);
 
     const res = await POST(
       forgotRequest({ email: "account-owner@example.com" }),

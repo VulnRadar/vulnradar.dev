@@ -33,6 +33,44 @@ import {
   TURNSTILE_ENABLED,
 } from "@/lib/config/constants";
 import { signupsPausedResponse } from "@/lib/admin/service-state";
+import { logError } from "@/lib/logging/log";
+
+// Long enough for a slow Cloudflare or Gravatar answer, short enough that a
+// hung socket cannot hold the signup request open.
+const OUTBOUND_TIMEOUT_MS = 10_000;
+
+/**
+ * Ask Cloudflare whether the Turnstile token is good. "unavailable" when the
+ * answer never came back usable (a timeout, a 5xx, an HTML error page where
+ * JSON belongs), which is our side's problem rather than the visitor's, so
+ * the route answers 503 instead of telling them the captcha failed.
+ */
+async function checkTurnstile(
+  token: string,
+  ip: string,
+): Promise<"passed" | "failed" | "unavailable"> {
+  try {
+    const res = await fetch(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          secret: process.env.TURNSTILE_SECRET_KEY,
+          response: token,
+          remoteip: ip,
+        }),
+        signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
+      },
+    );
+    if (!res.ok) throw new Error(`siteverify answered ${res.status}`);
+    const data = (await res.json()) as { success?: unknown };
+    return data.success === true ? "passed" : "failed";
+  } catch (err) {
+    logError("auth", "Turnstile verification unavailable", err);
+    return "unavailable";
+  }
+}
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   // PAUSE_SIGNUPS (and MAINTENANCE_MODE, which implies it). At the top of the
@@ -68,20 +106,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     if (!turnstileToken) {
       return ApiResponse.badRequest("Captcha verification required.");
     }
-    const turnstileRes = await fetch(
-      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          secret: process.env.TURNSTILE_SECRET_KEY,
-          response: turnstileToken,
-          remoteip: ip,
-        }),
-      },
-    );
-    const turnstileData = await turnstileRes.json();
-    if (!turnstileData.success) {
+    const captcha = await checkTurnstile(turnstileToken, ip);
+    if (captcha === "unavailable") {
+      return ApiResponse.error(
+        "We could not check the captcha just now. Try again in a minute.",
+        503,
+      );
+    }
+    if (captcha === "failed") {
       return ApiResponse.badRequest(
         "Captcha verification failed. Please try again.",
       );
@@ -155,8 +187,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Named (not inline numbers) so an operator responding to a signup flood can
   // tighten the one bucket that actually stops it from the admin panel
   // (AUDIT-014#magic-08).
+  //
+  // Keyed on a digest of the address, as login's per-address bucket is. The
+  // address itself overflowed rate_limits.key (VARCHAR(255)) for a valid
+  // address of 243 characters or more, which answered 500.
   const emailRl = await checkRateLimit({
-    key: `signup-email:${email}`,
+    key: `signup-email:${crypto.createHash("sha256").update(email).digest("hex")}`,
     ...RATE_LIMITS.signupEmail,
   });
   if (!emailRl.allowed) {
@@ -203,10 +239,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         to: existing.email,
         ...noticeContent,
       }).catch((err) => {
-        console.error(
-          "[Email Error] Failed to send duplicate-signup notice:",
-          err,
-        );
+        logError("auth", "duplicate-signup notice email failed", err, {
+          userId: existing.id,
+        });
       });
     });
     return ApiResponse.success({
@@ -240,7 +275,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       const emailHash = crypto.createHash("md5").update(email).digest("hex");
       // Check if Gravatar exists (returns 404 if not)
       const gravatarUrl = `https://www.gravatar.com/avatar/${emailHash}?d=404&s=200`;
-      const gravatarRes = await fetch(gravatarUrl, { method: "HEAD" });
+      const gravatarRes = await fetch(gravatarUrl, {
+        method: "HEAD",
+        signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
+      });
       if (gravatarRes.ok) {
         await pool.query(
           "UPDATE users SET avatar_url = $1 WHERE id = $2 AND avatar_url IS NULL",
@@ -298,7 +336,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       to: email,
       ...emailContent,
     }).catch((err) => {
-      console.error("[Email Error] Failed to send verification email:", err);
+      logError("auth", "verification email failed", err, { userId: user.id });
     });
   });
 

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 import { makeHeaderStore } from "../_test-harness";
 
@@ -42,6 +43,11 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   if (s.startsWith("DELETE FROM rate_limits")) return { rows: [] };
   if (s.startsWith("INSERT INTO rate_limits")) {
     const key = params[0] as string;
+    // rate_limits.key is VARCHAR(255), and Postgres refuses a longer value
+    // rather than truncating it.
+    if (key.length > 255) {
+      throw new Error("value too long for type character varying(255)");
+    }
     if ((rateLimitCounts.get(key) ?? 0) >= (params[2] as number)) {
       return { rows: [] };
     }
@@ -102,19 +108,39 @@ vi.mock("@/lib/email/email", async (importOriginal) => {
 });
 
 let turnstileSuccess = true;
-const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
-  const url = typeof input === "string" ? input : input.toString();
-  if (url.includes("gravatar.com")) {
+// How the siteverify call goes wrong, when it does: a timeout (what
+// AbortSignal.timeout raises), an HTML error page in place of JSON, or a 5xx.
+let turnstileFailure: "timeout" | "html" | "status" | null = null;
+const mockFetch = vi.fn(
+  async (input: RequestInfo | URL, _init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input.toString();
+    if (url.includes("gravatar.com")) {
+      return new Response(null, { status: 404 });
+    }
+    if (url.includes("challenges.cloudflare.com")) {
+      if (turnstileFailure === "timeout") {
+        throw new DOMException(
+          "The operation was aborted due to timeout",
+          "TimeoutError",
+        );
+      }
+      if (turnstileFailure === "html") {
+        return new Response("<html>502 Bad Gateway</html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        });
+      }
+      if (turnstileFailure === "status") {
+        return new Response("upstream error", { status: 503 });
+      }
+      return new Response(JSON.stringify({ success: turnstileSuccess }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
     return new Response(null, { status: 404 });
-  }
-  if (url.includes("challenges.cloudflare.com")) {
-    return new Response(JSON.stringify({ success: turnstileSuccess }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-  }
-  return new Response(null, { status: 404 });
-});
+  },
+);
 vi.stubGlobal("fetch", mockFetch);
 
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
@@ -150,8 +176,13 @@ beforeEach(async () => {
   systemSettingsRows = [];
   usersLookupError = null;
   turnstileSuccess = true;
+  turnstileFailure = null;
   invalidateSettingsCache();
 });
+
+/** The per-address signup bucket: a digest of the address, never the address. */
+const emailKey = (email: string) =>
+  `signup-email:${createHash("sha256").update(email.trim().toLowerCase()).digest("hex")}`;
 
 describe("POST /api/v3/auth/signup", () => {
   it("rejects a missing name", async () => {
@@ -168,6 +199,37 @@ describe("POST /api/v3/auth/signup", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  it("refuses an address longer than any mailbox can be with a 400", async () => {
+    const res = await POST(
+      postSignup({
+        name: "Alex Morgan",
+        email: "a".repeat(300) + "@x.io",
+        password: STRONG_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(insertedUserCalls).toHaveLength(0);
+  });
+
+  // The per-address bucket key used to carry the address itself, so a valid
+  // address of 243 to 254 characters overflowed rate_limits.key and the
+  // signup answered 500.
+  it("signs up a long address that is still a possible one", async () => {
+    const email = "a".repeat(240) + "@example.com"; // 252 characters
+
+    const res = await POST(
+      postSignup({ name: "Alex Morgan", email, password: STRONG_PASSWORD }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(insertedUserCalls).toHaveLength(1);
+    const keys = queries
+      .filter((q) => q.sql.startsWith("INSERT INTO rate_limits"))
+      .map((q) => q.params[0] as string);
+    expect(keys).toContain(emailKey(email));
+    expect(keys.some((k) => k.includes("@"))).toBe(false);
+  }, 20_000);
 
   it("rejects a malformed email", async () => {
     const res = await POST(
@@ -620,7 +682,7 @@ describe("POST /api/v3/auth/signup", () => {
   });
 
   it("rate limits repeated signups for the same email across different IPs", async () => {
-    rateLimitCounts.set("signup-email:alex.morgan@example.com", 5); // maxAttempts is 5
+    rateLimitCounts.set(emailKey("alex.morgan@example.com"), 5); // maxAttempts is 5
 
     const res = await POST(
       postSignup({
@@ -644,7 +706,7 @@ describe("POST /api/v3/auth/signup", () => {
     invalidateSettingsCache();
     // One prior attempt is already under the shipped cap of 5, but at the
     // admin's tightened cap of 1 the next request must be refused.
-    rateLimitCounts.set("signup-email:alex.morgan@example.com", 1);
+    rateLimitCounts.set(emailKey("alex.morgan@example.com"), 1);
 
     const res = await POST(
       postSignup({
@@ -729,5 +791,73 @@ describe("POST /api/v3/auth/signup", () => {
       expect(res.status).toBe(200);
       expect(insertedUserCalls).toHaveLength(1);
     });
+
+    // The siteverify call had no timeout, so a slow Cloudflare held every
+    // signup open for as long as the socket lasted, and an HTML error page in
+    // place of JSON threw out of .json() as a 500.
+    it("bounds the siteverify call with a timeout", async () => {
+      process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY = "test-site-key";
+      process.env.TURNSTILE_SECRET_KEY = "test-secret-key";
+      vi.resetModules();
+      const { POST: gatedPOST } =
+        await import("@/app/api/v3/auth/signup/route");
+
+      await gatedPOST(
+        postSignup({
+          name: "Alex Morgan",
+          email: "alex.morgan@example.com",
+          password: STRONG_PASSWORD,
+          turnstileToken: "good-token",
+        }),
+      );
+
+      const call = mockFetch.mock.calls.find(([input]) =>
+        String(input).includes("challenges.cloudflare.com"),
+      );
+      expect(call?.[1]?.signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it.each(["timeout", "html", "status"] as const)(
+      "answers 503 and creates nothing when siteverify fails (%s)",
+      async (failure) => {
+        process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY = "test-site-key";
+        process.env.TURNSTILE_SECRET_KEY = "test-secret-key";
+        vi.resetModules();
+        turnstileFailure = failure;
+        const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+        const { POST: gatedPOST } =
+          await import("@/app/api/v3/auth/signup/route");
+
+        const res = await gatedPOST(
+          postSignup({
+            name: "Alex Morgan",
+            email: "alex.morgan@example.com",
+            password: STRONG_PASSWORD,
+            turnstileToken: "good-token",
+          }),
+        );
+
+        expect(res.status).toBe(503);
+        expect(insertedUserCalls).toHaveLength(0);
+        logged.mockRestore();
+      },
+    );
   });
+
+  it("bounds the Gravatar lookup with a timeout", async () => {
+    const res = await POST(
+      postSignup({
+        name: "Alex Morgan",
+        email: "alex.morgan@example.com",
+        password: STRONG_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(200);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const call = mockFetch.mock.calls.find(([input]) =>
+      String(input).includes("gravatar.com"),
+    );
+    expect(call?.[1]?.signal).toBeInstanceOf(AbortSignal);
+  }, 20_000);
 });
