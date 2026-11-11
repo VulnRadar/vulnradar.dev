@@ -20,6 +20,7 @@ import {
   type SettingKey,
   type SettingValue,
 } from "./registry";
+import { globalSingleton } from "@/lib/runtime/global-singleton";
 
 const TTL_MS = 30_000;
 
@@ -46,20 +47,7 @@ type CacheState = {
  * then a separate cache per copy: an admin write invalidated one copy while
  * the others kept serving the old value for the rest of the TTL, and each copy
  * issued its own query. Keyed on globalThis so every copy shares one.
- *
- * Local until lib/runtime/global-singleton.ts lands; same signature.
  */
-function globalSingleton<T>(key: string, init: () => T): T {
-  const store = globalThis as unknown as Record<symbol, T | undefined>;
-  const slot = Symbol.for(key);
-  let value = store[slot];
-  if (value === undefined) {
-    value = init();
-    store[slot] = value;
-  }
-  return value;
-}
-
 const cache = globalSingleton<CacheState>("vulnradar.runtimeConfig", () => ({
   snapshot: null,
   inFlight: null,
