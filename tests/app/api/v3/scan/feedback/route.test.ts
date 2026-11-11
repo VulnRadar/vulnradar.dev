@@ -1,7 +1,7 @@
 /**
  * Route-level tests for /api/v3/scan/feedback (POST records a verdict on a
  * finding, GET reads it back). zod validation is real (a pure library); only
- * the DB and session boundary are mocked.
+ * the DB, the rate limiter and the session boundary are mocked.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -14,6 +14,13 @@ vi.mock("@/lib/database/db", () => ({
 const mockGetSession = vi.fn();
 vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
+}));
+
+// The limiter writes to rate_limits through the same pool; mocked at its own
+// boundary so the pool mock below only ever answers the route's statements.
+const mockCheckRateLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/rate-limit", () => ({
+  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
 }));
 
 // Fire-and-forget from the route (never awaited), so left unmocked it
@@ -53,10 +60,28 @@ function validPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** The ownership lookup, the finding-in-scan check, then the INSERT. */
+function answerSavedVerdict(verdict = "confirmed", scanId = 123) {
+  mockQuery
+    .mockResolvedValueOnce({
+      rows: [{ id: scanId, url: "https://example.com/" }],
+    })
+    .mockResolvedValueOnce({ rows: [{ present: 1 }] })
+    .mockResolvedValueOnce({
+      rows: [{ id: 1, verdict, created_at: "2026-01-01" }],
+    });
+}
+
 beforeEach(() => {
   mockQuery.mockReset();
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue({ userId: 42 });
+  mockCheckRateLimit.mockReset();
+  mockCheckRateLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 10,
+    retryAfterSeconds: 0,
+  });
   mockRecomputeScanScore.mockReset();
   mockRecomputeScanScore.mockResolvedValue(undefined);
 });
@@ -87,6 +112,8 @@ describe("POST /api/v3/scan/feedback", () => {
     ["malformed findingUrl", { findingUrl: "not-a-url" }],
     ["unknown verdict", { verdict: "maybe" }],
     ["notes too long", { notes: "x".repeat(1001) }],
+    ["missing scanHistoryId", { scanHistoryId: undefined }],
+    ["null scanHistoryId", { scanHistoryId: null }],
     ["non-integer scanHistoryId", { scanHistoryId: 1.5 }],
     ["non-positive scanHistoryId", { scanHistoryId: 0 }],
     ["scanHistoryId past int4", { scanHistoryId: 99999999999 }],
@@ -101,12 +128,51 @@ describe("POST /api/v3/scan/feedback", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("inserts feedback scoped to the session user and returns it", async () => {
+  // Every verdict feeds the per-check accuracy every other customer's scans
+  // are discounted by, so an unbounded endpoint was a free way to script it.
+  it("is rate limited per user, and writes nothing once the limit is spent", async () => {
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 30,
+    });
+
+    const res = await POST(postRequest(validPayload()));
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("30");
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockCheckRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({ key: "scan-feedback:42" }),
+    );
+  });
+
+  // A verdict is only evidence about a check if it is about a finding the
+  // check really produced. Without this, any finding id could be filed against
+  // any of the caller's scans, and the accuracy table read it as a real one.
+  it("refuses a findingId that is not in the referenced scan (400) and writes nothing", async () => {
     mockQuery
-      .mockResolvedValueOnce({ rows: [{ id: 123 }] }) // ownership check
       .mockResolvedValueOnce({
-        rows: [{ id: 1, verdict: "confirmed", created_at: "2026-01-01" }],
-      });
+        rows: [{ id: 123, url: "https://example.com/" }],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await POST(
+      postRequest(validPayload({ findingId: "xss-reflected--made-up" })),
+    );
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBe("That finding is not in this scan.");
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    const [presenceSql, presenceParams] = mockQuery.mock.calls[1];
+    expect(presenceSql).toContain("findings @>");
+    expect(presenceParams).toEqual([123, "xss-reflected--made-up"]);
+    expect(mockRecomputeScanScore).not.toHaveBeenCalled();
+  });
+
+  it("inserts feedback scoped to the session user and returns it", async () => {
+    answerSavedVerdict();
 
     const res = await POST(postRequest(validPayload()));
     expect(res.status).toBe(200);
@@ -118,7 +184,7 @@ describe("POST /api/v3/scan/feedback", () => {
     expect(ownerSql).toContain("AND user_id = $3");
     expect(ownerParams).toEqual(["123", 123, 42]);
 
-    const [sql, params] = mockQuery.mock.calls[1];
+    const [sql, params] = mockQuery.mock.calls[2];
     expect(sql).toContain("INSERT INTO scan_finding_feedback");
     expect(params).toEqual([
       42,
@@ -130,12 +196,8 @@ describe("POST /api/v3/scan/feedback", () => {
     ]);
   });
 
-  it("recomputes the scan's score after a successful save when scanHistoryId is present", async () => {
-    mockQuery
-      .mockResolvedValueOnce({ rows: [{ id: 123 }] }) // ownership check
-      .mockResolvedValueOnce({
-        rows: [{ id: 1, verdict: "false_positive", created_at: "2026-01-01" }],
-      });
+  it("recomputes the scan's score after a successful save", async () => {
+    answerSavedVerdict("false_positive");
 
     await POST(postRequest(validPayload({ verdict: "false_positive" })));
 
@@ -146,26 +208,8 @@ describe("POST /api/v3/scan/feedback", () => {
     expect(mockRecomputeScanScore).toHaveBeenCalledWith(123, 42);
   });
 
-  it("does not attempt to recompute when scanHistoryId is omitted", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 4, verdict: "false_positive", created_at: "2026-01-01" }],
-    });
-
-    await POST(
-      postRequest(
-        validPayload({ scanHistoryId: undefined, verdict: "false_positive" }),
-      ),
-    );
-
-    expect(mockRecomputeScanScore).not.toHaveBeenCalled();
-  });
-
   it("still returns the saved feedback even if recompute fails in the background", async () => {
-    mockQuery
-      .mockResolvedValueOnce({ rows: [{ id: 123 }] }) // ownership check
-      .mockResolvedValueOnce({
-        rows: [{ id: 5, verdict: "false_positive", created_at: "2026-01-01" }],
-      });
+    answerSavedVerdict("false_positive");
     mockRecomputeScanScore.mockRejectedValueOnce(new Error("db exploded"));
 
     const res = await POST(
@@ -176,29 +220,19 @@ describe("POST /api/v3/scan/feedback", () => {
     expect(json.ok).toBe(true);
   });
 
-  it("defaults scanHistoryId and notes to null when omitted", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 2, verdict: "false_positive", created_at: "2026-01-01" }],
-    });
+  it("defaults notes to null when omitted", async () => {
+    answerSavedVerdict();
 
-    await POST(
-      postRequest(validPayload({ scanHistoryId: undefined, notes: undefined })),
-    );
+    await POST(postRequest(validPayload({ notes: undefined })));
 
-    const [, params] = mockQuery.mock.calls[0];
-    expect(params[1]).toBeNull();
+    const [, params] = mockQuery.mock.calls[2];
+    expect(params[1]).toBe(123);
     expect(params[5]).toBeNull();
   });
 
   it("takes the public id History lists, and stores and recomputes by the numeric key", async () => {
     const publicId = "f".repeat(32);
-    mockQuery
-      .mockResolvedValueOnce({
-        rows: [{ id: 123, url: "https://example.com/" }],
-      })
-      .mockResolvedValueOnce({
-        rows: [{ id: 1, verdict: "confirmed", created_at: "2026-01-01" }],
-      });
+    answerSavedVerdict();
 
     const res = await POST(
       postRequest(validPayload({ scanHistoryId: publicId })),
@@ -209,18 +243,12 @@ describe("POST /api/v3/scan/feedback", () => {
     expect(ownerSql).toContain("public_id = $1");
     expect(ownerSql).toContain("AND user_id = $3");
     expect(ownerParams).toEqual([publicId, null, 42]);
-    expect(mockQuery.mock.calls[1][1][1]).toBe(123);
+    expect(mockQuery.mock.calls[2][1][1]).toBe(123);
     expect(mockRecomputeScanScore).toHaveBeenCalledWith(123, 42);
   });
 
   it("takes the numeric id as a string too", async () => {
-    mockQuery
-      .mockResolvedValueOnce({
-        rows: [{ id: 123, url: "https://example.com/" }],
-      })
-      .mockResolvedValueOnce({
-        rows: [{ id: 1, verdict: "confirmed", created_at: "2026-01-01" }],
-      });
+    answerSavedVerdict();
 
     const res = await POST(postRequest(validPayload({ scanHistoryId: "123" })));
 
@@ -258,6 +286,7 @@ describe("POST /api/v3/scan/feedback", () => {
   it("returns 503 when the feedback table has not been migrated yet", async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [{ id: 123 }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ present: 1 }] })
       .mockRejectedValueOnce(
         new Error('relation "scan_finding_feedback" does not exist'),
       );
@@ -271,6 +300,7 @@ describe("POST /api/v3/scan/feedback", () => {
   it("returns 500 on an unrelated database error", async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [{ id: 123 }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ present: 1 }] })
       .mockRejectedValueOnce(new Error("connection terminated"));
 
     const res = await POST(postRequest(validPayload()));

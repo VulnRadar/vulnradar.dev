@@ -7,8 +7,10 @@
  * now, never applied automatically.
  *
  * Deliberately conservative: a check only ever gets touched once it
- * crosses the EXACT same "flagged" threshold the admin panel already
- * uses (ENGINE_FEEDBACK_MIN_SAMPLE_SIZE + ENGINE_FEEDBACK_NOISE_THRESHOLD_PERCENT),
+ * crosses the EXACT same "flagged" rule the admin panel already uses
+ * (isFlaggedNoisy: ENGINE_FEEDBACK_MIN_SAMPLE_SIZE +
+ * ENGINE_FEEDBACK_NOISE_THRESHOLD_PERCENT, counted in distinct people, with
+ * a floor of distinct accounts under the sample size),
  * so a check with too little feedback, or a normal/low false-positive
  * rate, is never adjusted -- this only kicks in for a check an admin
  * would already see flagged as noisy. The discount itself is
@@ -26,7 +28,11 @@
  */
 
 import { getSetting } from "@/lib/config/runtime-config";
-import { aggregateCheckAccuracy, extractCheckId } from "./check-accuracy";
+import {
+  aggregateCheckAccuracy,
+  extractCheckId,
+  isFlaggedNoisy,
+} from "./check-accuracy";
 import type { CheckAccuracyCounts } from "./check-accuracy";
 import type { Vulnerability } from "./types";
 import { APP_NAME } from "@/lib/config/constants";
@@ -91,10 +97,9 @@ export async function applyAdaptiveConfidence(
       const accuracy = accuracyMap.get(extractCheckId(finding.id));
       if (!accuracy) return finding;
 
-      const flagged =
-        accuracy.total >= minSampleSize &&
-        accuracy.falsePositiveRate >= thresholdPercent;
-      if (!flagged) return finding;
+      if (!isFlaggedNoisy(accuracy, { minSampleSize, thresholdPercent })) {
+        return finding;
+      }
 
       const confidence = Math.max(
         0,

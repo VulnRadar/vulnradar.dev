@@ -187,6 +187,13 @@ describeIntegration("AI-written feedback never suppresses a finding", () => {
       AI_FEEDBACK_NOTE,
     );
     expect(await getFalsePositiveIds(userId)).toEqual(new Set());
+    // The route only takes a verdict on a finding the named scan reported.
+    const scanId = await seedCompletedScan(
+      userId,
+      url,
+      [finding("ai-then-human", "critical")],
+      new Date(),
+    );
 
     sessionUserId = userId;
     const res = await POST(
@@ -196,6 +203,7 @@ describeIntegration("AI-written feedback never suppresses a finding", () => {
         body: JSON.stringify({
           findingId: "ai-then-human",
           findingUrl: url,
+          scanHistoryId: scanId,
           verdict: "false_positive",
         }),
       }),

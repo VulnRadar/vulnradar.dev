@@ -41,8 +41,14 @@ function settings(overrides: Record<string, unknown> = {}) {
   mockGetSetting.mockImplementation(async (key: string) => defaults[key]);
 }
 
+/** `n` account ids no other row has used: one verdict per distinct person. */
+let nextReporter = 1;
+function reporters(n: number): number[] {
+  return Array.from({ length: n }, () => nextReporter++);
+}
+
 function feedbackRows(
-  rows: { finding_id: string; verdict: string; count: number }[],
+  rows: { finding_id: string; verdict: string; user_ids: number[] }[],
 ) {
   mockQuery.mockResolvedValue({ rows });
 }
@@ -78,7 +84,11 @@ describe("applyAdaptiveConfidence", () => {
 
   it("leaves confidence untouched when feedback exists but sample size is below the threshold", async () => {
     feedbackRows([
-      { finding_id: "missing-hsts--x", verdict: "false_positive", count: 4 },
+      {
+        finding_id: "missing-hsts--x",
+        verdict: "false_positive",
+        user_ids: reporters(4),
+      },
     ]); // total = 4, below ENGINE_FEEDBACK_MIN_SAMPLE_SIZE (5)
     const result = await applyAdaptiveConfidence([finding({ confidence: 90 })]);
     expect(result[0].confidence).toBe(90);
@@ -86,8 +96,16 @@ describe("applyAdaptiveConfidence", () => {
 
   it("leaves confidence untouched when the false-positive rate is below the noise threshold", async () => {
     feedbackRows([
-      { finding_id: "missing-hsts--x", verdict: "confirmed", count: 9 },
-      { finding_id: "missing-hsts--y", verdict: "false_positive", count: 1 },
+      {
+        finding_id: "missing-hsts--x",
+        verdict: "confirmed",
+        user_ids: reporters(9),
+      },
+      {
+        finding_id: "missing-hsts--y",
+        verdict: "false_positive",
+        user_ids: reporters(1),
+      },
     ]); // total = 10, FP rate = 10%, below 20% threshold
     const result = await applyAdaptiveConfidence([finding({ confidence: 90 })]);
     expect(result[0].confidence).toBe(90);
@@ -95,17 +113,57 @@ describe("applyAdaptiveConfidence", () => {
 
   it("discounts confidence proportionally to the false-positive rate once a check is flagged", async () => {
     feedbackRows([
-      { finding_id: "missing-hsts--x", verdict: "confirmed", count: 6 },
-      { finding_id: "missing-hsts--y", verdict: "false_positive", count: 4 },
+      {
+        finding_id: "missing-hsts--x",
+        verdict: "confirmed",
+        user_ids: reporters(6),
+      },
+      {
+        finding_id: "missing-hsts--y",
+        verdict: "false_positive",
+        user_ids: reporters(4),
+      },
     ]); // total = 10 (>= 5), FP rate = 40% (>= 20%) -> flagged
     const result = await applyAdaptiveConfidence([finding({ confidence: 90 })]);
     // 90 * (1 - 0.4) = 54
     expect(result[0].confidence).toBe(54);
   });
 
+  // One account's verdicts used to lower a check's confidence on every
+  // customer's scans: 26 false_positive rows were 26 reports. The query now
+  // folds them to one person, and one person is under every floor.
+  it("does not discount a check one account marked false positive 26 times", async () => {
+    feedbackRows(
+      Array.from({ length: 26 }, (_, i) => ({
+        finding_id: `missing-hsts--page${i}`,
+        verdict: "false_positive",
+        user_ids: [777],
+      })),
+    );
+    const result = await applyAdaptiveConfidence([finding({ confidence: 90 })]);
+    expect(result[0].confidence).toBe(90);
+  });
+
+  it("does not discount a check below the distinct-account floor even when an admin lowers the sample size", async () => {
+    settings({ ENGINE_FEEDBACK_MIN_SAMPLE_SIZE: 1 });
+    feedbackRows([
+      {
+        finding_id: "missing-hsts--x",
+        verdict: "false_positive",
+        user_ids: reporters(2),
+      },
+    ]);
+    const result = await applyAdaptiveConfidence([finding({ confidence: 90 })]);
+    expect(result[0].confidence).toBe(90);
+  });
+
   it("never floors confidence below 0", async () => {
     feedbackRows([
-      { finding_id: "missing-hsts--x", verdict: "false_positive", count: 10 },
+      {
+        finding_id: "missing-hsts--x",
+        verdict: "false_positive",
+        user_ids: reporters(10),
+      },
     ]); // 100% false-positive rate
     const result = await applyAdaptiveConfidence([finding({ confidence: 5 })]);
     expect(result[0].confidence).toBe(0);
@@ -113,7 +171,11 @@ describe("applyAdaptiveConfidence", () => {
 
   it("leaves a finding with no confidence set at all completely alone", async () => {
     feedbackRows([
-      { finding_id: "missing-hsts--x", verdict: "false_positive", count: 10 },
+      {
+        finding_id: "missing-hsts--x",
+        verdict: "false_positive",
+        user_ids: reporters(10),
+      },
     ]);
     const input = [finding({ confidence: undefined })];
     const result = await applyAdaptiveConfidence(input);
@@ -123,7 +185,11 @@ describe("applyAdaptiveConfidence", () => {
 
   it("only adjusts findings for the flagged check, leaving other checks' findings alone", async () => {
     feedbackRows([
-      { finding_id: "missing-hsts--x", verdict: "false_positive", count: 10 },
+      {
+        finding_id: "missing-hsts--x",
+        verdict: "false_positive",
+        user_ids: reporters(10),
+      },
     ]);
     const result = await applyAdaptiveConfidence([
       finding({ id: "missing-hsts--abc", confidence: 90 }),
@@ -139,7 +205,11 @@ describe("applyAdaptiveConfidence", () => {
 
   it("queries scan_finding_feedback only once across multiple applyAdaptiveConfidence calls within the cache TTL", async () => {
     feedbackRows([
-      { finding_id: "missing-hsts--x", verdict: "confirmed", count: 5 },
+      {
+        finding_id: "missing-hsts--x",
+        verdict: "confirmed",
+        user_ids: reporters(5),
+      },
     ]);
     await applyAdaptiveConfidence([finding()]);
     await applyAdaptiveConfidence([finding()]);

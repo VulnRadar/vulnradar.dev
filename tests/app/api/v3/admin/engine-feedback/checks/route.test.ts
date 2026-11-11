@@ -39,6 +39,15 @@ vi.mock("@/lib/scanner/registry", () => ({
 
 const { GET } = await import("@/app/api/v3/admin/engine-feedback/checks/route");
 
+/**
+ * `n` account ids no other row has used. The aggregate counts people, so each
+ * fixture verdict is a different person, as the old per-row counts implied.
+ */
+let nextReporter = 1;
+function reporters(n: number): number[] {
+  return Array.from({ length: n }, () => nextReporter++);
+}
+
 function withAdmin(userId = 7, role = "admin") {
   mockGetSession.mockResolvedValue({ userId });
   mockQuery.mockResolvedValueOnce({ rows: [{ id: userId, role }] });
@@ -77,15 +86,23 @@ describe("GET /api/v3/admin/engine-feedback/checks", () => {
         {
           finding_id: "cors-wildcard--ab12",
           verdict: "false_positive",
-          count: 3,
+          user_ids: reporters(3),
         },
-        { finding_id: "cors-wildcard--cd34", verdict: "confirmed", count: 2 },
+        {
+          finding_id: "cors-wildcard--cd34",
+          verdict: "confirmed",
+          user_ids: reporters(2),
+        },
         {
           finding_id: "cors-wildcard--ef56",
           verdict: "not_applicable",
-          count: 1,
+          user_ids: reporters(1),
         },
-        { finding_id: "hsts-missing--gh78", verdict: "confirmed", count: 4 },
+        {
+          finding_id: "hsts-missing--gh78",
+          verdict: "confirmed",
+          user_ids: reporters(4),
+        },
       ],
     });
     mockGetCheckDef.mockImplementation((id: string) =>
@@ -130,10 +147,22 @@ describe("GET /api/v3/admin/engine-feedback/checks", () => {
       rows: [
         // 1 sample, 100% false positive -- below the minimum sample size,
         // must NOT be flagged despite a high rate.
-        { finding_id: "low-sample--aa", verdict: "false_positive", count: 1 },
+        {
+          finding_id: "low-sample--aa",
+          verdict: "false_positive",
+          user_ids: reporters(1),
+        },
         // 5 samples, 40% false positive -- clears both, must be flagged.
-        { finding_id: "noisy-check--bb", verdict: "false_positive", count: 2 },
-        { finding_id: "noisy-check--cc", verdict: "confirmed", count: 3 },
+        {
+          finding_id: "noisy-check--bb",
+          verdict: "false_positive",
+          user_ids: reporters(2),
+        },
+        {
+          finding_id: "noisy-check--cc",
+          verdict: "confirmed",
+          user_ids: reporters(3),
+        },
       ],
     });
 
@@ -163,12 +192,12 @@ describe("GET /api/v3/admin/engine-feedback/checks", () => {
         {
           finding_id: "async-missing-spf-record--1a2b",
           verdict: "false_positive",
-          count: 1,
+          user_ids: reporters(1),
         },
         {
           finding_id: "async-missing-spf-record--3c4d",
           verdict: "confirmed",
-          count: 2,
+          user_ids: reporters(2),
         },
       ],
     });
@@ -188,7 +217,11 @@ describe("GET /api/v3/admin/engine-feedback/checks", () => {
     withAdmin();
     mockQuery.mockResolvedValueOnce({
       rows: [
-        { finding_id: "retired-check--zz", verdict: "confirmed", count: 1 },
+        {
+          finding_id: "retired-check--zz",
+          verdict: "confirmed",
+          user_ids: reporters(1),
+        },
       ],
     });
     mockGetCheckDef.mockReturnValue(undefined);
@@ -207,10 +240,18 @@ describe("GET /api/v3/admin/engine-feedback/checks", () => {
     withAdmin();
     mockQuery.mockResolvedValueOnce({
       rows: [
-        { finding_id: "a--1", verdict: "confirmed", count: 10 },
-        { finding_id: "a--2", verdict: "false_positive", count: 1 },
-        { finding_id: "b--1", verdict: "false_positive", count: 9 },
-        { finding_id: "b--2", verdict: "confirmed", count: 1 },
+        { finding_id: "a--1", verdict: "confirmed", user_ids: reporters(10) },
+        {
+          finding_id: "a--2",
+          verdict: "false_positive",
+          user_ids: reporters(1),
+        },
+        {
+          finding_id: "b--1",
+          verdict: "false_positive",
+          user_ids: reporters(9),
+        },
+        { finding_id: "b--2", verdict: "confirmed", user_ids: reporters(1) },
       ],
     });
 
@@ -233,22 +274,22 @@ describe("GET /api/v3/admin/engine-feedback/checks", () => {
         {
           finding_id: "vary-header-missing--a",
           verdict: "confirmed",
-          count: 3,
+          user_ids: reporters(3),
         },
         {
           finding_id: "vary-header-missing--b",
           verdict: "false_positive",
-          count: 1,
+          user_ids: reporters(1),
         },
         {
           finding_id: "vary-header-missing--c",
           verdict: "not_applicable",
-          count: 1,
+          user_ids: reporters(1),
         },
         {
           finding_id: "credit-card-pattern--d",
           verdict: "false_positive",
-          count: 1,
+          user_ids: reporters(1),
         },
       ],
     });

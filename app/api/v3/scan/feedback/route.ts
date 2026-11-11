@@ -4,24 +4,49 @@ import pool from "@/lib/database/db";
 import { z } from "zod";
 import { recomputeScanScore } from "@/lib/scanner/recompute-scan-score";
 import { findOwnedScan, parseScanRef } from "@/lib/history/scan-ref";
+import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
+import { burstLimitedResponse } from "@/lib/api/rate-limit-response";
+import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
 
 const FeedbackSchema = z.object({
   findingId: z.string().min(1).max(200),
   findingUrl: z.string().url().max(2048),
   // The scan the verdict came from, spelled either way a client holds it: the
-  // 32 character public id History lists, or the legacy numeric id.
+  // 32 character public id History lists, or the legacy numeric id. Required:
+  // a verdict is only evidence about a check when it is about a finding that
+  // check really produced on one of the caller's scans, and without the scan
+  // there is nothing to check the finding id against.
   scanHistoryId: z
     .union([z.number(), z.string().max(64)])
-    .refine((id) => parseScanRef(id) !== null, "Not a scan id")
-    .optional(),
+    .refine((id) => parseScanRef(id) !== null, "Not a scan id"),
   verdict: z.enum(["false_positive", "confirmed", "not_applicable"]),
   notes: z.string().max(1000).optional(),
 });
+
+/**
+ * Per user, generous for a person working down a findings list and far short
+ * of what a script needs to move a check's accuracy figure. One-off numbers
+ * rather than an admin setting: nobody has a reason to tune it.
+ */
+const FEEDBACK_RATE_LIMIT = { maxAttempts: 60, windowSeconds: 60 } as const;
 
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session?.userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // rate-limit: every verdict feeds lib/scanner/check-accuracy.ts, which
+  // discounts that check's confidence on every customer's scans.
+  const rl = await checkRateLimit({
+    key: `scan-feedback:${session.userId}`,
+    ...FEEDBACK_RATE_LIMIT,
+  });
+  if (!rl.allowed) {
+    return burstLimitedResponse(
+      rl,
+      TOO_MANY_ATTEMPTS("verdicts", rl.retryAfterSeconds),
+    );
   }
 
   let body: unknown;
@@ -40,27 +65,37 @@ export async function POST(req: NextRequest) {
   }
 
   const { findingId, findingUrl, verdict, notes } = result.data;
-  const scanRef =
-    result.data.scanHistoryId === undefined
-      ? null
-      : parseScanRef(result.data.scanHistoryId);
+  // The schema's refine already proved this parses.
+  const scanRef = parseScanRef(result.data.scanHistoryId)!;
 
   try {
-    // scanHistoryId only ever exists to (a) record which scan a piece of
-    // feedback came from and (b) trigger recomputeScanScore against that
-    // scan's own severity tally/danger score (and, for a verified owner of
-    // the host, the host_reputation cascade) --
-    // both of which must stay scoped to the caller's own scans. Without
-    // this, any authenticated user could attach feedback to (and force a
-    // recompute cascade against) any scan in the system just by guessing
-    // its small sequential id (AUDIT-010#security-02).
-    let scanHistoryId: number | null = null;
-    if (scanRef) {
-      const owned = await findOwnedScan(scanRef, session.userId);
-      if (!owned) {
-        return NextResponse.json({ error: "Scan not found" }, { status: 404 });
-      }
-      scanHistoryId = owned.id;
+    // The scan must be the caller's own: it is what the verdict is recorded
+    // against and what recomputeScanScore rewrites (and, for a verified owner
+    // of the host, the host_reputation cascade). Without this, any
+    // authenticated user could attach feedback to (and force a recompute
+    // cascade against) any scan in the system just by guessing its small
+    // sequential id (AUDIT-010#security-02).
+    const owned = await findOwnedScan(scanRef, session.userId);
+    if (!owned) {
+      return NextResponse.json({ error: "Scan not found" }, { status: 404 });
+    }
+    const scanHistoryId = owned.id;
+
+    // And the finding must be one that scan actually reported. The accuracy
+    // table reads every verdict as a statement about the check named in the
+    // id, so a made-up id is a made-up statement about a real check.
+    const present = await pool.query(
+      `SELECT 1 AS present FROM scan_history
+        WHERE id = $1
+          AND findings @> jsonb_build_array(jsonb_build_object('id', $2::text))
+        LIMIT 1`,
+      [scanHistoryId, findingId],
+    );
+    if (present.rows.length === 0) {
+      return NextResponse.json(
+        { error: "That finding is not in this scan." },
+        { status: 400 },
+      );
     }
 
     const row = await pool.query(
@@ -89,9 +124,7 @@ export async function POST(req: NextRequest) {
     // saved successfully either way. The caller's id goes with it: the
     // recompute only rewrites the caller's own row, and touches the public
     // host_reputation row only if the caller has verified the host's domain.
-    if (scanHistoryId) {
-      recomputeScanScore(scanHistoryId, session.userId).catch(() => {});
-    }
+    recomputeScanScore(scanHistoryId, session.userId).catch(() => {});
 
     return NextResponse.json({ ok: true, feedback: row.rows[0] });
   } catch (err: unknown) {

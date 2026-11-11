@@ -20,15 +20,24 @@ const {
 
 const RULE = { thresholdPercent: 20, minSampleSize: 5 };
 
+/** `n` account ids no other row has used: one verdict per distinct person. */
+let nextReporter = 1;
+function reporters(n: number): number[] {
+  return Array.from({ length: n }, () => nextReporter++);
+}
+
+/** Counts as aggregateCheckAccuracy builds them, every verdict a different person. */
 function counts(
   confirmed: number,
   falsePositive: number,
   notApplicable = 0,
+  users = confirmed + falsePositive + notApplicable,
 ): {
   confirmed: number;
   falsePositive: number;
   notApplicable: number;
   total: number;
+  users: number;
   falsePositiveRate: number;
 } {
   const total = confirmed + falsePositive + notApplicable;
@@ -37,6 +46,7 @@ function counts(
     falsePositive,
     notApplicable,
     total,
+    users,
     falsePositiveRate:
       total > 0 ? Math.round((falsePositive / total) * 1000) / 10 : 0,
   };
@@ -74,16 +84,20 @@ describe("aggregateCheckAccuracy", () => {
   it("aggregates verdict counts per check and computes a rounded false-positive rate", async () => {
     mockQuery.mockResolvedValue({
       rows: [
-        { finding_id: "missing-hsts--aaa", verdict: "confirmed", count: 7 },
+        {
+          finding_id: "missing-hsts--aaa",
+          verdict: "confirmed",
+          user_ids: reporters(7),
+        },
         {
           finding_id: "missing-hsts--bbb",
           verdict: "false_positive",
-          count: 3,
+          user_ids: reporters(3),
         },
         {
           finding_id: "missing-hsts--ccc",
           verdict: "not_applicable",
-          count: 2,
+          user_ids: reporters(2),
         },
       ],
     });
@@ -95,15 +109,73 @@ describe("aggregateCheckAccuracy", () => {
       falsePositive: 3,
       notApplicable: 2,
       total: 12,
+      users: 12,
       falsePositiveRate: 25, // 3/12 = 25.0%
     });
+  });
+
+  it("counts people, not rows, and only rows a person wrote", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await aggregateCheckAccuracy();
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain("array_agg(DISTINCT user_id)");
+    expect(sql).toContain("user_id IS NOT NULL");
+    expect(sql).toContain(
+      "COALESCE(notes, '') <> 'Set automatically from an AI verify verdict.'",
+    );
+    expect(sql).not.toContain("COUNT(*)");
+  });
+
+  it("folds one account's verdicts on many pages of a check into one report", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [
+        ...Array.from({ length: 26 }, (_, i) => ({
+          finding_id: `credit-card-pattern--p${i}`,
+          verdict: "false_positive",
+          user_ids: [501],
+        })),
+        {
+          finding_id: "credit-card-pattern--p0",
+          verdict: "confirmed",
+          user_ids: [502],
+        },
+      ],
+    });
+
+    const entry = (await aggregateCheckAccuracy()).get("credit-card-pattern");
+
+    expect(entry).toMatchObject({
+      falsePositive: 1,
+      confirmed: 1,
+      total: 2,
+      users: 2,
+    });
+    expect(assessCheckAccuracy(entry!, "critical", RULE).flagged).toBe(false);
+  });
+
+  it("does not flag a check until enough distinct accounts agree, whatever the sample size is set to", () => {
+    const lowered = { thresholdPercent: 20, minSampleSize: 1 };
+    expect(assessCheckAccuracy(counts(0, 2), "low", lowered).flagged).toBe(
+      false,
+    );
+    expect(assessCheckAccuracy(counts(0, 3), "low", lowered).flagged).toBe(
+      true,
+    );
   });
 
   it("keeps different checks in separate buckets", async () => {
     mockQuery.mockResolvedValue({
       rows: [
-        { finding_id: "check-a--x", verdict: "confirmed", count: 1 },
-        { finding_id: "check-b--y", verdict: "false_positive", count: 1 },
+        {
+          finding_id: "check-a--x",
+          verdict: "confirmed",
+          user_ids: reporters(1),
+        },
+        {
+          finding_id: "check-b--y",
+          verdict: "false_positive",
+          user_ids: reporters(1),
+        },
       ],
     });
 
@@ -121,8 +193,16 @@ describe("aggregateCheckAccuracy", () => {
   it("rounds the false-positive rate to one decimal place", async () => {
     mockQuery.mockResolvedValue({
       rows: [
-        { finding_id: "flaky--a", verdict: "confirmed", count: 2 },
-        { finding_id: "flaky--b", verdict: "false_positive", count: 1 },
+        {
+          finding_id: "flaky--a",
+          verdict: "confirmed",
+          user_ids: reporters(2),
+        },
+        {
+          finding_id: "flaky--b",
+          verdict: "false_positive",
+          user_ids: reporters(1),
+        },
       ],
     });
     const result = await aggregateCheckAccuracy();

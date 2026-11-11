@@ -16,16 +16,25 @@
 import pool from "@/lib/database/db";
 import { getSetting } from "@/lib/config/runtime-config";
 import { extractCheckId } from "./check-id";
+import { HUMAN_FEEDBACK_SQL } from "./feedback-source";
 
 // Re-exported so the existing importers keep working; the rule itself lives in
 // a module with no database import.
 export { extractCheckId };
 
+/**
+ * Every count is of PEOPLE, not of rows: `falsePositive` is how many distinct
+ * accounts called at least one finding of this check a false positive inside
+ * the window. Someone who gave both verdicts on different pages is counted
+ * under each, which is what they said.
+ */
 export interface CheckAccuracyCounts {
   confirmed: number;
   falsePositive: number;
   notApplicable: number;
   total: number;
+  /** Distinct accounts with any verdict on this check. */
+  users: number;
   /** 0-100, one decimal place. */
   falsePositiveRate: number;
 }
@@ -33,7 +42,7 @@ export interface CheckAccuracyCounts {
 interface FeedbackVerdictRow {
   finding_id: string;
   verdict: "confirmed" | "false_positive" | "not_applicable";
-  count: number;
+  user_ids: number[];
 }
 
 /**
@@ -48,6 +57,14 @@ interface FeedbackVerdictRow {
  * false_positive rows for good, so without the bound every check's false
  * positive rate would only ever drift upward, and that rate feeds the adaptive
  * confidence discount.
+ *
+ * Counted by distinct account, and only from verdicts a person gave. This rate
+ * lowers the confidence of a check on every customer's scans, and it used to
+ * be COUNT(*): one account marking 26 findings of a check false positive, or
+ * the AI verifier pre-filling the same verdict on every scan it looked at, was
+ * 26 independent reports. The ids are aggregated per finding id and unioned
+ * per check here, rather than counted in SQL, so the "which check is this id"
+ * rule stays the one extractCheckId.
  */
 export async function aggregateCheckAccuracy(): Promise<
   Map<string, CheckAccuracyCounts>
@@ -56,39 +73,89 @@ export async function aggregateCheckAccuracy(): Promise<
     "CLEANUP_SCAN_FINDING_FEEDBACK_RETENTION_DAYS",
   );
   const result = await pool.query<FeedbackVerdictRow>(
-    `SELECT finding_id, verdict, COUNT(*)::int AS count
+    `SELECT finding_id, verdict, array_agg(DISTINCT user_id) AS user_ids
      FROM scan_finding_feedback
      WHERE created_at >= NOW() - ($1 * INTERVAL '1 day')
+       AND user_id IS NOT NULL
+       AND ${HUMAN_FEEDBACK_SQL}
      GROUP BY finding_id, verdict`,
     [retentionDays],
   );
 
   const byCheck = new Map<
     string,
-    { confirmed: number; falsePositive: number; notApplicable: number }
+    {
+      confirmed: Set<number>;
+      falsePositive: Set<number>;
+      notApplicable: Set<number>;
+    }
   >();
   for (const row of result.rows) {
     const checkId = extractCheckId(row.finding_id);
     const entry = byCheck.get(checkId) ?? {
-      confirmed: 0,
-      falsePositive: 0,
-      notApplicable: 0,
+      confirmed: new Set<number>(),
+      falsePositive: new Set<number>(),
+      notApplicable: new Set<number>(),
     };
-    if (row.verdict === "confirmed") entry.confirmed += row.count;
-    else if (row.verdict === "false_positive") entry.falsePositive += row.count;
-    else if (row.verdict === "not_applicable") entry.notApplicable += row.count;
+    const bucket =
+      row.verdict === "confirmed"
+        ? entry.confirmed
+        : row.verdict === "false_positive"
+          ? entry.falsePositive
+          : row.verdict === "not_applicable"
+            ? entry.notApplicable
+            : null;
+    for (const id of row.user_ids ?? []) bucket?.add(id);
     byCheck.set(checkId, entry);
   }
 
   const out = new Map<string, CheckAccuracyCounts>();
-  for (const [checkId, counts] of byCheck) {
-    const total =
-      counts.confirmed + counts.falsePositive + counts.notApplicable;
-    const falsePositiveRate =
-      total > 0 ? Math.round((counts.falsePositive / total) * 1000) / 10 : 0;
-    out.set(checkId, { ...counts, total, falsePositiveRate });
+  for (const [checkId, sets] of byCheck) {
+    const confirmed = sets.confirmed.size;
+    const falsePositive = sets.falsePositive.size;
+    const notApplicable = sets.notApplicable.size;
+    const total = confirmed + falsePositive + notApplicable;
+    if (total === 0) continue;
+    const users = new Set([
+      ...sets.confirmed,
+      ...sets.falsePositive,
+      ...sets.notApplicable,
+    ]).size;
+    const falsePositiveRate = Math.round((falsePositive / total) * 1000) / 10;
+    out.set(checkId, {
+      confirmed,
+      falsePositive,
+      notApplicable,
+      total,
+      users,
+      falsePositiveRate,
+    });
   }
   return out;
+}
+
+/**
+ * The fewest distinct accounts whose verdicts can mark a check noisy, whatever
+ * the sample-size setting says. The setting counts verdicts and an admin can
+ * lower it; this is the floor under it that a handful of free accounts cannot
+ * get beneath, because a noisy check is discounted on everybody's scans.
+ */
+export const MIN_DISTINCT_USERS = 3;
+
+/**
+ * The one "this check is noisy" rule: the admin panel's flag and the adaptive
+ * confidence discount both read it, so a check is discounted exactly when the
+ * panel shows it flagged.
+ */
+export function isFlaggedNoisy(
+  counts: CheckAccuracyCounts,
+  rule: CheckAccuracyVerdictRule,
+): boolean {
+  return (
+    counts.total >= rule.minSampleSize &&
+    counts.users >= MIN_DISTINCT_USERS &&
+    counts.falsePositiveRate >= rule.thresholdPercent
+  );
 }
 
 /**
@@ -174,9 +241,10 @@ export interface CheckAccuracyVerdictRule {
 
 export interface CheckAccuracyAssessment {
   /**
-   * The original rule, unchanged: at or above the configured
-   * false-positive percentage, with at least the configured sample size.
-   * Both settings still mean exactly what they meant before.
+   * isFlaggedNoisy: at or above the configured false-positive percentage,
+   * with at least the configured sample size, from at least
+   * MIN_DISTINCT_USERS accounts. The two settings mean what they always
+   * did, now counted in people rather than rows.
    */
   flagged: boolean;
   /**
@@ -198,9 +266,7 @@ export function assessCheckAccuracy(
     ? (SEVERITY_PRIORITY_WEIGHT[severity.toLowerCase()] ?? 1)
     : 1;
   return {
-    flagged:
-      counts.total >= rule.minSampleSize &&
-      counts.falsePositiveRate >= rule.thresholdPercent,
+    flagged: isFlaggedNoisy(counts, rule),
     neverConfirmed:
       counts.confirmed === 0 &&
       counts.falsePositive >= neverConfirmedFloor(severity),
