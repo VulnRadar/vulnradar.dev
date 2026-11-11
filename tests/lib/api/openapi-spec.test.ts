@@ -197,7 +197,8 @@ describe("buildOpenApiSpec", () => {
       const source = readFileSync(file, "utf8")
         .replace(/\/\*[\s\S]*?\*\//g, "")
         .replace(/^\s*\/\/.*$/gm, "");
-      if (!/\bvalidateApiKey\s*\(/.test(source)) continue;
+      if (!/\b(?:validateApiKey|authenticateApiKey)\s*\(/.test(source))
+        continue;
       keyRoutes++;
       const specPath = file
         .slice(root.length)
