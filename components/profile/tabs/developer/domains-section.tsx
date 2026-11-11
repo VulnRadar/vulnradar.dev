@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useConfirm } from "@/components/shared/use-confirm";
 import { cn } from "@/lib/ui/utils";
 import {
   useCopyFeedback,
@@ -30,6 +31,7 @@ import {
   ChevronDown,
   ChevronRight,
   Users,
+  UserMinus,
 } from "lucide-react";
 
 type DomainStatus = "pending" | "verified" | "failed" | "reverify_failed";
@@ -115,6 +117,7 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
   // user_id = $3`), so the picker is only drawn on rows the caller proved.
   const { me } = useAuth();
   const teams = useAssignableTeams();
+  const { confirm, confirmDialog } = useConfirm();
   const [assigningTeamId, setAssigningTeamId] = useState<number | null>(null);
 
   const teamLabel = (teamId: number) =>
@@ -275,6 +278,38 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
     }
   }
 
+  /**
+   * A team owner or admin taking a teammate's domain off the team (PATCH
+   * /api/v3/domains/[id] with teamId null, the one PATCH a non-owner may
+   * send). The row is the teammate's, so it leaves this list rather than
+   * turning into a personal domain of the caller's. Throws with the server's
+   * reason so the confirmation stays open and shows it.
+   */
+  async function handleStopSharing(domain: DomainItem, teamName: string) {
+    let res: Response;
+    try {
+      res = await fetch(`${API.DOMAINS}/${domain.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId: null }),
+      });
+    } catch {
+      throw new Error("We could not reach the server. Try again.");
+    }
+    if (!res.ok) {
+      const data = (await res.json().catch(() => null)) as {
+        error?: unknown;
+      } | null;
+      throw new Error(
+        typeof data?.error === "string" && data.error
+          ? data.error
+          : "We could not stop sharing that domain. Try again.",
+      );
+    }
+    setDomains((prev) => prev.filter((d) => d.id !== domain.id));
+    setSuccess(`${domain.domain} is no longer shared with ${teamName}.`);
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -385,14 +420,27 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                 const isExpanded = expandedId === d.id;
                 const needsRecord = d.status !== "verified";
 
-                // Verify and Remove both need canWrite on the server, and the
-                // list carries domains a teammate shared as well as the
-                // caller's own. Same mirror of getTeamResourceAccess used by
-                // the webhooks and schedules lists.
+                // Verify needs canWrite on the server, and the list carries
+                // domains a teammate shared as well as the caller's own. Same
+                // mirror of getTeamResourceAccess used by the webhooks and
+                // schedules lists.
+                const isOwn = me?.userId != null && d.user_id === me.userId;
                 const isWritable =
-                  (me?.userId != null && d.user_id === me.userId) ||
+                  isOwn ||
                   (d.team_id != null &&
                     teams.assignable.some((t) => t.id === d.team_id));
+                // Removing is the verifier's alone (DELETE /domains is
+                // owner-only, since the proof of ownership is theirs). An
+                // owner or admin of the team it is shared with can take it off
+                // the team instead, which keeps the proof in place.
+                const sharedTeam =
+                  !isOwn && d.team_id != null
+                    ? teams.all.find(
+                        (t) =>
+                          t.id === d.team_id &&
+                          (t.role === "owner" || t.role === "admin"),
+                      )
+                    : undefined;
 
                 return (
                   <div key={d.id}>
@@ -537,7 +585,31 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                             )}
                           </Button>
                         )}
-                        {isWritable && (
+                        {sharedTeam && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-11 sm:h-7 gap-1.5 text-xs"
+                            onClick={() =>
+                              confirm({
+                                title: `Stop sharing ${d.domain} with ${sharedTeam.name}?`,
+                                description:
+                                  "Nobody on the team can run Active Probing or a port sweep against it any more. It stays verified for the teammate who proved it, and only they can share it again.",
+                                confirmLabel: "Stop sharing",
+                                danger: true,
+                                onConfirm: () =>
+                                  handleStopSharing(d, sharedTeam.name),
+                              })
+                            }
+                          >
+                            <UserMinus
+                              className="h-3.5 w-3.5"
+                              aria-hidden="true"
+                            />
+                            Stop sharing
+                          </Button>
+                        )}
+                        {isOwn && (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -667,6 +739,7 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+      {confirmDialog}
     </section>
   );
 }
