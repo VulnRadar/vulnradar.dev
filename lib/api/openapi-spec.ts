@@ -719,7 +719,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           tags: ["Remediation"],
           summary: "Set a finding's remediation status",
           description:
-            "Record your own remediation status for a single finding, keyed on (finding id, finding URL) so it survives rescans. Setting status to open clears any stored status. Session cookie auth.",
+            "Record your own remediation status for a single finding, keyed on (finding id, finding URL) so it survives rescans. Setting status to open clears any stored status. A field you leave out keeps its stored value; send null to clear it. Session cookie auth.",
           security: [{ cookieAuth: [] }],
           requestBody: {
             required: true,

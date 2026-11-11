@@ -80,7 +80,7 @@ const remediationEndpoint: Endpoint = {
     "Session-gated on the signed-in user's cookie. There is no Bearer-key equivalent: this is a UI-facing owner action, not part of the public API surface.",
     "Owner-scoped by construction. Every row is keyed on (user_id, finding_id, finding_url) and every query filters on your own user id, so you can only ever read or write your own remediation state.",
     'status "open" is special: it deletes the row instead of storing one, because Open is the absence of a record. DELETE /scan/remediation?url=...&findingId=... does the same thing.',
-    "note (max 2000), assignee (max 120), and dueAt are all optional. dueAt takes a date-input value like 2026-09-01 or a full ISO datetime; an unparseable value is stored as null rather than erroring.",
+    "note (max 2000), assignee (max 120), and dueAt are all optional. A field you leave out keeps its stored value; send null to clear it. dueAt takes a date-input value like 2026-09-01 or a full ISO datetime; an unparseable value is stored as null rather than erroring.",
   ],
   errors: [
     { code: 400, description: "Invalid JSON, or a body that fails validation" },
