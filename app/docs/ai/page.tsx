@@ -375,8 +375,8 @@ export default function AiDocsPage() {
             <strong className="text-foreground">Never refused</strong>: like
             chat, it is not gated on the token budget, so a spent budget does
             not block a summary. Its tokens are still recorded into the window
-            counter, and unlike chat they can draw down a purchased AI credit
-            balance once the plan&rsquo;s window allowance is gone.
+            counter, and like chat it never spends a purchased AI credit
+            balance.
           </li>
           <li>
             <strong className="text-foreground">Ask a follow-up</strong>: the
@@ -631,9 +631,10 @@ curl -sS -X POST "${APP_URL}/api/v3/history/SCAN_PUBLIC_ID/summary?regenerate=tr
           plan&rsquo;s free per-window allowance already covers never touches
           credits, and only the portion of a call that lands above the ceiling
           is charged against the balance. The balance carries over between
-          windows; it only goes up on a purchase and down on spend. Vera chat is
-          the one AI feature that never spends it: the balance is bought for
-          verification, so a chat turn records its window usage and stops there.
+          windows; it only goes up on a purchase and down on spend. Finding
+          verification is the only feature that spends it: the balance is bought
+          for verification, so chat, scan summaries and auto-tags record their
+          window usage and stop there.
         </p>
 
         <DocsTable

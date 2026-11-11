@@ -241,9 +241,14 @@ export default function BillingDocsPage() {
           Stripe confirms the payment.
         </p>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Moving between paid plans works the same way: choose the other plan
-          and check out. Invoices, receipts, and your saved payment method live
-          in the Stripe billing portal, reachable from{" "}
+          Moving between paid plans switches the subscription you already have,
+          on the card already on file. A higher plan, or the same plan on a
+          longer billing period, charges the prorated difference to that card
+          straight away, and the new plan starts once that charge goes through;
+          if it is declined, you stay on the plan you had. A lower plan charges
+          nothing at the time: the unused part of the period comes off your next
+          invoice. Invoices, receipts, and your saved payment method live in the
+          Stripe billing portal, reachable from{" "}
           <InlineCode>Profile &rarr; Billing</InlineCode> under &ldquo;Manage
           billing&rdquo;.
         </p>
@@ -279,7 +284,7 @@ export default function BillingDocsPage() {
           data={[
             {
               credit: "AI tokens",
-              pays: "AI finding verification and AI scan summaries, once the window allowance is gone. Vera chat draws on the same window counter but never spends this balance.",
+              pays: "AI finding verification, once the window allowance is gone. Chat and scan summaries do not spend credits.",
               included: "Per fixed window, by plan",
             },
             {

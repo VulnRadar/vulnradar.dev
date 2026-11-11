@@ -727,9 +727,9 @@ export async function confirmAiCreditPurchase(
  * lib/billing/staff-plan.ts / lib/billing/badges.ts's gift path) never
  * creates one, since no Stripe checkout ever ran for those, so there is
  * nothing on Stripe's side to manage. Callers should only show the
- * "Manage billing" button when billingInfo.subscription is present and
- * billingInfo.giftedSubscription is not, the same condition
- * ProfileBillingTab already uses to gate cancel/reactivate.
+ * "Manage billing" button when billingInfo.subscription is present, gift or
+ * no gift, the same condition ProfileBillingTab uses to gate
+ * cancel/reactivate.
  */
 export async function createBillingPortalSession(): Promise<{ url: string }> {
   const sessionUser = await getSession();

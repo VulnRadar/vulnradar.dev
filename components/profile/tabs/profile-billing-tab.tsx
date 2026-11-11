@@ -118,10 +118,21 @@ export function ProfileBillingTab({
       const data = await res.json();
       if (res.ok) {
         if (immediate) {
+          const gift = billingInfo?.giftedSubscription;
           setBillingInfo((prev) =>
-            prev ? { ...prev, plan: "free", subscription: null } : prev,
+            prev
+              ? {
+                  ...prev,
+                  plan: prev.giftedSubscription?.plan ?? "free",
+                  subscription: null,
+                }
+              : prev,
           );
-          setSuccess("Subscription canceled. You are now on the free plan.");
+          setSuccess(
+            gift
+              ? `Subscription canceled. Your gifted plan stays until ${formatDate(gift.expiresAt)}.`
+              : "Subscription canceled. You are now on the free plan.",
+          );
         } else {
           setBillingInfo((prev) =>
             prev?.subscription
@@ -237,7 +248,7 @@ export function ProfileBillingTab({
     return (
       <div
         role="alert"
-        className="rounded-xl border border-border/50 bg-card/50 p-5 sm:p-6 flex flex-col gap-4"
+        className="rounded-xl border border-border bg-card p-5 sm:p-6 flex flex-col gap-4"
       >
         <div className="flex items-start gap-3">
           <LeadingIcon
@@ -304,7 +315,7 @@ export function ProfileBillingTab({
             What you are on, what it costs, and when it renews.
           </p>
         </div>
-        <Card className="border-border/50 bg-card/50">
+        <Card className="rounded-xl border border-border bg-card">
           <CardContent className="pt-6 flex flex-col gap-4">
             <div className="flex items-center justify-between gap-3 p-4 rounded-lg bg-secondary/50 border border-border">
               <div className="flex items-center gap-3 min-w-0">
@@ -364,8 +375,11 @@ export function ProfileBillingTab({
               )}
             </div>
 
-            {/* Subscription details for paid Stripe plans */}
-            {billingInfo.subscription && !billingInfo.giftedSubscription && (
+            {/* Subscription details for paid Stripe plans. Shown beside a
+                gift, never hidden by one: a gift does not stop the charge,
+                and hiding this left a paying customer with no in-product way
+                to see or end the subscription they were still billed for. */}
+            {billingInfo.subscription && (
               <div className="flex flex-col gap-3 p-4 rounded-lg border border-border">
                 {/* Price and billing interval */}
                 {billingInfo.subscription.priceAmount && (
@@ -439,7 +453,7 @@ export function ProfileBillingTab({
             )}
 
             {/* Reveal Sensitive Billing Information */}
-            {billingInfo.subscription && !billingInfo.giftedSubscription && (
+            {billingInfo.subscription && (
               <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-background/50 mt-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -799,63 +813,60 @@ export function ProfileBillingTab({
               </div>
             )}
 
-            {/* Actions for paid plans. Requires a real Stripe
-                    subscription -- a staff-granted plan (see
-                    lib/billing/staff-plan.ts) has billingInfo.plan set to a
-                    real value with no Stripe subscription behind it, so
-                    there is nothing here to cancel/reactivate. */}
-            {billingInfo.plan !== "free" &&
-              billingInfo.subscription &&
-              !billingInfo.giftedSubscription && (
-                <div className="flex flex-col gap-2 pt-2">
+            {/* Actions for a real Stripe subscription, gift or no gift. A
+                    staff-granted or gifted plan alone has no subscription
+                    behind it (see lib/billing/staff-plan.ts), so there is
+                    nothing here to cancel or reactivate. */}
+            {billingInfo.subscription && (
+              <div className="flex flex-col gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={handleOpenBillingPortal}
+                  disabled={openingPortal}
+                  className="w-full gap-2"
+                >
+                  {openingPortal ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Opening...
+                    </>
+                  ) : (
+                    <>
+                      <ExternalLink className="h-4 w-4" />
+                      Manage billing & view invoices
+                    </>
+                  )}
+                </Button>
+                {billingInfo.subscription?.cancelAtPeriodEnd ? (
                   <Button
                     variant="outline"
-                    onClick={handleOpenBillingPortal}
-                    disabled={openingPortal}
+                    onClick={handleReactivateSubscription}
+                    disabled={reactivatingSubscription}
                     className="w-full gap-2"
                   >
-                    {openingPortal ? (
+                    {reactivatingSubscription ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Opening...
+                        Reactivating...
                       </>
                     ) : (
                       <>
-                        <ExternalLink className="h-4 w-4" />
-                        Manage billing & view invoices
+                        <RefreshCw className="h-4 w-4" />
+                        Reactivate Subscription
                       </>
                     )}
                   </Button>
-                  {billingInfo.subscription?.cancelAtPeriodEnd ? (
-                    <Button
-                      variant="outline"
-                      onClick={handleReactivateSubscription}
-                      disabled={reactivatingSubscription}
-                      className="w-full gap-2"
-                    >
-                      {reactivatingSubscription ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Reactivating...
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw className="h-4 w-4" />
-                          Reactivate Subscription
-                        </>
-                      )}
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowCancelDialog(true)}
-                      className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
-                    >
-                      Cancel subscription
-                    </Button>
-                  )}
-                </div>
-              )}
+                ) : (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowCancelDialog(true)}
+                    className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+                  >
+                    Cancel subscription
+                  </Button>
+                )}
+              </div>
+            )}
 
             {/* Plan Comparison, priced straight from the plan catalog so
                     this can never drift from what checkout actually charges.
@@ -921,7 +932,7 @@ export function ProfileBillingTab({
             Scan requests against your plan's ceiling. Resets at midnight UTC.
           </p>
         </div>
-        <Card className="border-border/50 bg-card/50">
+        <Card className="rounded-xl border border-border bg-card">
           <CardContent className="pt-6 flex flex-col gap-4">
             {billingInfo.usage.unlimited ? (
               <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
@@ -963,6 +974,7 @@ export function ProfileBillingTab({
                   </div>
                 </div>
                 <Progress
+                  aria-label="Daily scans used"
                   value={Math.min(
                     100,
                     (billingInfo.usage.used / billingInfo.usage.limit) * 100,
@@ -1009,11 +1021,11 @@ export function ProfileBillingTab({
             AI usage
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            AI finding verification tokens. AI chat and scan summaries are
-            unlimited on every plan.
+            AI finding verification tokens. Scan summaries are free, and AI chat
+            is free but rate limited.
           </p>
         </div>
-        <Card className="border-border/50 bg-card/50">
+        <Card className="rounded-xl border border-border bg-card">
           <CardContent className="pt-6 flex flex-col gap-4">
             {billingInfo.aiUsage.unlimited ? (
               <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
@@ -1057,6 +1069,7 @@ export function ProfileBillingTab({
                   </div>
                 </div>
                 <Progress
+                  aria-label="AI verification tokens used"
                   value={Math.min(
                     100,
                     (billingInfo.aiUsage.used / billingInfo.aiUsage.limit) *
@@ -1150,7 +1163,7 @@ export function ProfileBillingTab({
             AI code review tokens for connected GitHub repo scans.
           </p>
         </div>
-        <Card className="border-border/50 bg-card/50">
+        <Card className="rounded-xl border border-border bg-card">
           <CardContent className="pt-6 flex flex-col gap-4">
             {billingInfo.githubReviewUsage.unlimited ? (
               <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
@@ -1211,6 +1224,7 @@ export function ProfileBillingTab({
                   </div>
                 </div>
                 <Progress
+                  aria-label="GitHub review tokens used"
                   value={Math.min(
                     100,
                     (billingInfo.githubReviewUsage.used /
@@ -1311,7 +1325,7 @@ export function ProfileBillingTab({
             Minutes spent in the interactive browser viewer.
           </p>
         </div>
-        <Card className="border-border/50 bg-card/50">
+        <Card className="rounded-xl border border-border bg-card">
           <CardContent className="pt-6 flex flex-col gap-4">
             {billingInfo.browserbaseUsage.unlimited ? (
               <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
@@ -1373,6 +1387,7 @@ export function ProfileBillingTab({
                   </div>
                 </div>
                 <Progress
+                  aria-label="Live-browser minutes used this month"
                   value={Math.min(
                     100,
                     (billingInfo.browserbaseUsage.usedSeconds /
