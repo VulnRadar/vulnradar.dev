@@ -254,8 +254,12 @@ export default function AccountSecurityDocsPage() {
             sessions on Profile &gt; Security. It ends every session on every
             device, including the one you are using. Reach for it if you think
             someone else has access: it drops you back at the sign-in page and
-            forces your password (and 2FA) again everywhere. If Revoked sessions
-            emails are on, you also get one confirming it happened.
+            forces your password (and 2FA) again everywhere. It also forgets
+            every remembered device, so each one asks for two-step sign-in
+            again. API keys are not sessions and keep working; revoke them on
+            the API keys page, and the confirmation tells you how many are still
+            live. If Revoked sessions emails are on, you also get one confirming
+            it happened.
           </p>
         </DocsSubSection>
       </DocsSection>
