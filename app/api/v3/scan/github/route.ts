@@ -137,6 +137,25 @@ export async function POST(request: Request) {
       ? null
       : (preQuota.message ?? "Your GitHub review allowance is used up.");
 
+    // The account switched AI off in its settings, the same switch
+    // /scan/verify and the AI summary honour. The AI review pass is the part
+    // that sends repository source to a model, so it is not run; the
+    // pattern-based secret scan is deterministic and local and still covers
+    // every file. On the free plan the repo scan is paid for as its AI review
+    // (the trial or credits), and a pattern-only scan there would be free on
+    // every request (owner decision D22), so it is refused instead, before
+    // GitHub is asked for anything.
+    const aiDisabled = await isAiDisabled(userId);
+    if (aiDisabled && preQuota.limitTokens === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "AI is disabled in your settings. On the free plan a repository scan is its AI review, so it cannot run without one. Turn AI back on in Profile > AI settings to scan this repository.",
+        },
+        { status: 403 },
+      );
+    }
+
     const repoInfo = await getRepoInfo(token, owner, repo);
     const ref = body.ref?.trim() || repoInfo.defaultBranch;
 
@@ -204,8 +223,8 @@ export async function POST(request: Request) {
     // it with the real count. When not even the first batch fits under the
     // ceiling there is nothing to reserve.
     let reservation: GithubReviewReservation | null = null;
-    let allowanceMessage: string | null = allowanceSpent;
-    if (plan.batchesWithinCap > 0 && allowanceSpent === null) {
+    let allowanceMessage: string | null = aiDisabled ? null : allowanceSpent;
+    if (plan.batchesWithinCap > 0 && allowanceSpent === null && !aiDisabled) {
       const gate = await reserveGithubReviewTokens(
         userId,
         plan.estimate,
@@ -237,12 +256,14 @@ export async function POST(request: Request) {
       secretFindings = runPatternSecretsScan(files);
       // No reservation means a budget of zero, not null: null is "nothing
       // caps this run" and would send every batch the ceiling admits.
-      aiResult = await runGithubAiReview(
-        files,
-        userId,
-        repoInfo.private,
-        reservation ? reservation.budget : 0,
-      );
+      aiResult = aiDisabled
+        ? aiReviewNotRun(files.length)
+        : await runGithubAiReview(
+            files,
+            userId,
+            repoInfo.private,
+            reservation ? reservation.budget : 0,
+          );
       tokensSpent = aiResult.totalTokensUsed;
     } catch (err) {
       // Give the claimed slot back: a review that didn't complete must
@@ -327,6 +348,9 @@ export async function POST(request: Request) {
       filesScanned: files.length,
       filesSkippedByCaps: truncatedByCaps,
       aiReviewSkipped: aiResult.noEndpoint,
+      // True when the account has AI switched off, so no file was sent to a
+      // model and nothing was reserved or charged.
+      aiReviewDisabled: aiDisabled,
       // True when the account's allowance and credits ran out before every
       // file was reviewed, including before the first one; the AI findings
       // cover the files before that point and the pattern scan covers all.
@@ -427,4 +451,38 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+}
+
+/** user_ai_configs.ai_disabled, read the way /scan/verify reads it. */
+async function isAiDisabled(userId: number): Promise<boolean> {
+  try {
+    const result = await pool.query(
+      `SELECT ai_disabled FROM user_ai_configs WHERE user_id = $1`,
+      [userId],
+    );
+    return result.rows[0]?.ai_disabled === true;
+  } catch {
+    // No row, or no table yet: AI is on by default.
+    return false;
+  }
+}
+
+/** The AI review's result when it was never started. */
+function aiReviewNotRun(
+  filesTotal: number,
+): Awaited<ReturnType<typeof runGithubAiReview>> {
+  return {
+    findings: [],
+    totalTokensUsed: 0,
+    noEndpoint: false,
+    rejectedOverCap: false,
+    stoppedAtBudget: false,
+    stoppedAtRunCap: false,
+    filesReviewed: 0,
+    filesTotal,
+    batchesReviewed: 0,
+    batchesFailed: 0,
+    batchesTotal: 0,
+    filesSkippedOverRunCap: [],
+  };
 }
