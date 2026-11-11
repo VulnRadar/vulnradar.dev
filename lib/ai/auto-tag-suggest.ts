@@ -48,7 +48,6 @@
  * never gates or blocks this call.
  */
 
-import pool from "@/lib/database/db";
 import type { Vulnerability, Severity } from "@/lib/scanner/types";
 import {
   resolveServerEndpoint,
@@ -62,6 +61,7 @@ import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import { CONFIG_MAX_TAG_LENGTH } from "@/lib/config/config-values";
 import { checkAiUsageQuota, recordAiTokens } from "@/lib/billing/ai-usage";
+import { isAiDisabledForUser } from "@/lib/ai/user-ai-config";
 
 const MIN_TAG_LENGTH = 3;
 /**
@@ -234,18 +234,6 @@ export function sanitizeAiTagSuggestions(
   return out;
 }
 
-async function isAiDisabledForUser(userId: number): Promise<boolean> {
-  try {
-    const result = await pool.query<{ ai_disabled: boolean }>(
-      `SELECT ai_disabled FROM user_ai_configs WHERE user_id = $1`,
-      [userId],
-    );
-    return result.rows[0]?.ai_disabled ?? false;
-  } catch {
-    return false; // no row = AI enabled by default, matching every other AI route's own catch branch
-  }
-}
-
 interface CallResult {
   suggestions: string[];
   tokensUsed: number;
@@ -306,6 +294,9 @@ export async function generateAutoTagSuggestions(
   if (findings.length === 0) return [];
 
   try {
+    // A failed read rejects into the catch below, which returns no
+    // suggestions: a switched-off account is never sent to the model because
+    // the setting could not be read.
     if (await isAiDisabledForUser(userId)) return [];
 
     const endpoint =

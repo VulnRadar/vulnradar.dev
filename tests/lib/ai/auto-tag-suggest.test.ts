@@ -235,17 +235,17 @@ describe("generateAutoTagSuggestions: gating (never blocks tag-saving, never err
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("never throws when the ai_disabled lookup itself fails -- treated as enabled, same as every other AI route", async () => {
+  it("never throws, and asks no model, when the ai_disabled lookup fails", async () => {
+    // A failed read used to count as "AI on", so a switched-off account had
+    // its findings sent to the model whenever the read failed.
     mockQuery.mockReset();
     mockQuery.mockRejectedValueOnce(new Error("db down")); // ai_disabled lookup
-    mockQuery.mockResolvedValue({ rows: [] }); // resolveUserEndpoint lookup
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-      openAiResponse("Good Tag Name"),
-    );
+    mockQuery.mockResolvedValue({ rows: [] });
 
     const result = await generateAutoTagSuggestions([makeFinding()], 1);
 
-    expect(result).toEqual(["Good Tag Name"]);
+    expect(result).toEqual([]);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 
