@@ -517,7 +517,7 @@
     "type": "header",
     "title": "Wildcard DNS Record Detected",
     "category": "dns",
-    "severity": "low",
+    "severity": "info",
     "description": "A randomly generated, never-created subdomain resolved successfully, meaning this domain has a wildcard DNS record (*.example.com) that answers for any subdomain, whether or not it was intentionally created.",
     "evidence": "DNS-level finding for `dns-wildcard-detected` against {{domain}}.",
     "riskImpact": "Every possible subdomain resolves, whether or not it was intentionally created. Phishing pages hosted at unexpected subdomains (login.example.com, secure-verify.example.com) inherit the domain's trust and any wildcard TLS certificate, and if the wildcard target is a shared or reassignable resource, it also widens the subdomain-takeover surface: an attacker no longer needs to find an existing dangling record, any name they pick already resolves.",
