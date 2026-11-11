@@ -1,5 +1,6 @@
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
+import { cancelSubscriptionNow } from "@/lib/billing/cancel-subscription";
 import { isMissingStripeResource } from "@/lib/billing/stripe-errors";
 import { logError, type LogContext } from "@/lib/logging/log";
 
@@ -101,7 +102,7 @@ export async function cancelSubscriptionsBeforeDeletion(
     }
 
     for (const id of live) {
-      await nullIfMissing(stripe.subscriptions.cancel(id), {
+      await nullIfMissing(cancelSubscriptionNow(stripe, id), {
         userId,
         subscriptionId: id,
       });

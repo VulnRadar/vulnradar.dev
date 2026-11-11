@@ -37,15 +37,6 @@ const LISTED: Record<string, { calls: number; why: string }> = {
       "event cannot cancel twice. It already passes prorate: false and " +
       "invoice_now: false.",
   },
-  "lib/billing/cancel-before-deletion.ts": {
-    calls: 1,
-    why:
-      "Account deletion ending every live subscription before the row goes. " +
-      "It passes no options, and Stripe's defaults for cancel are already no " +
-      "proration and no invoice, so the money outcome matches. Outside this " +
-      "change's files; routing it through the helper is listed for the " +
-      "integrator.",
-  },
 };
 
 // `.cancel(`, `?.cancel(` and `["cancel"](` all reach the same Stripe call.

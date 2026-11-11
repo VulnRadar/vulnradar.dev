@@ -77,7 +77,12 @@ describe("cancelSubscriptionsBeforeDeletion", () => {
     await expect(cancelSubscriptionsBeforeDeletion(7)).resolves.toBe(true);
 
     expect(cancel).toHaveBeenCalledTimes(1);
-    expect(cancel).toHaveBeenCalledWith("sub_1");
+    // Through cancelSubscriptionNow, the one cancel implementation: no
+    // proration credit and no closing invoice, as the cancel dialog states.
+    expect(cancel).toHaveBeenCalledWith("sub_1", {
+      prorate: false,
+      invoice_now: false,
+    });
   });
 
   it("finds a subscription the row lost track of through the customer", async () => {
@@ -87,7 +92,10 @@ describe("cancelSubscriptionsBeforeDeletion", () => {
     await expect(cancelSubscriptionsBeforeDeletion(7)).resolves.toBe(true);
 
     expect(list).toHaveBeenCalledWith({ customer: "cus_1", limit: 100 });
-    expect(cancel).toHaveBeenCalledWith("sub_9");
+    expect(cancel).toHaveBeenCalledWith("sub_9", {
+      prorate: false,
+      invoice_now: false,
+    });
   });
 
   it("cancels every live subscription on the customer once each, not only the stored one", async () => {
