@@ -3,8 +3,15 @@
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/billing/stripe";
 import { isMissingStripeResource } from "@/lib/billing/stripe-errors";
-import { getOrCreateStripePriceId } from "@/lib/billing/stripe-catalog";
-import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
+import {
+  getOrCreateStripePriceId,
+  resolvePlanFromStripeSubscription,
+} from "@/lib/billing/stripe-catalog";
+import {
+  PRODUCTS,
+  getPlanFromProductId,
+  type Product,
+} from "@/lib/billing/products";
 import { getAiCreditTier } from "@/lib/billing/ai-credit-catalog";
 import {
   creditAiCreditPurchase,
@@ -34,9 +41,49 @@ import { APP_URL, ROUTES } from "@/lib/config/constants";
 import pool from "@/lib/database/db";
 import { sendEmail, creditPurchaseReceiptEmail } from "@/lib/email/email";
 
+/** A billing period's length in days, for ordering one against another. */
+function periodDays(
+  interval: string | null | undefined,
+  count: number | null | undefined,
+): number | null {
+  const unit = { day: 1, week: 7, month: 30, year: 365 }[interval ?? ""];
+  return unit ? unit * (count || 1) : null;
+}
+
+/**
+ * Whether moving `subscription` to `product` charges more: a higher plan, or
+ * the same money paid over a longer period. Anything this cannot read counts
+ * as costing more, because the cost of guessing wrong is lopsided: charging a
+ * downgrade now only moves its credit forward, while deferring an upgrade
+ * hands out the higher tier until a renewal that a cancel can prevent.
+ */
+async function switchCostsMore(
+  stripe: Stripe,
+  subscription: Stripe.Subscription,
+  planId: string,
+  product: Product,
+): Promise<boolean> {
+  const currentPlan = await resolvePlanFromStripeSubscription(
+    stripe,
+    subscription,
+  );
+  if (!currentPlan) return true;
+  if (planRank(planId) !== planRank(currentPlan)) {
+    return planRank(planId) > planRank(currentPlan);
+  }
+  const recurring = subscription.items?.data?.[0]?.price?.recurring;
+  const current = periodDays(recurring?.interval, recurring?.interval_count);
+  const next = periodDays(product.interval, 1);
+  if (current === null || next === null) return true;
+  return next > current;
+}
+
 export type CreateSubscriptionResult =
   | { kind: "new"; clientSecret: string; subscriptionId: string }
   | { kind: "switched"; subscriptionId: string }
+  // An upgrade whose charge did not go through. Stripe keeps the old price
+  // and the plan is unchanged; see the switch branch of createSubscription.
+  | { kind: "upgrade_unpaid"; subscriptionId: string }
   // A staff account changing to a plan at/below its free staff floor: a direct
   // DB plan update, no Stripe subscription or charge. See createSubscription.
   | { kind: "db_updated"; plan: string };
@@ -219,16 +266,50 @@ export async function createSubscription(
       ACTIVE_SUBSCRIPTION_STATUSES.includes(existingSubscription.status)
     ) {
       const priceId = await getOrCreateStripePriceId(stripe, product);
+      const items = [
+        { id: existingSubscription.items.data[0].id, price: priceId },
+      ];
+
+      // create_prorations grants the new price now and puts the difference on
+      // the NEXT renewal invoice, so an upgrade followed by a cancel before
+      // that renewal never paid for the higher tier at all. A switch that
+      // costs more is invoiced now instead, and pending_if_incomplete keeps
+      // the old price in place until that invoice is paid. A downgrade only
+      // ever produces a credit, which can wait for the next invoice.
+      if (
+        await switchCostsMore(stripe, existingSubscription, planId, product)
+      ) {
+        // A pending update accepts only the item and proration fields, so the
+        // metadata and the cancel flag go in a second call, made only once
+        // the charge has gone through.
+        const upgraded = await stripe.subscriptions.update(
+          existingSubscriptionId,
+          {
+            items,
+            proration_behavior: "always_invoice",
+            payment_behavior: "pending_if_incomplete",
+          },
+        );
+        // Returned rather than thrown: Next replaces a thrown server-action
+        // message with a generic one in a production build, and this is the
+        // one outcome the customer has to be told plainly.
+        if (upgraded.pending_update) {
+          return { kind: "upgrade_unpaid", subscriptionId: upgraded.id };
+        }
+        await stripe.subscriptions.update(existingSubscriptionId, {
+          // Switching plans means the user is staying, so undo any pending
+          // cancel-at-period-end from a prior 'canceling' state.
+          cancel_at_period_end: false,
+          metadata,
+        });
+        return { kind: "switched", subscriptionId: upgraded.id };
+      }
 
       const updated = await stripe.subscriptions.update(
         existingSubscriptionId,
         {
-          items: [
-            { id: existingSubscription.items.data[0].id, price: priceId },
-          ],
+          items,
           proration_behavior: "create_prorations",
-          // Switching plans means the user is staying, so undo any pending
-          // cancel-at-period-end from a prior 'canceling' state.
           cancel_at_period_end: false,
           metadata,
         },
@@ -291,6 +372,7 @@ export async function createSubscription(
 }
 
 export interface ConfirmSubscriptionResult {
+  /** The plan written to the account. Only meaningful while `active`. */
   plan: string;
   active: boolean;
 }
@@ -371,7 +453,9 @@ export async function confirmSubscription(
     throw new Error("Stripe is not configured on this server.");
   }
 
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+    expand: ["latest_invoice"],
+  });
 
   // Authorization: createSubscription() always stamps the creating user's
   // id into metadata. Without this check, anyone logged in could pass an
@@ -379,6 +463,15 @@ export async function confirmSubscription(
   // account upgraded off someone else's payment.
   if (subscription.metadata?.userId !== String(sessionUser.userId)) {
     throw new Error("This subscription does not belong to your account");
+  }
+
+  // An upgrade made with pending_if_incomplete whose invoice is not paid yet
+  // sits on pending_update while Stripe keeps billing the old price, and the
+  // subscription still reads active. Nothing is written until that charge
+  // clears: the webhook applies the plan when Stripe applies the update.
+  const latestInvoice = subscription.latest_invoice as Stripe.Invoice | null;
+  if (subscription.pending_update && latestInvoice?.status !== "paid") {
+    return { plan: "free", active: false };
   }
 
   const isPaid = ACTIVE_SUBSCRIPTION_STATUSES.includes(subscription.status);

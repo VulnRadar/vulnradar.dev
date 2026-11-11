@@ -31,8 +31,15 @@ vi.mock("@/lib/billing/stripe", () => ({
   getStripe: () => mockGetStripe(),
 }));
 
+// A Next bundler marker that throws outside a server build.
+vi.mock("server-only", () => ({}));
+
+// Only the price lookup is faked (it would reach Stripe's search API). Which
+// plan a live subscription is on is read by the real resolver, so the
+// upgrade-or-downgrade decision below runs against the code that ships.
 const mockGetOrCreateStripePriceId = vi.fn();
-vi.mock("@/lib/billing/stripe-catalog", () => ({
+vi.mock("@/lib/billing/stripe-catalog", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/billing/stripe-catalog")>()),
   getOrCreateStripePriceId: (...args: unknown[]) =>
     mockGetOrCreateStripePriceId(...args),
 }));
@@ -120,6 +127,35 @@ beforeEach(() => {
   // a stale id overrides this.
   mockCustomersRetrieve.mockResolvedValue({ id: "cus_1", deleted: false });
 });
+
+/** A users row with a live subscription that a plan change switches in place. */
+const switchableUser = {
+  email: "user@example.com",
+  name: "User",
+  stripe_customer_id: "cus_1",
+  stripe_subscription_id: "sub_existing",
+  subscription_status: "active",
+};
+
+/** An active subscription billing the catalog price for `productId`. */
+function liveSubscription(productId: string, interval: "month" | "year") {
+  return {
+    id: "sub_existing",
+    status: "active",
+    items: {
+      data: [
+        {
+          id: "si_existing",
+          price: {
+            id: "price_old",
+            metadata: { vulnradar_id: productId },
+            recurring: { interval, interval_count: 1 },
+          },
+        },
+      ],
+    },
+  };
+}
 
 describe("createSubscription", () => {
   it("rejects when there is no logged-in session", async () => {
@@ -414,14 +450,12 @@ describe("createSubscription", () => {
         },
       ],
     });
-    mockSubscriptionsRetrieve.mockResolvedValue({
-      id: "sub_existing",
-      status: "active",
-      items: { data: [{ id: "si_existing" }] },
-    });
+    mockSubscriptionsRetrieve.mockResolvedValue(
+      liveSubscription("elite_supporter_monthly", "month"),
+    );
     mockSubscriptionsUpdate.mockResolvedValue({ id: "sub_existing" });
 
-    const result = await createSubscription("elite_supporter_monthly");
+    const result = await createSubscription("core_supporter_monthly");
 
     expect(result).toEqual({
       kind: "switched",
@@ -435,6 +469,143 @@ describe("createSubscription", () => {
         proration_behavior: "create_prorations",
       }),
     );
+  });
+
+  describe("a switch that costs more is invoiced at once", () => {
+    // sec-money-1. Every switch used to go out with create_prorations, which
+    // grants the new price now and bills the difference on the NEXT renewal
+    // invoice. Upgrade mid-cycle, cancel before the renewal, and that invoice
+    // never comes: the higher tier was free. A move up the ladder, or onto a
+    // longer billing period, is now charged when it happens, and Stripe only
+    // applies it once that charge is paid.
+    beforeEach(() => {
+      mockQuery.mockResolvedValueOnce({ rows: [switchableUser] });
+    });
+
+    it("charges an upgrade now and keeps the old price until the charge is paid", async () => {
+      mockSubscriptionsRetrieve.mockResolvedValue(
+        liveSubscription("core_supporter_monthly", "month"),
+      );
+      mockSubscriptionsUpdate.mockResolvedValue({
+        id: "sub_existing",
+        pending_update: null,
+      });
+
+      const result = await createSubscription("elite_supporter_monthly");
+
+      expect(result).toEqual({
+        kind: "switched",
+        subscriptionId: "sub_existing",
+      });
+      const [id, params] = mockSubscriptionsUpdate.mock.calls[0];
+      expect(id).toBe("sub_existing");
+      expect(params).toEqual({
+        items: [{ id: "si_existing", price: "price_new" }],
+        proration_behavior: "always_invoice",
+        payment_behavior: "pending_if_incomplete",
+      });
+    });
+
+    it("writes the new plan's metadata only after the charge went through", async () => {
+      mockSubscriptionsRetrieve.mockResolvedValue(
+        liveSubscription("core_supporter_monthly", "month"),
+      );
+      mockSubscriptionsUpdate.mockResolvedValue({
+        id: "sub_existing",
+        pending_update: null,
+      });
+
+      await createSubscription("elite_supporter_monthly");
+
+      expect(mockSubscriptionsUpdate).toHaveBeenCalledTimes(2);
+      expect(mockSubscriptionsUpdate.mock.calls[1]).toEqual([
+        "sub_existing",
+        {
+          cancel_at_period_end: false,
+          metadata: expect.objectContaining({
+            planId: "elite_supporter",
+            productId: "elite_supporter_monthly",
+            userId: "7",
+          }),
+        },
+      ]);
+    });
+
+    it("treats monthly to yearly on the same plan as a charge now too", async () => {
+      mockSubscriptionsRetrieve.mockResolvedValue(
+        liveSubscription("pro_supporter_monthly", "month"),
+      );
+      mockSubscriptionsUpdate.mockResolvedValue({
+        id: "sub_existing",
+        pending_update: null,
+      });
+
+      await createSubscription("pro_supporter_yearly");
+
+      expect(mockSubscriptionsUpdate.mock.calls[0][1]).toEqual(
+        expect.objectContaining({
+          proration_behavior: "always_invoice",
+          payment_behavior: "pending_if_incomplete",
+        }),
+      );
+    });
+
+    it("charges now when the current plan cannot be read, rather than deferring a charge that may never come", async () => {
+      mockSubscriptionsRetrieve.mockResolvedValue({
+        id: "sub_existing",
+        status: "active",
+        items: { data: [{ id: "si_existing" }] },
+      });
+      mockSubscriptionsUpdate.mockResolvedValue({
+        id: "sub_existing",
+        pending_update: null,
+      });
+
+      await createSubscription("core_supporter_monthly");
+
+      expect(mockSubscriptionsUpdate.mock.calls[0][1]).toEqual(
+        expect.objectContaining({ proration_behavior: "always_invoice" }),
+      );
+    });
+
+    it("keeps a downgrade on create_prorations, credited against the next invoice", async () => {
+      mockSubscriptionsRetrieve.mockResolvedValue(
+        liveSubscription("elite_supporter_yearly", "year"),
+      );
+      mockSubscriptionsUpdate.mockResolvedValue({ id: "sub_existing" });
+
+      await createSubscription("core_supporter_monthly");
+
+      expect(mockSubscriptionsUpdate).toHaveBeenCalledTimes(1);
+      const [, params] = mockSubscriptionsUpdate.mock.calls[0];
+      expect(params.proration_behavior).toBe("create_prorations");
+      expect(params).not.toHaveProperty("payment_behavior");
+    });
+
+    it("leaves the plan alone and says so when the upgrade charge did not go through", async () => {
+      mockSubscriptionsRetrieve.mockResolvedValue(
+        liveSubscription("core_supporter_monthly", "month"),
+      );
+      mockSubscriptionsUpdate.mockResolvedValue({
+        id: "sub_existing",
+        pending_update: {
+          expires_at: 1_900_000_000,
+          subscription_items: [{ price: { id: "price_new" } }],
+        },
+      });
+
+      // A result, not a throw: Next swaps a thrown server-action message for
+      // a generic one in production, and the customer has to be told this.
+      await expect(
+        createSubscription("elite_supporter_monthly"),
+      ).resolves.toEqual({
+        kind: "upgrade_unpaid",
+        subscriptionId: "sub_existing",
+      });
+      // No metadata naming the new plan reaches the subscription, so nothing
+      // that reads it can grant a tier nobody paid for.
+      expect(mockSubscriptionsUpdate).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("refuses to create a second subscription when Stripe could not be reached to check the existing one", async () => {
@@ -703,6 +874,71 @@ describe("confirmSubscription", () => {
       7,
       "year",
     ]);
+  });
+
+  it("does not grant a plan whose upgrade is still waiting on its payment", async () => {
+    // A pending_if_incomplete switch whose invoice has not been paid sits on
+    // pending_update and Stripe keeps billing the old price. The subscription
+    // itself still reads active, so status alone would hand out the new tier.
+    mockSubscriptionsRetrieve.mockResolvedValue({
+      id: "sub_1",
+      status: "active",
+      customer: "cus_1",
+      metadata: { userId: "7", productId: "elite_supporter_monthly" },
+      pending_update: { expires_at: 1_900_000_000 },
+      latest_invoice: { id: "in_1", status: "open" },
+    });
+
+    const result = await confirmSubscription("sub_1");
+
+    expect(result.active).toBe(false);
+    expect(
+      mockQuery.mock.calls.some(([sql, params]) =>
+        String(sql).includes("plan = $1")
+          ? (params as unknown[])[0] === "elite_supporter"
+          : false,
+      ),
+    ).toBe(false);
+    expect(
+      mockQuery.mock.calls.some(([sql]) => String(sql).includes("user_badges")),
+    ).toBe(false);
+  });
+
+  it("grants the plan once the invoice behind a pending update is paid", async () => {
+    mockSubscriptionsRetrieve.mockResolvedValue({
+      id: "sub_1",
+      status: "active",
+      customer: "cus_1",
+      metadata: { userId: "7", productId: "elite_supporter_monthly" },
+      pending_update: { expires_at: 1_900_000_000 },
+      latest_invoice: { id: "in_1", status: "paid" },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE users
+    mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // badge INSERT
+
+    const result = await confirmSubscription("sub_1");
+
+    expect(result).toEqual({ plan: "elite_supporter", active: true });
+  });
+
+  it("asks Stripe for the latest invoice, which is what says whether the charge cleared", async () => {
+    mockSubscriptionsRetrieve.mockResolvedValue({
+      id: "sub_1",
+      status: "incomplete",
+      customer: "cus_1",
+      metadata: { userId: "7", productId: "elite_supporter_monthly" },
+    });
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    await confirmSubscription("sub_1");
+
+    expect(mockSubscriptionsRetrieve).toHaveBeenCalledWith(
+      "sub_1",
+      expect.objectContaining({
+        expand: expect.arrayContaining(["latest_invoice"]),
+      }),
+    );
   });
 
   it("writes free and revokes the badge for a subscription that isn't paid yet", async () => {

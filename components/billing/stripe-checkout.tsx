@@ -30,6 +30,9 @@ const stripePromise = loadStripe(
 
 type ConfirmStatus = "idle" | "confirming" | "verified" | "pending";
 
+const UPGRADE_UNPAID_MESSAGE =
+  "The upgrade charge did not go through on the card you have on file, so your plan has not changed. Update the card from Manage billing on your Billing tab, then switch again.";
+
 /**
  * Confirms a subscription directly against Stripe via the confirmSubscription
  * server action -- never against our own (possibly stale) DB, and never
@@ -220,6 +223,12 @@ function CheckoutForm({
       return;
     }
 
+    if (subscription.kind === "upgrade_unpaid") {
+      setError(UPGRADE_UNPAID_MESSAGE);
+      setIsProcessing(false);
+      return;
+    }
+
     if (subscription.kind === "switched") {
       // Became an in-place plan switch between page load and submit (the
       // account picked up an active subscription in the meantime) --
@@ -331,6 +340,11 @@ function SwitchPlanPanel({
         markVerified(result.plan);
         return;
       }
+      if (result.kind === "upgrade_unpaid") {
+        setError(UPGRADE_UNPAID_MESSAGE);
+        setIsProcessing(false);
+        return;
+      }
       await run(result.subscriptionId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to switch plans");
@@ -347,8 +361,11 @@ function SwitchPlanPanel({
   return (
     <div className="space-y-5">
       <p className="text-sm text-muted-foreground">
-        You already have an active subscription. Switching plans prorates the
-        difference on your existing payment method, no new card details needed.
+        You already have a subscription, so this switches it on the card you
+        have on file. A higher plan or a longer billing period charges the
+        prorated difference to that card now, and the new plan starts once the
+        charge goes through. A lower plan charges nothing now: the unused time
+        comes off your next invoice.
       </p>
       {error && <InlineAlert tone="error">{error}</InlineAlert>}
       <Button
