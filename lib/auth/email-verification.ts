@@ -19,14 +19,13 @@ import { hashAuthToken } from "@/lib/auth/token-hash";
  * this, so changing your email left email_verified_at NULL with no link ever
  * sent, stranding the account until the user manually hit resend.
  *
- * The row records the address the link goes to. verify-email sets
- * email_verified_at only while the account still holds that address, so the
- * link proves control of one inbox and cannot vouch for an address the
- * account was moved to after it was sent.
+ * The row records the address the link goes to. verify-email acts on it only
+ * while the account still holds that address (it sets email_verified_at) or
+ * is waiting to move to it in users.pending_email (it swaps the address in),
+ * so the link proves control of one inbox and cannot vouch for any other.
  *
- * Pass `client` to run the token write inside a caller's transaction (e.g.
- * the same statement that flips email_verified_at to NULL); omit it to use
- * the shared pool.
+ * Pass `client` to run the token write inside a caller's transaction; omit it
+ * to use the shared pool.
  */
 export async function sendEmailVerification(
   userId: number,

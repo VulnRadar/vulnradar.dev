@@ -301,4 +301,26 @@ describeIntegration("a profile email change waits for its link", () => {
       verified: true,
     });
   });
+
+  it("sending the account's own address back withdraws the change, and its link stops working", async () => {
+    const user = await signedInAccount();
+    const typo = `${unique("typo")}@example.test`;
+    expect((await changeEmail(typo)).status).toBe(200);
+    await flushMail();
+    const token = lastLinkTo(typo);
+
+    expect((await changeEmail(user.email.toUpperCase())).status).toBe(200);
+    expect(await accountState(user.id)).toEqual({
+      email: user.email,
+      pending_email: null,
+      verified: true,
+    });
+
+    expect((await clickLink(token)).status).toBe(400);
+    expect(await accountState(user.id)).toEqual({
+      email: user.email,
+      pending_email: null,
+      verified: true,
+    });
+  });
 });

@@ -139,8 +139,8 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
     // current password, or the step-up for an account that has none).
     // Without this, a stolen session cookie is enough to take over the
     // account by changing the email and then triggering a password reset, or
-    // by setting a first password. Name and avatar are NOT account-takeover vectors on
-    // their own (there's no follow-up step that turns "I can rename you"
+    // by setting a first password. Name and avatar are NOT account-takeover
+    // vectors on their own (there's no follow-up step that turns "I can rename you"
     // into "I own your account" the way there is for email), so they don't
     // require it -- and no UI in the general profile tab collects a
     // password for them, unlike the dedicated change-password form, which
@@ -267,7 +267,19 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
         );
       }
 
-      if (!unchanged) {
+      if (unchanged) {
+        // The account's own address, sent again, is the latest word on where
+        // it should live, so a change still waiting for its link is withdrawn.
+        // Left in place, the earlier request won: its link stayed live and
+        // could still move the account to an address its owner had just
+        // taken back, a typo included. Clearing pending_email is enough to
+        // kill that link, because verify-email only swaps when the token's
+        // address equals it.
+        await pool.query(
+          "UPDATE users SET pending_email = NULL, updated_at = NOW() WHERE id = $1 AND pending_email IS NOT NULL",
+          [session.userId],
+        );
+      } else {
         // Taken by another account, compared the way the unique index on
         // LOWER(email) compares. Checked again when the link is opened,
         // because a pending address reserves nothing: someone can sign up

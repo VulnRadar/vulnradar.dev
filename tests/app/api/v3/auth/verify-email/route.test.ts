@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createHash, createHmac } from "node:crypto";
+import { ALL_COLUMNS } from "@/lib/notifications/columns";
 
 /**
  * Route-level tests for /api/v3/auth/verify-email (POST and GET).
@@ -33,6 +34,7 @@ let swapRowCount = 1;
 let swapError: (Error & { code?: string }) | null = null;
 let addressOwnerRow: { id: number } | null = null;
 let pendingDroppedCalls: unknown[][] = [];
+let prefsRow: Record<string, boolean> | null = null;
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
@@ -72,6 +74,9 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   if (s.startsWith("UPDATE email_verification_tokens SET used_at = NOW()")) {
     tokenUsedCalls.push(params);
     return { rows: [] };
+  }
+  if (s.includes("FROM notification_preferences WHERE user_id")) {
+    return { rows: prefsRow ? [prefsRow] : [] };
   }
   return { rows: [] };
 });
@@ -159,6 +164,7 @@ beforeEach(() => {
   swapError = null;
   addressOwnerRow = null;
   pendingDroppedCalls = [];
+  prefsRow = null;
   sentMail.length = 0;
 });
 
@@ -388,8 +394,13 @@ describe("POST /api/v3/auth/verify-email for a pending address", () => {
     expect(verifiedUserCalls).toHaveLength(0);
   });
 
+  // Every preference switched off, account changes included: the notice is
+  // the mail that tells an owner their account moved, so it is sent as the
+  // security type, which no preference silences. Sent as account_changes it
+  // would be held back here.
   it("tells the old address, as a security notice, and confirms to the new one", async () => {
     tokenRow = pendingToken();
+    prefsRow = Object.fromEntries(ALL_COLUMNS.map((c) => [c, false]));
 
     await POST(verifyPostRequest({ token: "pending-token" }));
     await flushMail();

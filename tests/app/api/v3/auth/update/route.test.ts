@@ -772,6 +772,35 @@ describe("PATCH /api/v3/auth/update", () => {
       expect(emailUpdateCalls).toHaveLength(0);
       expect(sessionDeleteCalls).toHaveLength(0);
     });
+
+    // The latest request decides where the account lives. Sending its own
+    // address back while a change waits used to leave that change, and its
+    // link, alive: the earlier request won, typo included.
+    it("withdraws a waiting change when the account's own address is sent back", async () => {
+      logIn();
+      const res = await PATCH(
+        updateRequest({
+          email: "USER@example.com",
+          currentPassword: CURRENT_PASSWORD,
+        }),
+      );
+
+      expect(res.status).toBe(200);
+      const withdrawn = queries.filter((q) =>
+        q.sql.startsWith("UPDATE users SET pending_email = NULL"),
+      );
+      expect(withdrawn).toHaveLength(1);
+      expect(withdrawn[0].sql).toMatch(/WHERE id = \$1/);
+      expect(withdrawn[0].params).toEqual([7]);
+      expect(pendingEmailCalls).toHaveLength(0);
+      expect(emailUpdateCalls).toHaveLength(0);
+      expect(sessionDeleteCalls).toHaveLength(0);
+      expect(
+        queries.some((q) =>
+          q.sql.startsWith("INSERT INTO email_verification_tokens"),
+        ),
+      ).toBe(false);
+    });
   });
 
   describe("avatar", () => {
