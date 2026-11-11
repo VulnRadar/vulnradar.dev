@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
+import { findOwnedScan, parseScanRef } from "@/lib/history/scan-ref";
 
 /**
  * Create (or return the already-issued) auto-updating badge token for one
@@ -10,6 +11,10 @@ import pool from "@/lib/database/db";
  * user pastes into their README/site never needs to change again -- the
  * image route always resolves it against whichever scan of that URL ran
  * most recently, by date (see app/api/v3/badge/[token]/route.ts).
+ *
+ * The scan is named by `scanId`, either spelling: the 32 character public id
+ * History lists, or the legacy numeric id. A page that only holds the public id
+ * must not have to ask for the numeric one first.
  */
 export async function POST(req: NextRequest) {
   const session = await getSession();
@@ -18,19 +23,16 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const scanId = Number((body as Record<string, unknown>)?.scanId);
-  if (!Number.isInteger(scanId) || scanId <= 0) {
+  const scanRef = parseScanRef((body as Record<string, unknown>)?.scanId);
+  if (!scanRef) {
     return NextResponse.json({ error: "Invalid scanId" }, { status: 400 });
   }
 
-  const scanRes = await pool.query<{ url: string }>(
-    `SELECT url FROM scan_history WHERE id = $1 AND user_id = $2`,
-    [scanId, session.userId],
-  );
-  if (scanRes.rows.length === 0) {
+  const scan = await findOwnedScan(scanRef, session.userId);
+  if (!scan) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
-  const { url } = scanRes.rows[0];
+  const { url } = scan;
 
   const existing = await pool.query<{ badge_token: string }>(
     `SELECT badge_token FROM host_badges
@@ -99,23 +101,20 @@ export async function DELETE(req: NextRequest) {
   }
 
   const url = new URL(req.url);
-  const scanId = Number(url.searchParams.get("scanId"));
-  if (!Number.isInteger(scanId) || scanId <= 0) {
+  const scanRef = parseScanRef(url.searchParams.get("scanId"));
+  if (!scanRef) {
     return NextResponse.json({ error: "Invalid scanId" }, { status: 400 });
   }
 
-  const scanRes = await pool.query<{ url: string }>(
-    `SELECT url FROM scan_history WHERE id = $1 AND user_id = $2`,
-    [scanId, session.userId],
-  );
-  if (scanRes.rows.length === 0) {
+  const scan = await findOwnedScan(scanRef, session.userId);
+  if (!scan) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
 
   await pool.query(
     `UPDATE host_badges SET revoked_at = NOW()
      WHERE user_id = $1 AND url = $2`,
-    [session.userId, scanRes.rows[0].url],
+    [session.userId, scan.url],
   );
 
   return NextResponse.json({ success: true });

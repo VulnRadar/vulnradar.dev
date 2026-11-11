@@ -4,7 +4,10 @@ import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { scanNumericId } from "@/lib/history/resolve-scan";
+import { findOwnedScan, parseScanRef } from "@/lib/history/scan-ref";
+import { readJsonObject } from "@/lib/api/api-utils";
+import { burstLimitedResponse } from "@/lib/api/rate-limit-response";
+import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
 
 // Get all tags for the user (auto and user-added alike -- both are valid
 // values to filter scan history by, see app/history/page.tsx's tag filter).
@@ -48,18 +51,21 @@ export async function POST(request: NextRequest) {
     ...RATE_LIMITS.scanTags,
   });
   if (!rl.allowed) {
-    return NextResponse.json(
-      {
-        error: `Too many tag changes. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
-      },
-      { status: 429 },
+    return burstLimitedResponse(
+      rl,
+      TOO_MANY_ATTEMPTS("tag changes", rl.retryAfterSeconds),
     );
   }
+
+  // A body that is not a JSON object is the client's mistake, so it is a 400,
+  // not the TypeError a destructured null or array would have thrown.
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
 
   // scanId arrives as the opaque public_id (a string) or a legacy numeric id;
   // the ownership check below resolves either shape to the numeric primary
   // key every scan_tags / auto_tag_dismissals row keys on.
-  const { scanId: scanIdParam, tag, action } = await request.json();
+  const { scanId: scanIdParam, tag, action } = parsed.data;
 
   if (!scanIdParam || !tag || typeof tag !== "string") {
     return NextResponse.json(
@@ -74,18 +80,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid tag." }, { status: 400 });
 
   // Verify scan belongs to user
-  const idParam = String(scanIdParam);
-  const scanCheck = await pool.query(
-    `SELECT id FROM scan_history
-     WHERE (public_id = $1 OR ($2::bigint IS NOT NULL AND id = $2)) AND user_id = $3`,
-    [idParam, scanNumericId(idParam), session.userId],
-  );
-  if (scanCheck.rows.length === 0) {
+  const scanRef = parseScanRef(scanIdParam);
+  const ownedScan = scanRef
+    ? await findOwnedScan(scanRef, session.userId)
+    : null;
+  if (!ownedScan) {
     return NextResponse.json({ error: "Scan not found." }, { status: 404 });
   }
   // The numeric primary key, used for every scan_tags / auto_tag_dismissals
   // read and write below.
-  const scanId = scanCheck.rows[0].id;
+  const scanId = ownedScan.id;
 
   if (action === "remove") {
     // An auto or ai tag is a computed fact about the scan's findings, so
