@@ -83,6 +83,25 @@ describe("parseGithubScanResponse", () => {
 });
 
 describe("aiReviewNotice", () => {
+  it("says AI is switched off in settings when the account disabled it", () => {
+    const o = outcome({
+      aiReviewDisabled: true,
+      ...coverage(0, 0),
+      aiTokensUsed: 0,
+    });
+    const n = aiReviewNotice(o);
+
+    expect(n?.kind).toBe("skipped");
+    expect(n?.title).toBe("AI review did not run");
+    expect(text(n)).toMatch(/AI is switched off in your settings/);
+    expect(text(n)).toMatch(/pattern-based secret scan still checked all 40/);
+    expect(n?.filesReviewed).toBe(0);
+  });
+
+  it("reads a response with no aiReviewDisabled as AI left on", () => {
+    expect(outcome().aiReviewDisabled).toBe(false);
+  });
+
   it("says nothing when the AI review covered every file", () => {
     const o = outcome();
     expect(aiReviewNotice(o)).toBeNull();

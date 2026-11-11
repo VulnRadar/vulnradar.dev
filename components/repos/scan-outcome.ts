@@ -17,6 +17,7 @@ export function parseGithubScanResponse(
     filesSkippedByCaps,
     aiTokensUsed,
     aiReviewSkipped,
+    aiReviewDisabled,
     aiReviewStoppedAtBudget,
     aiReviewStoppedAtRunCap,
     aiReviewCoverage,
@@ -31,6 +32,7 @@ export function parseGithubScanResponse(
     filesSkippedByCaps: Number(filesSkippedByCaps) || 0,
     aiTokensUsed: Number(aiTokensUsed) || 0,
     aiReviewSkipped: aiReviewSkipped === true,
+    aiReviewDisabled: aiReviewDisabled === true,
     aiReviewStoppedAtBudget: aiReviewStoppedAtBudget === true,
     aiReviewStoppedAtRunCap: aiReviewStoppedAtRunCap === true,
     aiReviewCoverage: parseCoverage(aiReviewCoverage),
@@ -127,6 +129,7 @@ export function aiReviewNotice(
   const incomplete = reviewed !== null && reviewed < total;
   if (
     !outcome.aiReviewSkipped &&
+    !outcome.aiReviewDisabled &&
     !outcome.aiReviewStoppedAtBudget &&
     !outcome.aiReviewStoppedAtRunCap &&
     !incomplete &&
@@ -139,6 +142,18 @@ export function aiReviewNotice(
     outcome.filesScanned === 1
       ? "The pattern-based secret scan still checked the one file."
       : `The pattern-based secret scan still checked all ${outcome.filesScanned} files.`;
+
+  if (outcome.aiReviewDisabled) {
+    return {
+      kind: "skipped",
+      title: "AI review did not run",
+      paragraphs: [
+        "AI is switched off in your settings, so no file got an AI review.",
+        patternLine,
+      ],
+      filesReviewed: 0,
+    };
+  }
 
   if (outcome.aiReviewSkipped) {
     return {
