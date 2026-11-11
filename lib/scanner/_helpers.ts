@@ -33,18 +33,26 @@ function fnvHash(s: string): string {
 
 /**
  * One spelling per scanned address: the host lower-cased, the fragment
- * dropped, and a trailing slash dropped from any path but the root (which
- * always has one). "example.com", "https://Example.com" and
- * "https://example.com/#top" are one site, and storing or hashing them as
- * typed gave the dashboard, the CLI and a crawl three baselines and three sets
- * of finding ids for it, so triage reset and the regression email re-alerted
- * on every switch of entry point. The query string is kept: ?page=2 is a
- * different page. Userinfo is kept too, because it is part of what gets
- * fetched. A string the URL parser refuses comes back unchanged, so the
+ * dropped, and an empty path given the root slash. "https://example.com",
+ * "https://Example.com/" and "https://example.com/#top" are one site, and
+ * storing or hashing them as typed gave the dashboard, the CLI and a crawl
+ * three baselines and three sets of finding ids for it, so triage reset and
+ * the regression email re-alerted on every switch of entry point.
+ *
+ * The rest of the path is kept as given, trailing slash included: this is
+ * also the address that gets fetched, and "/docs/" and "/docs" can be two
+ * different responses (a static host that serves the index only under the
+ * slash, an app that routes them apart). The query string is kept for the
+ * same reason, and userinfo because it is part of the request. A string the
+ * URL parser refuses, or one with no host, comes back unchanged, so the
  * caller's validation still sees what was sent.
  *
  * This is the local copy of canonicalScanUrl in lib/scanner/scan-identity.ts
- * (scan-routes-entry); once that module lands, this becomes a re-export of it.
+ * (scan-routes-entry), and it has to give the same answer for every URL that
+ * one accepts: the scan routes store that one in scan_history.url and pass it
+ * here as the address finding ids are hashed from, and two rules would hash a
+ * page under one spelling while its triage rows are keyed under the other.
+ * Once that module lands, this becomes a re-export of it.
  */
 export function canonicalScanUrl(input: string): string {
   let url: URL;
@@ -53,11 +61,14 @@ export function canonicalScanUrl(input: string): string {
   } catch {
     return input;
   }
-  url.hash = "";
-  if (url.hostname) url.hostname = url.hostname.toLowerCase();
-  if (url.pathname.length > 1 && url.pathname.endsWith("/")) {
-    url.pathname = url.pathname.slice(0, -1);
+  if (!url.hostname) return input;
+  try {
+    url.hostname = new URL(`http://${url.hostname}`).hostname;
+  } catch {
+    return input;
   }
+  url.hash = "";
+  if (url.pathname === "") url.pathname = "/";
   return url.href;
 }
 

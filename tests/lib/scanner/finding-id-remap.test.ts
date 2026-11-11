@@ -59,7 +59,7 @@ describe("remapFindingKey", () => {
 
   it("re-spells a distinguished id whose URL changed spelling", () => {
     const now = libraryFinding("https://example.com/shop/");
-    const oldUrl = "https://example.com/shop/";
+    const oldUrl = "https://Example.com/shop/";
     const hit = {
       evidence: now.evidence,
       evidenceExcerpts: now.evidenceExcerpts,
@@ -71,7 +71,7 @@ describe("remapFindingKey", () => {
     expect(needsStoredHit(old, oldUrl)).toBe(true);
     expect(remapFindingKey(old, oldUrl, hit)).toEqual({
       findingId: now.id,
-      findingUrl: "https://example.com/shop",
+      findingUrl: "https://example.com/shop/",
     });
   });
 

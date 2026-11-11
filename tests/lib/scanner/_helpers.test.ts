@@ -69,8 +69,14 @@ describe("generateId", () => {
     expect(generateId("csp-missing", spelling)).toBe("csp-missing--1qfat2s");
   });
 
-  it("keeps a page's trailing-slash spellings together and its query apart", () => {
+  // The path is what gets fetched, and "/blog/" and "/blog" can answer
+  // differently, so they are two pages with two sets of ids; the stored id of
+  // either is the one it always had.
+  it("keeps a page's path as given and its query apart", () => {
     expect(generateId("x", "https://example.com/blog/")).toBe(
+      legacyFindingId("x", "https://example.com/blog/"),
+    );
+    expect(generateId("x", "https://example.com/blog/")).not.toBe(
       generateId("x", "https://example.com/blog"),
     );
     expect(generateId("x", "https://example.com/blog?page=2")).not.toBe(
@@ -89,17 +95,21 @@ describe("generateId", () => {
 describe("canonicalScanUrl", () => {
   it.each([
     ["https://Example.com", "https://example.com/"],
-    ["https://example.com/a/", "https://example.com/a"],
-    ["https://example.com/a/?q=1#frag", "https://example.com/a?q=1"],
+    ["https://example.com/a/", "https://example.com/a/"],
+    ["https://example.com/a", "https://example.com/a"],
+    ["https://example.com/a/?q=1#frag", "https://example.com/a/?q=1"],
     ["http://example.com:80/", "http://example.com/"],
-    ["ssh://Host.example:22", "ssh://host.example:22"],
+    ["ssh://Host.example:22", "ssh://host.example:22/"],
     ["mongodb://db.example:27017/", "mongodb://db.example:27017/"],
   ])("canonicalises %s to %s", (input, output) => {
     expect(canonicalScanUrl(input)).toBe(output);
   });
 
-  it("returns a string the parser refuses unchanged", () => {
+  it("returns a string the parser refuses, or one with no host, unchanged", () => {
     expect(canonicalScanUrl("not a url")).toBe("not a url");
+    expect(canonicalScanUrl("mailto:a@example.com")).toBe(
+      "mailto:a@example.com",
+    );
   });
 });
 

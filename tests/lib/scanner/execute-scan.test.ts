@@ -184,7 +184,7 @@ describe("normalizeUrl", () => {
     );
     expect(normalizeUrl("example.com")).toBe("https://example.com/");
     expect(normalizeUrl("https://example.com/docs/#intro")).toBe(
-      "https://example.com/docs",
+      "https://example.com/docs/",
     );
     expect(normalizeUrl("")).toBe("");
   });
@@ -201,7 +201,7 @@ describe("normalizeUrl", () => {
   it.each([
     [
       `https://evil.com${BACKSLASH}@victim.com/`,
-      "https://evil.com/@victim.com",
+      "https://evil.com/@victim.com/",
     ],
     [`evil.com${BACKSLASH}@victim.com`, "https://evil.com/@victim.com"],
     ["https://vic\ttim.com/", "https://victim.com/"],

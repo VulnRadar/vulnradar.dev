@@ -24,6 +24,12 @@ import type {
  * scans of the same host diffable, and an assertion that recomputed the id
  * would follow a renamed prefix straight past the regression it exists to
  * catch. If one of these fails, the fix is almost never to update the string.
+ *
+ * The hash part is of the canonical address (lib/scanner/_helpers.ts's
+ * canonicalScanUrl), which gives "ssh://ssh.example.com:22" its root slash,
+ * so these are the ids of "ssh://ssh.example.com:22/" and so on. They moved
+ * once, when finding ids started hashing that spelling, and
+ * lib/scanner/finding-id-remap.ts carries triage stored under the old ones.
  */
 
 const SSH_URL = "ssh://ssh.example.com:22";
@@ -50,7 +56,7 @@ describe("buildVersionDisclosureFinding", () => {
       SSH_URL,
     );
     expect(finding).not.toBeNull();
-    expect(finding!.id).toBe("banner-version-ssh--sgxkem");
+    expect(finding!.id).toBe("banner-version-ssh--b7pc37");
     expect(finding!.severity).toBe("info");
     expect(finding!.category).toBe("configuration");
     expect(finding!.evidence).toContain("OpenSSH_9.6p1");
@@ -86,7 +92,7 @@ describe("buildSshFindings", () => {
     );
     const proto1 = findings.find((f) => f.title === "SSH Protocol 1 Supported");
     expect(proto1).toBeDefined();
-    expect(proto1!.id).toBe("ssh-protocol1-ssh.example.com--sgxkem");
+    expect(proto1!.id).toBe("ssh-protocol1-ssh.example.com--b7pc37");
     expect(proto1!.severity).toBe("high");
   });
 
@@ -97,7 +103,7 @@ describe("buildSshFindings", () => {
       "ssh.example.com",
     );
     expect(findings).toHaveLength(1);
-    expect(findings[0].id).toBe("ssh-known-vulnerable-ssh.example.com--sgxkem");
+    expect(findings[0].id).toBe("ssh-known-vulnerable-ssh.example.com--b7pc37");
     // Distributions backport fixes without bumping the reported version, so
     // this stays medium and the copy says "verify", not "confirmed".
     expect(findings[0].severity).toBe("medium");
@@ -139,7 +145,7 @@ describe("buildStartTlsFindings", () => {
       "mail.example.com",
     );
     expect(findings).toHaveLength(1);
-    expect(findings[0].id).toBe("smtp-no-starttls-mail.example.com--dit90u");
+    expect(findings[0].id).toBe("smtp-no-starttls-mail.example.com--xrl13n");
     expect(findings[0].severity).toBe("high");
   });
 
@@ -157,7 +163,7 @@ describe("buildStartTlsFindings", () => {
     );
     expect(findings).toHaveLength(1);
     expect(findings[0].id).toBe(
-      "smtp-plaintext-auth-allowed-mail.example.com--dit90u",
+      "smtp-plaintext-auth-allowed-mail.example.com--xrl13n",
     );
     expect(findings[0].severity).toBe("medium");
   });
@@ -192,7 +198,7 @@ describe("buildStartTlsFindings", () => {
     );
     expect(findings).toHaveLength(1);
     expect(findings[0].id).toBe(
-      "imap-plaintext-auth-allowed-mail.example.com--1ckpcgq",
+      "imap-plaintext-auth-allowed-mail.example.com--3pc46n",
     );
     expect(findings[0].explanation).toMatch(/LOGINDISABLED/);
   });
@@ -227,7 +233,7 @@ describe("buildStartTlsFindings", () => {
     );
     expect(findings).toHaveLength(1);
     expect(findings[0].id).toBe(
-      "pop3-plaintext-auth-allowed-mail.example.com--1h1qdcz",
+      "pop3-plaintext-auth-allowed-mail.example.com--1f5z38",
     );
     expect(findings[0].explanation).toMatch(/CAPA/);
   });
@@ -245,7 +251,7 @@ describe("buildStartTlsFindings", () => {
       "mail.example.com",
     );
     expect(findings).toHaveLength(1);
-    expect(findings[0].id).toBe("pop3-no-starttls-mail.example.com--1h1qdcz");
+    expect(findings[0].id).toBe("pop3-no-starttls-mail.example.com--1f5z38");
     expect(findings[0].severity).toBe("high");
   });
 });
@@ -268,7 +274,7 @@ describe("buildMongoAuthFindings", () => {
     );
     expect(findings).toHaveLength(1);
     expect(findings[0].id).toBe(
-      "mongodb-unauthenticated-db.example.com--mxkvx5",
+      "mongodb-unauthenticated-db.example.com--1me4juq",
     );
     expect(findings[0].severity).toBe("critical");
     expect(findings[0].title).toBe("MongoDB Allows Unauthenticated Access");
@@ -281,7 +287,9 @@ describe("buildMongoAuthFindings", () => {
       "db.example.com",
     );
     expect(findings).toHaveLength(1);
-    expect(findings[0].id).toBe("mongodb-auth-required-db.example.com--mxkvx5");
+    expect(findings[0].id).toBe(
+      "mongodb-auth-required-db.example.com--1me4juq",
+    );
     expect(findings[0].severity).toBe("info");
     expect(findings[0].title).toBe("MongoDB Requires Authentication");
   });
