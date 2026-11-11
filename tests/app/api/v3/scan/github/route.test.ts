@@ -643,7 +643,12 @@ describe("POST /api/v3/scan/github - notifications", () => {
   });
 
   it("does not notify when the scan_history row could not be written", async () => {
-    mockQuery.mockRejectedValue(new Error("pool exhausted"));
+    // The AI switch is read first and a failed read refuses the scan, so only
+    // the history write fails here.
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("user_ai_configs")) return { rows: [] };
+      throw new Error("pool exhausted");
+    });
 
     const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
 
@@ -1070,13 +1075,15 @@ describe("POST /api/v3/scan/github - AI switched off in the account's settings",
     },
   );
 
-  it("treats a failure reading the AI settings as AI on, as /scan/verify does", async () => {
+  it("refuses, and sends no source to the model, when the AI switch cannot be read", async () => {
+    // Treating a failed read as "AI on" sent repository source to the model
+    // for an account that had switched AI off, whenever the read failed.
     mockQuery.mockImplementation(async (sql: string) => {
-      if (String(sql).includes("user_ai_configs")) throw new Error("no table");
+      if (String(sql).includes("user_ai_configs")) throw new Error("db down");
       return { rows: [{ id: 99 }] };
     });
     const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
-    expect(res.status).toBe(200);
-    expect(mockRunGithubAiReview).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(500);
+    expect(mockRunGithubAiReview).not.toHaveBeenCalled();
   });
 });

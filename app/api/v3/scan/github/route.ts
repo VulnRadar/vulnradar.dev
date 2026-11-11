@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
+import { isAiDisabledForUser } from "@/lib/ai/user-ai-config";
 import {
   APP_NAME,
   SEVERITY_LEVELS,
@@ -145,7 +146,11 @@ export async function POST(request: Request) {
     // (the trial or credits), and a pattern-only scan there would be free on
     // every request (owner decision D22), so it is refused instead, before
     // GitHub is asked for anything.
-    const aiDisabled = await isAiDisabled(userId);
+    // A failed read of the switch throws into the 500 below rather than
+    // counting as "AI on": the review sends repository source to a model, and
+    // an account that switched AI off must not have that happen because the
+    // setting could not be read for a moment.
+    const aiDisabled = await isAiDisabledForUser(userId);
     if (aiDisabled && preQuota.limitTokens === 0) {
       return NextResponse.json(
         {
@@ -450,20 +455,6 @@ export async function POST(request: Request) {
       { error: "An unexpected error occurred during the repo scan." },
       { status: 500 },
     );
-  }
-}
-
-/** user_ai_configs.ai_disabled, read the way /scan/verify reads it. */
-async function isAiDisabled(userId: number): Promise<boolean> {
-  try {
-    const result = await pool.query(
-      `SELECT ai_disabled FROM user_ai_configs WHERE user_id = $1`,
-      [userId],
-    );
-    return result.rows[0]?.ai_disabled === true;
-  } catch {
-    // No row, or no table yet: AI is on by default.
-    return false;
   }
 }
 
