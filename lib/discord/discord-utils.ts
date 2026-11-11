@@ -4,7 +4,12 @@ import { encryptApiKey, decryptApiKey } from "@/lib/auth/crypto";
 import { getSetting } from "@/lib/config/runtime-config";
 import { randomInt, randomBytes, createHash } from "node:crypto";
 
-/** How long the token-refresh call to Discord may take. */
+/**
+ * How long one call to Discord's API may take: the token refresh here, and
+ * the token exchange, user lookup and guild calls in the Discord routes. A
+ * Discord that accepted the connection and went quiet held each of those
+ * requests open for as long as the socket lived.
+ */
 export const DISCORD_TOKEN_TIMEOUT_MS = 10_000;
 
 /**

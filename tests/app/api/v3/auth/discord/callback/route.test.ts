@@ -337,6 +337,24 @@ describe("GET /api/v3/auth/discord/callback", () => {
     expect(locationOf(res).searchParams.get("error")).toBe("discord_failed");
   });
 
+  it("bounds the token exchange and the user lookup with a timeout", async () => {
+    // A Discord that accepted the connection and went quiet held the
+    // callback open for as long as the socket lived. A timeout throws into
+    // the discord_failed redirect above.
+    const state = loginState();
+    await GET(callbackRequest({ code: "somecode", state }));
+    const calls = mockFetch.mock.calls as unknown as Array<
+      [RequestInfo | URL, RequestInit | undefined]
+    >;
+    for (const url of [
+      "https://discord.com/api/oauth2/token",
+      "https://discord.com/api/users/@me",
+    ]) {
+      const call = calls.find(([input]) => String(input) === url);
+      expect(call?.[1]?.signal, url).toBeInstanceOf(AbortSignal);
+    }
+  });
+
   describe("action=connect", () => {
     it("refuses an impersonation session before Discord is called, and writes nothing", async () => {
       // A state issued to the real owner still has to fail once the browser

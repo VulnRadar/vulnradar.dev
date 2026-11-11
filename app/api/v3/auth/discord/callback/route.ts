@@ -7,6 +7,7 @@ import pool from "@/lib/database/db";
 import { cookies } from "next/headers";
 import { getSetting, resolveAppUrl } from "@/lib/config/runtime-config";
 import {
+  DISCORD_TOKEN_TIMEOUT_MS,
   sendDiscordEmail2FACode,
   updateDiscordTokens,
   getDiscordUserConnection,
@@ -185,6 +186,7 @@ export async function GET(request: Request) {
         code,
         redirect_uri: redirectUri,
       }),
+      signal: AbortSignal.timeout(DISCORD_TOKEN_TIMEOUT_MS),
     });
 
     if (!tokenResponse.ok) {
@@ -211,6 +213,7 @@ export async function GET(request: Request) {
     // Get Discord user info
     const userResponse = await fetch("https://discord.com/api/users/@me", {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
+      signal: AbortSignal.timeout(DISCORD_TOKEN_TIMEOUT_MS),
     });
 
     if (!userResponse.ok) {
@@ -238,6 +241,7 @@ export async function GET(request: Request) {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({ access_token: tokens.access_token }),
+            signal: AbortSignal.timeout(DISCORD_TOKEN_TIMEOUT_MS),
           },
         );
         guildJoined = joinResponse.ok || joinResponse.status === 204;
