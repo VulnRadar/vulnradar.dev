@@ -90,6 +90,11 @@ describe("profile tabs read plan limits from the server", () => {
       path.join(PROFILE_DIR, "tabs/profile-billing-tab.tsx"),
       "utf8",
     );
-    expect(billing).toContain("{billingInfo.limits[paidPlan.id]} scans/day");
+    expect(billing).toContain("`${billingInfo.limits[paidPlan.id]} scans/day`");
+    // A live limit can be -1 (the registry's "unlimited"), which the catalog's
+    // numbers never were, so the card must not print "-1 scans/day".
+    expect(billing).toMatch(
+      /billingInfo\.limits\[paidPlan\.id\] === -1\s*\?\s*"Unlimited scans"/,
+    );
   });
 });

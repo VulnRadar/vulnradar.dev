@@ -885,7 +885,9 @@ export function ProfileBillingTab({
                         {paidPlan.name}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {billingInfo.limits[paidPlan.id]} scans/day
+                        {billingInfo.limits[paidPlan.id] === -1
+                          ? "Unlimited scans"
+                          : `${billingInfo.limits[paidPlan.id]} scans/day`}
                       </p>
                       <p className="text-sm font-semibold text-primary mt-1">
                         ${(paidPlan.priceInCents / 100).toFixed(0)}/mo
