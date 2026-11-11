@@ -121,8 +121,11 @@ describe("buildInventoryInput markup", () => {
     expect(input.assets).toContain("/account.php");
     expect(input.assets).toContain("/other.php");
     expect(input.assets).toContain("/post.php");
-    expect(input.assets.some((a) => a.includes("phpmyadmin.net"))).toBe(false);
-    expect(input.assets.some((a) => a.includes("elsewhere.test"))).toBe(false);
+    const hosts = input.assets.map(
+      (a) => new URL(a, "https://example.test/").hostname,
+    );
+    expect(hosts).not.toContain("phpmyadmin.net");
+    expect(hosts).not.toContain("elsewhere.test");
   });
 
   it("skips fragments, javascript: and data: URLs", () => {

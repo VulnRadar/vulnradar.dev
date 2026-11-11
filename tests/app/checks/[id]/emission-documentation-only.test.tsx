@@ -43,7 +43,7 @@ async function renderText(id: string): Promise<string> {
     await CheckPage({ params: Promise.resolve({ id }) }),
   );
   return html
-    .replace(/<script[\s\S]*?<\/script>/g, " ")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script[^>]*>/gi, " ")
     .replace(/<\/?(code|span)[^>]*>/g, "")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ");
