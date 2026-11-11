@@ -57,6 +57,41 @@
         "label": "Node.js response.cookie()",
         "language": "javascript",
         "code": "res.cookie('session', token, {\n  httpOnly: true,\n  secure: process.env.NODE_ENV === 'production',\n  sameSite: 'lax',\n  path: '/',\n});"
+      },
+      {
+        "label": "Django (settings.py)",
+        "language": "python",
+        "code": "SESSION_COOKIE_SECURE = True\nCSRF_COOKIE_SECURE = True\nLANGUAGE_COOKIE_SECURE = True"
+      },
+      {
+        "label": "Flask",
+        "language": "python",
+        "code": "app.config.update(\n    SESSION_COOKIE_SECURE=True,\n    SESSION_COOKIE_HTTPONLY=True,\n    SESSION_COOKIE_SAMESITE=\"Lax\",\n)"
+      },
+      {
+        "label": "Rails",
+        "language": "ruby",
+        "code": "# config/environments/production.rb\nconfig.force_ssl = true\n\n# config/initializers/session_store.rb\nRails.application.config.session_store :cookie_store,\n  key: \"_app_session\",\n  secure: true,\n  httponly: true,\n  same_site: :lax"
+      },
+      {
+        "label": "Laravel (config/session.php)",
+        "language": "php",
+        "code": "'secure' => env('SESSION_SECURE_COOKIE', true),\n'http_only' => true,\n'same_site' => 'lax',"
+      },
+      {
+        "label": "Spring Boot (application.properties)",
+        "language": "properties",
+        "code": "server.servlet.session.cookie.secure=true\nserver.servlet.session.cookie.http-only=true\nserver.servlet.session.cookie.same-site=lax"
+      },
+      {
+        "label": "PHP",
+        "language": "php",
+        "code": "session_set_cookie_params([\n    'lifetime' => 0,\n    'path' => '/',\n    'secure' => true,\n    'httponly' => true,\n    'samesite' => 'Lax',\n]);\nsession_start();"
+      },
+      {
+        "label": "ASP.NET Core",
+        "language": "csharp",
+        "code": "builder.Services.ConfigureApplicationCookie(options =>\n{\n    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;\n    options.Cookie.HttpOnly = true;\n    options.Cookie.SameSite = SameSiteMode.Lax;\n});"
       }
     ],
     "_idx": 3,
@@ -293,6 +328,41 @@
         "label": "Node.js response.cookie()",
         "language": "javascript",
         "code": "res.cookie('__Host-session', token, {\n  httpOnly: true,\n  secure: true,\n  sameSite: 'lax',\n  path: '/',\n});"
+      },
+      {
+        "label": "Django (settings.py)",
+        "language": "python",
+        "code": "SESSION_COOKIE_HTTPONLY = True\n# Leave CSRF_COOKIE_HTTPONLY False if your JavaScript reads the token from the cookie."
+      },
+      {
+        "label": "Flask",
+        "language": "python",
+        "code": "app.config.update(\n    SESSION_COOKIE_HTTPONLY=True,\n    SESSION_COOKIE_SECURE=True,\n)"
+      },
+      {
+        "label": "Rails",
+        "language": "ruby",
+        "code": "# config/initializers/session_store.rb\nRails.application.config.session_store :cookie_store,\n  key: \"_app_session\",\n  httponly: true,\n  secure: true\n\n# A cookie you set yourself:\ncookies[:remember] = { value: token, httponly: true, secure: true }"
+      },
+      {
+        "label": "Laravel (config/session.php)",
+        "language": "php",
+        "code": "'http_only' => true,\n'secure' => env('SESSION_SECURE_COOKIE', true),"
+      },
+      {
+        "label": "Spring Boot (application.properties)",
+        "language": "properties",
+        "code": "server.servlet.session.cookie.http-only=true\nserver.servlet.session.cookie.secure=true"
+      },
+      {
+        "label": "PHP",
+        "language": "php",
+        "code": "// php.ini: session.cookie_httponly = 1\nsetcookie('remember', $token, [\n    'path' => '/',\n    'secure' => true,\n    'httponly' => true,\n    'samesite' => 'Lax',\n]);"
+      },
+      {
+        "label": "ASP.NET Core",
+        "language": "csharp",
+        "code": "builder.Services.AddSession(options =>\n{\n    options.Cookie.HttpOnly = true;\n    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;\n});"
       }
     ],
     "references": [
@@ -307,10 +377,10 @@
     "type": "header",
     "title": "Cookie Missing SameSite Attribute",
     "category": "cookies",
-    "severity": "medium",
+    "severity": "low",
     "description": "A cookie is set without the SameSite attribute. Without SameSite, the cookie is sent on all cross-site requests (or defaults to SameSite=Lax in modern browsers), potentially enabling CSRF attacks.",
     "evidence": "Cookie issue for `cookie-samesite-missing`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Without SameSite=Lax or Strict, cross-site POST requests (CSRF attacks) carry the session cookie. Older browsers that do not enforce a default SameSite will include the cookie in every cross-origin request.",
+    "riskImpact": "Without SameSite, a browser that does not apply a default sends the cookie on cross-site POST requests, which is what CSRF needs. Current Chrome, Edge and Firefox treat a missing attribute as Lax, so for most visitors the exposure is a CSRF token that is the only defence, not an open door; it is a hardening gap rather than an exploitable flaw by itself.",
     "explanation": "SameSite controls whether a cookie is sent with cross-site requests. SameSite=Strict prevents the cookie from being sent on any cross-site request. SameSite=Lax (the browser default in Chrome) allows top-level navigation GET requests but blocks cross-site POST. Explicitly setting SameSite is more portable than relying on browser defaults.",
     "fixSteps": [
       "Add SameSite=Lax for most session cookies (allows OAuth redirects and link clicks to work).",
@@ -324,9 +394,44 @@
         "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
       },
       {
-        "label": "SameSite=Strict (high-privilege)",
+        "label": "SameSite=Strict (high-privilege, path-scoped with __Secure-)",
         "language": "http",
-        "code": "Set-Cookie: __Host-admin-token=xyz; HttpOnly; Secure; SameSite=Strict; Path=/admin"
+        "code": "Set-Cookie: __Secure-admin-token=xyz; HttpOnly; Secure; SameSite=Strict; Path=/admin"
+      },
+      {
+        "label": "Django (settings.py)",
+        "language": "python",
+        "code": "SESSION_COOKIE_SAMESITE = \"Lax\"\nCSRF_COOKIE_SAMESITE = \"Lax\""
+      },
+      {
+        "label": "Flask",
+        "language": "python",
+        "code": "app.config.update(\n    SESSION_COOKIE_SAMESITE=\"Lax\",\n    SESSION_COOKIE_SECURE=True,\n)"
+      },
+      {
+        "label": "Rails",
+        "language": "ruby",
+        "code": "# config/initializers/session_store.rb\nRails.application.config.session_store :cookie_store,\n  key: \"_app_session\",\n  same_site: :lax,\n  secure: true\n\n# A cookie you set yourself:\ncookies[:theme] = { value: \"dark\", same_site: :lax }"
+      },
+      {
+        "label": "Laravel (config/session.php)",
+        "language": "php",
+        "code": "'same_site' => 'lax',\n'secure' => env('SESSION_SECURE_COOKIE', true),"
+      },
+      {
+        "label": "Spring Boot (application.properties)",
+        "language": "properties",
+        "code": "server.servlet.session.cookie.same-site=lax\nserver.servlet.session.cookie.secure=true"
+      },
+      {
+        "label": "PHP",
+        "language": "php",
+        "code": "// php.ini: session.cookie_samesite = \"Lax\"\nsetcookie('theme', 'dark', [\n    'path' => '/',\n    'secure' => true,\n    'samesite' => 'Lax',\n]);"
+      },
+      {
+        "label": "ASP.NET Core",
+        "language": "csharp",
+        "code": "builder.Services.ConfigureApplicationCookie(options =>\n{\n    options.Cookie.SameSite = SameSiteMode.Lax;\n    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;\n});"
       }
     ],
     "references": [
