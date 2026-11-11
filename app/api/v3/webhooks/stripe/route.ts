@@ -48,6 +48,10 @@ import {
 } from "@/lib/billing/browserbase-usage";
 import { findAccountForSubscriptionEvent } from "@/lib/billing/subscription-lookup";
 import {
+  claimStripeEvent,
+  releaseStripeEvent,
+} from "@/lib/billing/stripe-event-marker";
+import {
   creditPurchaseFromMetadata,
   recordReversedCreditPurchase,
   restorableFromMetadata,
@@ -442,14 +446,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   // customer.subscription.created event would plan-upgrade the user
   // twice (and re-grant the premium badge, etc.).
   try {
-    const seen = await pool.query<{ event_id: string }>(
-      `INSERT INTO processed_stripe_events (event_id, event_type)
-       VALUES ($1, $2)
-       ON CONFLICT (event_id) DO NOTHING
-       RETURNING event_id`,
-      [event.id, event.type],
-    );
-    if (seen.rowCount === 0) {
+    if (!(await claimStripeEvent(event.id, event.type))) {
       return NextResponse.json({ received: true, replay: true });
     }
   } catch (err) {
@@ -1643,10 +1640,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     // Delete our marker so the retry re-processes. Safe because every handler
     // write here is idempotent (plan UPDATE, credit ON CONFLICT tables).
     try {
-      await pool.query(
-        `DELETE FROM processed_stripe_events WHERE event_id = $1`,
-        [event.id],
-      );
+      await releaseStripeEvent(event.id);
     } catch (delErr) {
       console.error(
         "[Stripe] failed to roll back idempotency marker after handler error:",
