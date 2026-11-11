@@ -45,8 +45,8 @@ Each finding includes:
 
 ## Is the probe usable? Decide this before anything else
 
-A probe that is not the site's real page cannot confirm or refute a finding about the site's real page. Return "uncertain" and name the status or header you saw when ANY of these holds, whatever the finding says:
-- status_code is 401, 403, 429 or any 5xx, and the finding is about the page or its headers (a login wall, a block page, a rate limit and an outage all send headers of their own).
+A probe that is not the site's real page cannot confirm or refute a finding about the site's real page. When the finding is about the page, its headers, its cookies or its body, return "uncertain" and name the status or header you saw if ANY of these holds. Findings the scanner measured another way (DNS, email, TLS handshake, host validation, reputation) do not depend on the page, so a bad probe does not move them: judge those on their own evidence.
+- status_code is 401, 403, 429 or any 5xx (a login wall, a block page, a rate limit and an outage all send headers of their own).
 - The response is a bot challenge or interstitial: a cf-mitigated header, a "Just a moment" or "Checking your browser" or "Attention Required" body, a proof-of-work or "Please wait" page with one inline script and no content, a captcha. Every finding about such a page is a finding about the gate, not the site.
 - The finding quotes a header, cookie or body value and the probe shows a different one for the same name (or scanner_response_headers differs from response_headers for the header the finding is about). The site answers the scanner and the probe differently, so neither one settles it.
 - live_probe.error is set.
@@ -90,7 +90,7 @@ A finding whose observation is correct but whose interpretation does not hold is
 
 Say which of the two you are judging in your reason. When you reject the interpretation, name the specific reason it does not hold (the RFC, the browser behaviour, the platform mechanism), not a general "this may be intentional".
 
-The licence to reject an interpretation is narrow for header checks. A check that says a header is missing, or has a weak value, is a claim about what the server sends, and "this page does not need it" is not a reason to reject it. For a header-presence or header-value finding, "possible_fp" needs one of two things: the header is present in a usable probe with a value that satisfies the check, or a NAMED standard or browser behaviour makes the header unnecessary or obsolete (X-XSS-Protection, Expect-CT and the OCSP responder are the live examples). Without either, a header the probe does not carry is "confirmed" when the probe is usable and "uncertain" when it is not.
+The licence to reject an interpretation is narrow for header checks. A check that says a header is missing, or has a weak value, is a claim about what the server sends, and "this page does not need it" is not a reason to reject it. For a header-presence or header-value finding, "possible_fp" needs one of two things: the header is present in a usable probe with a value that satisfies the check, or a NAMED standard or browser behaviour makes the header unnecessary or obsolete (X-XSS-Protection and Expect-CT are the live examples; the OCSP responder is the same idea for a certificate). Without either, a header the probe does not carry is "confirmed" when the probe is usable and "uncertain" when it is not.
 
 ## Never confirm by default
 
@@ -119,7 +119,7 @@ The finding does not represent a real problem for this target. That covers BOTH 
 
 ### "uncertain"
 Reserve for genuine ambiguity, NOT for probe limitations that do not touch the finding. Use when:
-- The probe is not usable (401, 403, 429, 5xx, a bot challenge, live_probe.error set)
+- The finding is about the page and the probe is not usable (401, 403, 429, 5xx, a bot challenge, live_probe.error set)
 - The scanner and the probe disagree about the value the finding is about
 - Finding requires authenticated access and the probe received a login redirect (401/302 to /login)
 - The finding is about a specific sub-page/endpoint not accessible from the root URL probe
@@ -167,7 +167,7 @@ Questions to ask of every DNS or email finding:
 - Is the apex a real registrable domain with no policy where one is expected (no _dmarc, no SPF on a domain that sends mail)? Then the finding is true even when the operator never sends mail from it, because anyone can spoof it: confirmed.
 
 ### api
-Check whether the endpoint returns sensitive data in body_snippet. If the response is 401 or an empty/generic JSON object, the endpoint did not answer as the finding says: that is "uncertain" when the finding is about a path the probe did not request, and possible_fp when the probe IS that path.
+Check whether the endpoint returns sensitive data in body_snippet. If the response is an empty/generic JSON object, the endpoint did not answer as the finding says: that is "uncertain" when the finding is about a path the probe did not request, and possible_fp when the probe IS that path. A 401 or 403 is the unusable-probe case above: "uncertain", because the scanner and the probe were treated differently.
 
 ## What is NOT a false positive
 

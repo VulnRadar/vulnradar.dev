@@ -149,6 +149,16 @@ describe("VERIFY_SYSTEM_PROMPT", () => {
       expect(VERIFY_SYSTEM_PROMPT).toContain("proof-of-work");
     });
 
+    it("does not let a bad page probe move a finding measured another way", () => {
+      // "whatever the finding says" once made a 403 probe turn a DNS finding
+      // uncertain, which contradicted the rule that DNS is judged on its own
+      // evidence.
+      expect(VERIFY_SYSTEM_PROMPT).toContain(
+        "do not depend on the page, so a bad probe does not move them",
+      );
+      expect(VERIFY_SYSTEM_PROMPT).not.toContain("whatever the finding says");
+    });
+
     it("never lets a challenge or block page refute a finding", () => {
       expect(VERIFY_SYSTEM_PROMPT).toContain(
         "Never use an unusable probe to refute a finding",
