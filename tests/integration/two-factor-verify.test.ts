@@ -77,7 +77,17 @@ beforeAll(async () => {
 beforeEach(() => {
   events.length = 0;
   const connect = pool.connect.bind(pool);
-  vi.spyOn(pool, "connect").mockImplementation((async () => {
+  // pg's own pool.query checks a client out through connect(callback), so the
+  // callback form must reach the real pool untouched, or every query the
+  // fixtures and the route make would wait on a callback nobody calls. Only
+  // the promise form, which the route uses for its transaction, is wrapped.
+  vi.spyOn(pool, "connect").mockImplementation(((...args: unknown[]) => {
+    if (typeof args[0] === "function") {
+      return (connect as (...a: unknown[]) => unknown)(...args);
+    }
+    return wrappedConnect();
+  }) as typeof pool.connect);
+  async function wrappedConnect() {
     const client = await connect();
     const query = client.query.bind(client);
     client.query = ((text: unknown, ...rest: unknown[]) => {
@@ -88,7 +98,7 @@ beforeEach(() => {
       return (query as (...a: unknown[]) => unknown)(text, ...rest);
     }) as typeof client.query;
     return client;
-  }) as typeof pool.connect);
+  }
   return () => vi.restoreAllMocks();
 });
 
