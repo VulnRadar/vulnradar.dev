@@ -150,18 +150,20 @@ const mockInsertQuery = vi.fn(async (sql: string, params: unknown[]) => {
   return { rows };
 });
 type BatchReservation =
-  | { ok: true; scanIds: number[] }
+  | { ok: true; scanIds: number[]; publicIds: string[] }
   | { ok: false; check: Record<string, unknown> };
+/** The public id the database's default would give row `id`, for asserting. */
+const publicIdOf = (id: number) => id.toString(16).padStart(32, "0");
 const mockReserveConcurrentScanBatch = vi.fn(
   async (
     _userId: number,
     insertRows: (client: {
       query: (sql: string, params: unknown[]) => unknown;
     }) => Promise<number[]>,
-  ): Promise<BatchReservation> => ({
-    ok: true,
-    scanIds: await insertRows({ query: mockInsertQuery }),
-  }),
+  ): Promise<BatchReservation> => {
+    const scanIds = await insertRows({ query: mockInsertQuery });
+    return { ok: true, scanIds, publicIds: scanIds.map(publicIdOf) };
+  },
 );
 vi.mock("@/lib/rate-limiting/concurrent-scans", () => ({
   reserveConcurrentScanBatch: (...args: unknown[]) =>
@@ -371,12 +373,87 @@ describe("POST /api/v3/scan/bulk - auth", () => {
     const res = await POST(postRequest({ urls: ["https://example.com"] }));
 
     expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("120");
     const json = await res.json();
     expect(json.error).toMatch(/Bulk scan rate limit reached/);
     // This route answers 429 for three different things and only the daily
     // quota has an upgrade to offer, so each one names itself. The dashboard
     // used to tell them apart by matching the error text.
     expect(json.statusCode).toBe("BULK_RATE_LIMIT");
+    expect(json.code).toBe("BULK_RATE_LIMIT");
+  });
+
+  it("applies the burst limit to an API key too, keyed on its account", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 1,
+      userId: 42,
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+      scopes: ["scan:write"],
+    });
+    mockCheckApiKeyRateLimit.mockResolvedValue({
+      allowed: true,
+      limit: 50,
+      used: 0,
+      remaining: 50,
+      resetsAt: new Date(Date.now() + 3600_000).toISOString(),
+    });
+    mockCheckSessionRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 60,
+    });
+
+    const res = await POST(
+      postRequest(
+        { urls: ["https://example.com"] },
+        { authorization: "Bearer vr_live_testkey" },
+      ),
+    );
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("60");
+    expect((await res.json()).statusCode).toBe("BULK_RATE_LIMIT");
+    expect(mockCheckSessionRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({ key: "bulkscan:42" }),
+    );
+    expect(mockValidateScanTarget).not.toHaveBeenCalled();
+    expect(insertedRows()).toHaveLength(0);
+  });
+
+  it("refuses at the burst limit before reading the body, so a malformed body costs nothing either", async () => {
+    mockCheckSessionRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 30,
+    });
+
+    const res = await POST(
+      new NextRequest("http://localhost/api/v3/scan/bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{not json",
+      }),
+    );
+
+    expect(res.status).toBe(429);
+  });
+
+  it("answers an invalid key with the shared error envelope", async () => {
+    mockValidateApiKey.mockResolvedValue(null);
+
+    const res = await POST(
+      postRequest(
+        { urls: ["https://example.com"] },
+        { authorization: "Bearer vr_live_bogus" },
+      ),
+    );
+
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.error).toBe("Invalid or revoked API key.");
+    expect(json.code).toBe("INVALID_API_KEY");
+    expect(mockCheckSessionRateLimit).not.toHaveBeenCalled();
   });
 });
 
@@ -495,6 +572,31 @@ describe("POST /api/v3/scan/bulk - request validation", () => {
       expect(insertedRows()).toHaveLength(1);
     },
   );
+
+  it("accepts a bare host the way POST /scan does, as https", async () => {
+    const res = await POST(postRequest({ urls: ["example.com"] }));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.total).toBe(1);
+    expect(json.results[0]).toMatchObject({
+      url: "https://example.com/",
+      success: true,
+    });
+  });
+
+  it("reports how many entries were submitted beside how many parsed", async () => {
+    const res = await POST(
+      postRequest({
+        urls: ["https://example.com", "gopher://example.com", "not a url"],
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.submitted).toBe(3);
+    expect(json.total).toBe(1);
+  });
 });
 
 describe("POST /api/v3/scan/bulk - queueing", () => {
@@ -511,6 +613,7 @@ describe("POST /api/v3/scan/bulk - queueing", () => {
       url: "https://example.com/",
       success: true,
       scanId: 1,
+      publicId: publicIdOf(1),
       status: "queued",
     });
 
@@ -657,8 +760,11 @@ describe("POST /api/v3/scan/bulk - queueing", () => {
     const res = await POST(postRequest({ urls: ["https://example.com"] }));
 
     expect(res.status).toBe(429);
+    expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
     const json = await res.json();
     expect(json.statusCode).toBe("CONCURRENT_SCAN_LIMIT");
+    expect(json.code).toBe("CONCURRENT_SCAN_LIMIT");
+    expect(json.error).toBe("You already have 1 scan(s) running.");
     expect(mockIncrementDailyCountCapped).not.toHaveBeenCalled();
     expect(mockRunBulkBatch).not.toHaveBeenCalled();
   });
@@ -836,19 +942,28 @@ describe("POST /api/v3/scan/bulk - per-batch work is not repeated per URL", () =
 
 describe("POST /api/v3/scan/bulk - daily quota", () => {
   it("rejects the whole request with 429 when the session has no remaining daily quota at all", async () => {
+    const resetsAt = new Date(Date.now() + 2 * 3600_000).toISOString();
     mockCanMakeRequest.mockResolvedValue({
       allowed: false,
       limit: 100,
       used: 100,
       remaining: 0,
-      resetsAt: new Date().toISOString(),
+      resetsAt,
     });
 
     const res = await POST(postRequest({ urls: ["https://example.com"] }));
 
     expect(res.status).toBe(429);
+    // A client can wait for the reset instead of polling.
+    const retryAfter = Number(res.headers.get("Retry-After"));
+    expect(retryAfter).toBeGreaterThan(7000);
+    expect(retryAfter).toBeLessThanOrEqual(7200);
+    expect(res.headers.get("X-RateLimit-Limit")).toBe("100");
+    expect(res.headers.get("X-RateLimit-Remaining")).toBe("0");
     const json = await res.json();
     expect(json.error).toMatch(/Daily scan limit reached/);
+    expect(json.code).toBe("DAILY_LIMIT");
+    expect(json).toMatchObject({ limit: 100, used: 100, resets_at: resetsAt });
     // The one 429 with an upgrade path. The dashboard opens the plan modal on
     // this and only this, so it must be distinguishable from the burst limiter
     // and the concurrency refusal without reading the copy.
