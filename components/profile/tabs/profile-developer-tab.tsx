@@ -34,7 +34,6 @@ import {
   type FeatureSurface,
 } from "@/lib/config/feature-surfaces";
 import { EmptyState } from "@/components/shared/empty-state";
-import { getPlanById } from "@/lib/billing/catalog";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import type {
   ProfileTabProps,
@@ -57,15 +56,12 @@ import {
   localHourAndDomToUtc,
 } from "./developer/schedule-time-utils";
 
-// The real cap is per-plan (free/core/pro/elite each have their own API key
-// limit, admin-configurable from Settings) and enforced server-side in
-// app/api/v3/keys/route.ts via lib/billing/plan-limits.ts. This reads the
-// same shipped defaults from the plan catalog so the client-side hint and
-// disabled state track the right number per plan instead of one flat
-// guess -- it can still drift from an admin-customized limit (the catalog
-// here is static, the server resolves live), in which case the server's
-// own rejection message names the real number, same accepted gap as other
-// client-side plan hints in this app.
+// The cap is per plan, admin-configurable from Settings, and enforced in
+// app/api/v3/keys/route.ts through lib/billing/plan-limits.ts. The tab reads
+// the number GET /auth/me resolves through that same module (`me.apiKeys`),
+// so the hint and the disabled Create button agree with the server after an
+// admin edit, a gift or a staff role. It used to read the plan catalog, whose
+// numbers are the shipped defaults, and drifted from all three.
 const UNLIMITED_API_KEYS = -1;
 
 // The Developer tab used to be one long scroll of API keys, webhooks, and
@@ -199,7 +195,8 @@ export function ProfileDeveloperTab({
   // only thing that has to be waited on. Sections take null for "not known
   // yet" and simply do not gate on it.
   const planKnown = !authLoading && !!me;
-  const apiKeyLimit = getPlanById(effectivePlan)?.limits.apiKeys ?? 1;
+  // Unknown until /auth/me answers. Only read where planKnown gates it.
+  const apiKeyLimit = me?.apiKeys ?? UNLIMITED_API_KEYS;
 
   // Use preloaded data from parent, with local state as fallback
   const [localApiKeys, setLocalApiKeys] = useState<ApiKey[]>([]);

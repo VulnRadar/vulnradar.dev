@@ -856,7 +856,10 @@ export function ProfileBillingTab({
               )}
 
             {/* Plan Comparison, priced straight from the plan catalog so
-                    this can never drift from what checkout actually charges. */}
+                    this can never drift from what checkout actually charges.
+                    The scans per day come from GET /billing's live limits,
+                    not the catalog, whose numbers are the shipped defaults
+                    an admin may since have changed. */}
             {billingInfo.plan === "free" && (
               <div className="flex flex-col gap-3 pt-4 border-t border-border">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -882,7 +885,7 @@ export function ProfileBillingTab({
                         {paidPlan.name}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {paidPlan.limits.dailyScans} scans/day
+                        {billingInfo.limits[paidPlan.id]} scans/day
                       </p>
                       <p className="text-sm font-semibold text-primary mt-1">
                         ${(paidPlan.priceInCents / 100).toFixed(0)}/mo

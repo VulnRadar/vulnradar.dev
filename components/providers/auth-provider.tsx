@@ -65,6 +65,10 @@ export interface MeResponse {
    *  components/scanner/scan-form.tsx, which uses this to cap bulk-scan
    *  URL entry at what the caller's plan actually allows. */
   bulkScanUrls: number;
+  /** Active API keys the caller's plan allows, resolved live the same way as
+   *  bulkScanUrls (admin edits, gifts, the staff floor), -1 meaning
+   *  unlimited (billing disabled). What POST /keys enforces. */
+  apiKeys: number;
   subscriptionStatus: string | null;
   giftedSubscription: {
     plan: string;
