@@ -618,6 +618,22 @@ export default function TeamsPage() {
     await fetchTeams();
   }
 
+  /** Hand the open team to another member. sendTeamsRequest throws with the
+   *  server's reason on a refusal, which keeps the transfer dialog open and
+   *  shows it. The member reload turns the caller into an admin, so the menu
+   *  offers Leave team instead of Delete team from then on. */
+  async function handleTransferOwnership(newOwnerId: number) {
+    if (!selectedTeam) return;
+    setActionError(null);
+    await sendTeamsRequest(
+      API.TEAMS,
+      "PATCH",
+      { teamId: selectedTeam.id, newOwnerId },
+      "We could not transfer ownership. Try again.",
+    );
+    await Promise.all([refreshMembers(selectedTeam), fetchTeams()]);
+  }
+
   /** The picture changed. TeamAvatarPicker already did the PATCH, so this only
    *  has to apply the new URL to both copies of the team: the open detail view
    *  and the row behind it in the list, which would otherwise keep showing the
@@ -766,6 +782,8 @@ export default function TeamsPage() {
             }
             onAvatarChange={handleAvatarChange}
             onAvatarError={setActionError}
+            members={members}
+            onTransferOwnership={handleTransferOwnership}
           />
 
           {showInvite && canInvite && (

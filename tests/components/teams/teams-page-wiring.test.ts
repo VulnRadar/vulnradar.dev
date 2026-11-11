@@ -193,3 +193,24 @@ describe("inviting someone", () => {
     );
   });
 });
+
+describe("transferring ownership", () => {
+  // TeamDetailHeader only renders the owner's Transfer ownership item when
+  // the page hands it a handler, so without this wiring the item (and the
+  // /docs/teams sentence that points at it) could never be reached.
+  it("hands the header the roster and a transfer handler", () => {
+    expect(PAGE).toMatch(
+      /members=\{members\}\s+onTransferOwnership=\{handleTransferOwnership\}/,
+    );
+  });
+
+  it("sends newOwnerId, throws on refusal and reloads the roster", () => {
+    const body = handler("handleTransferOwnership");
+    expect(body).toContain("sendTeamsRequest(");
+    expect(body).toContain('"PATCH"');
+    expect(body).toContain("newOwnerId");
+    // No try/catch: the throw is what keeps the dialog open with the reason.
+    expect(body).not.toContain("catch");
+    expect(body).toContain("refreshMembers(selectedTeam)");
+  });
+});
