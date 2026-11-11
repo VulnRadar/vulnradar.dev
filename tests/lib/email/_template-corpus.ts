@@ -338,6 +338,14 @@ export async function buildTemplateCorpus(
       }),
     },
     {
+      name: "planCancelled",
+      ...e.planCancelledEmail({
+        planName: "Pro Supporter",
+        amountCents: 1200,
+        currency: "usd",
+      }),
+    },
+    {
       name: "subscriptionUpgraded",
       ...e.subscriptionChangedEmail({
         kind: "upgraded",
