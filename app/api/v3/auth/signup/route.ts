@@ -34,43 +34,11 @@ import {
 } from "@/lib/config/constants";
 import { signupsPausedResponse } from "@/lib/admin/service-state";
 import { logError } from "@/lib/logging/log";
+import { verifyTurnstile } from "@/lib/auth/turnstile";
 
-// Long enough for a slow Cloudflare or Gravatar answer, short enough that a
+// Long enough for a slow Gravatar answer, short enough that a
 // hung socket cannot hold the signup request open.
 const OUTBOUND_TIMEOUT_MS = 10_000;
-
-/**
- * Ask Cloudflare whether the Turnstile token is good. "unavailable" when the
- * answer never came back usable (a timeout, a 5xx, an HTML error page where
- * JSON belongs), which is our side's problem rather than the visitor's, so
- * the route answers 503 instead of telling them the captcha failed.
- */
-async function checkTurnstile(
-  token: string,
-  ip: string,
-): Promise<"passed" | "failed" | "unavailable"> {
-  try {
-    const res = await fetch(
-      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          secret: process.env.TURNSTILE_SECRET_KEY,
-          response: token,
-          remoteip: ip,
-        }),
-        signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
-      },
-    );
-    if (!res.ok) throw new Error(`siteverify answered ${res.status}`);
-    const data = (await res.json()) as { success?: unknown };
-    return data.success === true ? "passed" : "failed";
-  } catch (err) {
-    logError("auth", "Turnstile verification unavailable", err);
-    return "unavailable";
-  }
-}
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   // PAUSE_SIGNUPS (and MAINTENANCE_MODE, which implies it). At the top of the
@@ -101,23 +69,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   const ip = await getClientIp();
 
-  // Verify Turnstile captcha only if enabled
+  // Verify Turnstile captcha only if enabled. verifyTurnstile is the one
+  // siteverify call the contact form and support tickets also use: 400 for a
+  // missing or rejected token, 503 when Cloudflare gave no usable answer.
   if (TURNSTILE_ENABLED) {
-    if (!turnstileToken) {
-      return ApiResponse.badRequest("Captcha verification required.");
-    }
-    const captcha = await checkTurnstile(turnstileToken, ip);
-    if (captcha === "unavailable") {
-      return ApiResponse.error(
-        "We could not check the captcha just now. Try again in a minute.",
-        503,
-      );
-    }
-    if (captcha === "failed") {
-      return ApiResponse.badRequest(
-        "Captcha verification failed. Please try again.",
-      );
-    }
+    const captcha = await verifyTurnstile(turnstileToken, ip);
+    if (!captcha.ok) return ApiResponse.error(captcha.error, captcha.status);
   }
 
   // Validate input using centralized validators

@@ -248,10 +248,10 @@ describe("the rate-limit section", () => {
 });
 
 describe("Turnstile", () => {
+  // Every endpoint verifies through lib/auth/turnstile.ts now, so a caller of
+  // verifyTurnstile is an endpoint that really checks a token.
   const verifying = sourceFiles("app/api").filter((path) =>
-    readFileSync(path, "utf8").includes(
-      "challenges.cloudflare.com/turnstile/v0/siteverify",
-    ),
+    readFileSync(path, "utf8").includes("verifyTurnstile("),
   );
 
   it("counts the endpoints that really verify a token", () => {
