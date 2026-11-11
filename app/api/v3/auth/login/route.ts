@@ -320,9 +320,10 @@ export const POST = withErrorHandling(async (request: Request) => {
     let maskedEmail: string | undefined;
     if (twoFactorMethod === "email") {
       // Delete old codes
-      await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [
-        user.id,
-      ]);
+      await pool.query(
+        "DELETE FROM email_2fa_codes WHERE user_id = $1 AND purpose = 'login'",
+        [user.id],
+      );
       // Generate 6-digit code
       const code = randomInt(100000, 999999).toString();
       // L-2: salted hash. Per-row 32-byte random salt + SHA-256 keeps

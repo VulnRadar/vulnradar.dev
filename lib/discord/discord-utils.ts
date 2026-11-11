@@ -17,9 +17,10 @@ export async function sendDiscordEmail2FACode(
 ): Promise<void> {
   try {
     // Delete old codes for this user
-    await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [
-      userId,
-    ]);
+    await pool.query(
+      "DELETE FROM email_2fa_codes WHERE user_id = $1 AND purpose = 'login'",
+      [userId],
+    );
 
     // Generate 6-digit code
     const code = randomInt(100000, 999999).toString();

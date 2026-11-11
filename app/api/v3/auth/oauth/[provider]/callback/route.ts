@@ -534,7 +534,10 @@ async function sendOAuthEmail2FACode(
   userId: number,
   userEmail: string,
 ): Promise<void> {
-  await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [userId]);
+  await pool.query(
+    "DELETE FROM email_2fa_codes WHERE user_id = $1 AND purpose = 'login'",
+    [userId],
+  );
   const code = randomInt(100000, 999999).toString();
   const codeSalt = randomBytes(32).toString("hex");
   const codeHash = createHash("sha256")
