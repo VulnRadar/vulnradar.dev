@@ -20,13 +20,15 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const mockSendEmail = vi.fn();
+const mockCodeEmail = vi.fn((code: string, _minutes?: number) => ({
+  subject: "Verify your billing request",
+  text: `code ${code}`,
+  html: `<p>${code}</p>`,
+}));
 vi.mock("@/lib/email/email", () => ({
   sendEmail: (...args: unknown[]) => mockSendEmail(...args),
-  billingVerificationCodeEmail: (code: string) => ({
-    subject: "Verify your billing request",
-    text: `code ${code}`,
-    html: `<p>${code}</p>`,
-  }),
+  billingVerificationCodeEmail: (code: string, minutes?: number) =>
+    mockCodeEmail(code, minutes),
 }));
 
 // Mocked at the resolver boundary (not pool.query): the route reads
@@ -61,6 +63,7 @@ describe("POST /api/v3/billing/verify/send", () => {
     mockGetSession.mockResolvedValue(null);
     const res = await POST(request());
     expect(res.status).toBe(401);
+    expect((await res.json()).error).toMatch(/sign in/i);
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
@@ -116,6 +119,23 @@ describe("POST /api/v3/billing/verify/send", () => {
     const emailArg = mockSendEmail.mock.calls[0][0];
     expect(emailArg.to).toBe("john@example.com");
     expect(emailArg.text).toBe(`code ${code}`);
+  });
+
+  it("tells the user the expiry an admin configured, not the shipped default", async () => {
+    // bug-messaging-10. The code was stored with the configured lifetime but
+    // the email was built with none, so it always quoted the default.
+    mockGetSetting.mockResolvedValue(17);
+    mockQuery.mockResolvedValueOnce({ rows: [{ email: "john@example.com" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await POST(request());
+
+    expect(res.status).toBe(200);
+    expect(mockCodeEmail).toHaveBeenCalledWith(expect.any(String), 17);
+    const insertCall = mockQuery.mock.calls[3];
+    expect((insertCall[1] as unknown[])[3]).toBe(17);
   });
 
   it("returns 500 when sendEmail rejects", async () => {

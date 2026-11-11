@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import {
+  ApiResponse,
+  readJsonObject,
+  withErrorHandling,
+} from "@/lib/api/api-utils";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
@@ -15,7 +19,7 @@ import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
 
   const stripe = getStripe();

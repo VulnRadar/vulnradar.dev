@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomInt, randomBytes } from "node:crypto";
+import { ApiResponse } from "@/lib/api/api-utils";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { billingVerificationCodeEmail, sendEmail } from "@/lib/email/email";
@@ -9,7 +10,7 @@ import { getSetting } from "@/lib/config/runtime-config";
 export async function POST(_request: NextRequest) {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
 
   try {
@@ -66,8 +67,9 @@ export async function POST(_request: NextRequest) {
       [session.userId, salt, code, codeExpiryMinutes],
     );
 
-    // Send the email
-    const emailContent = billingVerificationCodeEmail(code);
+    // The lifetime the code was just stored with, so the email quotes what
+    // an admin configured rather than the shipped default.
+    const emailContent = billingVerificationCodeEmail(code, codeExpiryMinutes);
     await sendEmail({
       to: user.email,
       ...emailContent,

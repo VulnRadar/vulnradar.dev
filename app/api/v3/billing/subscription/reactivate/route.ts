@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ApiResponse } from "@/lib/api/api-utils";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
@@ -8,7 +9,7 @@ import { isStaffRole } from "@/lib/auth/permissions-client";
 export async function POST() {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
 
   const stripe = getStripe();

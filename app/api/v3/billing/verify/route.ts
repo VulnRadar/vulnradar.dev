@@ -3,13 +3,17 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import {
+  ApiResponse,
+  readJsonObject,
+  withErrorHandling,
+} from "@/lib/api/api-utils";
 
 // POST /api/v3/billing/verify - Verify code and return sensitive billing data
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
 
   const stripe = getStripe();
