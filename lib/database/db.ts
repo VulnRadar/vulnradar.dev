@@ -10,6 +10,7 @@ import {
 import { APP_SLUG } from "@/lib/config/constants";
 import { pgConnectionString, pgSslConfig } from "@/lib/database/pg-ssl.mjs";
 import { logError } from "@/lib/logging/log";
+import { globalSingleton } from "@/lib/runtime/global-singleton";
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -66,20 +67,7 @@ export const POOL_CONFIG = {
  * Next bundles this module once per runtime layer, so a module-level pool was
  * three pools in one process, each allowed POOL_CONFIG.max connections and each
  * reporting only its own counters. Keyed on globalThis so every copy shares one.
- *
- * Local until lib/runtime/global-singleton.ts lands; same signature.
  */
-function globalSingleton<T>(key: string, init: () => T): T {
-  const store = globalThis as unknown as Record<symbol, T | undefined>;
-  const slot = Symbol.for(key);
-  let value = store[slot];
-  if (value === undefined) {
-    value = init();
-    store[slot] = value;
-  }
-  return value;
-}
-
 const pool = globalSingleton<Pool>("vulnradar.dbPool", () => {
   const created = new Pool({
     // Paired on purpose: see lib/database/pg-ssl.mjs for why the URL has to
