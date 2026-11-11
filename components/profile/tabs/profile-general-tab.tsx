@@ -28,6 +28,8 @@ import { refreshAuthCache } from "@/components/providers/auth-provider";
 import type { ProfileTabProps, ProfileUser } from "../types";
 import { useConfirm } from "@/components/shared/use-confirm";
 import { EditDialog } from "@/components/shared/edit-dialog";
+import { EmailStepUp, stepUpCanSave } from "@/components/shared/email-step-up";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 
 interface ProfileGeneralTabProps extends ProfileTabProps {
   onAvatarCrop?: (croppedDataUrl: string) => void;
@@ -45,6 +47,12 @@ export interface ProfileDetailsDraft {
   name: string;
   email: string;
   currentPassword: string;
+  /**
+   * An account with no password confirmed the email change with a mailed
+   * code (EmailStepUp). The server holds the proof in a cookie; this only
+   * decides when Save can be pressed.
+   */
+  stepUpDone: boolean;
 }
 
 export function profileDetailsDraftFrom(
@@ -54,6 +62,7 @@ export function profileDetailsDraftFrom(
     name: user.name || "",
     email: user.email || "",
     currentPassword: "",
+    stepUpDone: false,
   };
 }
 
@@ -66,8 +75,9 @@ function emailChanged(draft: ProfileDetailsDraft, user: DetailsUser) {
 }
 
 /**
- * PATCH /auth/update refuses an address change without the current password,
- * except for an OAuth-only account that has none to re-enter.
+ * PATCH /auth/update refuses an address change without the current password.
+ * An OAuth-only account has none to re-enter and confirms with a mailed code
+ * instead (profileDetailsNeedsStepUp).
  */
 export function profileDetailsNeedsPassword(
   draft: ProfileDetailsDraft,
@@ -76,7 +86,22 @@ export function profileDetailsNeedsPassword(
   return emailChanged(draft, user) && user.hasPassword !== false;
 }
 
-/** Putting the address back hides the password field, so it forgets the password too. */
+/**
+ * The password-less half of the same rule: the route accepts that account's
+ * email change only after the mailed step-up (lib/auth/reauth.ts).
+ */
+export function profileDetailsNeedsStepUp(
+  draft: ProfileDetailsDraft,
+  user: DetailsUser,
+): boolean {
+  return emailChanged(draft, user) && user.hasPassword === false;
+}
+
+/**
+ * Putting the address back hides the password field and the step-up, so it
+ * forgets the password and the confirmation too: changing it again starts the
+ * step-up from its first screen, and Save has to wait for that one.
+ */
 export function withDetailsEmail(
   draft: ProfileDetailsDraft,
   email: string,
@@ -86,6 +111,7 @@ export function withDetailsEmail(
     ...draft,
     email,
     currentPassword: email === user.email ? "" : draft.currentPassword,
+    stepUpDone: email === user.email ? false : draft.stepUpDone,
   };
 }
 
@@ -99,10 +125,16 @@ export function profileDetailsDirty(
 export function profileDetailsCanSave(
   draft: ProfileDetailsDraft,
   user: DetailsUser,
+  emailConfigured = true,
 ): boolean {
   if (!profileDetailsDirty(draft, user)) return false;
   if (emailChanged(draft, user) && draft.email.trim() === "") return false;
   if (profileDetailsNeedsPassword(draft, user) && draft.currentPassword === "")
+    return false;
+  if (
+    profileDetailsNeedsStepUp(draft, user) &&
+    !stepUpCanSave(emailConfigured, draft.stepUpDone)
+  )
     return false;
   return true;
 }
@@ -216,10 +248,13 @@ export function ProfileDetailsFields({
   draft,
   user,
   onChange,
+  emailConfigured = true,
 }: {
   draft: ProfileDetailsDraft;
   user: DetailsUser;
   onChange: (next: ProfileDetailsDraft) => void;
+  /** False when the server cannot send mail (see EmailStepUp). */
+  emailConfigured?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -277,6 +312,13 @@ export function ProfileDetailsFields({
           </p>
         </div>
       )}
+      {profileDetailsNeedsStepUp(draft, user) && (
+        <EmailStepUp
+          idPrefix="profile-details-step-up"
+          emailConfigured={emailConfigured}
+          onReady={() => onChange({ ...draft, stepUpDone: true })}
+        />
+      )}
     </div>
   );
 }
@@ -297,6 +339,7 @@ export function ProfileDetailsDialog({
   onSaved: (message: string) => void;
 }) {
   const [draft, setDraft] = useState(() => profileDetailsDraftFrom(user));
+  const { emailConfigured } = useClientConfig();
   return (
     <EditDialog
       open
@@ -306,7 +349,7 @@ export function ProfileDetailsDialog({
       title="Edit personal details"
       description="Your display name and the email address you sign in and recover your account with."
       dirty={profileDetailsDirty(draft, user)}
-      canSave={profileDetailsCanSave(draft, user)}
+      canSave={profileDetailsCanSave(draft, user, emailConfigured)}
       onSave={async () => {
         const result = await saveProfileDetails(draft, user, onUserPatch);
         if (!result.ok) return result.error;
@@ -314,7 +357,12 @@ export function ProfileDetailsDialog({
         return null;
       }}
     >
-      <ProfileDetailsFields draft={draft} user={user} onChange={setDraft} />
+      <ProfileDetailsFields
+        draft={draft}
+        user={user}
+        onChange={setDraft}
+        emailConfigured={emailConfigured}
+      />
     </EditDialog>
   );
 }

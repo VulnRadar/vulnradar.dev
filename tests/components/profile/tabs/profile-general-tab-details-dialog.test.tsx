@@ -47,6 +47,7 @@ vi.mock("@/components/shared/language-select", () => ({
 const refreshAuthCache = vi.fn();
 vi.mock("@/components/providers/auth-provider", () => ({
   refreshAuthCache: () => refreshAuthCache(),
+  clearAuthCache: () => {},
 }));
 
 const {
@@ -193,6 +194,7 @@ describe("the draft", () => {
       name: "Ada Lovelace",
       email: "ada@example.com",
       currentPassword: "",
+      stepUpDone: false,
     });
     expect(profileDetailsDraftFrom(user({ name: null }))).toMatchObject({
       name: "",
@@ -222,6 +224,38 @@ describe("the draft", () => {
         oauth,
       ),
     ).toBe(false);
+  });
+
+  it("asks an account with no password for the mailed step-up, not a password", () => {
+    // PATCH /auth/update answers 403 stepUp for that account's email change
+    // until a mailed code is confirmed; without the step-up in the dialog it
+    // had no way through.
+    const oauth = user({ hasPassword: false });
+    const moved = withDetailsEmail(
+      profileDetailsDraftFrom(oauth),
+      "ada@new.example",
+      oauth,
+    );
+    const html = renderToStaticMarkup(
+      <ProfileDetailsFields draft={moved} user={oauth} onChange={() => {}} />,
+    );
+    expect(html).toContain(">Email me a code<");
+    expect(html).not.toMatch(/type="password"/);
+    expect(profileDetailsCanSave(moved, oauth)).toBe(false);
+    expect(profileDetailsCanSave({ ...moved, stepUpDone: true }, oauth)).toBe(
+      true,
+    );
+    // A server that cannot send mail has no code: the server decides on the
+    // session's age, so Save is not held.
+    expect(profileDetailsCanSave(moved, oauth, false)).toBe(true);
+    // Putting the address back forgets the confirmation.
+    expect(
+      withDetailsEmail({ ...moved, stepUpDone: true }, oauth.email, oauth)
+        .stepUpDone,
+    ).toBe(false);
+    // A rename alone needs nothing.
+    const renamed = { ...profileDetailsDraftFrom(oauth), name: "Ada L" };
+    expect(profileDetailsCanSave(renamed, oauth)).toBe(true);
   });
 
   it("drops a typed password as soon as the email is put back", () => {
