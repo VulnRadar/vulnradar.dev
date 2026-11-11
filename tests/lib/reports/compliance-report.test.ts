@@ -213,4 +213,18 @@ describe("generateComplianceReport", () => {
     const report = generateComplianceReport(makeResult(findings));
     expect(report).not.toContain("—");
   });
+
+  it("prints the scan time in UTC with the zone named, whatever the machine zone", () => {
+    const original = process.env.TZ;
+    process.env.TZ = "Pacific/Auckland";
+    try {
+      const report = generateComplianceReport(
+        makeResult([], { scannedAt: "2026-01-15T23:30:00Z" }),
+      );
+      expect(report).toContain("- Scanned: January 15, 2026, 11:30 PM UTC");
+    } finally {
+      if (original === undefined) delete process.env.TZ;
+      else process.env.TZ = original;
+    }
+  });
 });

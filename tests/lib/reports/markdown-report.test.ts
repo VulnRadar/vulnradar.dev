@@ -148,4 +148,27 @@ describe("generateMarkdownReport", () => {
     expect(md).not.toContain("<script>");
     expect(md).toContain("&lt;script&gt;");
   });
+
+  it("prints the scan time in UTC with the zone named, whatever the machine zone", () => {
+    const original = process.env.TZ;
+    process.env.TZ = "Pacific/Auckland";
+    try {
+      const md = generateMarkdownReport({
+        ...result([]),
+        scannedAt: "2026-01-15T23:30:00Z",
+      });
+      expect(md).toContain("Scanned: January 15, 2026, 11:30 PM UTC");
+    } finally {
+      if (original === undefined) delete process.env.TZ;
+      else process.env.TZ = original;
+    }
+  });
+
+  it("says Unknown when the scan has no usable time", () => {
+    const md = generateMarkdownReport({
+      ...result([]),
+      scannedAt: "garbage",
+    });
+    expect(md).toContain("Scanned: Unknown");
+  });
 });

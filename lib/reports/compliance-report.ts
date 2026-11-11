@@ -1,6 +1,7 @@
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types";
 import { severityCounts } from "./severity-counts";
 import { mdText } from "./md-escape";
+import { formatReportDateTime } from "./format-instant";
 import { APP_NAME, APP_URL, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import {
   FRAMEWORKS,
@@ -37,18 +38,6 @@ const SEVERITY_LABEL: Record<Severity, string> = {
 
 function severityRank(severity: Severity): number {
   return SEVERITY_PRIORITY[severity] ?? 0;
-}
-
-function formatScannedAt(scannedAt: string | undefined): string {
-  const date = scannedAt ? new Date(scannedAt) : null;
-  if (!date || Number.isNaN(date.getTime())) return "Unknown";
-  return date.toLocaleString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 /** The short tag line (CWE / OWASP) for a finding, or null when it has neither. */
@@ -201,7 +190,7 @@ export function generateComplianceReport(result: ScanResult): string {
     "## Overview",
     "",
     `- Target: ${mdText(result.url)}`,
-    `- Scanned: ${formatScannedAt(result.scannedAt)}`,
+    `- Scanned: ${formatReportDateTime(result.scannedAt)}`,
     `- Findings: ${counts.critical} critical, ${counts.high} high, ${counts.medium} medium, ${counts.low} low, ${counts.info} info (${findings.length} total)`,
     `- Mapped to at least one control: ${mapped}; not mapped: ${unmapped}`,
     `- Frameworks covered: ${frameworkNames}`,

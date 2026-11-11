@@ -399,4 +399,23 @@ describe("generatePdfReport", () => {
       expect(src).not.toMatch(/\bBuffer\b/);
     });
   });
+
+  it("draws the scan date and time in UTC with the zone named, whatever the machine zone", () => {
+    const original = process.env.TZ;
+    process.env.TZ = "Pacific/Auckland";
+    try {
+      const pdf = decode(
+        generatePdfReport(
+          makeResult([], { scannedAt: "2026-01-15T23:30:00Z" }),
+        ),
+      );
+      const drawn = drawnLiterals(pdf).map(unescapePdfLiteral);
+      expect(drawn).toContain("Thursday, January 15, 2026");
+      expect(drawn).toContain("11:30:00 PM UTC");
+      expect(drawn.some((t) => t.includes("on January 15, 2026."))).toBe(true);
+    } finally {
+      if (original === undefined) delete process.env.TZ;
+      else process.env.TZ = original;
+    }
+  });
 });
