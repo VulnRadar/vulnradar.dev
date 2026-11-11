@@ -165,10 +165,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         params,
       ),
       pool.query<EmailLogRow>(
+        // id breaks ties: a broadcast logs many rows in the same instant,
+        // and without it OFFSET pages could drop or repeat one.
         `SELECT id, recipient, subject, status, error_message, redacted_preview, template, created_at
        FROM email_logs
        ${whereClause}
-       ORDER BY created_at DESC
+       ORDER BY created_at DESC, id DESC
        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset],
       ),

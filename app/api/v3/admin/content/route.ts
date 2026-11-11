@@ -47,12 +47,16 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       // perf: COUNT(*) scans the whole table whatever the sibling LIMIT is,
       // so awaiting it before the page query doubled the wall time of every
       // page load for no reason. The two are independent.
+      //
+      // host (the primary key) breaks ties after last_scanned_at, and sh.id
+      // does the same for shares below, where every page of a crawl shares
+      // one scanned_at: on the timestamp alone OFFSET pages drop or repeat.
       const [countRes, rowsRes] = await Promise.all([
         pool.query<{ count: string }>(`SELECT COUNT(*) FROM host_reputation`),
         pool.query(
           `SELECT host, danger_score, severity_counts, last_scanned_at, source_scan_id, auto_tags
            FROM host_reputation
-           ORDER BY last_scanned_at DESC
+           ORDER BY last_scanned_at DESC, host
            LIMIT $1 OFFSET $2`,
           [limit, offset],
         ),
@@ -79,7 +83,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
            FROM scan_history sh
            LEFT JOIN users u ON sh.user_id = u.id
           WHERE sh.share_token IS NOT NULL
-          ORDER BY sh.scanned_at DESC
+          ORDER BY sh.scanned_at DESC, sh.id DESC
           LIMIT $1 OFFSET $2`,
           [limit, offset],
         ),

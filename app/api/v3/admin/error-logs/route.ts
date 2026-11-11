@@ -74,10 +74,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         `SELECT COUNT(*) FROM system_error_logs ${whereClause}`,
         whereParams,
       ),
+      // id breaks ties: one failing request logs several rows in the same
+      // instant, and without it OFFSET pages could drop or repeat one.
       pool.query<ErrorLogRow>(
         `SELECT id, message, detail, request_id, scan_id, created_at FROM system_error_logs
        ${whereClause}
-       ORDER BY created_at DESC
+       ORDER BY created_at DESC, id DESC
        LIMIT $${whereParams.length + 1} OFFSET $${whereParams.length + 2}`,
         [...whereParams, limit, offset],
       ),

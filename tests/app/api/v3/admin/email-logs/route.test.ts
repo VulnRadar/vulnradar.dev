@@ -110,7 +110,9 @@ describe("GET /api/v3/admin/email-logs", () => {
     expect(json.page).toBe(1);
 
     const selectCall = mockQuery.mock.calls[2] as [string, unknown[]];
-    expect(selectCall[0]).toContain("ORDER BY created_at DESC");
+    // id breaks ties: rows logged in the same instant would otherwise land
+    // on either side of an OFFSET boundary, so a page drops or repeats one.
+    expect(selectCall[0]).toContain("ORDER BY created_at DESC, id DESC");
     expect(selectCall[1]).toEqual([20, 0]);
   });
 

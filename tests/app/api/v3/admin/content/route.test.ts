@@ -158,6 +158,19 @@ describe("GET /api/v3/admin/content", () => {
     expect(pageCall?.[1]).toEqual([10, 20]);
   });
 
+  // Crawl rows share a scanned_at, and two hosts can share last_scanned_at,
+  // so the timestamp alone let OFFSET pages drop or repeat a row.
+  it.each([
+    ["shares", "ORDER BY sh.scanned_at DESC, sh.id DESC"],
+    ["hosts", "ORDER BY last_scanned_at DESC, host"],
+  ])("orders %s by a unique key after the timestamp", async (type, order) => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: "0" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await GET(getRequest(`type=${type}`));
+    expect(String(mockQuery.mock.calls.at(-1)?.[0])).toContain(order);
+  });
+
   // A totalPages of 0 renders as "Page 1 of 0" in the admin table, so the
   // route floors it at 1 for an empty table.
   it("never reports zero pages for an empty table", async () => {
