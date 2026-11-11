@@ -10,6 +10,7 @@ import {
   sendEmail,
   paymentReceiptEmail,
   paymentFailedEmail,
+  planCancelledEmail,
   creditPurchaseReceiptEmail,
   creditRefundEmail,
   subscriptionChangedEmail,
@@ -26,6 +27,7 @@ import {
   applySubscriptionUpdated,
   markSubscriptionPaid,
   markSubscriptionPastDue,
+  readDunningExemption,
   subscriptionOwnershipSql,
 } from "@/lib/billing/subscription-writes";
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
@@ -98,6 +100,18 @@ async function retrieveLiveSubscription(
 }
 
 const PAID_PLAN_IDS: readonly PlanId[] = getPaidPlans().map((p) => p.id);
+
+/**
+ * The failed attempt at a renewal that cancels the subscription (owner
+ * decision T10). Stripe's own retry schedule decides when attempt two comes.
+ */
+const TWO_STRIKE_ATTEMPTS = 2;
+
+/**
+ * Stamped on a subscription the two-strike rule cancelled, so the deleted
+ * event it causes knows the customer has already been told.
+ */
+const TWO_STRIKE_CANCEL_COMMENT = "Renewal payment failed twice";
 
 /**
  * Receipt and clawback notice for a one-time credit purchase.
@@ -977,8 +991,13 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         // Best-effort cancellation notice, only when a user actually matched.
         // The DB row was just reset to free/pro-floor above, so name the plan
         // that was actually canceled from the subscription object's own
-        // metadata, not the post-reset row.
-        if (result.userId) {
+        // metadata, not the post-reset row. A two-strike cancel has already
+        // sent its own notice, which says why; this one would also claim
+        // access lasts to the end of a period nobody paid for.
+        const twoStrike =
+          subscription.cancellation_details?.comment ===
+          TWO_STRIKE_CANCEL_COMMENT;
+        if (result.userId && !twoStrike) {
           try {
             const recipient = await lookupBillingRecipient(customerId);
             if (recipient?.email) {
@@ -1128,7 +1147,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         const liveFailed = failedSubscriptionId
           ? await retrieveLiveSubscription(stripe, failedSubscriptionId)
           : null;
-        const dunned =
+        const dunnedUserId =
           failedSubscriptionId &&
           liveFailed &&
           isLiveSubscriptionStatus(liveFailed.status)
@@ -1137,31 +1156,81 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
                   subscriptionId: failedSubscriptionId,
                   customerId,
                 })
-              ).userId !== null
-            : false;
+              ).userId
+            : null;
         console.log(
-          dunned
-            ? `[Stripe] Payment failed for customer ${customerId}`
+          dunnedUserId
+            ? `[Stripe] Payment failed for customer ${customerId} (attempt ${invoice.attempt_count})`
             : `[Stripe] Invoice ${invoice.id} failed for customer ${customerId} but it is not a renewal of their current subscription; leaving the account as it is (event ${event.id})`,
         );
 
-        // Best-effort dunning notice (transactional) so the customer can fix
-        // the card before the retries run out and the plan drops.
+        // Two strikes. Past_due alone kept the paid plan for as long as Stripe
+        // kept the subscription past_due, so a card that never paid again
+        // kept the plan. The second failed attempt at a renewal cancels the
+        // subscription, and customer.subscription.deleted moves the account
+        // to free. Only a renewal (a one-off invoice or a mid-cycle plan
+        // change failing is not a lapsed subscription), only the account's
+        // own current one (dunnedUserId), and never under a staff floor or a
+        // gift. A redelivery is stopped by the idempotency marker, and a retry
+        // after the cancel landed reads the subscription as canceled above.
+        let cancelled = false;
+        if (
+          dunnedUserId &&
+          failedSubscriptionId &&
+          invoice.billing_reason === "subscription_cycle" &&
+          (invoice.attempt_count ?? 0) >= TWO_STRIKE_ATTEMPTS
+        ) {
+          const exemption = await readDunningExemption(dunnedUserId);
+          if (exemption.staffFloor || exemption.gifted) {
+            console.log(
+              `[Stripe] Renewal failed ${invoice.attempt_count} times for user ${dunnedUserId}; not cancelling over a ${exemption.staffFloor ? "staff plan floor" : "gifted plan"} (event ${event.id})`,
+            );
+          } else {
+            try {
+              await stripe.subscriptions.cancel(
+                failedSubscriptionId,
+                {
+                  prorate: false,
+                  invoice_now: false,
+                  cancellation_details: { comment: TWO_STRIKE_CANCEL_COMMENT },
+                },
+                { idempotencyKey: `two-strike-cancel-${failedSubscriptionId}` },
+              );
+              cancelled = true;
+              console.log(
+                `[Stripe] Renewal failed ${invoice.attempt_count} times; cancelled subscription ${failedSubscriptionId} for user ${dunnedUserId} (event ${event.id})`,
+              );
+            } catch (err) {
+              // Already gone: whatever ended it sends its own deleted event.
+              if (!isMissingStripeResource(err)) throw err;
+            }
+          }
+        }
+
+        // Best-effort dunning notice (transactional): the first strike says
+        // it will be retried, the second that the plan was cancelled.
         try {
-          const recipient = dunned
+          const recipient = dunnedUserId
             ? await lookupBillingRecipient(customerId)
             : null;
           if (recipient?.email) {
+            const amountCents = invoice.amount_due ?? invoice.amount_paid ?? 0;
             await sendEmail({
               to: recipient.email,
-              ...paymentFailedEmail({
-                planName: planDisplayName(recipient.plan),
-                amountCents: invoice.amount_due ?? invoice.amount_paid ?? 0,
-                currency: invoice.currency,
-                nextAttempt: invoice.next_payment_attempt
-                  ? formatBillingDate(invoice.next_payment_attempt)
-                  : null,
-              }),
+              ...(cancelled
+                ? planCancelledEmail({
+                    planName: planDisplayName(recipient.plan),
+                    amountCents,
+                    currency: invoice.currency,
+                  })
+                : paymentFailedEmail({
+                    planName: planDisplayName(recipient.plan),
+                    amountCents,
+                    currency: invoice.currency,
+                    nextAttempt: invoice.next_payment_attempt
+                      ? formatBillingDate(invoice.next_payment_attempt)
+                      : null,
+                  })),
             });
           }
         } catch (emailErr) {

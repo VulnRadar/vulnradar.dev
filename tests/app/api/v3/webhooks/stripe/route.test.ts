@@ -1884,6 +1884,262 @@ describe("POST /api/v3/webhooks/stripe: invoice events read the live subscriptio
   });
 });
 
+describe("POST /api/v3/webhooks/stripe: invoice.payment_failed, two strikes", () => {
+  // Stripe retries a failed renewal on the owner's schedule. The first failure
+  // keeps the plan and warns; the second cancels the subscription, and the
+  // customer.subscription.deleted that follows moves the account to free.
+  // Before this the account kept its paid plan for as long as Stripe kept
+  // reporting past_due.
+  function failedRenewal(
+    id: string,
+    attempt: number,
+    over: Record<string, unknown> = {},
+  ) {
+    return signedRequest(
+      JSON.stringify({
+        id,
+        type: "invoice.payment_failed",
+        data: {
+          object: {
+            id: `in_${id}`,
+            customer: "cus_dun",
+            parent: { subscription_details: { subscription: "sub_dun" } },
+            billing_reason: "subscription_cycle",
+            attempt_count: attempt,
+            amount_due: 1000,
+            currency: "usd",
+            next_payment_attempt: 1_763_200_000,
+            ...over,
+          },
+        },
+      }),
+    );
+  }
+
+  const recipient = {
+    rows: [{ email: "payer@example.com", plan: "pro_supporter" }],
+  };
+
+  function sentSubjects() {
+    return mockSendEmail.mock.calls.map(
+      ([msg]) => (msg as { subject: string }).subject,
+    );
+  }
+
+  it("on the first failure marks past_due, sends the retry notice and cancels nothing", async () => {
+    withIdempotency("evt_dun_1");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] }); // past_due
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    const res = await POST(failedRenewal("evt_dun_1", 1));
+
+    expect(res.status).toBe(200);
+    expect(mockSubCancel).not.toHaveBeenCalled();
+    expect(String(mockQuery.mock.calls[1][0])).toContain(
+      "subscription_status = 'past_due'",
+    );
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(sentSubjects()[0]).toContain("couldn't process your payment");
+    const { text } = mockSendEmail.mock.calls[0][0] as { text: string };
+    expect(text).toMatch(/retry/i);
+  });
+
+  it("on the second failure cancels the subscription once and sends the cancellation notice", async () => {
+    withIdempotency("evt_dun_2");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] }); // past_due
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "user", has_gift: false }],
+    }); // exemptions
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    const res = await POST(failedRenewal("evt_dun_2", 2));
+
+    expect(res.status).toBe(200);
+    expect(mockSubCancel).toHaveBeenCalledTimes(1);
+    const [cancelId, cancelParams, cancelOptions] = mockSubCancel.mock.calls[0];
+    expect(cancelId).toBe("sub_dun");
+    // No credit for the unpaid period, and no final invoice for it either.
+    expect(cancelParams).toMatchObject({ prorate: false, invoice_now: false });
+    expect(cancelParams.cancellation_details.comment).toBeTruthy();
+    expect(cancelOptions).toMatchObject({
+      idempotencyKey: expect.stringContaining("sub_dun"),
+    });
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(sentSubjects()[0]).toMatch(/cancel/i);
+    const { to } = mockSendEmail.mock.calls[0][0] as { to: string };
+    expect(to).toBe("payer@example.com");
+  });
+
+  it("cancels on a later attempt too, if the second one somehow got through", async () => {
+    withIdempotency("evt_dun_3");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "user", has_gift: false }],
+    });
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    await POST(failedRenewal("evt_dun_3", 3));
+
+    expect(mockSubCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a gifted account's subscription alone", async () => {
+    withIdempotency("evt_dun_gift");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "user", has_gift: true }],
+    });
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    const res = await POST(failedRenewal("evt_dun_gift", 2));
+
+    expect(res.status).toBe(200);
+    expect(mockSubCancel).not.toHaveBeenCalled();
+    expect(sentSubjects()[0]).toContain("couldn't process your payment");
+  });
+
+  it("leaves a staff account's subscription alone", async () => {
+    withIdempotency("evt_dun_staff");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "support", has_gift: false }],
+    });
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    await POST(failedRenewal("evt_dun_staff", 2));
+
+    expect(mockSubCancel).not.toHaveBeenCalled();
+  });
+
+  it("never cancels over a one-off invoice", async () => {
+    withIdempotency("evt_dun_oneoff");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await POST(
+      failedRenewal("evt_dun_oneoff", 2, {
+        parent: null,
+        billing_reason: "manual",
+      }),
+    );
+
+    expect(mockSubCancel).not.toHaveBeenCalled();
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    logSpy.mockRestore();
+  });
+
+  it("never cancels over an invoice that is not a renewal, such as a mid-cycle plan change", async () => {
+    withIdempotency("evt_dun_update");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] });
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    await POST(
+      failedRenewal("evt_dun_update", 2, {
+        billing_reason: "subscription_update",
+      }),
+    );
+
+    expect(mockSubCancel).not.toHaveBeenCalled();
+  });
+
+  it("does not cancel or dun a renewal for a subscription the account is no longer on", async () => {
+    withIdempotency("evt_dun_other");
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // past_due guard refused
+
+    await POST(failedRenewal("evt_dun_other", 2));
+
+    expect(mockSubCancel).not.toHaveBeenCalled();
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("cancels once across a redelivery of the same event", async () => {
+    withIdempotency("evt_dun_redeliver");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "user", has_gift: false }],
+    });
+    mockQuery.mockResolvedValueOnce(recipient);
+    await POST(failedRenewal("evt_dun_redeliver", 2));
+
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // marker already there
+    const replay = await POST(failedRenewal("evt_dun_redeliver", 2));
+
+    expect(await replay.json()).toEqual({ received: true, replay: true });
+    expect(mockSubCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing more once the subscription is already cancelled in Stripe", async () => {
+    // A retry of the second strike after the first attempt had already
+    // cancelled (the marker was rolled back on a later failure), or a third
+    // attempt racing the cancellation.
+    liveSubscriptions.set("sub_dun", {
+      id: "sub_dun",
+      status: "canceled",
+      metadata: {},
+    });
+    withIdempotency("evt_dun_after_cancel");
+
+    await POST(failedRenewal("evt_dun_after_cancel", 2));
+
+    expect(mockSubCancel).not.toHaveBeenCalled();
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("answers 500 so Stripe redelivers when the cancellation cannot reach Stripe", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    withIdempotency("evt_dun_cancel_down");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "user", has_gift: false }],
+    });
+    mockQuery.mockResolvedValue({ rows: [] }); // idempotency rollback
+    mockSubCancel.mockRejectedValue(
+      Object.assign(new Error("Request timed out"), { statusCode: 500 }),
+    );
+
+    const res = await POST(failedRenewal("evt_dun_cancel_down", 2));
+
+    expect(res.status).toBe(500);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("customer.subscription.deleted does not send a second cancellation email for a two-strike cancel", async () => {
+    // The two-strike handler already told the customer why and how to come
+    // back. The generic "your subscription was canceled" on top of it would
+    // be a second message about the same thing, and a misleading one: it
+    // says access lasts to the end of the period.
+    withIdempotency("evt_deleted_two_strike");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] }); // UPDATE
+    mockQuery.mockResolvedValueOnce(badgeRow);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    const sent = mockSendEmail.mock.calls.length;
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_deleted_two_strike",
+          type: "customer.subscription.deleted",
+          data: {
+            object: {
+              id: "sub_dun",
+              customer: "cus_dun",
+              metadata: { planId: "pro_supporter" },
+              cancellation_details: {
+                reason: "cancellation_requested",
+                comment: "Renewal payment failed twice",
+              },
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockSendEmail.mock.calls.length).toBe(sent);
+  });
+});
+
 describe("POST /api/v3/webhooks/stripe: charge.refunded", () => {
   function refundEvent(id: string, charge: Record<string, unknown>) {
     return signedRequest(
