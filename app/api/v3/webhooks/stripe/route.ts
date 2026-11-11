@@ -45,6 +45,16 @@ import {
   reverseBrowserbaseCreditPurchase,
 } from "@/lib/billing/browserbase-usage";
 import { findAccountForSubscriptionEvent } from "@/lib/billing/subscription-lookup";
+import {
+  creditPurchaseFromMetadata,
+  recordReversedCreditPurchase,
+  restorableFromMetadata,
+  restorableToMetadata,
+  restoreCreditsAfterDispute,
+  reverseCreditsForDispute,
+  reversedCreditKinds,
+  type CreditKind,
+} from "@/lib/billing/credit-reversal-ledger";
 import pool from "@/lib/database/db";
 import Stripe from "stripe";
 import { sendAdminAlert } from "@/lib/admin/alert-webhook";
@@ -157,6 +167,65 @@ async function emailCreditReversals(
     }
   } catch (err) {
     console.error("[Stripe] credit reversal notices failed:", err);
+  }
+}
+
+const CREDIT_LABELS: Record<CreditKind, string> = {
+  ai: "AI analysis tokens",
+  github: "GitHub review tokens",
+  browserbase: "Browserbase minutes",
+};
+
+/** A ledger amount in the unit its receipt names: Browserbase is stored in seconds. */
+function creditQuantity(kind: CreditKind, amount: number): number {
+  return kind === "browserbase" ? Math.round(amount / 60) : amount;
+}
+
+/**
+ * Whether the charge behind a credit purchase has already been refunded or
+ * disputed, read before anything is credited.
+ *
+ * Stripe can deliver payment_intent.succeeded after charge.refunded, and a
+ * credit granted then is never clawed back: the refund ran first and found
+ * nothing to reverse. A charge refunded down to nothing counts even while
+ * `refunded` lags. A partial refund does not, for the same reason
+ * charge.refunded does not reverse one.
+ */
+async function creditChargeState(
+  stripe: Stripe,
+  paymentIntent: Stripe.PaymentIntent,
+): Promise<"refunded" | "disputed" | null> {
+  const latest = paymentIntent.latest_charge;
+  if (!latest) return null;
+  let charge: Stripe.Charge;
+  if (typeof latest === "string") {
+    try {
+      charge = await stripe.charges.retrieve(latest);
+    } catch (err) {
+      if (!isMissingStripeResource(err)) throw err;
+      return null;
+    }
+  } else {
+    charge = latest;
+  }
+  if (charge.disputed) return "disputed";
+  const fullyRefunded =
+    charge.refunded ||
+    (charge.amount > 0 && (charge.amount_refunded ?? 0) >= charge.amount);
+  return fullyRefunded ? "refunded" : null;
+}
+
+/** The PaymentIntent's credit purchase, if it was one; one request. */
+async function creditPurchaseForPaymentIntent(
+  stripe: Stripe,
+  paymentIntentId: string,
+) {
+  try {
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+    return creditPurchaseFromMetadata(pi.metadata);
+  } catch (err) {
+    if (!isMissingStripeResource(err)) throw err;
+    return null;
   }
 }
 
@@ -1113,6 +1182,28 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
         const tierId = paymentIntent.metadata?.aiCreditTierId;
 
+        const purchase = creditPurchaseFromMetadata(paymentIntent.metadata);
+        if (purchase) {
+          const chargeState = await creditChargeState(stripe, paymentIntent);
+          if (chargeState === "refunded") {
+            // Recorded as reversed, so the checkout confirmation cannot
+            // credit it either.
+            await recordReversedCreditPurchase(paymentIntent.id, purchase);
+            console.log(
+              `[Stripe] payment_intent ${paymentIntent.id} was refunded before it was credited; not crediting (event ${event.id})`,
+            );
+            break;
+          }
+          if (chargeState === "disputed") {
+            // charge.dispute.created records the purchase as reversed, and a
+            // won dispute grants it from there.
+            console.error(
+              `[Stripe] payment_intent ${paymentIntent.id} is under dispute; not crediting until the dispute is won (event ${event.id})`,
+            );
+            break;
+          }
+        }
+
         // Every PaymentIntent Stripe has ever created fires this event,
         // including a subscription's own invoice PaymentIntent (see
         // createSubscription above). One that carries none of the three
@@ -1314,10 +1405,28 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           console.log(
             `[Stripe] Refund clawed back ${bbR.seconds}s of Browserbase credit from user ${bbR.userId} (event ${event.id})`,
           );
-        if (!aiR.reversed && !ghR.reversed && !bbR.reversed)
-          console.log(
-            `[Stripe] charge.refunded for ${refundPi} matched no credit purchase (likely a subscription refund) (event ${event.id})`,
+        if (!aiR.reversed && !ghR.reversed && !bbR.reversed) {
+          // Nothing to reverse: either not a credit purchase at all (a
+          // subscription refund), or one whose credit has not landed yet. The
+          // second is recorded as already reversed so the credit is refused
+          // when it does arrive.
+          const purchase = await creditPurchaseForPaymentIntent(
+            stripe,
+            refundPi,
           );
+          if (
+            purchase &&
+            (await recordReversedCreditPurchase(refundPi, purchase))
+          ) {
+            console.log(
+              `[Stripe] Refund on ${refundPi} arrived before its credit; recorded so the credit is refused (event ${event.id})`,
+            );
+          } else {
+            console.log(
+              `[Stripe] charge.refunded for ${refundPi} matched no credit purchase (likely a subscription refund) (event ${event.id})`,
+            );
+          }
+        }
         await emailCreditReversals(
           [
             {
@@ -1344,11 +1453,13 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       }
 
       case "charge.dispute.created": {
-        // A chargeback: the customer is pulling the money back. Treat it like a
-        // refund for one-time credits (the refunded_at guard makes this
-        // idempotent with any later charge.refunded). Plan/badge are left to the
-        // subscription lifecycle and admin review, since a dispute can be won.
-        // Logged at error level so a human sees it.
+        // A chargeback: the customer is pulling the money back. One-time
+        // credits are reversed now (the refunded_at guard makes this
+        // idempotent with any later charge.refunded); how much actually came
+        // off is written onto the dispute, because spent credit cannot be
+        // taken back and a won dispute must restore only what was taken.
+        // Plan/badge are left to the subscription lifecycle and admin review,
+        // since a dispute can be won. Logged at error level so a human sees it.
         const dispute = event.data.object as Stripe.Dispute;
         const disputePi =
           typeof dispute.payment_intent === "string"
@@ -1358,44 +1469,94 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           `[Stripe] Dispute opened (reason: ${dispute.reason}, amount ${dispute.amount} ${dispute.currency}) on payment_intent ${disputePi} (event ${event.id})`,
         );
         if (disputePi) {
-          const [aiR, ghR, bbR] = await Promise.all([
-            reverseAiCreditPurchase(disputePi),
-            reverseGithubCreditPurchase(disputePi),
-            reverseBrowserbaseCreditPurchase(disputePi),
-          ]);
-          if (aiR.reversed)
+          const purchase = await creditPurchaseForPaymentIntent(
+            stripe,
+            disputePi,
+          );
+          const reversals = await reverseCreditsForDispute(
+            disputePi,
+            purchase,
+            async (taken) => {
+              await stripe.disputes.update(dispute.id, {
+                metadata: restorableToMetadata(taken),
+              });
+            },
+          );
+          for (const r of reversals) {
             console.log(
-              `[Stripe] Dispute clawed back ${aiR.tokens} AI tokens from user ${aiR.userId} (event ${event.id})`,
+              r.neverCredited
+                ? `[Stripe] Dispute on ${disputePi} arrived before its ${r.kind} credit; recorded so the credit is refused (event ${event.id})`
+                : `[Stripe] Dispute clawed back ${r.restorable} of ${r.amount} ${r.kind} credit from user ${r.userId} (event ${event.id})`,
             );
-          if (ghR.reversed)
-            console.log(
-              `[Stripe] Dispute clawed back ${ghR.tokens} GitHub review tokens from user ${ghR.userId} (event ${event.id})`,
-            );
-          if (bbR.reversed)
-            console.log(
-              `[Stripe] Dispute clawed back ${bbR.seconds}s of Browserbase credit from user ${bbR.userId} (event ${event.id})`,
-            );
+          }
           await emailCreditReversals(
-            [
-              {
-                ...aiR,
-                quantity: aiR.tokens ?? 0,
-                creditLabel: "AI analysis tokens",
-              },
-              {
-                ...ghR,
-                quantity: ghR.tokens ?? 0,
-                creditLabel: "GitHub review tokens",
-              },
-              {
-                ...bbR,
-                quantity: Math.round((bbR.seconds ?? 0) / 60),
-                creditLabel: "Browserbase minutes",
-              },
-            ],
+            reversals
+              .filter((r) => !r.neverCredited)
+              .map((r) => ({
+                reversed: true,
+                userId: r.userId,
+                quantity: creditQuantity(r.kind, r.amount),
+                creditLabel: CREDIT_LABELS[r.kind],
+              })),
             dispute.amount,
             dispute.currency,
             true,
+          );
+        }
+        break;
+      }
+
+      case "charge.dispute.closed": {
+        // "won" is a chargeback decided in our favour; "warning_closed" is an
+        // inquiry that never became one. Either way the money stayed, so the
+        // credit the dispute reversed is given back: exactly what it took,
+        // as recorded on the dispute when it opened.
+        const dispute = event.data.object as Stripe.Dispute;
+        if (dispute.status !== "won" && dispute.status !== "warning_closed") {
+          console.log(
+            `[Stripe] Dispute ${dispute.id} closed as ${dispute.status}; credits stay reversed (event ${event.id})`,
+          );
+          break;
+        }
+        const closedPi =
+          typeof dispute.payment_intent === "string"
+            ? dispute.payment_intent
+            : (dispute.payment_intent?.id ?? null);
+        if (!closedPi) break;
+
+        const restorable = restorableFromMetadata(dispute.metadata);
+        if (!restorable) {
+          // Opened before the amount was recorded. Guessing would mean
+          // restoring the whole purchase, credit the customer may already
+          // have spent, so a person decides.
+          const kinds = await reversedCreditKinds(closedPi);
+          if (kinds.length > 0) {
+            const context = {
+              eventId: event.id,
+              disputeId: dispute.id,
+              paymentIntentId: closedPi,
+              ledgers: kinds.join(","),
+            };
+            logError(
+              "stripe",
+              "a won dispute has reversed credits and no record of how much to restore",
+              undefined,
+              context,
+            );
+            void sendAdminAlert({
+              event: "stripe_dispute_won_unrestored",
+              severity: "warning",
+              message: `Dispute ${dispute.id} was won, and the credits it reversed (${kinds.join(", ")}) were not restored because the dispute predates the record of how much was taken. Restore them by hand from the user's credit balances.`,
+              context,
+            });
+          }
+          break;
+        }
+
+        const restored = await restoreCreditsAfterDispute(closedPi, restorable);
+        for (const r of restored) {
+          console.log(
+            `[Stripe] Dispute ${dispute.id} ${dispute.status}: restored ${r.amount} ${r.kind} credit to user ${r.userId} (event ${event.id})`,
           );
         }
         break;

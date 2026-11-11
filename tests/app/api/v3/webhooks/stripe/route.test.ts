@@ -26,8 +26,17 @@ import { NextRequest } from "next/server";
 import Stripe from "stripe";
 
 const mockQuery = vi.fn();
+// A dispute's credit reversal runs in a transaction on one checked-out client.
+const mockClientQuery = vi.fn();
+const mockClientRelease = vi.fn();
 vi.mock("@/lib/database/db", () => ({
-  default: { query: (...args: unknown[]) => mockQuery(...args) },
+  default: {
+    query: (...args: unknown[]) => mockQuery(...args),
+    connect: async () => ({
+      query: (...args: unknown[]) => mockClientQuery(...args),
+      release: () => mockClientRelease(),
+    }),
+  },
 }));
 
 // The route reads the plan through lib/billing/stripe-catalog, which carries
@@ -74,11 +83,23 @@ vi.mock("@/lib/email/email", async (importOriginal) => ({
 // stays real so the payment_intent.succeeded tests above keep exercising the
 // crediting path through the mocked pool (AUDIT-013#cov-11).
 const mockReverseAiCreditPurchase = vi.fn();
-vi.mock("@/lib/billing/ai-usage", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/billing/ai-usage")>()),
-  reverseAiCreditPurchase: (...args: unknown[]) =>
-    mockReverseAiCreditPurchase(...args),
-}));
+// creditAiCreditPurchase still runs for real against the mocked pool; the spy
+// is only there so a test can say it was never reached.
+const mockCreditAiCreditPurchase = vi.fn();
+let realCreditAiCreditPurchase: (typeof import("@/lib/billing/ai-usage"))["creditAiCreditPurchase"];
+vi.mock("@/lib/billing/ai-usage", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/billing/ai-usage")>();
+  realCreditAiCreditPurchase = actual.creditAiCreditPurchase;
+  return {
+    ...actual,
+    reverseAiCreditPurchase: (...args: unknown[]) =>
+      mockReverseAiCreditPurchase(...args),
+    creditAiCreditPurchase: (
+      ...args: Parameters<typeof actual.creditAiCreditPurchase>
+    ) => mockCreditAiCreditPurchase(...args),
+  };
+});
 
 const mockReverseGithubCreditPurchase = vi.fn();
 vi.mock("@/lib/billing/github-review-usage", async (importOriginal) => ({
@@ -239,6 +260,14 @@ beforeEach(() => {
   mockSendAdminAlert.mockResolvedValue({ delivered: false, reason: "test" });
   mockReverseAiCreditPurchase.mockReset();
   mockReverseAiCreditPurchase.mockResolvedValue({ reversed: false });
+  mockCreditAiCreditPurchase.mockReset();
+  mockCreditAiCreditPurchase.mockImplementation(
+    (...args: Parameters<typeof realCreditAiCreditPurchase>) =>
+      realCreditAiCreditPurchase(...args),
+  );
+  mockClientQuery.mockReset();
+  mockClientQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+  mockClientRelease.mockReset();
   mockReverseGithubCreditPurchase.mockReset();
   mockReverseGithubCreditPurchase.mockResolvedValue({ reversed: false });
   mockReverseBrowserbaseCreditPurchase.mockReset();
@@ -1939,6 +1968,235 @@ describe("POST /api/v3/webhooks/stripe: charge.refunded", () => {
   });
 });
 
+describe("POST /api/v3/webhooks/stripe: a refund that lands before the credit", () => {
+  it("records the refunded purchase so a credit arriving afterwards is refused", async () => {
+    // Refund first, credit second. With no ledger row to reverse, the refund
+    // did nothing, and the credit that followed went through: the customer
+    // had their money back and kept the tokens.
+    withIdempotency("evt_refund_first");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockPaymentIntentRetrieve.mockResolvedValue({
+      id: "pi_refund_first",
+      metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ payment_intent_id: "pi_refund_first" }],
+      rowCount: 1,
+    }); // the reversed-purchase record
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_refund_first",
+          type: "charge.refunded",
+          data: {
+            object: {
+              id: "ch_rf",
+              refunded: true,
+              amount: 500,
+              amount_refunded: 500,
+              currency: "usd",
+              payment_intent: "pi_refund_first",
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockPaymentIntentRetrieve).toHaveBeenCalledWith("pi_refund_first");
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain("INSERT INTO ai_credit_purchases");
+    expect(sql).toContain("refunded_at");
+    expect(sql).toContain("ON CONFLICT (payment_intent_id) DO NOTHING");
+    expect(params).toEqual(["pi_refund_first", 42, 1_000_000]);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it("does not record anything for a refund of a subscription invoice", async () => {
+    withIdempotency("evt_refund_sub");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_refund_sub",
+          type: "charge.refunded",
+          data: {
+            object: {
+              id: "ch_sub",
+              refunded: true,
+              amount: 500,
+              amount_refunded: 500,
+              currency: "usd",
+              payment_intent: "pi_sub_invoice",
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    logSpy.mockRestore();
+  });
+
+  it("payment_intent.succeeded never credits a purchase whose charge has already been refunded", async () => {
+    withIdempotency("evt_pi_after_refund");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockChargeRetrieve.mockResolvedValue({
+      id: "ch_refunded",
+      amount: 500,
+      amount_refunded: 500,
+      refunded: true,
+      disputed: false,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // reversed-purchase record (refund already wrote it)
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_pi_after_refund",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              id: "pi_after_refund",
+              amount: 1000,
+              amount_received: 1000,
+              currency: "usd",
+              latest_charge: "ch_refunded",
+              metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockChargeRetrieve).toHaveBeenCalledWith("ch_refunded");
+    expect(mockCreditAiCreditPurchase).not.toHaveBeenCalled();
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain("INSERT INTO ai_credit_purchases");
+    expect(params).toEqual(["pi_after_refund", 42, 1_000_000]);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it("treats a charge refunded down to nothing as refunded even before the flag catches up", async () => {
+    withIdempotency("evt_pi_amount_refunded");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_pi_amount_refunded",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              id: "pi_amount_refunded",
+              amount: 1000,
+              amount_received: 1000,
+              currency: "usd",
+              latest_charge: {
+                id: "ch_inline",
+                object: "charge",
+                amount: 500,
+                amount_refunded: 500,
+                refunded: false,
+                disputed: false,
+              },
+              metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(mockChargeRetrieve).not.toHaveBeenCalled();
+    expect(mockCreditAiCreditPurchase).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it("payment_intent.succeeded never credits a purchase whose charge is under dispute", async () => {
+    withIdempotency("evt_pi_disputed");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockChargeRetrieve.mockResolvedValue({
+      id: "ch_disputed",
+      amount: 500,
+      amount_refunded: 0,
+      refunded: false,
+      disputed: true,
+    });
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_pi_disputed",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              id: "pi_disputed_credit",
+              amount: 1000,
+              amount_received: 1000,
+              currency: "usd",
+              latest_charge: "ch_disputed",
+              metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockCreditAiCreditPurchase).not.toHaveBeenCalled();
+    // The dispute handler owns the record for a disputed purchase.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    errSpy.mockRestore();
+  });
+
+  it("still credits when the latest charge is clean", async () => {
+    withIdempotency("evt_pi_clean");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockChargeRetrieve.mockResolvedValue({
+      id: "ch_clean",
+      amount: 500,
+      amount_refunded: 0,
+      refunded: false,
+      disputed: false,
+    });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // credit CTE
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // receipt recipient
+
+    await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_pi_clean",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              id: "pi_clean",
+              amount: 1000,
+              amount_received: 1000,
+              currency: "usd",
+              latest_charge: "ch_clean",
+              metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(mockCreditAiCreditPurchase).toHaveBeenCalledWith(
+      "pi_clean",
+      42,
+      1_000_000,
+    );
+    logSpy.mockRestore();
+  });
+});
+
 describe("POST /api/v3/webhooks/stripe: charge.dispute.created", () => {
   function disputeEvent(id: string, dispute: Record<string, unknown>) {
     return signedRequest(
@@ -1950,7 +2208,14 @@ describe("POST /api/v3/webhooks/stripe: charge.dispute.created", () => {
     );
   }
 
-  it("claws back all three credit ledgers for a string payment_intent", async () => {
+  /** The ledger reversals the transaction ran, by table. */
+  function ledgerClaims() {
+    return mockClientQuery.mock.calls.filter(([sql]) =>
+      /UPDATE \w+_credit_purchases SET refunded_at = NOW\(\)/.test(String(sql)),
+    );
+  }
+
+  it("claws back all three credit ledgers for a string payment_intent, inside one transaction", async () => {
     withIdempotency("evt_dispute_1");
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -1966,11 +2231,144 @@ describe("POST /api/v3/webhooks/stripe: charge.dispute.created", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(mockReverseAiCreditPurchase).toHaveBeenCalledWith("pi_disputed");
-    expect(mockReverseGithubCreditPurchase).toHaveBeenCalledWith("pi_disputed");
-    expect(mockReverseBrowserbaseCreditPurchase).toHaveBeenCalledWith(
-      "pi_disputed",
+    const claims = ledgerClaims();
+    expect(
+      claims.map(([sql]) => String(sql).match(/UPDATE (\w+)/)?.[1]),
+    ).toEqual([
+      "ai_credit_purchases",
+      "github_credit_purchases",
+      "browserbase_credit_purchases",
+    ]);
+    for (const [, params] of claims) expect(params).toEqual(["pi_disputed"]);
+    const statements = mockClientQuery.mock.calls.map(([sql]) => String(sql));
+    expect(statements[0]).toBe("BEGIN");
+    expect(statements[statements.length - 1]).toBe("COMMIT");
+    expect(mockClientRelease).toHaveBeenCalledTimes(1);
+    errSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  it("records on the dispute how much it actually took, so a win can give back exactly that", async () => {
+    // Bought 1,000,000 tokens and had spent all but 200,000 when the dispute
+    // opened. The reversal can only take the 200,000 that are left. A win
+    // that restored the full purchase would hand back 800,000 tokens that
+    // were already used: buy, spend, dispute, lose the dispute, keep both.
+    withIdempotency("evt_dispute_partial");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (/UPDATE ai_credit_purchases SET refunded_at = NOW\(\)/.test(sql)) {
+        return { rows: [{ user_id: 42, amount: "1000000" }], rowCount: 1 };
+      }
+      if (/FOR UPDATE/.test(sql)) {
+        return { rows: [{ balance: "200000" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await POST(
+      disputeEvent("evt_dispute_partial", {
+        id: "dp_partial",
+        reason: "fraudulent",
+        amount: 500,
+        currency: "usd",
+        payment_intent: "pi_partial",
+      }),
     );
+
+    expect(res.status).toBe(200);
+    const debit = mockClientQuery.mock.calls.find(([sql]) =>
+      /UPDATE users SET ai_credit_balance = ai_credit_balance - \$1/.test(
+        String(sql),
+      ),
+    );
+    expect(debit?.[1]).toEqual([200000, 42]);
+    expect(mockDisputeUpdate).toHaveBeenCalledWith("dp_partial", {
+      metadata: { vulnradar_restorable_ai: "200000" },
+    });
+    // The Stripe write happens before COMMIT: if it fails, the reversal rolls
+    // back with it and the redelivery starts from the same balance.
+    const commitOrder =
+      mockClientQuery.mock.invocationCallOrder[
+        mockClientQuery.mock.calls.findIndex(([sql]) => sql === "COMMIT")
+      ];
+    expect(mockDisputeUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+      commitOrder,
+    );
+    errSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  it("rolls the reversal back when the dispute cannot be annotated, so the redelivery can redo it", async () => {
+    withIdempotency("evt_dispute_annotate_fail");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (/UPDATE ai_credit_purchases SET refunded_at = NOW\(\)/.test(sql)) {
+        return { rows: [{ user_id: 42, amount: "1000000" }], rowCount: 1 };
+      }
+      if (/FOR UPDATE/.test(sql)) {
+        return { rows: [{ balance: "1000000" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    mockDisputeUpdate.mockRejectedValue(
+      Object.assign(new Error("Request timed out"), { statusCode: 500 }),
+    );
+    mockQuery.mockResolvedValue({ rows: [] }); // idempotency rollback
+
+    const res = await POST(
+      disputeEvent("evt_dispute_annotate_fail", {
+        id: "dp_fail",
+        reason: "fraudulent",
+        amount: 500,
+        currency: "usd",
+        payment_intent: "pi_fail",
+      }),
+    );
+
+    expect(res.status).toBe(500);
+    const statements = mockClientQuery.mock.calls.map(([sql]) => String(sql));
+    expect(statements).toContain("ROLLBACK");
+    expect(statements).not.toContain("COMMIT");
+    errSpy.mockRestore();
+  });
+
+  it("records a dispute on a purchase that was never credited, so the credit cannot land afterwards and a win grants it", async () => {
+    withIdempotency("evt_dispute_uncredited");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockPaymentIntentRetrieve.mockResolvedValue({
+      id: "pi_uncredited",
+      metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
+    });
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (/INSERT INTO ai_credit_purchases/.test(sql)) {
+        return { rows: [{ payment_intent_id: "pi_uncredited" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await POST(
+      disputeEvent("evt_dispute_uncredited", {
+        id: "dp_uncredited",
+        reason: "fraudulent",
+        amount: 500,
+        currency: "usd",
+        payment_intent: "pi_uncredited",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const tombstone = mockClientQuery.mock.calls.find(([sql]) =>
+      /INSERT INTO ai_credit_purchases/.test(String(sql)),
+    );
+    expect(String(tombstone?.[0])).toContain("refunded_at");
+    expect(tombstone?.[1]).toEqual(["pi_uncredited", 42, 1_000_000]);
+    expect(mockDisputeUpdate).toHaveBeenCalledWith("dp_uncredited", {
+      metadata: { vulnradar_restorable_ai: "1000000" },
+    });
+    // Nothing came off a balance, so nobody is told credits were removed.
+    expect(mockSendEmail).not.toHaveBeenCalled();
     errSpy.mockRestore();
     logSpy.mockRestore();
   });
@@ -1990,9 +2388,7 @@ describe("POST /api/v3/webhooks/stripe: charge.dispute.created", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(mockReverseAiCreditPurchase).toHaveBeenCalledWith(
-      "pi_dispute_expanded",
-    );
+    expect(ledgerClaims()[0][1]).toEqual(["pi_dispute_expanded"]);
     errSpy.mockRestore();
   });
 
@@ -2011,8 +2407,111 @@ describe("POST /api/v3/webhooks/stripe: charge.dispute.created", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(mockReverseAiCreditPurchase).not.toHaveBeenCalled();
+    expect(mockClientQuery).not.toHaveBeenCalled();
     expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+});
+
+describe("POST /api/v3/webhooks/stripe: charge.dispute.closed", () => {
+  function closedEvent(id: string, dispute: Record<string, unknown>) {
+    return signedRequest(
+      JSON.stringify({
+        id,
+        type: "charge.dispute.closed",
+        data: { object: dispute },
+      }),
+    );
+  }
+
+  function restores() {
+    return mockQuery.mock.calls.filter(([sql]) =>
+      /SET refunded_at = NULL/.test(String(sql)),
+    );
+  }
+
+  it("gives back exactly what the dispute took when the dispute is won", async () => {
+    withIdempotency("evt_dispute_won");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 42 }], rowCount: 1 });
+
+    const res = await POST(
+      closedEvent("evt_dispute_won", {
+        id: "dp_won",
+        status: "won",
+        payment_intent: "pi_won",
+        metadata: { vulnradar_restorable_ai: "200000" },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const [restore] = restores();
+    expect(String(restore[0])).toContain("ai_credit_purchases");
+    expect(String(restore[0])).toContain(
+      "ai_credit_balance = ai_credit_balance + $2",
+    );
+    expect(restore[1]).toEqual(["pi_won", 200000]);
+    expect(restores()).toHaveLength(1);
+    logSpy.mockRestore();
+  });
+
+  it("restores the same way when an inquiry closes without becoming a chargeback", async () => {
+    withIdempotency("evt_inquiry_closed");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 42 }], rowCount: 1 });
+
+    await POST(
+      closedEvent("evt_inquiry_closed", {
+        id: "dp_inq",
+        status: "warning_closed",
+        payment_intent: "pi_inq",
+        metadata: { vulnradar_restorable_browserbase: "1800" },
+      }),
+    );
+
+    const [restore] = restores();
+    expect(String(restore[0])).toContain("browserbase_credit_purchases");
+    expect(restore[1]).toEqual(["pi_inq", 1800]);
+    logSpy.mockRestore();
+  });
+
+  it("restores nothing when the dispute is lost", async () => {
+    withIdempotency("evt_dispute_lost");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(
+      closedEvent("evt_dispute_lost", {
+        id: "dp_lost",
+        status: "lost",
+        payment_intent: "pi_lost",
+        metadata: { vulnradar_restorable_ai: "200000" },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    logSpy.mockRestore();
+  });
+
+  it("flags a won dispute whose reversal predates the record, instead of guessing an amount", async () => {
+    withIdempotency("evt_dispute_won_legacy");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockResolvedValueOnce({ rows: [{ kind: "ai" }], rowCount: 1 }); // reversed ledgers for the intent
+
+    const res = await POST(
+      closedEvent("evt_dispute_won_legacy", {
+        id: "dp_legacy",
+        status: "won",
+        payment_intent: "pi_legacy",
+        metadata: {},
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(restores()).toHaveLength(0);
+    expect(mockSendAdminAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "stripe_dispute_won_unrestored" }),
+    );
     errSpy.mockRestore();
   });
 });

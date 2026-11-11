@@ -36,4 +36,6 @@ export const REQUIRED_EVENTS = [
   // Claw one-time credits back on a refund or chargeback.
   "charge.refunded",
   "charge.dispute.created",
+  // Give back what a chargeback took when the dispute is won.
+  "charge.dispute.closed",
 ] as const;
