@@ -119,15 +119,6 @@ import { notifyScanComplete } from "@/lib/webhooks/scan-notifications";
  * page. It intentionally does not crawl.
  */
 
-/**
- * The request schema depends on three admin-configurable settings
- * (SCAN_AUTH_MAX_SECRET_LENGTH, SCAN_AUTH_MAX_COOKIES, MAX_URL_LENGTH), so it
- * can't be a module-level constant built once at import time with the
- * compiled defaults baked in -- that would make an admin edit permanently
- * inert until the next deploy. Rebuilt per request from the live resolved
- * values instead; Zod schema construction is cheap enough that this costs
- * nothing meaningful per call.
- */
 const DAILY_LIMIT_MESSAGE =
   "Daily scan limit reached. Upgrade your plan or wait until midnight UTC.";
 
@@ -137,7 +128,8 @@ const DAILY_LIMIT_MESSAGE =
  * X-RateLimit-* header and no quota numbers, while every sibling scan route
  * answered the same quota with all of them. rateLimitedResponse supplies
  * those; `status` and `requestId` are added back because the old body carried
- * them, and a v3 body only gains keys.
+ * them. `code` moves from RATE_LIMITED to DAILY_LIMIT, the code bulk sends
+ * for the same quota, so a client can tell it from the per-session limiter.
  */
 async function dailyLimitResponse(
   quota: ApiKeyRateLimitState,
@@ -155,6 +147,15 @@ async function dailyLimitResponse(
   );
 }
 
+/**
+ * The request schema depends on three admin-configurable settings
+ * (SCAN_AUTH_MAX_SECRET_LENGTH, SCAN_AUTH_MAX_COOKIES, MAX_URL_LENGTH), so it
+ * can't be a module-level constant built once at import time with the
+ * compiled defaults baked in -- that would make an admin edit permanently
+ * inert until the next deploy. Rebuilt per request from the live resolved
+ * values instead; Zod schema construction is cheap enough that this costs
+ * nothing meaningful per call.
+ */
 function buildRequestSchema(opts: {
   maxSecretLength: number;
   maxCookies: number;
