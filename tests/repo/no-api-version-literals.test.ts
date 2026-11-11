@@ -54,6 +54,35 @@ interface Literal {
   text: string;
 }
 
+/**
+ * A module specifier is a file path, not a request path: `@/lib/api/v4/wrap`
+ * contains `/api/v4` because the directory is called that. Covers `import` and
+ * `export ... from`, `import("x")`, `require("x")` and `import("x").T` types.
+ */
+function isModuleSpecifier(node: ts.Node): boolean {
+  const parent = node.parent;
+  if (!parent) return false;
+  if (
+    (ts.isImportDeclaration(parent) || ts.isExportDeclaration(parent)) &&
+    parent.moduleSpecifier === node
+  ) {
+    return true;
+  }
+  if (ts.isLiteralTypeNode(parent) && ts.isImportTypeNode(parent.parent)) {
+    return true;
+  }
+  if (
+    ts.isCallExpression(parent) &&
+    parent.arguments[0] === node &&
+    (parent.expression.kind === ts.SyntaxKind.ImportKeyword ||
+      (ts.isIdentifier(parent.expression) &&
+        parent.expression.text === "require"))
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /** Every string or template literal in `source` that names an API path. */
 function apiPathLiterals(source: string, fileName: string): Literal[] {
   const kind = /\.(?:tsx|jsx)$/.test(fileName)
@@ -77,7 +106,7 @@ function apiPathLiterals(source: string, fileName: string): Literal[] {
       ts.isTemplateMiddle(node) ||
       ts.isTemplateTail(node)
     ) {
-      if (API_PATH.test(node.text)) {
+      if (API_PATH.test(node.text) && !isModuleSpecifier(node)) {
         found.push({
           line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1,
           text: node.text,
@@ -125,11 +154,6 @@ const DEBT: Record<string, string> = {
     "the registered webhook URL; moves onto FROZEN.STRIPE_WEBHOOK",
   "app/docs/":
     "documentation samples; the docs sweep moves them onto apiPath()",
-  "app/host/[hostname]/page.tsx": "type import of the route module's path",
-  "components/host/danger-score-trend-utils.ts":
-    "type import of the route module's path",
-  "components/host/danger-score-trend.tsx":
-    "type import of the route module's path",
   "components/admin/features/engine-feedback-manager.tsx":
     "an empty-state sentence naming a route",
   "components/landing/landing-api-example.tsx": "the marketing request sample",
@@ -225,6 +249,22 @@ describe("apiPathLiterals", () => {
     expect(
       apiPathLiterals(`export const U = "/api/v3";`, "a.mjs"),
     ).toHaveLength(1);
+  });
+
+  it("leaves module specifiers alone", () => {
+    expect(
+      apiPathLiterals(
+        [
+          'import { versioned } from "@/lib/api/v4/wrap";',
+          'export { x } from "@/lib/api/v4/types";',
+          'const m = await import("@/lib/api/v4/wrap");',
+          'const r = require("@/lib/api/v4/wrap");',
+          'type T = import("@/lib/api/v4/types").OpName;',
+        ].join("\n"),
+        "a.ts",
+      ),
+    ).toEqual([]);
+    expect(apiPathLiterals(`go("/api/v4/scan");`, "a.ts")).toHaveLength(1);
   });
 
   it("reports the line the literal starts on", () => {
