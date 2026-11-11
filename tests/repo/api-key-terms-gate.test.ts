@@ -92,9 +92,16 @@ describe("API key routes check the Terms", () => {
   }, 60_000);
 
   it("is reading real route files", () => {
-    const callers = listApiRouteFiles().filter((route) =>
-      readFileSync(route.abs, "utf8").includes("needsTermsAcceptance"),
-    );
+    // Routes on authenticateApiKey get the Terms check from it and never name
+    // needsTermsAcceptance themselves, so either spelling proves the walk
+    // reached real key-authenticated routes.
+    const callers = listApiRouteFiles().filter((route) => {
+      const text = readFileSync(route.abs, "utf8");
+      return (
+        text.includes("needsTermsAcceptance") ||
+        /\bauthenticateApiKey\s*\(/.test(text)
+      );
+    });
     expect(listApiRouteFiles().length).toBeGreaterThan(100);
     expect(callers.length).toBeGreaterThan(0);
   });
