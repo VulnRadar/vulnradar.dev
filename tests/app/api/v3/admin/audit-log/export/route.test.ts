@@ -264,7 +264,7 @@ describe("GET /api/v3/admin/audit-log/export", () => {
         target_email: "@SUM(A1)",
         details: '=HYPERLINK("http://evil.example","x")',
       },
-    ]);
+    ] as typeof sampleRows);
 
     const text = await body(await GET(getRequest("?format=csv")));
     const row = text.split("\r\n")[1];
@@ -277,7 +277,9 @@ describe("GET /api/v3/admin/audit-log/export", () => {
 
   it("quotes a value that holds a bare carriage return", async () => {
     withAdmin();
-    queuePages([{ ...sampleRows[0], details: "first\rsecond" }]);
+    queuePages([
+      { ...sampleRows[0], details: "first\rsecond" },
+    ] as typeof sampleRows);
     const text = await body(await GET(getRequest("?format=csv")));
     expect(text).toContain('"first\rsecond"');
   });

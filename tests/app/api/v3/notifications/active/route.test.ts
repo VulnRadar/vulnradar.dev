@@ -85,7 +85,9 @@ vi.mock("@/lib/config/runtime-config", async (importOriginal) => {
   return {
     ...actual,
     getSetting: async (key: string) =>
-      key === "ENFORCE_STAFF_2FA" ? enforceStaff2fa : actual.getSetting(key),
+      key === "ENFORCE_STAFF_2FA"
+        ? enforceStaff2fa
+        : actual.getSetting(key as Parameters<typeof actual.getSetting>[0]),
   };
 });
 
