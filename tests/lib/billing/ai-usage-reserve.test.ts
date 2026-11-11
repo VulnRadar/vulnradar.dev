@@ -272,3 +272,31 @@ describe("settleAiTokens: the difference goes back after the run", () => {
     expect(fake.statements).toEqual([]);
   });
 });
+
+describe("reserveAiTokens counts verification usage only", () => {
+  it("chat spent earlier in the window neither shrinks the reservation nor is refunded into", async () => {
+    // ai_usage keeps the free chat, summary and tag rows beside the metered
+    // one. A gate that read the window without naming the kind would find
+    // the chat row, see the 1000 allowance gone and refuse a verification
+    // the user has not spent a token on, and a refund that did not name it
+    // would lower the chat row too.
+    const windowStart = currentWindowStart(new Date(), 5);
+    fake = createFakeLedgerDb({
+      freeAiUsed: [{ windowStart, kind: "chat", tokens: 5_000 }],
+    });
+    plan(1_000);
+
+    const gate = await reserveAiTokens(USER, 1_000);
+
+    expect(gate.allowed).toBe(true);
+    if (!gate.allowed) return;
+    expect(gate.reservation.windowPortion).toBe(1_000);
+    expect(gate.reservation.creditPortion).toBe(0);
+
+    await settleAiTokens(gate.reservation, 400);
+
+    const w = windowStart.toISOString();
+    expect(fake.state.usage.ai_usage.get(w)).toBe(400);
+    expect(fake.state.freeAiUsage.get(`${w}|chat`)).toBe(5_000);
+  });
+});

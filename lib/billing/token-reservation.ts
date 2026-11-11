@@ -24,18 +24,26 @@ export interface TokenLedger {
   balanceColumn: "ai_credit_balance" | "github_credit_balance";
   /** Prefix of the in-process single-flight key. */
   slotPrefix: string;
+  /**
+   * The usage row's kind, for a table keyed by (user_id, window_start, kind).
+   * ai_usage also holds the free features' rows (chat, summaries, tags), and
+   * only the metered kind counts against the allowance or is reserved.
+   */
+  usageKind: "verify" | null;
 }
 
 export const AI_TOKEN_LEDGER: TokenLedger = {
   usageTable: "ai_usage",
   balanceColumn: "ai_credit_balance",
   slotPrefix: "ai-verify",
+  usageKind: "verify",
 };
 
 export const GITHUB_REVIEW_TOKEN_LEDGER: TokenLedger = {
   usageTable: "github_review_usage",
   balanceColumn: "github_credit_balance",
   slotPrefix: "github-review",
+  usageKind: null,
 };
 
 /**
@@ -126,7 +134,7 @@ export async function debitWindowAndBalance(
   want: number,
   minimum: number,
 ): Promise<DebitResult> {
-  const { usageTable, balanceColumn } = ledger;
+  const { usageTable, balanceColumn, usageKind } = ledger;
   const needed = Math.max(1, Math.min(want, minimum));
   const client = await pool.connect();
   try {
@@ -142,8 +150,10 @@ export async function debitWindowAndBalance(
     // BIGINT: node-pg returns it as a string.
     const balance = Number(userRow.rows[0][balanceColumn] ?? 0);
     const usageRow = await client.query<{ tokens_used: number }>(
-      `SELECT tokens_used FROM ${usageTable} WHERE user_id = $1 AND window_start = $2`,
-      [userId, windowStart],
+      usageKind
+        ? `SELECT tokens_used FROM ${usageTable} WHERE user_id = $1 AND window_start = $2 AND kind = $3`
+        : `SELECT tokens_used FROM ${usageTable} WHERE user_id = $1 AND window_start = $2`,
+      usageKind ? [userId, windowStart, usageKind] : [userId, windowStart],
     );
     const used = Number(usageRow.rows[0]?.tokens_used ?? 0);
     const windowRemaining = Math.max(0, limitTokens - used);
@@ -171,12 +181,20 @@ export async function debitWindowAndBalance(
     }
 
     await client.query(
-      `INSERT INTO ${usageTable} (user_id, window_start, tokens_used, updated_at)
-       VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (user_id, window_start)
-       DO UPDATE SET tokens_used = ${usageTable}.tokens_used + $3, updated_at = NOW()
-       RETURNING tokens_used`,
-      [userId, windowStart, budget],
+      usageKind
+        ? `INSERT INTO ${usageTable} (user_id, window_start, tokens_used, kind, updated_at)
+           VALUES ($1, $2, $3, $4, NOW())
+           ON CONFLICT (user_id, window_start, kind)
+           DO UPDATE SET tokens_used = ${usageTable}.tokens_used + $3, updated_at = NOW()
+           RETURNING tokens_used`
+        : `INSERT INTO ${usageTable} (user_id, window_start, tokens_used, updated_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (user_id, window_start)
+           DO UPDATE SET tokens_used = ${usageTable}.tokens_used + $3, updated_at = NOW()
+           RETURNING tokens_used`,
+      usageKind
+        ? [userId, windowStart, budget, usageKind]
+        : [userId, windowStart, budget],
     );
     await client.query("COMMIT");
     return { ok: true, budget, windowPortion, creditPortion };
@@ -303,13 +321,13 @@ export async function settleReservation(
     const creditRefund = reservation.creditPortion - (actual - usedWindow);
     if (counterRefund === 0 && creditRefund === 0) return;
 
-    const { usageTable, balanceColumn } = ledger;
+    const { usageTable, balanceColumn, usageKind } = ledger;
     // One statement, so a crash cannot return the credit without lowering
     // the counter or the other way round.
     await pool.query(
       `WITH win AS (
          UPDATE ${usageTable} SET tokens_used = GREATEST(tokens_used - $3, 0), updated_at = NOW()
-          WHERE user_id = $1 AND window_start = $2
+          WHERE user_id = $1 AND window_start = $2${usageKind ? " AND kind = $5" : ""}
           RETURNING user_id
        )
        UPDATE users SET ${balanceColumn} = ${balanceColumn} + $4 WHERE id = $1`,
@@ -318,6 +336,7 @@ export async function settleReservation(
         reservation.windowStart,
         counterRefund,
         creditRefund,
+        ...(usageKind ? [usageKind] : []),
       ],
     );
   } finally {

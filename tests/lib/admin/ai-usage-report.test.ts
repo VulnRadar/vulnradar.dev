@@ -41,12 +41,23 @@ describe("getAiUsageReport", () => {
     expect(params[0]).toBe(WINDOW_START);
   });
 
+  it("ranks accounts, not ai_usage rows, now that each kind has its own row", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+    await getAiUsageReport();
+    const [sql] = mockQuery.mock.calls[1];
+    const text = String(sql).replace(/\s+/g, " ");
+    expect(text).toContain("SUM(a.tokens_used) AS tokens_used");
+    expect(text).toContain("GROUP BY u.id, u.email, u.name");
+    expect(text).toContain("ORDER BY SUM(a.tokens_used) DESC, u.id");
+  });
+
   it("reads the two queries one after the other", async () => {
     const order: string[] = [];
     mockQuery.mockImplementation(async (sql: string) => {
-      order.push(sql.includes("GROUP BY") ? "windows:start" : "top:start");
+      const which = sql.includes("JOIN users") ? "top" : "windows";
+      order.push(`${which}:start`);
       await Promise.resolve();
-      order.push(sql.includes("GROUP BY") ? "windows:end" : "top:end");
+      order.push(`${which}:end`);
       return { rows: [] };
     });
     await getAiUsageReport();

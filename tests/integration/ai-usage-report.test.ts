@@ -68,4 +68,29 @@ describeIntegration("the AI usage report", () => {
       [heavy.id, light.id],
     ]);
   });
+
+  it("lists an account once, with every kind it spent in the window added up", async () => {
+    const { windowStart } = await resolveCurrentWindow();
+    const user = await createUser();
+
+    for (const [kind, tokens] of [
+      ["verify", 7_000_000],
+      ["chat", 4_000_000],
+      ["tag", 1_000],
+    ] as const) {
+      await pool.query(
+        `INSERT INTO ai_usage (user_id, window_start, tokens_used, kind)
+         VALUES ($1, $2, $3, $4)`,
+        [user.id, windowStart, tokens, kind],
+      );
+    }
+
+    const report = await getAiUsageReport();
+    const rows = report.topUsers.filter((u) => u.id === user.id);
+    expect(rows).toEqual([
+      expect.objectContaining({ id: user.id, tokensUsed: 11_001_000 }),
+    ]);
+
+    await pool.query("DELETE FROM ai_usage WHERE user_id = $1", [user.id]);
+  });
 });

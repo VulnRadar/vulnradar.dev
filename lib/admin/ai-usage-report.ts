@@ -7,12 +7,13 @@ import { resolveCurrentWindow } from "@/lib/billing/ai-usage";
  * There was no admin view of AI usage at all: no total per window and no way
  * to see who was using the budget, which is the first thing needed to price a
  * plan's allowance or to find one account eating it. ai_usage already holds
- * one row per user per fixed window, so both answers are reads.
+ * one row per user per fixed window and kind, so both answers are reads. Both
+ * count every kind: this is what the AI cost, not what the plan meters.
  *
  * Both queries are bounded by window_start (the history to the last 30
  * windows' worth of time, the leaderboard to the one window it names), but the
  * table's only index leads with user_id, so each is a filtered scan of the
- * whole table rather than a range scan. That is one row per user per window
+ * whole table rather than a range scan. That is a few rows per user per window
  * and fine at this size; an index on window_start is the fix if it ever is
  * not, and it belongs in the schema files, not here.
  */
@@ -77,11 +78,15 @@ export async function getAiUsageReport(): Promise<AiUsageReport> {
     name: string | null;
     tokens_used: string | number;
   }>(
-    `SELECT u.id, u.email, u.name, a.tokens_used
+    // ai_usage has a row per kind (verification, chat, summaries, tags), so
+    // an account's spend in the window is the sum of its rows; ranking the
+    // rows themselves listed one account once per kind.
+    `SELECT u.id, u.email, u.name, SUM(a.tokens_used) AS tokens_used
        FROM ai_usage a
        JOIN users u ON u.id = a.user_id
       WHERE a.window_start = $1
-      ORDER BY a.tokens_used DESC, u.id
+      GROUP BY u.id, u.email, u.name
+      ORDER BY SUM(a.tokens_used) DESC, u.id
       LIMIT ${AI_USAGE_TOP_USERS}`,
     [windowStart],
   );
