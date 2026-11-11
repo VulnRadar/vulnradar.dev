@@ -142,6 +142,11 @@ describe("GET /api/v3/ai/conversations", () => {
       const res = await get("?userId=abc");
       expect(res.status).toBe(400);
       expect(mockQuery).not.toHaveBeenCalled();
+
+      // Past the INTEGER column, Postgres refuses the comparison with a 500.
+      const tooLarge = await get("?userId=99999999999");
+      expect(tooLarge.status).toBe(400);
+      expect(mockQuery).not.toHaveBeenCalled();
     });
 
     it.each([

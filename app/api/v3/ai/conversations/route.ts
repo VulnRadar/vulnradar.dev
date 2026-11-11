@@ -19,6 +19,9 @@ const SIGNAL_WINDOW_DAYS = 7;
 /** Longer than any name, email or session id the search is matched against. */
 const MAX_SEARCH_LENGTH = 200;
 
+/** ai_conversations.user_id is a Postgres INTEGER. */
+const MAX_USER_ID = 2_147_483_647;
+
 // POST: upsert a conversation (called by chat widget after each exchange).
 // The widget is available to guests, so this intentionally accepts anonymous
 // writes -- but keyed rate limiting + a pre-parse size cap keep it from being
@@ -262,10 +265,13 @@ export async function GET(req: NextRequest) {
   const params: (string | number)[] = [];
 
   if (userIdFilter) {
-    // A non-numeric id reached Postgres as NaN and came back a 500.
-    if (!/^\d+$/.test(userIdFilter)) {
+    // A non-numeric id reached Postgres as NaN and came back a 500, and so
+    // did one too large for the INTEGER column it is compared with.
+    if (!/^\d+$/.test(userIdFilter) || Number(userIdFilter) > MAX_USER_ID) {
       return NextResponse.json(
-        { error: "userId must be a whole number." },
+        {
+          error: `userId must be a whole number no larger than ${MAX_USER_ID}.`,
+        },
         { status: 400 },
       );
     }
