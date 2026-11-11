@@ -53,6 +53,11 @@ vi.mock("@/lib/billing/ai-usage", () => ({
   reserveAiTokens: (...args: unknown[]) => mockReserveAiTokens(...args),
 }));
 
+const mockCheckAccessRules = vi.fn();
+vi.mock("@/lib/scanner/access-rules", () => ({
+  checkAccessRules: (...args: unknown[]) => mockCheckAccessRules(...args),
+}));
+
 /** What reserveAiTokens hands back for a pass it let in. */
 const RESERVATION = {
   userId: 42,
@@ -101,6 +106,8 @@ beforeEach(() => {
     allowed: true,
     reservation: RESERVATION,
   });
+  mockCheckAccessRules.mockReset();
+  mockCheckAccessRules.mockResolvedValue({ allowed: true });
 });
 
 describe("POST /api/v3/scan/verify: rate limiting", () => {
@@ -463,6 +470,49 @@ describe("POST /api/v3/scan/verify: scan ownership and verification", () => {
     const body = await res.json();
     expect(body.code).toBe("INTERNAL_ERROR");
     expect(JSON.stringify(body)).not.toContain("AI provider down");
+  });
+});
+
+// The pass probes the scan's target with a live request, the probe
+// verify-batch runs. A block added after the scan ran (the admin blocklist,
+// or the domain owner's "block scanning") stops it as it stops a new scan.
+describe("POST /api/v3/scan/verify: access rules", () => {
+  const findings = [{ id: "f1", title: "Missing CSP" }];
+
+  it("answers 403 BLOCKED and never reserves or verifies for a target blocked since the scan", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({
+      rows: [{ id: 10, url: "https://blocked.example", findings }],
+    });
+    mockCheckAccessRules.mockResolvedValueOnce({
+      allowed: false,
+      reason: "Blocked by the domain owner.",
+      ruleType: "blacklist",
+    });
+
+    const res = await POST(postRequest({ scanHistoryId: 10 }));
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.statusCode).toBe("BLOCKED");
+    expect(json.error).toBe("This target cannot be scanned.");
+    expect(mockCheckAccessRules).toHaveBeenCalledWith(
+      "https://blocked.example",
+    );
+    expect(mockReserveAiTokens).not.toHaveBeenCalled();
+    expect(mockRunAiVerification).not.toHaveBeenCalled();
+  });
+
+  it("checks a stored bare host the way the probe will reach it", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ id: 10, url: "example.com", findings }],
+      })
+      .mockResolvedValueOnce({ rows: [{ findings }] });
+
+    const res = await POST(postRequest({ scanHistoryId: 10 }));
+    expect(res.status).toBe(200);
+    expect(mockCheckAccessRules).toHaveBeenCalledWith("https://example.com");
+    expect(mockRunAiVerification).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -15,7 +15,8 @@ export async function GET() {
   // The chat widget, the dashboard and the scan menu hide their AI actions on
   // aiDisabled. When the switch cannot be read, it is reported as off: this
   // route answering "on" was how a database error offered AI to someone who
-  // had turned it off. The AI routes themselves refuse on the same failure.
+  // had turned it off. /scan/verify, /scan/verify-batch and the scan summary
+  // refuse on the same failure (isAiDisabledForUser).
   let aiDisabled = false;
   try {
     const session = await getSession();

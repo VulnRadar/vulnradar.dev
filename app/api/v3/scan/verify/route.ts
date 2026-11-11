@@ -15,6 +15,7 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { reserveAiTokens } from "@/lib/billing/ai-usage";
 import { scanNumericId } from "@/lib/history/resolve-scan";
 import { isAiDisabledForUser } from "@/lib/ai/user-ai-config";
+import { checkAccessRules } from "@/lib/scanner/access-rules";
 
 export const runtime = "nodejs";
 // Must stay above CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS (lib/config/config-values.ts)
@@ -109,6 +110,24 @@ export const POST = versioned(
     const { id: scanId, url, findings } = scanResult.rows[0];
     const parsedFindings = Array.isArray(findings) ? findings : [];
 
+    // security: the pass probes the scan's target with a live request, the
+    // same probe verify-batch runs. The scan passed the access rules when it
+    // ran, but a block added since then (the admin blocklist, or the domain
+    // owner's "block scanning") covers every later request to that target,
+    // this one included, with the answer a new scan would get.
+    const access = await checkAccessRules(asProbeUrl(url as string));
+    if (!access.allowed) {
+      return NextResponse.json(
+        {
+          error: "This target cannot be scanned.",
+          details:
+            "This domain or IP address has been restricted from scanning for security, privacy, or compliance reasons. Access controls are enforced to protect sensitive infrastructure and user data. If you believe this is an error, please contact support.",
+          statusCode: "BLOCKED",
+        },
+        { status: 403 },
+      );
+    }
+
     // Pre-call gate: bounds VulnRadar's own AI cost per plan tier. Reserves the
     // pass's worst case out of the window and the credit balance before any
     // provider call, rather than letting it in on any positive balance and
@@ -161,4 +180,10 @@ function scanIdOf(body: Record<string, unknown>): string | null {
   if (typeof raw !== "number" && typeof raw !== "string") return null;
   const text = String(raw).trim();
   return text === "" ? null : text;
+}
+
+// The probe prefixes https:// to anything without an http(s) scheme, so the
+// rules are checked against the host it will actually reach.
+function asProbeUrl(value: string): string {
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
 }
