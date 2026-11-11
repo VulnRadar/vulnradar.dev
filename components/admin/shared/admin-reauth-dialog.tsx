@@ -19,16 +19,19 @@ import {
   AdminPasswordConfirmDialog,
   type AdminPasswordConfirmResult,
 } from "./admin-password-confirm-dialog";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
+import type { MeResponse } from "@/components/providers/auth-provider";
 
 /**
- * Whether the signed-in account has a password, from /auth/me.
- *
- * Read defensively: the field is on the response (lib/auth/me.ts) but not yet
- * on MeResponse, and an unknown answer is treated as "has one", which only
- * means the password field is shown and the server still decides.
+ * Whether the signed-in account has a password, from /auth/me. Anything but
+ * an explicit false (no session yet, a cached response from before the field)
+ * is treated as "has one", which only means the password field is shown and
+ * the server still decides.
  */
-export function meHasPassword(me: unknown): boolean {
-  return (me as { hasPassword?: unknown } | null)?.hasPassword !== false;
+export function meHasPassword(
+  me: Partial<Pick<MeResponse, "hasPassword">> | null | undefined,
+): boolean {
+  return me?.hasPassword !== false;
 }
 
 export interface AdminReauthDialogProps {
@@ -98,6 +101,9 @@ function StepUpConfirmDialog({
   onConfirm: () => Promise<AdminPasswordConfirmResult>;
 }) {
   const idPrefix = React.useId();
+  // Without it a server that cannot send mail first offered "Email me a code"
+  // and only switched to signing in again once the send was refused.
+  const { emailConfigured } = useClientConfig();
   const [ready, setReady] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -161,6 +167,7 @@ function StepUpConfirmDialog({
         <AlertDialogBody className="space-y-3">
           <EmailStepUp
             idPrefix={`${idPrefix}-step-up`}
+            emailConfigured={emailConfigured}
             onReady={() => setReady(true)}
           />
           {error && <InlineAlert tone="error">{error}</InlineAlert>}

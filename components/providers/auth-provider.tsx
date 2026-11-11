@@ -34,6 +34,10 @@ export interface MeResponse {
   isImpersonating: boolean;
   totpEnabled: boolean;
   twoFactorMethod: string | null;
+  /** False for an account created through Google, GitHub or Discord that
+   *  never set a password: its security changes confirm with a mailed code
+   *  (components/shared/email-step-up.tsx) instead of a password. */
+  hasPassword: boolean;
   role: string;
   avatarUrl: string | null;
   onboardingCompleted: boolean;
