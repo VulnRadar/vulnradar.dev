@@ -56,6 +56,10 @@ import { detectUnusablePage } from "@/lib/scanner/response-classifier";
 import { SCANNER_UA_AUTHENTICATED } from "@/lib/scanner/user-agent";
 import { startAsyncPhase } from "@/lib/scanner/async-phase";
 import { normalizeUrl } from "@/lib/scanner/execute-scan";
+import {
+  canonicalScanUrl,
+  hasControlCharacters,
+} from "@/lib/scanner/scan-identity";
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
@@ -213,6 +217,7 @@ async function createAuthenticatedScan(
   // burns a scan from the daily allowance.
   let chargeDailyQuota = false;
   let dailyQuotaLimit = -1;
+  let dailyQuotaResetsAt = "";
 
   if (parseBearer(request.headers.get("authorization")) !== null) {
     // Validity, the Terms gate and scan:write, in the one shared order.
@@ -245,6 +250,7 @@ async function createAuthenticatedScan(
     if (!dailyQuota.allowed) return dailyLimitResponse(dailyQuota);
     chargeDailyQuota = true;
     dailyQuotaLimit = dailyQuota.limit;
+    dailyQuotaResetsAt = dailyQuota.resetsAt;
   } else {
     const session = await getSession();
     if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
@@ -265,6 +271,7 @@ async function createAuthenticatedScan(
     if (!dailyQuota.allowed) return dailyLimitResponse(dailyQuota);
     chargeDailyQuota = true;
     dailyQuotaLimit = dailyQuota.limit;
+    dailyQuotaResetsAt = dailyQuota.resetsAt;
   }
 
   let body: unknown;
@@ -286,9 +293,15 @@ async function createAuthenticatedScan(
     "url" in body &&
     typeof (body as Record<string, unknown>).url === "string"
   ) {
-    (body as Record<string, unknown>).url = normalizeUrl(
-      (body as Record<string, unknown>).url as string,
-    );
+    const rawUrl = (body as Record<string, unknown>).url as string;
+    if (hasControlCharacters(rawUrl.trim())) {
+      return ApiResponse.badRequest("The URL contains a control character.");
+    }
+    // The canonical identity the other scan routes store the same site under
+    // (lib/scanner/scan-identity.ts). Input it cannot read keeps the old
+    // normalization so the schema below still reports what is wrong with it.
+    (body as Record<string, unknown>).url =
+      canonicalScanUrl(rawUrl) ?? normalizeUrl(rawUrl);
   }
   // Same gap, same fix, for the optional form-auth loginUrl sub-field --
   // it hits the identical z.string().url() check a couple lines down.
@@ -458,9 +471,24 @@ async function createAuthenticatedScan(
 
     // The authenticated session is established and the target validated, so the
     // scan is genuinely going ahead now -- charge the daily quota here rather
-    // than up front, capped + atomic so a concurrent scan can't exceed the cap.
+    // than up front, while this request holds its concurrency slot, capped +
+    // atomic so a concurrent scan can't exceed the cap. The answer is obeyed:
+    // the gate above only read the counter, so a burst could all pass it, and
+    // the capped increment fails closed on a database error. Ignoring it ran
+    // the scan unpaid in both cases.
     if (chargeDailyQuota && authedUserId) {
-      await incrementDailyCountCapped(authedUserId, dailyQuotaLimit);
+      const charge = await incrementDailyCountCapped(
+        authedUserId,
+        dailyQuotaLimit,
+      );
+      if (!charge.recorded) {
+        return dailyLimitResponse({
+          limit: dailyQuotaLimit,
+          used: charge.count,
+          remaining: 0,
+          resetsAt: dailyQuotaResetsAt,
+        });
+      }
     }
 
     const startTime = Date.now();
@@ -504,8 +532,12 @@ async function createAuthenticatedScan(
       // path/query on the one that was requested. Recorded separately from
       // `url`, which stays the identity finding ids are keyed on. The sync
       // checks judge finalScanUrl, since the headers and body came from it.
-      if (response.url && response.url !== url) {
-        finalScanUrl = response.url;
+      // Canonical like `url`, since this is what scan_history.url stores.
+      const landedUrl = response.url
+        ? (canonicalScanUrl(response.url) ?? response.url)
+        : url;
+      if (landedUrl !== url) {
+        finalScanUrl = landedUrl;
       }
     } catch (fetchError) {
       const message =

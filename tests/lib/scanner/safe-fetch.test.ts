@@ -238,6 +238,102 @@ describe("validateScanTarget (DNS-resolving guard)", () => {
   );
 });
 
+describe("validateScanTarget with the schemes option", () => {
+  // POST /api/v3/scan advertises fifteen schemes and its protocol scanners
+  // connect to the host itself, so the same address rules have to run for
+  // ssh:// as for https:// (owner decision D8). The option widens which
+  // schemes are accepted and nothing else.
+  const PROTOCOL_SCHEMES = ["http:", "https:", "ssh:", "smtp:", "mongodb:"];
+  beforeEach(() => mockLookup.mockReset());
+
+  it("accepts a listed scheme whose host resolves to a public address", async () => {
+    resolvesTo("93.184.216.34");
+    const r = await validateScanTarget("ssh://example.com", {
+      schemes: PROTOCOL_SCHEMES,
+    });
+    expect(r).toMatchObject({ safe: true, resolvedIp: "93.184.216.34" });
+    expect(mockLookup).toHaveBeenCalledWith("example.com", { all: true });
+  });
+
+  it.each([
+    "ssh://10.0.0.1",
+    "ssh://127.0.0.1:22",
+    "smtp://169.254.169.254:25",
+    "mongodb://192.168.1.10:27017",
+  ])("still refuses the private address literal %s", async (u) => {
+    const r = await validateScanTarget(u, { schemes: PROTOCOL_SCHEMES });
+    expect(r).toMatchObject({ safe: false, code: "blocked" });
+    expect(mockLookup).not.toHaveBeenCalled();
+  });
+
+  it("still refuses a host that resolves inside", async () => {
+    resolvesTo("10.0.0.5");
+    const r = await validateScanTarget("ssh://internal.example.com", {
+      schemes: PROTOCOL_SCHEMES,
+    });
+    expect(r).toMatchObject({ safe: false, code: "blocked" });
+  });
+
+  it("still refuses an internal hostname, in any case", async () => {
+    const r = await validateScanTarget("ssh://LOCALHOST", {
+      schemes: PROTOCOL_SCHEMES,
+    });
+    expect(r).toMatchObject({ safe: false, code: "blocked" });
+    expect(mockLookup).not.toHaveBeenCalled();
+  });
+
+  it("reads a protocol URL's host the way an http host is read, so an encoded private address is still one", async () => {
+    // A non-http URL keeps its host opaque: no percent-decoding and no
+    // numeric IPv4 forms. Read raw, both of these slip past the literal
+    // checks and are left to whatever the resolver makes of them.
+    for (const u of ["ssh://0x7f000001", "ssh://loc%61lhost"]) {
+      const r = await validateScanTarget(u, { schemes: PROTOCOL_SCHEMES });
+      expect(r).toMatchObject({ safe: false, code: "blocked" });
+    }
+    expect(mockLookup).not.toHaveBeenCalled();
+  });
+
+  it("still fails closed when the host does not resolve", async () => {
+    mockLookup.mockRejectedValueOnce(
+      Object.assign(new Error("getaddrinfo ENOTFOUND nowhere.example.com"), {
+        code: "ENOTFOUND",
+      }),
+    );
+    const r = await validateScanTarget("ssh://nowhere.example.com", {
+      schemes: PROTOCOL_SCHEMES,
+    });
+    expect(r.safe).toBe(false);
+    expect(r.code).toBe("unreachable");
+  });
+
+  it("refuses a scheme that is not in the list", async () => {
+    resolvesTo("93.184.216.34");
+    const r = await validateScanTarget("gopher://example.com:70/", {
+      schemes: PROTOCOL_SCHEMES,
+    });
+    expect(r).toMatchObject({ safe: false, code: "blocked" });
+    expect(mockLookup).not.toHaveBeenCalled();
+  });
+
+  it("refuses a listed scheme with no host to check", async () => {
+    const r = await validateScanTarget("mongodb:///db", {
+      schemes: PROTOCOL_SCHEMES,
+    });
+    expect(r.safe).toBe(false);
+    expect(mockLookup).not.toHaveBeenCalled();
+  });
+
+  it("leaves http and https as the only schemes when the option is absent", async () => {
+    resolvesTo("93.184.216.34");
+    const r = await validateScanTarget("ssh://example.com");
+    expect(r).toMatchObject({
+      safe: false,
+      reason: "Only http and https URLs can be scanned.",
+    });
+    expect(mockLookup).not.toHaveBeenCalled();
+  });
+});
+
 describe("safeFetch (SSRF-guarded redirect loop)", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 

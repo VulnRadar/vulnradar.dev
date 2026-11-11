@@ -40,6 +40,11 @@ import {
   attachNewScanTeams,
 } from "@/lib/teams/scan-teams";
 import { normalizeUrl } from "@/lib/scanner/execute-scan";
+import {
+  canonicalScanUrl,
+  hasControlCharacters,
+} from "@/lib/scanner/scan-identity";
+import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { establishScanSession } from "@/lib/scanner/auth/login";
 import {
   buildAuthRequestSchema,
@@ -255,9 +260,18 @@ const createCrawlScan = withErrorHandling(async (request: NextRequest) => {
   // this a bare "example.com" from the crawl page-picker hit new URL() raw and
   // failed with "Invalid URL", the rejection the picker's "Scan N pages" step
   // was showing.
+  if (hasControlCharacters(url.trim())) {
+    return NextResponse.json(
+      { error: "The URL contains a control character." },
+      { status: 400 },
+    );
+  }
   let mainUrl: URL;
   try {
-    mainUrl = new URL(normalizeUrl(url));
+    // The one identity POST /api/v3/scan stores the same site under
+    // (lib/scanner/scan-identity.ts), so a crawl and a single scan of it share
+    // a baseline and finding ids.
+    mainUrl = new URL(canonicalScanUrl(url) ?? normalizeUrl(url));
   } catch {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
   }
@@ -313,6 +327,19 @@ const createCrawlScan = withErrorHandling(async (request: NextRequest) => {
     // request. It is never assigned anywhere that outlives this handler, and
     // never reaches the DB, a log line, or a response.
     ephemeralAuth = toEphemeralAuth(parsedAuth.data);
+  }
+
+  // SSRF guard for the start page, with the same 400 POST /api/v3/scan gives.
+  // A crawl had none: a name resolving inside the network got as far as a
+  // completed crawl, was charged for it and could publish a /host page for an
+  // internal name. Ahead of the login below, so a credential is never sent to
+  // a host this would refuse.
+  const safetyCheck = await validateScanTarget(normalizedMainUrl);
+  if (!safetyCheck.safe) {
+    return NextResponse.json(
+      { error: safetyCheck.reason || "URL blocked for security reasons" },
+      { status: 400 },
+    );
   }
 
   // Check access rules (blacklist/whitelist) for the main URL

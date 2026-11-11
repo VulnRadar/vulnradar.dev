@@ -923,6 +923,16 @@ export function isPrivateHostname(hostname: string): boolean {
  */
 export async function validateScanTarget(
   url: string,
+  options: {
+    /**
+     * Schemes to accept, as URL protocols ("ssh:"). Omitted means http and
+     * https only, which is what every fetching caller needs. POST
+     * /api/v3/scan passes its full advertised list, because its protocol
+     * scanners open a socket to the host for ssh://, smtp:// and the rest,
+     * and those need exactly the same address rules as a fetch does.
+     */
+    schemes?: readonly string[];
+  } = {},
 ): Promise<SafetyCheckResult> {
   try {
     const parsed = new URL(url);
@@ -935,15 +945,39 @@ export async function validateScanTarget(
     // happened to fail anyway, but only as a side effect of an empty
     // hostname resolving to nothing, and ftp:/gopher: passed outright.
     // ref: AUDIT-012#ssrf-07
-    if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) {
+    if (!options.schemes) {
+      if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) {
+        return {
+          safe: false,
+          reason: "Only http and https URLs can be scanned.",
+          code: "blocked",
+        };
+      }
+    } else if (!options.schemes.includes(parsed.protocol)) {
       return {
         safe: false,
-        reason: "Only http and https URLs can be scanned.",
+        reason: `${parsed.protocol}// URLs cannot be scanned.`,
         code: "blocked",
       };
     }
 
-    const hostname = parsed.hostname;
+    // An http(s) host is already parsed: lowercased, percent-decoded, and any
+    // numeric IPv4 spelling turned into dotted form. The parser leaves the
+    // host of every other scheme opaque, so "ssh://0x7f000001" keeps a
+    // spelling isIP does not recognise and "ssh://loc%61lhost" one the
+    // blocklist does not. Reading it through the http host parser gives the
+    // checks below the address the socket will actually reach.
+    let hostname = parsed.hostname;
+    if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) {
+      if (!hostname) {
+        return {
+          safe: false,
+          reason: "Invalid URL format.",
+          code: "blocked",
+        };
+      }
+      hostname = new URL(`http://${hostname}`).hostname;
+    }
 
     // Check if hostname is an IP address (IPv4 or IPv6)
     const ipVersion = isIP(hostname);

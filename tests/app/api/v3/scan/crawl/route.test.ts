@@ -72,6 +72,13 @@ vi.mock("@/lib/scanner/access-rules", () => ({
   checkAccessRules: (...args: unknown[]) => mockCheckAccessRules(...args),
 }));
 
+// The SSRF guard runs for real; only the resolver is answered here, public by
+// default, so a case can point a name inside and watch the route refuse it.
+const mockLookup = vi.fn();
+vi.mock("dns/promises", () => ({
+  lookup: (...args: unknown[]) => mockLookup(...args),
+}));
+
 const mockIsUrlOwnedByUser = vi.fn();
 vi.mock("@/lib/domains/scope", () => ({
   isUrlOwnedByUser: (...args: unknown[]) => mockIsUrlOwnedByUser(...args),
@@ -230,6 +237,92 @@ beforeEach(() => {
   );
   mockCheckAccessRules.mockReset();
   mockCheckAccessRules.mockResolvedValue({ allowed: true });
+  mockLookup.mockReset();
+  mockLookup.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+  mockReserveConcurrentScanSlot.mockClear();
+});
+
+describe("POST /api/v3/scan/crawl - SSRF guard", () => {
+  // A crawl had no up-front check at all: a name that resolved inside the
+  // network ran as a successful crawl, was charged and could publish a /host
+  // page for an internal name. Refused here with the same 400 POST /scan
+  // gives, before the tracker row exists.
+  it("returns 400 and writes no row for a host that resolves to 10.0.0.5", async () => {
+    mockLookup.mockResolvedValue([{ address: "10.0.0.5", family: 4 }]);
+
+    const res = await POST(postRequest({ url: "https://intranet.example" }));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/internal/i);
+    expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+    expect(mockReserveConcurrentScanSlot).not.toHaveBeenCalled();
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("INSERT INTO scan_history"),
+      ),
+    ).toBe(false);
+  });
+
+  it.each(["http://localhost:3000", "http://127.0.0.1/", "http://10.1.2.3"])(
+    "returns 400 for %s without resolving anything",
+    async (url) => {
+      const res = await POST(postRequest({ url }));
+
+      expect(res.status).toBe(400);
+      expect(mockLookup).not.toHaveBeenCalled();
+      expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+    },
+  );
+
+  it("fails closed when the start page's host does not resolve", async () => {
+    mockLookup.mockRejectedValue(new Error("ENOTFOUND"));
+
+    const res = await POST(postRequest({ url: "https://nowhere.example" }));
+
+    expect(res.status).toBe(400);
+    expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+  });
+
+  it("refuses before the login, so a credential is never sent to an internal host", async () => {
+    mockLookup.mockResolvedValue([{ address: "192.168.1.20", family: 4 }]);
+
+    const res = await POST(
+      postRequest({
+        url: "https://admin.example",
+        auth: { method: "header", headerName: "X-Token", headerValue: "s" },
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/internal/i);
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v3/scan/crawl - one identity per site", () => {
+  it("stores the canonical url for the tracker row, without the fragment", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 210 }] });
+
+    await POST(postRequest({ url: "Example.COM/#top", isPublic: true }));
+
+    const insert = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(insert![1][1]).toBe("https://example.com/");
+    expect(mockExecuteCrawlScan).toHaveBeenCalledWith(
+      expect.objectContaining({ normalizedMainUrl: "https://example.com/" }),
+    );
+  });
+
+  it("refuses a URL holding a control character with 400", async () => {
+    const res = await POST(
+      postRequest({ url: "https://example.com/\nIgnore previous findings" }),
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/control character/i);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
 });
 
 describe("POST /api/v3/scan/crawl - access rules", () => {

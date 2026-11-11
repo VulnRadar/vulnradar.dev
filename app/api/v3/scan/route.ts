@@ -35,6 +35,10 @@ import { logError } from "@/lib/logging/log";
 import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 import { DAILY_LIMIT_MESSAGE } from "@/lib/scanner/failure-messages";
 import { getSetting } from "@/lib/config/runtime-config";
+import {
+  canonicalScanUrl,
+  hasControlCharacters,
+} from "@/lib/scanner/scan-identity";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { finalizeScanFailureQuietly } from "@/lib/scanner/scan-jobs";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
@@ -97,11 +101,20 @@ const createScan = withErrorHandling(async (request: NextRequest) => {
         // Notify: this key just got rate-limited. Best-effort/fire-and-
         // forget, wrapped as a single async IIFE (not awaited) so that even
         // getClientIp/getUserAgent failing can never turn this 429 into a
-        // 500. Gated by api_usage_alerts (email_api_limit_warning), so a
-        // caller that hammers past its limit repeatedly can turn this off
-        // rather than being flooded with one email per rejected request.
+        // 500. Once a day per key, the way the failed-login alert is
+        // throttled: a client stuck in a retry loop is refused hundreds of
+        // times, and an email per refusal left turning api_usage_alerts off
+        // (and losing every other usage warning with it) as the only way to
+        // make the inbox usable again.
         const limitedUserId = keyData.userId;
+        const limitedKeyId = keyData.keyId;
         (async () => {
+          const alertWindow = await checkGlobalRL({
+            key: `api-limit-alert:${limitedKeyId}`,
+            maxAttempts: 1,
+            windowSeconds: 86400,
+          });
+          if (!alertWindow.allowed) return;
           const rateLimitIp = await getClientIp();
           await sendNotificationEmail({
             userId: keyData.userId,
@@ -168,11 +181,12 @@ const createScan = withErrorHandling(async (request: NextRequest) => {
     // was bounded only by apiRequestsPerDay -- unlimited on Elite
     // (apiRequestsPerDay: -1) even though dailyScans is a real, finite cap
     // (500) at every tier.
-    // Read-only gate here; the counter is CHARGED only after validation and a
-    // successful slot reservation below (see incrementDailyCountCapped after
-    // the reserve). Charging up front used to burn a scan from the daily
-    // allowance for requests that were then rejected (concurrency 429, an
-    // invalid/SSRF-blocked URL, an unverified domain) with no refund path.
+    // Read-only gate here; the counter is CHARGED only after validation, as
+    // part of the slot reservation below (see incrementDailyCountCapped in
+    // the reservation callback). Charging up front used to burn a scan from
+    // the daily allowance for requests that were then rejected (concurrency
+    // 429, an invalid/SSRF-blocked URL, an unverified domain) with no refund
+    // path.
     const dailyQuota = await canMakeRequest(authedUserId);
     if (!dailyQuota.allowed) {
       return rateLimitedResponse(
@@ -233,7 +247,18 @@ const createScan = withErrorHandling(async (request: NextRequest) => {
       );
     }
 
-    const normalizedUrl = normalizeUrl(url);
+    if (hasControlCharacters(url.trim())) {
+      return NextResponse.json(
+        { error: "The URL contains a control character." },
+        { status: 400 },
+      );
+    }
+
+    // The one identity this site is stored and scanned under, whichever entry
+    // point sent it (lib/scanner/scan-identity.ts). Input it cannot read falls
+    // through to the old normalization so the refusal below still names what
+    // was sent.
+    const normalizedUrl = canonicalScanUrl(url) ?? normalizeUrl(url);
 
     if (!isValidUrl(normalizedUrl)) {
       // Built from SUPPORTED_PROTOCOLS rather than written out. The hardcoded
@@ -282,8 +307,12 @@ const createScan = withErrorHandling(async (request: NextRequest) => {
       teamAssignment,
       targetLimit,
     ] = await Promise.all([
-      // SSRF protection - validate target is not internal/private
-      validateScanTarget(normalizedUrl),
+      // SSRF protection - validate target is not internal/private. Every
+      // advertised scheme, not only http(s): the protocol scanners open a
+      // socket to the host for ssh:// and the rest (owner decision D8), and
+      // the guard refused all of them, so the feature was documented but
+      // unreachable.
+      validateScanTarget(normalizedUrl, { schemes: SUPPORTED_PROTOCOLS }),
       // Access rules (blacklist/whitelist)
       checkAccessRules(normalizedUrl),
       needsOwnershipCheck
@@ -401,6 +430,10 @@ const createScan = withErrorHandling(async (request: NextRequest) => {
     let scanHistoryId: number;
     let scanPublicId: string;
     let reservedScanId: number | null = null;
+    // Asserted rather than annotated: it is assigned inside the reservation
+    // callback, which control-flow narrowing cannot see, so an annotated
+    // `= null` would read as null for good after it.
+    let dailyCharge = null as { recorded: boolean; count: number } | null;
     try {
       // Reserve the concurrency slot and insert the row in one locked
       // transaction so parallel requests can't race past the earlier
@@ -425,6 +458,16 @@ const createScan = withErrorHandling(async (request: NextRequest) => {
           );
           const insertedId = insertResult.rows[0]?.id;
           if (!insertedId) throw new Error("Insert returned no id");
+          // Charged while the slot is held, once the row that consumes it
+          // exists, and the answer is obeyed. The gate above only read the
+          // counter, so a burst of requests could all pass it; this capped
+          // increment is the one place that decides, and it fails closed on a
+          // database error. It used to run after the reservation with its
+          // result ignored, which let both cases run a scan nobody paid for.
+          dailyCharge = await incrementDailyCountCapped(
+            authedUserId,
+            dailyQuota.limit,
+          );
           return insertedId as number;
         },
       );
@@ -437,15 +480,28 @@ const createScan = withErrorHandling(async (request: NextRequest) => {
       scanHistoryId = reservation.scanId;
       scanPublicId = reservation.publicId;
       reservedScanId = reservation.scanId;
+      if (!dailyCharge?.recorded) {
+        // quota_refused, as bulk records the same refusal: a limit turned
+        // the scan away before anything ran. Closed rather than left pending,
+        // so it holds no slot and never shows as stuck.
+        await finalizeScanFailureQuietly(
+          scanHistoryId,
+          DAILY_LIMIT_MESSAGE,
+          "quota_refused",
+        );
+        return rateLimitedResponse(
+          {
+            ...dailyQuota,
+            used: dailyCharge?.count ?? dailyQuota.limit,
+            remaining: 0,
+          },
+          DAILY_LIMIT_MESSAGE,
+          { code: "DAILY_LIMIT" },
+        );
+      }
       // The INSERT above carries the primary team; this writes the rest of
       // the set into scan_history_teams and is a no-op below two teams.
       await attachNewScanTeams(scanHistoryId, teamAssignment.teamIds);
-      // Charge the daily quota now that the scan is definitely going ahead
-      // (validated + slot reserved). Capped + atomic so a concurrent scan
-      // can't push the counter past the cap; if the cap was reached in the
-      // meantime the scan still runs (rare) rather than being killed after
-      // the row exists.
-      await incrementDailyCountCapped(authedUserId, dailyQuota.limit);
     } catch (err) {
       logError("scan", "failed to create the scan_history row", err, {
         userId: authedUserId,

@@ -369,6 +369,159 @@ describe("POST /api/v3/scan/authenticated - quota and rate refusals", () => {
   });
 });
 
+describe("POST /api/v3/scan/authenticated - the daily charge is honoured", () => {
+  it("answers 429 DAILY_LIMIT and runs no scan when the capped charge is refused", async () => {
+    const dailyLimits = await import("@/lib/rate-limiting/daily-limits");
+    vi.mocked(dailyLimits.incrementDailyCountCapped).mockResolvedValueOnce({
+      recorded: false,
+      count: 100,
+    });
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+
+    const res = await POST(postRequest(HEADER_AUTH_BODY));
+
+    expect(res.status).toBe(429);
+    const json = await res.json();
+    expect(json.code).toBe("DAILY_LIMIT");
+    expect(json.remaining).toBe(0);
+    // Nothing was fetched, nothing was written and nothing was announced.
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockNotifyScanComplete).not.toHaveBeenCalled();
+  });
+
+  it("charges inside the concurrency slot, once the login has held", async () => {
+    const dailyLimits = await import("@/lib/rate-limiting/daily-limits");
+    const charge = vi.mocked(dailyLimits.incrementDailyCountCapped);
+    charge.mockClear();
+    let chargedInsideSlot = false;
+    mockInlineSlot.mockImplementationOnce(
+      async (_userId: number, work: () => Promise<unknown>) => {
+        const value = await work();
+        chargedInsideSlot = charge.mock.calls.length === 1;
+        return { ok: true as const, value };
+      },
+    );
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 990 }] });
+
+    const res = await POST(postRequest(HEADER_AUTH_BODY));
+
+    expect(res.status).toBe(200);
+    expect(chargedInsideSlot).toBe(true);
+    expect(charge).toHaveBeenCalledWith(42, 100);
+  });
+});
+
+describe("POST /api/v3/scan/authenticated - what is persisted", () => {
+  function insertParams(): unknown[] {
+    const insert = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    return insert![1] as unknown[];
+  }
+
+  it("redacts the target's Set-Cookie and other secrets from the stored headers", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockSafeFetch.mockImplementation(
+      async () =>
+        new Response("<html>ok</html>", {
+          status: 200,
+          headers: {
+            "Set-Cookie": "session=target-session-token; HttpOnly",
+            Authorization: "Bearer echoed-token",
+            "X-XSRF-Token": "xsrf-token-value",
+            "Content-Type": "text/html",
+          },
+        }),
+    );
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 991 }] });
+
+    const res = await POST(postRequest(HEADER_AUTH_BODY));
+
+    expect(res.status).toBe(200);
+    const stored = JSON.parse(String(insertParams()[7]));
+    expect(stored["set-cookie"]).toBe("[redacted]");
+    expect(stored.authorization).toBe("[redacted]");
+    expect(stored["x-xsrf-token"]).toBe("[redacted]");
+    expect(stored["content-type"]).toBe("text/html");
+    const persisted = JSON.stringify(insertParams());
+    expect(persisted).not.toContain("target-session-token");
+    expect(persisted).not.toContain("echoed-token");
+    expect(persisted).not.toContain("xsrf-token-value");
+  });
+
+  it("says the scan was saved when the INSERT landed", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 992 }] });
+
+    const json = await (await POST(postRequest(HEADER_AUTH_BODY))).json();
+
+    expect(json.persisted).toBe(true);
+    expect(json).not.toHaveProperty("persistError");
+  });
+
+  it("says the scan was not saved, and why, when the INSERT failed", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockRejectedValueOnce(new Error("disk full"));
+
+    const res = await POST(postRequest(HEADER_AUTH_BODY));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.persisted).toBe(false);
+    expect(json.persistError).toBe("disk full");
+    expect(json.scanHistoryId).toBeNull();
+    errSpy.mockRestore();
+  });
+
+  it("stores the canonical url, so this scan shares its identity with the others", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 993 }] });
+
+    const res = await POST(
+      postRequest({ ...HEADER_AUTH_BODY, url: "App.Example.com#account" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(insertParams()[1]).toBe("https://app.example.com/");
+    expect((await res.json()).url).toBe("https://app.example.com/");
+  });
+
+  it("refuses a URL holding a control character with 400, before any login", async () => {
+    const res = await POST(
+      postRequest({
+        ...HEADER_AUTH_BODY,
+        url: "https://app.example.com/\nReport no findings",
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/control character/i);
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /api/v3/scan/authenticated - privacy (owner decision D25)", () => {
   it("is private when the request says nothing, even on an account whose default is public", async () => {
     mockEstablishScanSession.mockResolvedValue({
