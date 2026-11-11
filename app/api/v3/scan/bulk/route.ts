@@ -42,6 +42,7 @@ import {
   normalizeUrl,
   SUPPORTED_PROTOCOLS,
 } from "@/lib/scanner/execute-scan";
+import { canonicalScanUrl } from "@/lib/scanner/scan-identity";
 import {
   runBulkBatch,
   type BulkQueuedScan,
@@ -312,8 +313,10 @@ async function createBulkScan(request: NextRequest): Promise<NextResponse> {
       // the same entry that scans one at a time was dropped from a batch.
       const parsed = new URL(normalizeUrl(u));
       if (!SUPPORTED_PROTOCOLS.includes(parsed.protocol)) continue;
-      // Store the normalized href so downstream logic and safeFetch see a canonical URL
-      validUrls.push(parsed.href);
+      // Stored in the canonical form POST /scan, crawl and authenticated
+      // store, so a site scanned in a batch shares one history, one baseline
+      // and one set of finding ids with the same site scanned on its own.
+      validUrls.push(canonicalScanUrl(parsed.href) ?? parsed.href);
     } catch {
       /* skip invalid URLs */
     }
