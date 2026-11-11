@@ -55,6 +55,25 @@ vi.mock("@/lib/domains/scope", () => ({
   isUrlOwnedByUser: (...args: unknown[]) => mockIsUrlOwnedByUser(...args),
 }));
 
+// The blocklist and the per-target bucket are the two gates crawl discovery
+// shares with the crawl route itself (gap-domain-verification-active-gating-5).
+const mockCheckAccessRules = vi.fn();
+vi.mock("@/lib/scanner/access-rules", () => ({
+  checkAccessRules: (...args: unknown[]) => mockCheckAccessRules(...args),
+}));
+
+const mockCheckTargetScanLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/target-limits", () => ({
+  checkTargetScanLimit: (...args: unknown[]) =>
+    mockCheckTargetScanLimit(...args),
+  targetScanLimitMessage: (root: string) => `Too many scans of ${root}.`,
+}));
+
+const mockProveTargetControl = vi.fn();
+vi.mock("@/lib/domains/target-proof", () => ({
+  proveTargetControl: (...args: unknown[]) => mockProveTargetControl(...args),
+}));
+
 const { POST } = await import("@/app/api/v3/scan/crawl/discover/route");
 
 function postRequest(body: unknown, headers: Record<string, string> = {}) {
@@ -104,6 +123,24 @@ beforeEach(() => {
   });
   mockIsUrlOwnedByUser.mockReset();
   mockIsUrlOwnedByUser.mockResolvedValue(true);
+  mockCheckAccessRules.mockReset();
+  mockCheckAccessRules.mockResolvedValue({ allowed: true });
+  mockProveTargetControl.mockReset();
+  mockProveTargetControl.mockResolvedValue({
+    ok: true,
+    target: {
+      host: "example.com",
+      ip: "93.184.216.34",
+      domainId: 3,
+      domain: "example.com",
+    },
+  });
+  mockCheckTargetScanLimit.mockReset();
+  mockCheckTargetScanLimit.mockResolvedValue({
+    allowed: true,
+    retryAfterSeconds: 0,
+    rootDomain: "example.com",
+  });
 });
 
 const COOKIE_AUTH = {
@@ -254,6 +291,70 @@ describe("POST /api/v3/scan/crawl/discover: request validation", () => {
   });
 });
 
+describe("POST /api/v3/scan/crawl/discover: access rules and target volume", () => {
+  it("refuses a blocked target with the crawl route's 403 BLOCKED body, before any fetch", async () => {
+    mockCheckAccessRules.mockResolvedValue({
+      allowed: false,
+      reason: "Blocked by the verified owner of example.com.",
+      ruleType: "blacklist",
+    });
+
+    const res = await POST(postRequest({ url: "https://example.com/" }));
+
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.statusCode).toBe("BLOCKED");
+    expect(json.error).toBe("This target cannot be scanned.");
+    expect(mockCheckAccessRules).toHaveBeenCalledWith("https://example.com/");
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+  });
+
+  it("refuses a blocked target before signing in to it", async () => {
+    mockCheckAccessRules.mockResolvedValue({ allowed: false });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com/", auth: COOKIE_AUTH }),
+    );
+
+    expect(res.status).toBe(403);
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+  });
+
+  it("charges the target's bucket and answers 429 when it is spent and the caller does not own the domain", async () => {
+    mockCheckTargetScanLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 120,
+      rootDomain: "example.com",
+    });
+    mockIsUrlOwnedByUser.mockResolvedValue(false);
+
+    const res = await POST(postRequest({ url: "https://example.com/" }));
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("120");
+    const json = await res.json();
+    expect(json.statusCode).toBe("TARGET_RATE_LIMIT");
+    expect(mockCheckTargetScanLimit).toHaveBeenCalledWith(
+      "https://example.com/",
+    );
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+  });
+
+  it("lets a verified owner through a spent target bucket, as the crawl route does", async () => {
+    mockCheckTargetScanLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 120,
+      rootDomain: "example.com",
+    });
+
+    const res = await POST(postRequest({ url: "https://example.com/" }));
+
+    expect(res.status).toBe(200);
+    expect(mockSafeFetch).toHaveBeenCalled();
+  });
+});
+
 describe("POST /api/v3/scan/crawl/discover: authenticated discovery", () => {
   it("never signs in when no auth block is supplied", async () => {
     const res = await POST(postRequest({ url: "https://example.com/" }));
@@ -295,6 +396,40 @@ describe("POST /api/v3/scan/crawl/discover: authenticated discovery", () => {
     expect(json.statusCode).toBe("DOMAIN_NOT_VERIFIED");
     // The credential-stuffing oracle is closed before any login is attempted.
     expect(mockEstablishScanSession).not.toHaveBeenCalled();
+  });
+
+  it("rejects a form login when the server behind the verified name never proved itself", async () => {
+    mockProveTargetControl.mockResolvedValue({
+      ok: false,
+      code: "DOMAIN_NOT_VERIFIED",
+      reason: "Serve the token first.",
+    });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com/", auth: FORM_AUTH }),
+    );
+
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.statusCode).toBe("DOMAIN_NOT_VERIFIED");
+    expect(json.error).toBe("Serve the token first.");
+    expect(mockProveTargetControl).toHaveBeenCalledWith("example.com", 42);
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+  });
+
+  it("signs in with a form login once the server has proved itself", async () => {
+    const res = await POST(
+      postRequest({ url: "https://example.com/", auth: FORM_AUTH }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockEstablishScanSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not ask for a target proof for cookie auth", async () => {
+    await POST(postRequest({ url: "https://example.com/", auth: COOKIE_AUTH }));
+
+    expect(mockProveTargetControl).not.toHaveBeenCalled();
   });
 
   it("does not gate header or cookie auth on domain verification", async () => {

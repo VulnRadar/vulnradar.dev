@@ -10,6 +10,12 @@ import { versioned } from "@/lib/api/v4/wrap";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { discoverPages } from "@/lib/scanner/crawl-discovery";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
+import { proveTargetControl } from "@/lib/domains/target-proof";
+import { checkAccessRules } from "@/lib/scanner/access-rules";
+import {
+  checkTargetScanLimit,
+  targetScanLimitMessage,
+} from "@/lib/rate-limiting/target-limits";
 import { establishScanSession } from "@/lib/scanner/auth/login";
 import {
   buildAuthRequestSchema,
@@ -109,6 +115,43 @@ async function handler(request: NextRequest) {
     );
   }
 
+  // The blocklist and the per-target bucket, exactly as POST /scan/crawl
+  // applies them, and before anything is fetched: the login below is a fetch
+  // too. Discovery crawls the target's pages, so a domain its owner or staff
+  // blocked was still being crawled from here because this route never asked
+  // (gap-domain-verification-active-gating-5).
+  const accessCheck = await checkAccessRules(startUrl.href);
+  if (!accessCheck.allowed) {
+    return NextResponse.json(
+      {
+        error: "This target cannot be scanned.",
+        details:
+          "This domain or IP address has been restricted from scanning for security, privacy, or compliance reasons. Access controls are enforced to protect sensitive infrastructure and user data. If you believe this is an error, please contact support.",
+        statusCode: "BLOCKED",
+      },
+      { status: 403 },
+    );
+  }
+  // Counted as one, like the crawl itself, and a verified owner is exempt.
+  // Uncounted, discovery was a way to send a crawl's worth of requests at a
+  // third party without touching its bucket.
+  const targetLimit = await checkTargetScanLimit(startUrl.href);
+  if (
+    !targetLimit.allowed &&
+    !(await isUrlOwnedByUser(startUrl.href, userId))
+  ) {
+    return NextResponse.json(
+      {
+        error: targetScanLimitMessage(targetLimit.rootDomain),
+        statusCode: "TARGET_RATE_LIMIT",
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(targetLimit.retryAfterSeconds) },
+      },
+    );
+  }
+
   // Parse and gate the optional auth block, then establish the session. All of
   // this happens after the URL checks above so a malformed request never pays
   // for a login attempt. Credential material lives only in these locals: it is
@@ -169,6 +212,18 @@ async function handler(request: NextRequest) {
         },
         { status: 403 },
       );
+    }
+    // Owning the zone is not owning the server a name in it points at, and
+    // the login is aimed at that server. The proof binds the credentials'
+    // destination to a server the caller showed is theirs.
+    if (ephemeralAuth.method === "form") {
+      const proved = await proveTargetControl(startUrl.hostname, userId);
+      if (!proved.ok) {
+        return NextResponse.json(
+          { error: proved.reason, statusCode: proved.code },
+          { status: 403 },
+        );
+      }
     }
     const loginResult = await establishScanSession(
       ephemeralAuth,
