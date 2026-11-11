@@ -1,5 +1,6 @@
 import pool from "@/lib/database/db";
-import { isPublicScanId, parseIdParam } from "@/lib/api/path-id";
+import { isPublicScanId } from "@/lib/api/path-id";
+import { scanNumericId } from "@/lib/history/resolve-scan";
 
 /**
  * A scan named by a client: the 32 character public id, or the legacy numeric
@@ -24,7 +25,10 @@ export function parseScanRef(raw: unknown): ScanRef | null {
   const text = typeof raw === "number" ? String(raw) : raw;
   if (typeof text !== "string") return null;
   if (isPublicScanId(text)) return { raw: text, numericId: null };
-  const numericId = parseIdParam(text);
+  // scanNumericId, not the stricter path-id parser: every History subroute
+  // reads "007" as scan 7, and a route that took the same id differently would
+  // stop opening links that work next door.
+  const numericId = scanNumericId(text);
   return numericId === null ? null : { raw: text, numericId };
 }
 

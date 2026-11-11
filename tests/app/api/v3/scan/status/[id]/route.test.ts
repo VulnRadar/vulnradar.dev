@@ -244,15 +244,13 @@ describe("GET /api/v3/scan/status/:id", () => {
   });
 
   // The path segment is parsed before it reaches Postgres. Nothing in this list
-  // can name a scan, so none of them costs a query, and "12abc" and "007" no
-  // longer read as scans 12 and 7 (one row, one spelling).
+  // can name a scan, so none of them costs a query.
   it.each([
     "not-a-scan",
     "99999999999999999999",
     "-3",
     "1.5",
     "12abc",
-    "007",
     "0",
     "A".repeat(32),
     "a".repeat(31),
@@ -262,6 +260,15 @@ describe("GET /api/v3/scan/status/:id", () => {
     expect(res.status).toBe(404);
     expect((await res.json()).code).toBe("SCAN_NOT_FOUND");
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("still reads a zero-padded number as the primary key, as History does", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [row({ status: "running" })] });
+
+    const res = await GET(req(), ctx("007"));
+
+    expect(res.status).toBe(200);
+    expect(mockQuery.mock.calls[0][1]).toEqual(["007", 7, OWNER_ID]);
   });
 
   it("answers a failed scan with errorMessage beside error, the same sentence", async () => {
