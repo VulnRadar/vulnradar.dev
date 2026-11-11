@@ -1920,6 +1920,15 @@ describe("POST /api/v3/webhooks/stripe: invoice.payment_failed, two strikes", ()
     rows: [{ email: "payer@example.com", plan: "pro_supporter" }],
   };
 
+  // What Stripe reports for a renewal that is still failing.
+  beforeEach(() => {
+    liveSubscriptions.set("sub_dun", {
+      id: "sub_dun",
+      status: "past_due",
+      metadata: {},
+    });
+  });
+
   function sentSubjects() {
     return mockSendEmail.mock.calls.map(
       ([msg]) => (msg as { subject: string }).subject,
@@ -2065,6 +2074,26 @@ describe("POST /api/v3/webhooks/stripe: invoice.payment_failed, two strikes", ()
 
     expect(await replay.json()).toEqual({ received: true, replay: true });
     expect(mockSubCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not cancel over a second strike delivered after the renewal was paid", async () => {
+    // Stripe does not deliver in order. The card was fixed and the retry
+    // went through, so Stripe has the subscription active again, and then
+    // the earlier attempt-2 failure arrives.
+    liveSubscriptions.set("sub_dun", {
+      id: "sub_dun",
+      status: "active",
+      metadata: {},
+    });
+    withIdempotency("evt_dun_late");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] });
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    const res = await POST(failedRenewal("evt_dun_late", 2));
+
+    expect(res.status).toBe(200);
+    expect(mockSubCancel).not.toHaveBeenCalled();
+    expect(sentSubjects().some((s) => /canceled/i.test(s))).toBe(false);
   });
 
   it("does nothing more once the subscription is already cancelled in Stripe", async () => {

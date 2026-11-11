@@ -1188,10 +1188,15 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         // own current one (dunnedUserId), and never under a staff floor or a
         // gift. A redelivery is stopped by the idempotency marker, and a retry
         // after the cancel landed reads the subscription as canceled above.
+        // Only while Stripe still has it past_due, too: the attempt count is
+        // the event's, and a second strike delivered late, after the card was
+        // fixed and the renewal paid, would otherwise cancel a subscription
+        // that is paying again.
         let cancelled = false;
         if (
           dunnedUserId &&
           failedSubscriptionId &&
+          liveFailed?.status === "past_due" &&
           invoice.billing_reason === "subscription_cycle" &&
           (invoice.attempt_count ?? 0) >= TWO_STRIKE_ATTEMPTS
         ) {
