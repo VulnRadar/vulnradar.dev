@@ -683,4 +683,59 @@ describe("percent-encoded unreserved characters", () => {
     const res = call("/api/v3/host/a%2Fb", {});
     expect(passed(res)).toBe(true);
   });
+
+  // A production router also looks a static route up by its decoded path, so
+  // an escaped prefix reaches /api/v3/scan. It used to be judged as a page: a
+  // cross-site write with a cookie and an oversized body went straight
+  // through.
+  it.each(["/%61pi/v3/scan", "/%61%70%69/v3/scan", "/ap%69/v3/scan"])(
+    "judges %s as the API path it is served as",
+    async (path) => {
+      await expectEnvelope(
+        call(path, {
+          method: "POST",
+          cookie: true,
+          origin: "https://evil.example",
+        }),
+        403,
+        "CSRF_REJECTED",
+      );
+      await expectEnvelope(
+        call(path, {
+          method: "POST",
+          cookie: true,
+          origin: APP,
+          headers: { "content-length": String(10 * 1024 * 1024) },
+        }),
+        413,
+        "PAYLOAD_TOO_LARGE",
+      );
+      await expectEnvelope(call(path), 401, "UNAUTHENTICATED", {});
+      const res = call(path, { cookie: true });
+      expect(forwarded(res, "x-vr-api-version")).toBe("v3");
+      expect(forwarded(res, "x-pathname")).toBe("/api/v3/scan");
+    },
+  );
+
+  it.each(["/api%2Fv3%2Fscan", "/api%2fv3/scan", "/%61pi%2Fv3%2Fscan"])(
+    "refuses %s, whose prefix only an escaped separator hides",
+    async (path) => {
+      await expectEnvelope(
+        call(path, {
+          method: "POST",
+          cookie: true,
+          origin: "https://evil.example",
+        }),
+        404,
+        "NOT_FOUND",
+      );
+      await expectEnvelope(call(path, { cookie: true }), 404, "NOT_FOUND");
+    },
+  );
+
+  it("leaves a page with an escaped character a page", () => {
+    const res = call("/%70ricing");
+    expect(res.status).not.toBe(404);
+    expect(res.headers.get("content-type") ?? "").not.toContain("json");
+  });
 });

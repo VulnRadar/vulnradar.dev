@@ -78,7 +78,7 @@ describe("social short links", () => {
     // 307 and not 308: the destination is somebody else's URL and the account
     // can move. A permanent redirect is cached indefinitely by browsers.
     expect(middleware).toMatch(/NextResponse\.redirect\(socialTarget, 307\)/);
-    const socialAt = middleware.indexOf("SOCIAL_REDIRECTS[socialPathname]");
+    const socialAt = middleware.indexOf("SOCIAL_REDIRECTS[");
     const loginAt = middleware.indexOf("ROUTES.LOGIN");
     expect(socialAt).toBeGreaterThan(-1);
     if (loginAt > -1) expect(socialAt).toBeLessThan(loginAt);

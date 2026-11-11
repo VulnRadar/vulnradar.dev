@@ -691,6 +691,18 @@ function normalizeUnreservedEscapes(pathname: string): string {
   });
 }
 
+function isApiPath(pathname: string): boolean {
+  return pathname === "/api" || pathname.startsWith("/api/");
+}
+
+function decodedOrSelf(pathname: string): string {
+  try {
+    return decodeURIComponent(pathname);
+  } catch {
+    return pathname;
+  }
+}
+
 export function middleware(request: NextRequest, event?: NextFetchEvent) {
   // This used to only be enforced at next.config.mjs build time, which a
   // pre-built Docker image started with a new env var would never
@@ -726,9 +738,10 @@ export function middleware(request: NextRequest, event?: NextFetchEvent) {
     rawPathname.endsWith("/") && rawPathname !== "/"
       ? rawPathname.slice(0, -1)
       : rawPathname;
-  const pathname = trimmed.startsWith("/api/")
-    ? normalizeUnreservedEscapes(trimmed)
-    : trimmed;
+  // The prefix itself can be escaped: /%61pi/v3/scan is served as
+  // /api/v3/scan, so it is an API request and is judged as one.
+  const unescaped = normalizeUnreservedEscapes(trimmed);
+  const pathname = isApiPath(unescaped) ? unescaped : trimmed;
 
   // Which space the path belongs to, and the path that decides it: an alias
   // is judged as its target, so an old URL can never be treated differently
@@ -757,6 +770,14 @@ export function middleware(request: NextRequest, event?: NextFetchEvent) {
         ...extra,
       }),
     );
+
+  // An escaped separator can hide the prefix too: a production router looks a
+  // static route up by its decoded path as well, so /api%2Fv3%2Fscan reaches
+  // /api/v3/scan while everything below would have judged a page, with no
+  // Origin check and no body cap. Nothing legitimate spells a path that way.
+  if (!isApi && isApiPath(decodedOrSelf(pathname))) {
+    return fail(404, "NOT_FOUND", "No API route at this path.");
+  }
 
   // A reverse proxy in front of this app (Cloudflare, nginx, Caddy -- see
   // docker-compose.yml) is expected to redirect plain HTTP to HTTPS itself,
