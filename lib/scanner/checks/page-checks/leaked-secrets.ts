@@ -30,6 +30,30 @@ const SECRET_NAME =
   /(?:api|secret|private|access|auth|client)[_-]?(?:key|token|secret)|password|passwd/i;
 const TOKEN_SUFFIX = /token$/i;
 
+// Identifiers that look like secrets and are public by design. A vendor puts
+// these in the page on purpose: Shopify renders storefrontAccessToken into
+// every storefront (it is the browser-side credential, scoped to read-only
+// storefront data, and the private token is a different header), a
+// publishable or site key is the half of a key pair made to be shown, and
+// Sentry's dsn and an analytics measurementId are write-only identifiers.
+// Compared whole, with case and separators ignored, so storefront_access_token
+// and StorefrontAccessToken are one name; apiSecret and clientSecret are not
+// in the set and keep reporting.
+const PUBLIC_BY_DESIGN_NAMES = new Set([
+  "storefrontaccesstoken",
+  "storefrontaccesstokens",
+  "publishablekey",
+  "publickey",
+  "sitekey",
+  "clienttoken",
+  "measurementid",
+  "dsn",
+]);
+
+function isPublicByDesign(name: string): boolean {
+  return PUBLIC_BY_DESIGN_NAMES.has(name.toLowerCase().replace(/[_-]/g, ""));
+}
+
 // Real placeholders are usually phrases ("your_api_key_goes_here",
 // "REPLACE_WITH_YOUR_KEY"), not single words, so this matches on the
 // telltale substring rather than requiring the whole value to be one.
@@ -75,6 +99,7 @@ export const leakedSecretChecks: PageCheck[] = [
       while ((m = ASSIGNMENT.exec(ctx.inlineScript))) {
         const [full, name, value] = m;
         if (!SECRET_NAME.test(name) && !TOKEN_SUFFIX.test(name)) continue;
+        if (isPublicByDesign(name)) continue;
         if (looksLikePlaceholder(value)) continue;
         if (shannonEntropy(value) < 3.5) continue;
         const key = `${name}:${value}`;
