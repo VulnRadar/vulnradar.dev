@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  vi,
+} from "vitest";
 import { NextRequest } from "next/server";
 import {
   makeCookieStore,
@@ -125,6 +133,10 @@ function login(userId = 1) {
 
 beforeEach(async () => {
   await new Promise((resolve) => setImmediate(resolve));
+  // Ten seconds into a 30-second TOTP step, with the clock held there, so a
+  // code the test computes cannot cross a step boundary before the route
+  // checks it.
+  vi.setSystemTime(new Date("2026-01-01T00:00:10Z"));
   mockQuery.mockClear();
   mockSendEmail.mockClear();
   queries.length = 0;
@@ -140,6 +152,10 @@ beforeEach(async () => {
   enableUpdateCalls = [];
   clearSecretCalls = [];
   invalidateSettingsCache();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("GET /api/v3/auth/2fa/setup", () => {
