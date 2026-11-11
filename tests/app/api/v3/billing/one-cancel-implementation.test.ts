@@ -48,7 +48,9 @@ const LISTED: Record<string, { calls: number; why: string }> = {
   },
 };
 
-const DIRECT_CANCEL = /\bsubscriptions\s*\.\s*(?:cancel|del)\s*\(/g;
+// `.cancel(`, `?.cancel(` and `["cancel"](` all reach the same Stripe call.
+const DIRECT_CANCEL =
+  /\bsubscriptions\s*(?:\??\.\s*(?:cancel|del)|\??\.?\s*\[\s*["'`](?:cancel|del)["'`]\s*\])\s*\(/g;
 // A cancel scheduled through update(). `cancel_at_period_end` is the period-end
 // cancel and is fine; a bare `cancel_at:` is the immediate one that prorated.
 const SCHEDULED_CANCEL = /\bcancel_at\s*:/g;

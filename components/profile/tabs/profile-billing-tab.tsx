@@ -1576,8 +1576,11 @@ export function ProfileBillingTab({
             <div>
               <p className="font-medium text-foreground">Cancel immediately</p>
               <p className="text-sm text-muted-foreground">
-                Lose access now and move to the free plan. No refund will be
-                issued.
+                {/* Under a gift the account keeps the gifted plan, which is
+                    what the success message after this says too. */}
+                {billingInfo?.giftedSubscription
+                  ? `End the paid subscription now. Your gifted plan stays until ${formatDate(billingInfo.giftedSubscription.expiresAt)}. No refund will be issued.`
+                  : "Lose access now and move to the free plan. No refund will be issued."}
               </p>
             </div>
           </label>
