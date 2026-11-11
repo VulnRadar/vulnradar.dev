@@ -7,6 +7,7 @@ import { focus } from "@/lib/ui/animations";
 import { API } from "@/lib/config/client-constants";
 import { LOCALE_NAMES, isLocale } from "@/lib/i18n/config";
 import {
+  offersTranslateControl,
   originalTextLang,
   translateStatusText,
 } from "@/components/support/translatable-message-utils";
@@ -20,6 +21,12 @@ export interface TranslatableMessageProps {
   bodyLocale?: string | null;
   /** The same message in the reader's language, when it has been translated. */
   translation?: string | null;
+  /**
+   * Whether the server can translate at all (the ticket GET's
+   * translationAvailable). False hides the Translate button; a translation
+   * already on hand still gets its show-original toggle.
+   */
+  translationAvailable?: boolean;
   className?: string;
 }
 
@@ -41,6 +48,7 @@ export function TranslatableMessage({
   body,
   bodyLocale,
   translation,
+  translationAvailable = true,
   className,
 }: TranslatableMessageProps) {
   const [translated, setTranslated] = useState<string | null>(
@@ -56,7 +64,11 @@ export function TranslatableMessage({
   // A failed attempt keeps the button. It used to take it away, and with it
   // the failure message that was meant to replace it, so the control a keyboard
   // user had just pressed vanished and focus fell to <body> with nothing said.
-  const canTranslate = Boolean(bodyLocale);
+  const canTranslate = offersTranslateControl({
+    bodyLocale,
+    translated: translated !== null,
+    translationAvailable,
+  });
   const writtenIn =
     bodyLocale && isLocale(bodyLocale) ? LOCALE_NAMES[bodyLocale] : bodyLocale;
 

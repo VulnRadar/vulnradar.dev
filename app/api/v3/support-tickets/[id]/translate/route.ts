@@ -8,6 +8,7 @@ import {
 } from "@/lib/support/ticket-access";
 import {
   translateTicketMessage,
+  translationAvailable,
   type TicketMessageRow,
 } from "@/lib/support/translate";
 import { getUserLocale } from "@/lib/i18n/translate";
@@ -99,9 +100,18 @@ export const POST = withErrorHandling(
     }
 
     // Only a translation that has to be generated costs anything, so the limit
-    // is checked after the cache, not before it.
+    // is checked after the cache, not before it. A message already written in
+    // the target language is its own translation and costs nothing either.
     const cached = message.translations?.[target];
-    if (!cached) {
+    if (!cached && message.body_locale !== target) {
+      // Without a provider the attempt cannot succeed, so it must not spend
+      // one of the caller's rate-limit slots finding that out.
+      if (!translationAvailable()) {
+        return NextResponse.json(
+          { error: "Translation is not available on this deployment." },
+          { status: 503 },
+        );
+      }
       const rl = await checkRateLimit({
         key: `support-translate:${session.userId}`,
         ...RATE_LIMITS.aiSummary,

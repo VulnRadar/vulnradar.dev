@@ -73,6 +73,14 @@ vi.mock("@/lib/rate-limiting/rate-limit", () => ({
   },
 }));
 
+// Whether the deployment has an AI provider is environment, not behaviour
+// under test here, so each GET test says which world it is in.
+const mockTranslationAvailable = vi.fn(() => true);
+vi.mock("@/lib/support/translate", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/support/translate")>()),
+  translationAvailable: () => mockTranslationAvailable(),
+}));
+
 const { GET, POST, PATCH } =
   await import("@/app/api/v3/support-tickets/[id]/route");
 
@@ -127,6 +135,43 @@ beforeEach(() => {
   mockLogAction.mockResolvedValue(undefined);
   mockNotifyStaff.mockClear();
   mockNotifyUserOfStatus.mockClear();
+  mockTranslationAvailable.mockReset();
+  mockTranslationAvailable.mockReturnValue(true);
+});
+
+describe("GET /api/v3/support-tickets/[id]: translationAvailable", () => {
+  function thread() {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 1,
+            is_staff: false,
+            body: "Hola",
+            body_locale: "es",
+            translations: null,
+            created_at: "x",
+            author_name: "Owner",
+          },
+        ],
+      });
+  }
+
+  it("says the thread can be translated when a provider is configured", async () => {
+    asUser(7, "user");
+    thread();
+    const body = await (await GET(req("GET"), params)).json();
+    expect(body.translationAvailable).toBe(true);
+  });
+
+  it("says it cannot when there is no provider, so the client offers no button", async () => {
+    mockTranslationAvailable.mockReturnValue(false);
+    asUser(7, "user");
+    thread();
+    const body = await (await GET(req("GET"), params)).json();
+    expect(body.translationAvailable).toBe(false);
+  });
 });
 
 describe("GET /api/v3/support-tickets/[id]", () => {

@@ -27,6 +27,7 @@ const {
   detectMessageLanguage,
   translateText,
   translateTicketMessage,
+  translationAvailable,
   prepareMessageTranslation,
 } = await import("@/lib/support/translate");
 
@@ -50,6 +51,48 @@ describe("without an AI provider", () => {
     expect(await detectMessageLanguage("Hola, tengo un problema")).toBeNull();
     expect(await translateText("Hola", "en")).toBeNull();
     expect(mockComplete).not.toHaveBeenCalled();
+  });
+});
+
+describe("translationAvailable", () => {
+  it("follows whether the operator configured a provider", () => {
+    expect(translationAvailable()).toBe(true);
+    mockResolveEndpoint.mockReturnValue(null);
+    expect(translationAvailable()).toBe(false);
+  });
+});
+
+describe("prepareMessageTranslation without a provider", () => {
+  it("records no language at all, not even the author's own", async () => {
+    mockResolveEndpoint.mockReturnValue(null);
+
+    await prepareMessageTranslation({
+      messageId: 11,
+      body: "No puedo escanear mi dominio",
+      authorLocale: "es",
+      counterpartLocales: ["en"],
+    });
+
+    // body_locale from the author's locale is what put a Translate button on
+    // a deployment that cannot translate.
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockComplete).not.toHaveBeenCalled();
+  });
+
+  it("still falls back to the author's locale when a provider could not tell", async () => {
+    mockComplete.mockResolvedValueOnce("other");
+
+    await prepareMessageTranslation({
+      messageId: 12,
+      body: "ok",
+      authorLocale: "de",
+      counterpartLocales: [],
+    });
+
+    const wroteLocale = mockQuery.mock.calls.find(([sql]) =>
+      (sql as string).includes("SET body_locale"),
+    );
+    expect(wroteLocale?.[1]).toEqual(["de", 12]);
   });
 });
 

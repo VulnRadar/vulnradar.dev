@@ -34,3 +34,22 @@ export const TRANSLATE_FAILED_TEXT =
 export function translateStatusText(failed: boolean): string {
   return failed ? TRANSLATE_FAILED_TEXT : "";
 }
+
+/**
+ * Whether a message gets a control at all.
+ *
+ * A foreign-language message normally gets "Translate from <language>", but on
+ * a deployment with no AI provider that button can only fail, and every retry
+ * is a request. So the generate button needs both a language to translate from
+ * and a server that can do it. A translation that is already on hand needs
+ * neither: the toggle between it and the original works without a provider, and
+ * it is the only way to read the original once the translation is showing.
+ */
+export function offersTranslateControl(opts: {
+  bodyLocale: string | null | undefined;
+  translated: boolean;
+  translationAvailable: boolean;
+}): boolean {
+  if (!opts.bodyLocale) return false;
+  return opts.translated || opts.translationAvailable;
+}

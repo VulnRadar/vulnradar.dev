@@ -16,8 +16,9 @@ vi.mock("@/lib/database/db", () => ({
 const mockGetSession = vi.fn();
 vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
 
+const mockCheckRateLimit = vi.fn();
 vi.mock("@/lib/rate-limiting/rate-limit", () => ({
-  checkRateLimit: async () => ({ allowed: true, retryAfterSeconds: 0 }),
+  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
   RATE_LIMITS: { aiSummary: {} },
 }));
 
@@ -27,8 +28,10 @@ vi.mock("@/lib/support/ticket-access", () => ({
   viewerIsSupportStaff: async () => false,
 }));
 
+const mockTranslationAvailable = vi.fn();
 vi.mock("@/lib/support/translate", () => ({
   translateTicketMessage: async () => ({ text: "hallo", cached: true }),
+  translationAvailable: () => mockTranslationAvailable(),
 }));
 
 vi.mock("@/lib/i18n/translate", () => ({
@@ -63,6 +66,10 @@ beforeEach(() => {
     role: "user",
   });
   mockResolveTicketAccess.mockResolvedValue({ canView: true });
+  mockCheckRateLimit.mockReset();
+  mockCheckRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
+  mockTranslationAvailable.mockReset();
+  mockTranslationAvailable.mockReturnValue(true);
 });
 
 describe("POST translate: the ticket id in the path", () => {
@@ -108,6 +115,69 @@ describe("POST translate: the ticket id in the path", () => {
     expect(await res.json()).toMatchObject({ messageId: 5, text: "hallo" });
     expect(mockQuery.mock.calls[0][1]).toEqual([12]);
     expect(mockQuery.mock.calls[1][1]).toEqual([5, 12]);
+  });
+});
+
+describe("POST translate: a deployment with no AI provider", () => {
+  function messageNeedingTranslation(bodyLocale = "en") {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ user_id: 7 }] }) // ticket
+      .mockResolvedValueOnce({
+        rows: [
+          { id: 5, body: "hello", body_locale: bodyLocale, translations: null },
+        ],
+      }); // message
+  }
+
+  it("answers 503 before it spends a rate-limit slot", async () => {
+    mockTranslationAvailable.mockReturnValue(false);
+    messageNeedingTranslation();
+
+    const res = await POST(req(), withId("12"));
+
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toMatch(/not available/i);
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("still serves a translation that is already cached", async () => {
+    mockTranslationAvailable.mockReturnValue(false);
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ user_id: 7 }] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 5,
+            body: "hello",
+            body_locale: "en",
+            translations: { de: "x" },
+          },
+        ],
+      });
+
+    const res = await POST(req(), withId("12"));
+
+    expect(res.status).toBe(200);
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("does not charge the limiter for a message already in the target language", async () => {
+    mockTranslationAvailable.mockReturnValue(false);
+    messageNeedingTranslation("de");
+
+    const res = await POST(req(), withId("12"));
+
+    expect(res.status).toBe(200);
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("with a provider, a translation that must be generated is rate limited as before", async () => {
+    messageNeedingTranslation();
+
+    const res = await POST(req(), withId("12"));
+
+    expect(res.status).toBe(200);
+    expect(mockCheckRateLimit).toHaveBeenCalledTimes(1);
   });
 });
 

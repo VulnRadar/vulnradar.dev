@@ -55,6 +55,16 @@ Rules:
 - If part of it is already in ${LOCALE_ENGLISH_NAMES[target]}, leave that part alone.`;
 }
 
+/**
+ * Whether this deployment can translate at all: the operator configured an AI
+ * provider of their own. Without one every translation attempt fails the same
+ * way, so the thread must not offer the button and the route must not spend a
+ * rate-limit slot on it.
+ */
+export function translationAvailable(): boolean {
+  return resolveServerEndpoint() !== null;
+}
+
 /** The language a message is written in, as far as the model can tell. */
 export async function detectMessageLanguage(
   text: string,
@@ -160,6 +170,11 @@ export async function prepareMessageTranslation(input: {
   authorLocale: Locale | null;
   counterpartLocales: (Locale | null)[];
 }): Promise<void> {
+  // With no provider nothing here can run, and writing the author's own locale
+  // as body_locale anyway is what made every message in another language look
+  // translatable on a deployment that cannot translate. The language is
+  // recorded only once detection had a model to ask.
+  if (!translationAvailable()) return;
   const detected =
     (await detectMessageLanguage(input.body)) ?? input.authorLocale;
   if (detected) {

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prepareMessageTranslation } from "@/lib/support/translate";
+import {
+  prepareMessageTranslation,
+  translationAvailable,
+} from "@/lib/support/translate";
 import { getUserLocale } from "@/lib/i18n/translate";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
@@ -218,6 +221,9 @@ export const GET = withErrorHandling(
           : {}),
       },
       messages,
+      // False on a deployment with no AI provider of its own: the thread then
+      // offers no Translate button, which could only fail.
+      translationAvailable: translationAvailable(),
       viewerIsStaff: access.isStaff,
       viewerIsOwner: access.isOwner,
     });

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   TRANSLATE_FAILED_TEXT,
+  offersTranslateControl,
   originalTextLang,
   translateStatusText,
 } from "@/components/support/translatable-message-utils";
@@ -30,6 +31,48 @@ describe("originalTextLang", () => {
   it("will not put a value the app does not speak into a lang attribute", () => {
     expect(originalTextLang("klingon", false)).toBeUndefined();
     expect(originalTextLang('en" onload="x', false)).toBeUndefined();
+  });
+});
+
+describe("offersTranslateControl", () => {
+  it("offers Translate on a foreign message when the server can do it", () => {
+    expect(
+      offersTranslateControl({
+        bodyLocale: "es",
+        translated: false,
+        translationAvailable: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("offers nothing when the server cannot, because every try would fail", () => {
+    expect(
+      offersTranslateControl({
+        bodyLocale: "es",
+        translated: false,
+        translationAvailable: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps the show-original toggle for a translation already on hand", () => {
+    expect(
+      offersTranslateControl({
+        bodyLocale: "es",
+        translated: true,
+        translationAvailable: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("offers nothing for a message in the reader's own language", () => {
+    expect(
+      offersTranslateControl({
+        bodyLocale: null,
+        translated: false,
+        translationAvailable: true,
+      }),
+    ).toBe(false);
   });
 });
 

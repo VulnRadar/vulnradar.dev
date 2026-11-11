@@ -149,7 +149,10 @@ describe("a support message", () => {
   });
 
   it("keeps the translate button after a failure, so focus is not dropped with it", () => {
-    expect(MESSAGE).toContain("const canTranslate = Boolean(bodyLocale);");
+    // Whether the control exists depends on the language and the server, never
+    // on whether the last attempt failed.
+    expect(MESSAGE).toContain("const canTranslate = offersTranslateControl({");
+    expect(MESSAGE).not.toMatch(/canTranslate = [^;]*failed/);
     expect(MESSAGE).toContain('"Try again"');
   });
 });
