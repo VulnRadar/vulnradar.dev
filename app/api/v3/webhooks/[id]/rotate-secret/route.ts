@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withErrorHandling } from "@/lib/api/api-utils";
+import { parseIdParam } from "@/lib/api/path-id";
 import { randomBytes } from "node:crypto";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
@@ -26,63 +28,68 @@ import { webhookSecretRotatedEmail } from "@/lib/email/email";
  * is the same ownership-level decision as re-homing the webhook to another
  * team.
  */
-export async function POST(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const session = await getSession();
-  if (!session)
-    return NextResponse.json(
-      { error: ERROR_MESSAGES.UNAUTHORIZED },
-      { status: 401 },
-    );
+export const POST = withErrorHandling(
+  async (
+    _request: NextRequest,
+    { params }: { params: Promise<{ id: string }> },
+  ) => {
+    const session = await getSession();
+    if (!session)
+      return NextResponse.json(
+        { error: ERROR_MESSAGES.UNAUTHORIZED },
+        { status: 401 },
+      );
 
-  const { id: idParam } = await params;
-  const id = Number(idParam);
-  if (!Number.isInteger(id)) {
-    return NextResponse.json({ error: "Invalid webhook id" }, { status: 400 });
-  }
+    const { id: idParam } = await params;
+    const id = parseIdParam(idParam);
+    if (id === null) {
+      return NextResponse.json(
+        { error: "Invalid webhook id" },
+        { status: 400 },
+      );
+    }
 
-  const secret = randomBytes(32).toString("hex");
+    const secret = randomBytes(32).toString("hex");
 
-  // Scoped to user_id in the statement itself: there is no read-only
-  // variant of this action, so a caller who is not the owner gets the same
-  // 404 they would get for an id that does not exist.
-  //
-  // The column stores ciphertext (AUDIT-009#webhook-01); the plaintext is
-  // attached to the response below rather than read back through RETURNING,
-  // which would hand the caller the ciphertext instead of the new secret.
-  const result = await pool.query(
-    `UPDATE webhooks SET secret = $1
+    // Scoped to user_id in the statement itself: there is no read-only
+    // variant of this action, so a caller who is not the owner gets the same
+    // 404 they would get for an id that does not exist.
+    //
+    // The column stores ciphertext (AUDIT-009#webhook-01); the plaintext is
+    // attached to the response below rather than read back through RETURNING,
+    // which would hand the caller the ciphertext instead of the new secret.
+    const result = await pool.query(
+      `UPDATE webhooks SET secret = $1
       WHERE id = $2 AND user_id = $3
       RETURNING id, url, name, type, active, created_at`,
-    [encryptWebhookSecret(secret), id, session.userId],
-  );
+      [encryptWebhookSecret(secret), id, session.userId],
+    );
 
-  if (result.rows.length === 0) {
-    return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
-  }
-
-  // Creating and deleting a webhook both email; rotating its secret did not,
-  // and it is the change with the largest blast radius of the three: every
-  // receiver verifying signatures starts rejecting deliveries the instant this
-  // returns.
-  const rotated = result.rows[0];
-  void (async () => {
-    try {
-      await sendNotificationEmail({
-        userId: session.userId,
-        userEmail: session.email,
-        type: "webhooks",
-        emailContent: webhookSecretRotatedEmail(rotated.name || rotated.url, {
-          ipAddress: (await getClientIp()) || "Unknown",
-          userAgent: await getUserAgent(),
-        }),
-      });
-    } catch (err) {
-      console.error("Failed to send webhook secret rotation notice:", err);
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
     }
-  })();
 
-  return NextResponse.json({ ...result.rows[0], secret });
-}
+    // Creating and deleting a webhook both email; rotating its secret did not,
+    // and it is the change with the largest blast radius of the three: every
+    // receiver verifying signatures starts rejecting deliveries the instant this
+    // returns.
+    const rotated = result.rows[0];
+    void (async () => {
+      try {
+        await sendNotificationEmail({
+          userId: session.userId,
+          userEmail: session.email,
+          type: "webhooks",
+          emailContent: webhookSecretRotatedEmail(rotated.name || rotated.url, {
+            ipAddress: (await getClientIp()) || "Unknown",
+            userAgent: await getUserAgent(),
+          }),
+        });
+      } catch (err) {
+        console.error("Failed to send webhook secret rotation notice:", err);
+      }
+    })();
+
+    return NextResponse.json({ ...result.rows[0], secret });
+  },
+);

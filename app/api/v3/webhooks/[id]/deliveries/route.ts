@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withErrorHandling } from "@/lib/api/api-utils";
+import { parseIdParam } from "@/lib/api/path-id";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
@@ -21,56 +23,61 @@ import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
  */
 const MAX_DELIVERIES = 50;
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const session = await getSession();
-  if (!session)
-    return NextResponse.json(
-      { error: ERROR_MESSAGES.UNAUTHORIZED },
-      { status: 401 },
+export const GET = withErrorHandling(
+  async (
+    _request: NextRequest,
+    { params }: { params: Promise<{ id: string }> },
+  ) => {
+    const session = await getSession();
+    if (!session)
+      return NextResponse.json(
+        { error: ERROR_MESSAGES.UNAUTHORIZED },
+        { status: 401 },
+      );
+
+    const { id: idParam } = await params;
+    const id = parseIdParam(idParam);
+    if (id === null) {
+      return NextResponse.json(
+        { error: "Invalid webhook id" },
+        { status: 400 },
+      );
+    }
+
+    const existing = await pool.query<{
+      user_id: number;
+      team_id: number | null;
+    }>("SELECT user_id, team_id FROM webhooks WHERE id = $1", [id]);
+    const webhook = existing.rows[0];
+    if (!webhook) {
+      return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
+    }
+
+    const access = await getTeamResourceAccess(
+      session.userId,
+      webhook.user_id,
+      webhook.team_id,
     );
+    if (!access.canRead) {
+      return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
+    }
 
-  const { id: idParam } = await params;
-  const id = Number(idParam);
-  if (!Number.isInteger(id)) {
-    return NextResponse.json({ error: "Invalid webhook id" }, { status: 400 });
-  }
-
-  const existing = await pool.query<{
-    user_id: number;
-    team_id: number | null;
-  }>("SELECT user_id, team_id FROM webhooks WHERE id = $1", [id]);
-  const webhook = existing.rows[0];
-  if (!webhook) {
-    return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
-  }
-
-  const access = await getTeamResourceAccess(
-    session.userId,
-    webhook.user_id,
-    webhook.team_id,
-  );
-  if (!access.canRead) {
-    return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
-  }
-
-  const result = await pool.query(
-    `SELECT id, event_type, http_status, response_snippet, attempted_at
+    const result = await pool.query(
+      `SELECT id, event_type, http_status, response_snippet, attempted_at
        FROM webhook_deliveries
       WHERE webhook_id = $1
       ORDER BY attempted_at DESC
       LIMIT $2`,
-    [id, MAX_DELIVERIES],
-  );
+      [id, MAX_DELIVERIES],
+    );
 
-  // A teammate who cannot edit the webhook gets its host and not its URL, and
-  // a receiver's error page can echo the path it was called on ("Cannot POST
-  // /hook-secret"), which on a generic receiver may be the whole credential.
-  const deliveries = access.canWrite
-    ? result.rows
-    : result.rows.map((row) => ({ ...row, response_snippet: null }));
+    // A teammate who cannot edit the webhook gets its host and not its URL, and
+    // a receiver's error page can echo the path it was called on ("Cannot POST
+    // /hook-secret"), which on a generic receiver may be the whole credential.
+    const deliveries = access.canWrite
+      ? result.rows
+      : result.rows.map((row) => ({ ...row, response_snippet: null }));
 
-  return NextResponse.json({ deliveries });
-}
+    return NextResponse.json({ deliveries });
+  },
+);

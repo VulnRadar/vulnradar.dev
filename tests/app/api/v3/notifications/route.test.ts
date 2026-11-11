@@ -25,6 +25,10 @@ vi.mock("@/lib/notifications/user-notifications", () => ({
   markAllUserNotificationsRead: (...args: unknown[]) => mockMarkAll(...args),
 }));
 
+// The route reaches no table itself, but withErrorHandling and readJsonObject
+// live in lib/api/api-utils, which imports the pool.
+vi.mock("@/lib/database/db", () => ({ default: { query: vi.fn() } }));
+
 const { GET, PATCH } = await import("@/app/api/v3/notifications/route");
 
 beforeEach(() => {

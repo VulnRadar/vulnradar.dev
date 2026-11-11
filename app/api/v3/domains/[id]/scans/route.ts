@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { parseIdParam } from "@/lib/api/path-id";
 import { getSession } from "@/lib/auth";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
@@ -25,34 +27,36 @@ export const runtime = "nodejs";
  * read-only variant of this, so a non-owner learns nothing about whether the
  * id exists, matching PATCH /api/v3/domains/[id] above it.
  */
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json(
-      { error: ERROR_MESSAGES.UNAUTHORIZED },
-      { status: 401 },
-    );
-  }
+export const GET = withErrorHandling(
+  async (
+    _request: NextRequest,
+    { params }: { params: Promise<{ id: string }> },
+  ) => {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: ERROR_MESSAGES.UNAUTHORIZED },
+        { status: 401 },
+      );
+    }
 
-  const { id: idParam } = await params;
-  const id = Number(idParam);
-  if (!Number.isInteger(id)) {
-    return NextResponse.json({ error: "Invalid domain id" }, { status: 400 });
-  }
+    const { id: idParam } = await params;
+    const id = parseIdParam(idParam);
+    if (id === null) {
+      return NextResponse.json({ error: "Invalid domain id" }, { status: 400 });
+    }
 
-  const owned = await resolveOwnedDomain(id, session.userId);
-  if (!owned) {
-    return NextResponse.json({ error: "Domain not found" }, { status: 404 });
-  }
+    const owned = await resolveOwnedDomain(id, session.userId);
+    if (!owned) {
+      return NextResponse.json({ error: "Domain not found" }, { status: 404 });
+    }
 
-  const limit = await getSetting("HISTORY_LIST_MAX_ROWS");
-  const scans = await listDomainScans(owned.domain, session.userId, limit);
+    const limit = await getSetting("HISTORY_LIST_MAX_ROWS");
+    const scans = await listDomainScans(owned.domain, session.userId, limit);
 
-  return NextResponse.json({ domain: owned.domain, scans });
-}
+    return NextResponse.json({ domain: owned.domain, scans });
+  },
+);
 
 const VALID_ACTIONS: DomainScanAction[] = ["unpublish", "revoke-shares"];
 
@@ -72,72 +76,73 @@ const VALID_ACTIONS: DomainScanAction[] = ["unpublish", "revoke-shares"];
  * Rate limited on the scan bucket: it is a bulk write across other accounts'
  * rows, so it is held to the same per-user ceiling a scan is.
  */
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json(
-      { error: ERROR_MESSAGES.UNAUTHORIZED },
-      { status: 401 },
-    );
-  }
-
-  const { id: idParam } = await params;
-  const id = Number(idParam);
-  if (!Number.isInteger(id)) {
-    return NextResponse.json({ error: "Invalid domain id" }, { status: 400 });
-  }
-
-  const body = (await request.json().catch(() => ({}))) as {
-    action?: unknown;
-    publicIds?: unknown;
-  };
-
-  const action = body.action as DomainScanAction;
-  if (!VALID_ACTIONS.includes(action)) {
-    return NextResponse.json(
-      { error: `action must be one of: ${VALID_ACTIONS.join(", ")}` },
-      { status: 400 },
-    );
-  }
-
-  // Absent means "every covered scan". An explicitly EMPTY array is a client
-  // that meant to name scans and named none, and applying that to all of them
-  // would be the worst possible reading of it.
-  let publicIds: string[] | null = null;
-  if (body.publicIds !== undefined) {
-    if (!Array.isArray(body.publicIds)) {
+export const PATCH = withErrorHandling(
+  async (
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> },
+  ) => {
+    const session = await getSession();
+    if (!session) {
       return NextResponse.json(
-        { error: "publicIds must be an array of scan ids" },
+        { error: ERROR_MESSAGES.UNAUTHORIZED },
+        { status: 401 },
+      );
+    }
+
+    const { id: idParam } = await params;
+    const id = parseIdParam(idParam);
+    if (id === null) {
+      return NextResponse.json({ error: "Invalid domain id" }, { status: 400 });
+    }
+
+    const parsed = await readJsonObject(request, { allowEmpty: true });
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
+
+    const action = body.action as DomainScanAction;
+    if (!VALID_ACTIONS.includes(action)) {
+      return NextResponse.json(
+        { error: `action must be one of: ${VALID_ACTIONS.join(", ")}` },
         { status: 400 },
       );
     }
-    publicIds = body.publicIds.filter(
-      (v): v is string => typeof v === "string",
-    );
-    if (publicIds.length === 0) {
-      return NextResponse.json({ affected: 0 });
+
+    // Absent means "every covered scan". An explicitly EMPTY array is a client
+    // that meant to name scans and named none, and applying that to all of them
+    // would be the worst possible reading of it.
+    let publicIds: string[] | null = null;
+    if (body.publicIds !== undefined) {
+      if (!Array.isArray(body.publicIds)) {
+        return NextResponse.json(
+          { error: "publicIds must be an array of scan ids" },
+          { status: 400 },
+        );
+      }
+      publicIds = body.publicIds.filter(
+        (v): v is string => typeof v === "string",
+      );
+      if (publicIds.length === 0) {
+        return NextResponse.json({ affected: 0 });
+      }
     }
-  }
 
-  const owned = await resolveOwnedDomain(id, session.userId);
-  if (!owned) {
-    return NextResponse.json({ error: "Domain not found" }, { status: 404 });
-  }
+    const owned = await resolveOwnedDomain(id, session.userId);
+    if (!owned) {
+      return NextResponse.json({ error: "Domain not found" }, { status: 404 });
+    }
 
-  const rl = await checkRateLimit({
-    key: `domain-scan-action:${session.userId}`,
-    ...RATE_LIMITS.scan,
-  });
-  if (!rl.allowed) {
-    return NextResponse.json(
-      { error: "Too many changes at once. Please wait and try again." },
-      { status: 429 },
-    );
-  }
+    const rl = await checkRateLimit({
+      key: `domain-scan-action:${session.userId}`,
+      ...RATE_LIMITS.scan,
+    });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many changes at once. Please wait and try again." },
+        { status: 429 },
+      );
+    }
 
-  const result = await applyDomainScanAction(owned.domain, action, publicIds);
-  return NextResponse.json(result);
-}
+    const result = await applyDomainScanAction(owned.domain, action, publicIds);
+    return NextResponse.json(result);
+  },
+);

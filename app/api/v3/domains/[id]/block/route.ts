@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { parseIdParam } from "@/lib/api/path-id";
 import { getSession } from "@/lib/auth";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
@@ -22,16 +24,18 @@ const MAX_REASON_LENGTH = 200;
  * is not liftable rather than hidden, so the owner is told the truth instead
  * of being shown a control that would do nothing.
  */
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const gate = await resolveRequest(params);
-  if ("response" in gate) return gate.response;
+export const GET = withErrorHandling(
+  async (
+    _request: NextRequest,
+    { params }: { params: Promise<{ id: string }> },
+  ) => {
+    const gate = await resolveRequest(params);
+    if ("response" in gate) return gate.response;
 
-  const block = await readDomainBlock(gate.domain, gate.userId);
-  return NextResponse.json({ domain: gate.domain, block });
-}
+    const block = await readDomainBlock(gate.domain, gate.userId);
+    return NextResponse.json({ domain: gate.domain, block });
+  },
+);
 
 /**
  * POST /api/v3/domains/[id]/block
@@ -45,33 +49,38 @@ export async function GET(
  * it: a DNS TXT record at the apex is the same proof every mainstream system
  * accepts for "I speak for this zone".
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const gate = await resolveRequest(params);
-  if ("response" in gate) return gate.response;
+export const POST = withErrorHandling(
+  async (
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> },
+  ) => {
+    const gate = await resolveRequest(params);
+    if ("response" in gate) return gate.response;
 
-  const rl = await checkRateLimit({
-    key: `domain-block:${gate.userId}`,
-    ...RATE_LIMITS.scan,
-  });
-  if (!rl.allowed) {
-    return NextResponse.json(
-      { error: "Too many changes at once. Please wait and try again." },
-      { status: 429 },
-    );
-  }
+    const rl = await checkRateLimit({
+      key: `domain-block:${gate.userId}`,
+      ...RATE_LIMITS.scan,
+    });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many changes at once. Please wait and try again." },
+        { status: 429 },
+      );
+    }
 
-  const body = (await request.json().catch(() => ({}))) as { reason?: unknown };
-  const reason =
-    typeof body.reason === "string" && body.reason.trim()
-      ? body.reason.trim().slice(0, MAX_REASON_LENGTH)
-      : `Scanning was switched off by the verified owner of ${gate.domain}.`;
+    // The reason is optional, and the control panel sends no body at all.
+    const parsed = await readJsonObject(request, { allowEmpty: true });
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
+    const reason =
+      typeof body.reason === "string" && body.reason.trim()
+        ? body.reason.trim().slice(0, MAX_REASON_LENGTH)
+        : `Scanning was switched off by the verified owner of ${gate.domain}.`;
 
-  const block = await blockDomain(gate.domain, gate.userId, reason);
-  return NextResponse.json({ domain: gate.domain, block });
-}
+    const block = await blockDomain(gate.domain, gate.userId, reason);
+    return NextResponse.json({ domain: gate.domain, block });
+  },
+);
 
 /**
  * DELETE /api/v3/domains/[id]/block
@@ -82,29 +91,31 @@ export async function POST(
  * is not an answer to that. The 409 says so rather than reporting a silent
  * success that changes nothing.
  */
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const gate = await resolveRequest(params);
-  if ("response" in gate) return gate.response;
+export const DELETE = withErrorHandling(
+  async (
+    _request: NextRequest,
+    { params }: { params: Promise<{ id: string }> },
+  ) => {
+    const gate = await resolveRequest(params);
+    if ("response" in gate) return gate.response;
 
-  const lifted = await unblockDomain(gate.domain, gate.userId);
-  if (!lifted) {
-    const block = await readDomainBlock(gate.domain, gate.userId);
-    if (block) {
-      return NextResponse.json(
-        {
-          error:
-            "This block was put in place by staff, so it cannot be lifted here. Contact support if you believe it is a mistake.",
-          block,
-        },
-        { status: 409 },
-      );
+    const lifted = await unblockDomain(gate.domain, gate.userId);
+    if (!lifted) {
+      const block = await readDomainBlock(gate.domain, gate.userId);
+      if (block) {
+        return NextResponse.json(
+          {
+            error:
+              "This block was put in place by staff, so it cannot be lifted here. Contact support if you believe it is a mistake.",
+            block,
+          },
+          { status: 409 },
+        );
+      }
     }
-  }
-  return NextResponse.json({ domain: gate.domain, block: null });
-}
+    return NextResponse.json({ domain: gate.domain, block: null });
+  },
+);
 
 /**
  * Session plus verified-domain ownership, or the response to return instead.
@@ -127,8 +138,8 @@ async function resolveRequest(
   }
 
   const { id: idParam } = await params;
-  const id = Number(idParam);
-  if (!Number.isInteger(id)) {
+  const id = parseIdParam(idParam);
+  if (id === null) {
     return {
       response: NextResponse.json(
         { error: "Invalid domain id" },

@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { parseRowId } from "@/lib/teams/parse-id";
+import { parseIdParam } from "@/lib/api/path-id";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
@@ -32,236 +35,234 @@ import {
  * a read-only (viewer-role) co-member gets 403, since they legitimately
  * know the resource exists.
  */
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const session = await getSession();
-  if (!session)
-    return NextResponse.json(
-      { error: ERROR_MESSAGES.UNAUTHORIZED },
-      { status: 401 },
-    );
-
-  const { id: idParam } = await params;
-  const id = Number(idParam);
-  if (!Number.isInteger(id)) {
-    return NextResponse.json({ error: "Invalid webhook id" }, { status: 400 });
-  }
-
-  const body = await request
-    .json()
-    .catch(() => ({}) as Record<string, unknown>);
-  const {
-    active,
-    url,
-    name,
-    type: userType,
-    teamId,
-  } = body as {
-    active?: unknown;
-    url?: unknown;
-    name?: unknown;
-    type?: unknown;
-    teamId?: unknown;
-  };
-
-  const hasActive = active !== undefined;
-  const hasUrl = url !== undefined;
-  const hasName = name !== undefined;
-  const hasType = userType !== undefined;
-  const hasTeamId = teamId !== undefined;
-
-  if (!hasActive && !hasUrl && !hasName && !hasType && !hasTeamId) {
-    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
-  }
-  if (hasTeamId && teamId !== null && !Number.isInteger(teamId)) {
-    return NextResponse.json(
-      { error: "teamId must be a number or null" },
-      { status: 400 },
-    );
-  }
-  if (hasActive && typeof active !== "boolean") {
-    return NextResponse.json(
-      { error: "active must be a boolean" },
-      { status: 400 },
-    );
-  }
-  if (hasName && (typeof name !== "string" || !name.trim())) {
-    return NextResponse.json({ error: "Invalid name" }, { status: 400 });
-  }
-  // An allowlist, not just a typeof. Any non-"auto" string used to be written
-  // to the column unchanged, and nothing downstream validates it either:
-  // scan-notifications.ts branches on "discord" and "slack" and treats
-  // everything else as generic, so a Discord webhook edited to "Discord"
-  // silently started receiving flat JSON instead of an embed. "auto" is
-  // accepted here and never stored -- it means re-detect from the URL.
-  if (hasType && userType !== "auto" && !isWebhookType(userType)) {
-    return NextResponse.json({ error: WEBHOOK_TYPE_ERROR }, { status: 400 });
-  }
-
-  // GET hands a read-only teammate `url: null`. Echoing that row back must not
-  // read as "clear the address", so it is named rather than left to the
-  // generic parse failure below.
-  if (url === null) {
-    return NextResponse.json(
-      {
-        error:
-          "url cannot be null. Send the full https:// address, or leave url out to keep the current one.",
-      },
-      { status: 400 },
-    );
-  }
-
-  // The shape of the URL is checked here and its destination further down,
-  // after the caller's access: the destination check resolves DNS, and that
-  // is not work to do for someone about to get a 403.
-  let parsedUrl: URL | undefined;
-  if (hasUrl) {
-    if (typeof url !== "string") {
-      return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
-    }
-    try {
-      parsedUrl = new URL(url);
-    } catch {
-      return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
-    }
-    // ssrf: same rules as creation (app/api/v3/webhooks/route.ts) --
-    // HTTPS-only, then the canonical private-IP / private-hostname guard.
-    if (parsedUrl.protocol !== "https:") {
+export const PATCH = withErrorHandling(
+  async (
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> },
+  ) => {
+    const session = await getSession();
+    if (!session)
       return NextResponse.json(
-        { error: "Webhook URL must be a public HTTPS endpoint." },
+        { error: ERROR_MESSAGES.UNAUTHORIZED },
+        { status: 401 },
+      );
+
+    const { id: idParam } = await params;
+    const id = parseIdParam(idParam);
+    if (id === null) {
+      return NextResponse.json(
+        { error: "Invalid webhook id" },
         { status: 400 },
       );
     }
-  }
 
-  const existingRes = await pool.query<{
-    user_id: number;
-    team_id: number | null;
-  }>("SELECT user_id, team_id FROM webhooks WHERE id = $1", [id]);
-  const webhook = existingRes.rows[0];
-  if (!webhook) {
-    return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
-  }
-  const access = await getTeamResourceAccess(
-    session.userId,
-    webhook.user_id,
-    webhook.team_id,
-  );
-  if (!access.canRead) {
-    return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
-  }
-  if (!access.canWrite) {
-    return NextResponse.json(
-      { error: "You don't have permission to edit this webhook." },
-      { status: 403 },
-    );
-  }
+    // An empty body is allowed through so that it is answered as "Nothing to
+    // update" below, the same as `{}`.
+    const parsed = await readJsonObject(request, { allowEmpty: true });
+    if (!parsed.ok) return parsed.response;
+    const { active, url, name, type: userType, teamId } = parsed.data;
 
-  // Team write access covers pausing and renaming. It does not cover the
-  // destination: every delivery is signed with the creator's secret, so a
-  // teammate who could change the URL could send the team's scan results,
-  // under the creator's signature, anywhere they liked. Changing the type
-  // decides what shape those results leave in, so it goes with the URL.
-  if ((hasUrl || hasType) && webhook.user_id !== session.userId) {
-    return NextResponse.json(
-      { error: "Only this webhook's owner can change its URL or type." },
-      { status: 403 },
-    );
-  }
+    const hasActive = active !== undefined;
+    const hasUrl = url !== undefined;
+    const hasName = name !== undefined;
+    const hasType = userType !== undefined;
+    const hasTeamId = teamId !== undefined;
 
-  let validatedUrl: string | undefined;
-  let resolvedType: WebhookType | undefined;
-  if (parsedUrl) {
-    const scanSafety = await validateScanTarget(parsedUrl.href);
-    if (!scanSafety.safe) {
+    if (!hasActive && !hasUrl && !hasName && !hasType && !hasTeamId) {
+      return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+    }
+    if (
+      hasTeamId &&
+      teamId !== null &&
+      (typeof teamId !== "number" || parseRowId(teamId) === null)
+    ) {
+      return NextResponse.json(
+        { error: "teamId must be a number or null" },
+        { status: 400 },
+      );
+    }
+    if (hasActive && typeof active !== "boolean") {
+      return NextResponse.json(
+        { error: "active must be a boolean" },
+        { status: 400 },
+      );
+    }
+    if (hasName && (typeof name !== "string" || !name.trim())) {
+      return NextResponse.json({ error: "Invalid name" }, { status: 400 });
+    }
+    // An allowlist, not just a typeof. Any non-"auto" string used to be written
+    // to the column unchanged, and nothing downstream validates it either:
+    // scan-notifications.ts branches on "discord" and "slack" and treats
+    // everything else as generic, so a Discord webhook edited to "Discord"
+    // silently started receiving flat JSON instead of an embed. "auto" is
+    // accepted here and never stored -- it means re-detect from the URL.
+    if (hasType && userType !== "auto" && !isWebhookType(userType)) {
+      return NextResponse.json({ error: WEBHOOK_TYPE_ERROR }, { status: 400 });
+    }
+
+    // GET hands a read-only teammate `url: null`. Echoing that row back must not
+    // read as "clear the address", so it is named rather than left to the
+    // generic parse failure below.
+    if (url === null) {
       return NextResponse.json(
         {
           error:
-            scanSafety.reason || "Webhook URL blocked for security reasons.",
+            "url cannot be null. Send the full https:// address, or leave url out to keep the current one.",
         },
         { status: 400 },
       );
     }
-    validatedUrl = parsedUrl.href;
-    // Re-detect type when the URL changes, same as creation, unless the
-    // caller explicitly pinned a non-"auto" type in the same request.
-    resolvedType =
-      hasType && isWebhookType(userType)
-        ? userType
-        : detectWebhookType(url as string);
-  } else if (hasType && isWebhookType(userType)) {
-    resolvedType = userType;
-  }
 
-  let teamIdUpdate: number | null | undefined;
-  if (hasTeamId) {
-    // Only the webhook's own creator may change which team it's assigned
-    // to -- a team member with write access can edit/pause it, but
-    // re-homing it to a different team is an ownership-level decision.
-    if (webhook.user_id !== session.userId) {
-      return NextResponse.json(
-        { error: "Only this webhook's owner can change its team." },
-        { status: 403 },
-      );
-    }
-    if (teamId === null) {
-      teamIdUpdate = null;
-    } else {
-      const assignable = await getAssignableTeamIds(session.userId);
-      if (!assignable.includes(teamId as number)) {
+    // The shape of the URL is checked here and its destination further down,
+    // after the caller's access: the destination check resolves DNS, and that
+    // is not work to do for someone about to get a 403.
+    let parsedUrl: URL | undefined;
+    if (hasUrl) {
+      if (typeof url !== "string") {
+        return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
+      }
+      try {
+        parsedUrl = new URL(url);
+      } catch {
+        return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
+      }
+      // ssrf: same rules as creation (app/api/v3/webhooks/route.ts) --
+      // HTTPS-only, then the canonical private-IP / private-hostname guard.
+      if (parsedUrl.protocol !== "https:") {
         return NextResponse.json(
-          { error: "You cannot assign this webhook to that team." },
+          { error: "Webhook URL must be a public HTTPS endpoint." },
           { status: 400 },
         );
       }
-      teamIdUpdate = teamId as number;
     }
-  }
 
-  const setClauses: string[] = [];
-  const values: unknown[] = [];
-  if (hasActive) {
-    setClauses.push(`active = $${values.length + 1}`);
-    values.push(active);
-  }
-  if (validatedUrl !== undefined) {
-    setClauses.push(`url = $${values.length + 1}`);
-    values.push(validatedUrl);
-  }
-  if (hasName) {
-    setClauses.push(`name = $${values.length + 1}`);
-    values.push((name as string).slice(0, 100));
-  }
-  if (resolvedType !== undefined) {
-    setClauses.push(`type = $${values.length + 1}`);
-    values.push(resolvedType);
-  }
-  if (hasTeamId) {
-    setClauses.push(`team_id = $${values.length + 1}`);
-    values.push(teamIdUpdate);
-  }
+    const existingRes = await pool.query<{
+      user_id: number;
+      team_id: number | null;
+    }>("SELECT user_id, team_id FROM webhooks WHERE id = $1", [id]);
+    const webhook = existingRes.rows[0];
+    if (!webhook) {
+      return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
+    }
+    const access = await getTeamResourceAccess(
+      session.userId,
+      webhook.user_id,
+      webhook.team_id,
+    );
+    if (!access.canRead) {
+      return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
+    }
+    if (!access.canWrite) {
+      return NextResponse.json(
+        { error: "You don't have permission to edit this webhook." },
+        { status: 403 },
+      );
+    }
 
-  if (setClauses.length === 0) {
-    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
-  }
+    // Team write access covers pausing and renaming. It does not cover the
+    // destination: every delivery is signed with the creator's secret, so a
+    // teammate who could change the URL could send the team's scan results,
+    // under the creator's signature, anywhere they liked. Changing the type
+    // decides what shape those results leave in, so it goes with the URL.
+    if ((hasUrl || hasType) && webhook.user_id !== session.userId) {
+      return NextResponse.json(
+        { error: "Only this webhook's owner can change its URL or type." },
+        { status: 403 },
+      );
+    }
 
-  values.push(id);
+    let validatedUrl: string | undefined;
+    let resolvedType: WebhookType | undefined;
+    if (parsedUrl) {
+      const scanSafety = await validateScanTarget(parsedUrl.href);
+      if (!scanSafety.safe) {
+        return NextResponse.json(
+          {
+            error:
+              scanSafety.reason || "Webhook URL blocked for security reasons.",
+          },
+          { status: 400 },
+        );
+      }
+      validatedUrl = parsedUrl.href;
+      // Re-detect type when the URL changes, same as creation, unless the
+      // caller explicitly pinned a non-"auto" type in the same request.
+      resolvedType =
+        hasType && isWebhookType(userType)
+          ? userType
+          : detectWebhookType(url as string);
+    } else if (hasType && isWebhookType(userType)) {
+      resolvedType = userType;
+    }
 
-  // Access was already verified above via getTeamResourceAccess, so this
-  // UPDATE only needs to match on id -- unlike the old owner-only version,
-  // a team member with write access legitimately isn't the row's user_id.
-  const result = await pool.query(
-    `UPDATE webhooks SET ${setClauses.join(", ")}
+    let teamIdUpdate: number | null | undefined;
+    if (hasTeamId) {
+      // Only the webhook's own creator may change which team it's assigned
+      // to -- a team member with write access can edit/pause it, but
+      // re-homing it to a different team is an ownership-level decision.
+      if (webhook.user_id !== session.userId) {
+        return NextResponse.json(
+          { error: "Only this webhook's owner can change its team." },
+          { status: 403 },
+        );
+      }
+      if (teamId === null) {
+        teamIdUpdate = null;
+      } else {
+        const assignable = await getAssignableTeamIds(session.userId);
+        if (!assignable.includes(teamId as number)) {
+          return NextResponse.json(
+            { error: "You cannot assign this webhook to that team." },
+            { status: 400 },
+          );
+        }
+        teamIdUpdate = teamId as number;
+      }
+    }
+
+    const setClauses: string[] = [];
+    const values: unknown[] = [];
+    if (hasActive) {
+      setClauses.push(`active = $${values.length + 1}`);
+      values.push(active);
+    }
+    if (validatedUrl !== undefined) {
+      setClauses.push(`url = $${values.length + 1}`);
+      values.push(validatedUrl);
+    }
+    if (hasName) {
+      setClauses.push(`name = $${values.length + 1}`);
+      values.push((name as string).slice(0, 100));
+    }
+    if (resolvedType !== undefined) {
+      setClauses.push(`type = $${values.length + 1}`);
+      values.push(resolvedType);
+    }
+    if (hasTeamId) {
+      setClauses.push(`team_id = $${values.length + 1}`);
+      values.push(teamIdUpdate);
+    }
+
+    if (setClauses.length === 0) {
+      return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+    }
+
+    values.push(id);
+
+    // Access was already verified above via getTeamResourceAccess, so this
+    // UPDATE only needs to match on id -- unlike the old owner-only version,
+    // a team member with write access legitimately isn't the row's user_id.
+    const result = await pool.query(
+      `UPDATE webhooks SET ${setClauses.join(", ")}
      WHERE id = $${values.length}
      RETURNING id, url, name, type, active, user_id, team_id, created_at`,
-    values,
-  );
+      values,
+    );
 
-  if (result.rows.length === 0) {
-    return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
-  }
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
+    }
 
-  return NextResponse.json(result.rows[0]);
-}
+    return NextResponse.json(result.rows[0]);
+  },
+);

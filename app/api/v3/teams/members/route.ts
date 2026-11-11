@@ -34,7 +34,11 @@ import {
   recordTeamAudit,
   teamAuditLabel,
 } from "@/lib/teams/team-audit";
-import { withErrorHandling } from "@/lib/api/api-utils";
+import {
+  isValidEmailAddress,
+  readJsonObject,
+  withErrorHandling,
+} from "@/lib/api/api-utils";
 
 /**
  * Drop support-ticket shares between a departing member and the teammates they
@@ -145,8 +149,10 @@ export const POST = withErrorHandling(async (request: Request) => {
   const gate = await teamsDisabledResponse();
   if (gate) return gate;
 
-  const { teamId: rawTeamId, email, role = "viewer" } = await request.json();
-  if (!rawTeamId || !email)
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { teamId: rawTeamId, email: rawEmail, role = "viewer" } = parsed.data;
+  if (!rawTeamId || !rawEmail)
     return NextResponse.json(
       { error: "teamId and email required." },
       { status: 400 },
@@ -157,6 +163,16 @@ export const POST = withErrorHandling(async (request: Request) => {
       { error: "teamId must be a whole number." },
       { status: 400 },
     );
+  // The strict rule, not the sign-in one: this address is being given to us
+  // for the first time, an invite row is written for it and mail is sent to
+  // it, so it has to be one mail could reach.
+  const email =
+    typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : "";
+  if (!isValidEmailAddress(email))
+    return NextResponse.json(
+      { error: "Enter a valid email address." },
+      { status: 400 },
+    );
   // Derived from TEAM_ROLES itself, not a second hand-typed list -- OWNER
   // is the only one excluded (there is exactly one owner per team, set at
   // creation in the POST above, never granted through an invite), so a
@@ -165,7 +181,7 @@ export const POST = withErrorHandling(async (request: Request) => {
   const INVITABLE_TEAM_ROLES: string[] = Object.values(TEAM_ROLES).filter(
     (r) => r !== TEAM_ROLES.OWNER,
   );
-  if (!INVITABLE_TEAM_ROLES.includes(role)) {
+  if (typeof role !== "string" || !INVITABLE_TEAM_ROLES.includes(role)) {
     return NextResponse.json(
       {
         error: `Invalid role. Use one of: ${INVITABLE_TEAM_ROLES.join(", ")}.`,
@@ -224,7 +240,7 @@ export const POST = withErrorHandling(async (request: Request) => {
      WHERE LOWER(email) = LOWER($1)
      ORDER BY (email = $1) DESC, id
      LIMIT 1`,
-    [email.trim().toLowerCase()],
+    [email],
   );
   if (existingUser.rows.length > 0) {
     const existingMember = await pool.query(
@@ -242,7 +258,7 @@ export const POST = withErrorHandling(async (request: Request) => {
   // Check for existing pending invite
   const existingInvite = await pool.query(
     "SELECT id FROM team_invites WHERE team_id = $1 AND email = $2 AND accepted_at IS NULL AND expires_at > NOW()",
-    [teamId, email.trim().toLowerCase()],
+    [teamId, email],
   );
   if (existingInvite.rows.length > 0) {
     return NextResponse.json(
@@ -316,15 +332,7 @@ export const POST = withErrorHandling(async (request: Request) => {
                  WHERE team_id = $1 AND accepted_at IS NULL
                    AND expires_at > NOW()) < $7::int)
      RETURNING id`,
-    [
-      teamId,
-      email.trim().toLowerCase(),
-      role,
-      session.userId,
-      tokenHash,
-      expiresAt,
-      seatCap,
-    ],
+    [teamId, email, role, session.userId, tokenHash, expiresAt, seatCap],
   );
   if (inviteInsert.rows.length === 0) {
     // One of the two guards refused. Which one decides the message, so ask
@@ -332,7 +340,7 @@ export const POST = withErrorHandling(async (request: Request) => {
     // and if it does not then it was the seat cap.
     const raced = await pool.query(
       "SELECT 1 FROM team_invites WHERE team_id = $1 AND email = $2 AND accepted_at IS NULL AND expires_at > NOW()",
-      [teamId, email.trim().toLowerCase()],
+      [teamId, email],
     );
     return NextResponse.json(
       {
@@ -376,8 +384,6 @@ export const POST = withErrorHandling(async (request: Request) => {
     const inviteLink = `${secretLinkAppUrl()}/teams/join?token=${token}`;
     const emailPayload = teamInviteEmail(teamName, inviteLink, invitedBy);
 
-    const inviteeEmail = email.trim().toLowerCase();
-
     // Send email in background.
     //
     // A confirmed account goes through its own Team invitations switch, which
@@ -390,11 +396,11 @@ export const POST = withErrorHandling(async (request: Request) => {
       const delivery = bellUserId
         ? sendNotificationEmail({
             userId: bellUserId,
-            userEmail: inviteeEmail,
+            userEmail: email,
             type: "team_invites",
             emailContent: emailPayload,
           })
-        : sendEmail({ to: inviteeEmail, ...emailPayload });
+        : sendEmail({ to: email, ...emailPayload });
       delivery.catch((err: unknown) => {
         console.error("Team invite email failed:", err);
       });
@@ -423,7 +429,7 @@ export const POST = withErrorHandling(async (request: Request) => {
       session.userId,
       invitedUserId,
       "team_invite.sent",
-      `Invited ${email.trim().toLowerCase()} to team "${teamName}" as ${role} (invite #${inviteId}).`,
+      `Invited ${email} to team "${teamName}" as ${role} (invite #${inviteId}).`,
       ip ?? undefined,
     );
   }
@@ -443,7 +449,9 @@ export const DELETE = withErrorHandling(async (request: Request) => {
   const gate = await teamsDisabledResponse();
   if (gate) return gate;
 
-  const { teamId: rawTeamId, userId, inviteId } = await request.json();
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { teamId: rawTeamId, userId, inviteId } = parsed.data;
   const teamId = parseRowId(rawTeamId);
 
   // Handle cancel invite
@@ -659,7 +667,9 @@ export const PATCH = withErrorHandling(async (request: Request) => {
   const gate = await teamsDisabledResponse();
   if (gate) return gate;
 
-  const { teamId: rawTeamId, userId: rawUserId, role } = await request.json();
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { teamId: rawTeamId, userId: rawUserId, role } = parsed.data;
   if (!rawTeamId || !rawUserId || !role)
     return NextResponse.json(
       { error: "teamId, userId and role required." },
@@ -679,7 +689,7 @@ export const PATCH = withErrorHandling(async (request: Request) => {
   const ASSIGNABLE_TEAM_ROLES: string[] = Object.values(TEAM_ROLES).filter(
     (r) => r !== TEAM_ROLES.OWNER,
   );
-  if (!ASSIGNABLE_TEAM_ROLES.includes(role)) {
+  if (typeof role !== "string" || !ASSIGNABLE_TEAM_ROLES.includes(role)) {
     return NextResponse.json(
       {
         error: `Invalid role. Use one of: ${ASSIGNABLE_TEAM_ROLES.join(", ")}.`,

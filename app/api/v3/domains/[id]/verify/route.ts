@@ -7,6 +7,7 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
 import { checkDnsVerification } from "@/lib/domains/verification";
 import { withErrorHandling } from "@/lib/api/api-utils";
+import { parseIdParam } from "@/lib/api/path-id";
 
 /**
  * POST /api/v3/domains/[id]/verify — checks DNS right now for this row's
@@ -33,8 +34,8 @@ export const POST = withErrorHandling(
       );
     }
 
-    const id = Number((await params).id);
-    if (!id || !Number.isFinite(id)) {
+    const id = parseIdParam((await params).id);
+    if (id === null) {
       return NextResponse.json(
         { error: "Invalid domain id." },
         { status: 400 },

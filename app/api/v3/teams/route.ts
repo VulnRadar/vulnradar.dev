@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import {
@@ -26,7 +27,7 @@ import {
 } from "@/lib/uploads/team-avatar-storage";
 
 // List user's teams
-export async function GET() {
+export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -90,10 +91,10 @@ export async function GET() {
       ? { teams: planLimits.teams, teamMembers: planLimits.teamMembers }
       : null,
   });
-}
+});
 
 // Create a new team
-export async function POST(request: Request) {
+export const POST = withErrorHandling(async (request: Request) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -104,7 +105,9 @@ export async function POST(request: Request) {
   const gate = await teamsDisabledResponse();
   if (gate) return gate;
 
-  const { name } = await request.json();
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { name } = parsed.data;
   const maxTeamNameLength = await getSetting("MAX_TEAM_NAME_LENGTH");
   if (
     !name ||
@@ -198,7 +201,7 @@ export async function POST(request: Request) {
   } finally {
     client.release();
   }
-}
+});
 
 // Update a team: rename it, set its picture, or clear its picture.
 //
@@ -208,7 +211,7 @@ export async function POST(request: Request) {
 // and stored as bytes in Postgres. "" clears it. Deliberately the same
 // endpoint as the rename rather than a route of its own, mirroring the user
 // path, where one PATCH carries name, email and avatar together.
-export async function PATCH(request: Request) {
+export const PATCH = withErrorHandling(async (request: Request) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -219,7 +222,9 @@ export async function PATCH(request: Request) {
   const gate = await teamsDisabledResponse();
   if (gate) return gate;
 
-  const { teamId: rawTeamId, name, avatarUrl } = await request.json();
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { teamId: rawTeamId, name, avatarUrl } = parsed.data;
   const wantsRename = name !== undefined;
   const wantsAvatar = typeof avatarUrl === "string";
 
@@ -314,10 +319,10 @@ export async function PATCH(request: Request) {
     // cleared it, so the client can tell "unchanged" from "removed".
     ...(wantsAvatar ? { avatarUrl: storedAvatarUrl } : {}),
   });
-}
+});
 
 // Delete a team
-export async function DELETE(request: Request) {
+export const DELETE = withErrorHandling(async (request: Request) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -328,7 +333,9 @@ export async function DELETE(request: Request) {
   const gate = await teamsDisabledResponse();
   if (gate) return gate;
 
-  const { teamId: rawTeamId } = await request.json();
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { teamId: rawTeamId } = parsed.data;
   if (!rawTeamId)
     return NextResponse.json({ error: "teamId required." }, { status: 400 });
   const teamId = parseRowId(rawTeamId);
@@ -417,4 +424,4 @@ export async function DELETE(request: Request) {
   })();
 
   return NextResponse.json({ success: true });
-}
+});

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { parseRowId } from "@/lib/teams/parse-id";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
@@ -14,7 +16,7 @@ import { teamInviteResolvedEmail } from "@/lib/email/email";
  * POST /api/v3/teams/accept-invite (by inviteId, email-match enforced); this
  * route lists them (GET) and declines them (DELETE).
  */
-export async function GET() {
+export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -55,10 +57,10 @@ export async function GET() {
   );
 
   return NextResponse.json({ invitations: invites.rows });
-}
+});
 
 // Decline one of the caller's own pending invitations.
-export async function DELETE(request: Request) {
+export const DELETE = withErrorHandling(async (request: Request) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -69,9 +71,14 @@ export async function DELETE(request: Request) {
   const gate = await teamsDisabledResponse();
   if (gate) return gate;
 
-  const { inviteId } = await request.json();
-  if (!inviteId)
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { inviteId: rawInviteId } = parsed.data;
+  if (!rawInviteId)
     return NextResponse.json({ error: "inviteId required." }, { status: 400 });
+  const inviteId = parseRowId(rawInviteId);
+  if (inviteId === null)
+    return NextResponse.json({ error: "Invalid invite id." }, { status: 400 });
 
   const userRes = await pool.query(
     "SELECT email, email_verified_at FROM users WHERE id = $1",
@@ -143,7 +150,7 @@ export async function DELETE(request: Request) {
   // Clear the bell notification for this invite, if one was created, so it
   // doesn't linger after being declined.
   try {
-    await markTeamInviteNotificationsHandled(Number(inviteId));
+    await markTeamInviteNotificationsHandled(inviteId);
   } catch (err) {
     console.error(
       "Failed to mark declined team invite notification handled:",
@@ -152,4 +159,4 @@ export async function DELETE(request: Request) {
   }
 
   return NextResponse.json({ success: true });
-}
+});

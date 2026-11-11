@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
+import { parseIdParam } from "@/lib/api/path-id";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { readTeamAvatarFile } from "@/lib/uploads/team-avatar-storage";
@@ -24,15 +25,10 @@ export const GET = withErrorHandling(
     { params }: { params: Promise<{ teamId: string }> },
   ) => {
     const { teamId: rawTeamId } = await params;
-    const teamId = Number.parseInt(rawTeamId, 10);
-
-    // Reject anything that isn't a canonical positive integer, so a
-    // "1abc"-shaped segment can't parse to a real team id.
-    if (
-      !Number.isInteger(teamId) ||
-      teamId <= 0 ||
-      String(teamId) !== rawTeamId
-    ) {
+    // Anything but a canonical id within INT4 names no avatar, so it is a 404
+    // here rather than a 500 from the cast in Postgres.
+    const teamId = parseIdParam(rawTeamId);
+    if (teamId === null) {
       return ApiResponse.notFound("Avatar not found.");
     }
 
