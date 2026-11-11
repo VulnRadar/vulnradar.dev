@@ -18,11 +18,12 @@
  * `vercel.app` as a public suffix there would change both for every tenant.
  *
  * Pure on purpose (no scanner imports beyond the root-domain helper and no
- * I/O), so any layer can ask.
+ * I/O), so any layer can ask. The Subresource Integrity checks use this list
+ * too, through isPlatformSubdomain, rather than keeping one of their own.
  */
 
 import { isIP } from "net";
-import { extractRootDomain } from "./root-domain";
+import { registrableDomain } from "./root-domain";
 
 export interface PlatformSuffix {
   /** The zone the platform owns, lower case, no leading dot. */
@@ -87,6 +88,17 @@ const PLATFORMS: readonly PlatformSuffix[] = [
   { suffix: "weebly.com", name: "Weebly" },
   { suffix: "ghost.io", name: "Ghost" },
   { suffix: "loca.lt", name: "localtunnel" },
+
+  // Shared-hosting zones the Subresource Integrity check used to keep in a
+  // list of its own. One list now, so a tenant is a tenant for DNS findings
+  // and for "is this script the page's own".
+  { suffix: "amazonaws.com", name: "Amazon Web Services" },
+  { suffix: "appspot.com", name: "Google App Engine" },
+  { suffix: "azureedge.net", name: "Azure CDN" },
+  { suffix: "b-cdn.net", name: "Bunny CDN" },
+  { suffix: "deno.dev", name: "Deno Deploy" },
+  { suffix: "r2.dev", name: "Cloudflare R2" },
+  { suffix: "wordpress.com", name: "WordPress.com" },
 ];
 
 function normalise(hostname: string): string {
@@ -125,6 +137,6 @@ export function isPlatformSubdomain(hostname: string): boolean {
 export function mailDomainFor(hostname: string): string {
   const host = normalise(hostname);
   if (host.includes(":") || isIP(host) !== 0) return host;
-  const root = extractRootDomain(host);
+  const root = registrableDomain(host);
   return root.split(".").length >= 2 ? root : host;
 }

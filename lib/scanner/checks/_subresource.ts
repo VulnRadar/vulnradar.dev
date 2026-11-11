@@ -13,7 +13,8 @@
 
 import { pluralize } from "@/lib/ui/plural";
 import { startTagAttributes } from "../html/tokenizer";
-import { extractRootDomain } from "../root-domain";
+import { registrableDomain } from "../root-domain";
+import { isPlatformSubdomain } from "../platform-hosts";
 import { tagsWith } from "./_tag-scan";
 
 export type SubresourceClass =
@@ -61,61 +62,6 @@ export const SRI_EXEMPT_HOSTS: ReadonlySet<string> = new Set([
   "use.typekit.net",
 ]);
 
-/**
- * Registrable domains whose subdomains belong to different customers.
- * extractRootDomain has no public suffix list, so without this
- * `a.blogspot.com` and `b.blogspot.com` read as one site.
- */
-const SHARED_HOSTING_SUFFIXES: ReadonlySet<string> = new Set([
-  "amazonaws.com",
-  "appspot.com",
-  "azureedge.net",
-  "azurewebsites.net",
-  "b-cdn.net",
-  "blogspot.com",
-  "cloudfront.net",
-  "deno.dev",
-  "firebaseapp.com",
-  "fly.dev",
-  "github.io",
-  "gitlab.io",
-  "glitch.me",
-  "great-site.net",
-  "herokuapp.com",
-  "jimdofree.com",
-  "jimdosite.com",
-  "myshopify.com",
-  "netlify.app",
-  "ngrok-free.app",
-  "ngrok.io",
-  "now.sh",
-  "onrender.com",
-  "pages.dev",
-  "r2.dev",
-  "repl.co",
-  "replit.app",
-  "surge.sh",
-  "vercel.app",
-  "web.app",
-  "webflow.io",
-  "wixsite.com",
-  "wordpress.com",
-  "workers.dev",
-]);
-
-/**
- * `com.sg`, `co.id`, `org.tr`: a public second level that extractRootDomain's
- * short table does not list, and so returns as if it were someone's domain.
- */
-const COUNTRY_SECOND_LEVEL = /^(?:ac|co|com|edu|gov|ne|net|or|org)\.[a-z]{2}$/;
-
-function registrableDomain(host: string): string {
-  const root = extractRootDomain(host);
-  return COUNTRY_SECOND_LEVEL.test(root)
-    ? host.split(".").slice(-3).join(".")
-    : root;
-}
-
 function isIpLiteral(host: string): boolean {
   return host.startsWith("[") || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host);
 }
@@ -125,12 +71,10 @@ function isSameSite(a: string, b: string): boolean {
   if (withoutWww(a) === withoutWww(b)) return true;
   // The last two labels of an address are not a domain.
   if (isIpLiteral(a) || isIpLiteral(b)) return false;
+  // Tenants of a hosting platform are different customers whatever they share.
+  if (isPlatformSubdomain(a) || isPlatformSubdomain(b)) return false;
   const site = registrableDomain(a);
-  return (
-    site.includes(".") &&
-    site === registrableDomain(b) &&
-    !SHARED_HOSTING_SUFFIXES.has(site)
-  );
+  return site.includes(".") && site === registrableDomain(b);
 }
 
 /** Whole hostnames, so `evilunpkg.com` and `unpkg.com.evil.net` are not these. */

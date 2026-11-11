@@ -16,6 +16,15 @@ describe("mailDomainFor", () => {
     expect(mailDomainFor("shop.example.co.uk")).toBe("example.co.uk");
   });
 
+  it("keeps a country second level the root-domain table does not list", () => {
+    // extractRootDomain alone answers com.sg, a public suffix nobody owns, so
+    // SPF, DMARC and MX were checked against it.
+    expect(mailDomainFor("example.com.sg")).toBe("example.com.sg");
+    expect(mailDomainFor("www.example.com.sg")).toBe("example.com.sg");
+    expect(mailDomainFor("mail.shop.co.id")).toBe("shop.co.id");
+    expect(mailDomainFor("app.example.com.tr")).toBe("example.com.tr");
+  });
+
   it("lower-cases and drops a trailing dot", () => {
     expect(mailDomainFor("WWW.Example.COM.")).toBe("example.com");
   });
@@ -41,6 +50,18 @@ describe("platformOf", () => {
   ])("names the platform for %s", (host, suffix) => {
     expect(platformOf(host)?.suffix).toBe(suffix);
     expect(isPlatformSubdomain(host)).toBe(true);
+  });
+
+  it.each([
+    ["x.wordpress.com", "wordpress.com"],
+    ["x.appspot.com", "appspot.com"],
+    ["bucket.s3.amazonaws.com", "amazonaws.com"],
+    ["x.azureedge.net", "azureedge.net"],
+    ["x.b-cdn.net", "b-cdn.net"],
+    ["x.deno.dev", "deno.dev"],
+    ["x.r2.dev", "r2.dev"],
+  ])("also covers the zones the SRI check used to list: %s", (host, suffix) => {
+    expect(platformOf(host)?.suffix).toBe(suffix);
   });
 
   it("returns an operator name a message can use", () => {
