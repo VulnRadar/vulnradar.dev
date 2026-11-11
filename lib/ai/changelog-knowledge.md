@@ -817,7 +817,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [ShieldCheck] **[SECURITY]** **Staff SSO Audit Detail**
   When staff single sign-on accepts a token with no email_verified claim because the operator allowed it, the sign-in's audit entry now says so.
 - [Timer] **[FIXED]** **Rate Limit Refusals Write Nothing**
-  A request refused by a rate limit no longer writes to the database, and concurrent requests can no longer push a bucket past its cap, even briefly. Admin settings also gain limits for reputation lookups and API key identity checks, which take effect once those endpoints start using them.
+  A request refused by a rate limit no longer writes to the database, and concurrent requests can no longer push a bucket past its cap, even briefly. Admin settings also gain limits for reputation lookups and API key identity checks, and both endpoints now enforce them.
 - [Container] **[SELFHOST]** **Larger Threadpool in the Docker Image**
   The published image now runs with 16 libuv threads, so DNS lookups and file reads no longer wait behind password hashing. Hashing memory is unchanged.
 - [Flag] **[FIXED]** **False-Positive Marks No Longer Expire**
@@ -870,8 +870,6 @@ The largest release since 3.0, and a pass over the whole product rather than one
   A finding only the AI verifier doubted now still triggers the critical and high alert email, stays in the posture digest, stays visible on your scan and still counts in its score. Only a verdict you gave yourself hides a finding from these, so the verdict buttons now show what the AI suggested with none of them pressed.
 - [Code] **[CLI]** **CI Gate Counts AI-Doubted Findings Again**
   The GitHub Action, the CLI and the GitLab template dropped findings the AI verifier had called false positives, even though the gate only promises to skip findings you marked. Those findings now count, so a build can start failing on one that was being skipped. To keep one out of the gate, mark it a false positive yourself.
-- [ScanSearch] **[ENGINE]** **Refused Pages Are Recognised**
-  The engine can now tell a page the site served from a bot challenge, a refusal (401, 403, 407, 429 or 451), a server error or a redirect that never reaches a page. Only the bot challenge result changes a scan so far: the other answers are recognised, and the page is still graded.
 - [Shield] **[ENGINE]** **More Bot Challenges Recognised**
   The scanner now recognises proof-of-work gates with unusual titles, script-only gate pages, and challenges from AWS WAF, DataDome, HUMAN, Vercel and Anubis, so their scripts are no longer reported as the site's code.
 - [Eye] **[IMPROVED]** **Clearer Not-Checked Message**
@@ -1103,9 +1101,9 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [AlertTriangle] **[FIXED]** **A Malformed Scan Request Is a 400, Not a 500**
   Sending a body that is not a JSON object to the scan, crawl, bulk scan or demo scan endpoint now returns 400 with code INVALID_REQUEST. A scan that fails while starting no longer leaves a pending row holding one of your concurrent scan slots.
 - [Radar] **[ENGINE]** **Refused Pages Are Not Graded as Your Site**
-  When a site answers the scanner with a load balancer's 403, a proof-of-work 503, a server error or a redirect the scanner will not follow, that response is no longer graded as your page. The scan says the page was not checked and records the status and server that answered. In a crawl, one refused link among pages that were read is listed with its status and no longer marks the whole crawl as unfinished.
+  The engine tells a page the site served apart from a bot challenge, a refusal (401, 403, 407, 429 or 451), a server error and a redirect that never reaches a page. When a site answers the scanner with a load balancer's 403, a proof-of-work 503, a server error or a redirect the scanner will not follow, that response is no longer graded as your page. The scan says the page was not checked and records the status and server that answered. In a crawl, one refused link among pages that were read is listed with its status and no longer marks the whole crawl as unfinished.
 - [Radar] **[ENGINE]** **One User-Agent for the Page Fetch**
-  The page fetch of URL, crawl, bulk and demo scans now sends the same Mozilla/5.0 (compatible; VulnRadar/1.0) User-Agent, with the contact URL, as the checks that follow it, so fewer sites refuse the scan. A rule matching VulnRadar/1.0 still covers every request.
+  The page fetch of URL, crawl, bulk and demo scans now sends the same Mozilla/5.0 (compatible; VulnRadar/1.0) User-Agent, with the contact URL, as the checks that follow it, so fewer sites refuse the scan. A rule matching VulnRadar/1.0 covers every scan request except the optional AI verification probe, which still sends VulnRadar-AI/1.0 for now.
 - [Target] **[SECURITY]** **Per-Site Scan Limits on Every Path**
   Authenticated scans and scheduled scans now count against the hourly per-site limit that URL, crawl and bulk scans already honour, and verified domain owners are still exempt. A scheduled run over the limit waits for its next occurrence instead of being disabled. Anonymous demo scans have a separate, smaller limit per site.
 - [Layers] **[API]** **Clearer Limits on Bulk and Authenticated Scans**
@@ -3478,6 +3476,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1431
+- **Total changes documented:** 1430
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

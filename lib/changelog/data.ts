@@ -2618,7 +2618,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Timer,
         label: "Rate Limit Refusals Write Nothing",
-        desc: "A request refused by a rate limit no longer writes to the database, and concurrent requests can no longer push a bucket past its cap, even briefly. Admin settings also gain limits for reputation lookups and API key identity checks, which take effect once those endpoints start using them.",
+        desc: "A request refused by a rate limit no longer writes to the database, and concurrent requests can no longer push a bucket past its cap, even briefly. Admin settings also gain limits for reputation lookups and API key identity checks, and both endpoints now enforce them.",
         category: "fixed",
       },
       {
@@ -2776,12 +2776,6 @@ const CHANGELOG: Release[] = [
         label: "CI Gate Counts AI-Doubted Findings Again",
         desc: "The GitHub Action, the CLI and the GitLab template dropped findings the AI verifier had called false positives, even though the gate only promises to skip findings you marked. Those findings now count, so a build can start failing on one that was being skipped. To keep one out of the gate, mark it a false positive yourself.",
         category: "cli",
-      },
-      {
-        icon: ScanSearch,
-        label: "Refused Pages Are Recognised",
-        desc: "The engine can now tell a page the site served from a bot challenge, a refusal (401, 403, 407, 429 or 451), a server error or a redirect that never reaches a page. Only the bot challenge result changes a scan so far: the other answers are recognised, and the page is still graded.",
-        category: "engine",
       },
       {
         icon: Shield,
@@ -3477,13 +3471,13 @@ const CHANGELOG: Release[] = [
       {
         icon: Radar,
         label: "Refused Pages Are Not Graded as Your Site",
-        desc: "When a site answers the scanner with a load balancer's 403, a proof-of-work 503, a server error or a redirect the scanner will not follow, that response is no longer graded as your page. The scan says the page was not checked and records the status and server that answered. In a crawl, one refused link among pages that were read is listed with its status and no longer marks the whole crawl as unfinished.",
+        desc: "The engine tells a page the site served apart from a bot challenge, a refusal (401, 403, 407, 429 or 451), a server error and a redirect that never reaches a page. When a site answers the scanner with a load balancer's 403, a proof-of-work 503, a server error or a redirect the scanner will not follow, that response is no longer graded as your page. The scan says the page was not checked and records the status and server that answered. In a crawl, one refused link among pages that were read is listed with its status and no longer marks the whole crawl as unfinished.",
         category: "engine",
       },
       {
         icon: Radar,
         label: "One User-Agent for the Page Fetch",
-        desc: "The page fetch of URL, crawl, bulk and demo scans now sends the same Mozilla/5.0 (compatible; VulnRadar/1.0) User-Agent, with the contact URL, as the checks that follow it, so fewer sites refuse the scan. A rule matching VulnRadar/1.0 still covers every request.",
+        desc: "The page fetch of URL, crawl, bulk and demo scans now sends the same Mozilla/5.0 (compatible; VulnRadar/1.0) User-Agent, with the contact URL, as the checks that follow it, so fewer sites refuse the scan. A rule matching VulnRadar/1.0 covers every scan request except the optional AI verification probe, which still sends VulnRadar-AI/1.0 for now.",
         category: "engine",
       },
       {
