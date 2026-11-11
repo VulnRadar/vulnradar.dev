@@ -32,9 +32,9 @@ import {
   APP_NAME,
   DEFAULT_SCAN_NOTE,
   ERROR_MESSAGES,
-  SEVERITY_LEVELS,
   SEVERITY_PRIORITY,
 } from "@/lib/config/constants";
+import { summarizeFindings } from "@/lib/scanner/severity-summary";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import type { Category, Vulnerability } from "@/lib/scanner/types";
 import {
@@ -579,16 +579,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
     );
 
-    const summary = {
-      critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL)
-        .length,
-      high: findings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH).length,
-      medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
-        .length,
-      low: findings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
-      info: findings.filter((f) => f.severity === SEVERITY_LEVELS.INFO).length,
-      total: findings.length,
-    };
+    const summary = summarizeFindings(findings);
 
     const duration = Date.now() - startTime;
     const capturedHeaders: Record<string, string> = {};

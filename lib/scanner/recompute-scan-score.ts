@@ -32,7 +32,8 @@ import { HUMAN_FEEDBACK_SQL } from "./feedback-source";
 import { getDangerScore } from "./safety-rating";
 import { coveringDomainCandidates } from "@/lib/domains/covering";
 import { computeAutoTags } from "@/lib/tags/auto-tags";
-import { countSeverities, normalizeHostForReputation } from "./host-reputation";
+import { normalizeHostForReputation } from "./host-reputation";
+import { severityCounts, summarizeFindings } from "./severity-summary";
 import type { Vulnerability } from "./types";
 
 function parseFindings(raw: unknown): Vulnerability[] {
@@ -115,8 +116,9 @@ export async function recomputeScanScore(
     const suppressed = new Set(fpRes.rows.map((r) => r.finding_id));
 
     const activeFindings = allFindings.filter((f) => !suppressed.has(f.id));
-    const counts = countSeverities(activeFindings);
-    const summary = { ...counts, total: activeFindings.length };
+    const summary = summarizeFindings(activeFindings);
+    // host_reputation.severity_counts holds the five bands without a total.
+    const counts = severityCounts(activeFindings);
     const dangerScore = getDangerScore(activeFindings);
 
     await pool.query(

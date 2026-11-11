@@ -15,11 +15,8 @@ import {
   type AsyncCheckResult,
 } from "@/lib/scanner/async-checks";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
-import {
-  APP_NAME,
-  SEVERITY_LEVELS,
-  SEVERITY_PRIORITY,
-} from "@/lib/config/constants";
+import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
+import { summarizeFindings } from "@/lib/scanner/severity-summary";
 import { getSettings } from "@/lib/config/runtime-config";
 import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
@@ -357,16 +354,7 @@ export async function POST(request: NextRequest) {
     );
 
     const duration = Date.now() - startTime;
-    const summary = {
-      critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL)
-        .length,
-      high: findings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH).length,
-      medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
-        .length,
-      low: findings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
-      info: findings.filter((f) => f.severity === SEVERITY_LEVELS.INFO).length,
-      total: findings.length,
-    };
+    const summary = summarizeFindings(findings);
 
     const result: ScanResult = {
       url,

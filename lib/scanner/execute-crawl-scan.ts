@@ -43,10 +43,10 @@ import {
 import pool from "@/lib/database/db";
 import {
   APP_NAME,
-  SEVERITY_LEVELS,
   SEVERITY_PRIORITY,
   DEFAULT_SCAN_NOTE,
 } from "@/lib/config/constants";
+import { summarizeFindings } from "./severity-summary";
 import { getSettings } from "@/lib/config/runtime-config";
 import { logError } from "@/lib/logging/log";
 import { runWithScanId } from "@/lib/database/request-context";
@@ -413,16 +413,7 @@ async function scanSingleUrl(
     (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
   );
 
-  const summary = {
-    critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL)
-      .length,
-    high: findings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH).length,
-    medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
-      .length,
-    low: findings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
-    info: findings.filter((f) => f.severity === SEVERITY_LEVELS.INFO).length,
-    total: findings.length,
-  };
+  const summary = summarizeFindings(findings);
 
   return {
     url,
@@ -1034,19 +1025,7 @@ async function runCrawlScan(params: ExecuteCrawlScanParams): Promise<void> {
     allFindings = attachCvssScores(allFindings);
 
     const totalDuration = Date.now() - startTime;
-    const mergedSummary = {
-      critical: allFindings.filter(
-        (f) => f.severity === SEVERITY_LEVELS.CRITICAL,
-      ).length,
-      high: allFindings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH)
-        .length,
-      medium: allFindings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
-        .length,
-      low: allFindings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
-      info: allFindings.filter((f) => f.severity === SEVERITY_LEVELS.INFO)
-        .length,
-      total: allFindings.length,
-    };
+    const mergedSummary = summarizeFindings(allFindings);
 
     // The first page that was actually read supplies the main headers. An
     // unreachable page has none to give.

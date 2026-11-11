@@ -48,11 +48,8 @@ import {
   type PageUnreachable,
 } from "./target-failure";
 import type { Category, Vulnerability } from "./types";
-import {
-  APP_NAME,
-  SEVERITY_LEVELS,
-  SEVERITY_PRIORITY,
-} from "@/lib/config/constants";
+import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
+import { summarizeFindings } from "./severity-summary";
 import { getSettings } from "@/lib/config/runtime-config";
 import { logError } from "@/lib/logging/log";
 import { runWithScanId } from "@/lib/database/request-context";
@@ -885,16 +882,7 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
     // rather than being threaded through every Vulnerability literal).
     findings = attachCvssScores(findings);
 
-    const summary = {
-      critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL)
-        .length,
-      high: findings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH).length,
-      medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
-        .length,
-      low: findings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
-      info: findings.filter((f) => f.severity === SEVERITY_LEVELS.INFO).length,
-      total: findings.length,
-    };
+    const summary = summarizeFindings(findings);
 
     const dangerScore = getDangerScore(findings);
     // Whole-site A+ to F letter, the vocabulary every free peer grades on.
