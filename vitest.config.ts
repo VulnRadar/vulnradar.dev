@@ -72,6 +72,14 @@ export default defineConfig({
     pool: "forks",
     // vitest 4 caps workers via top-level maxWorkers (not poolOptions).
     maxWorkers: MAX_TEST_FORKS,
+    // The suites that walk the whole tree or spawn a process (check-card-version,
+    // history-paths-encoded, migrate-avatars-removed, api-registry-invariants)
+    // finish near the 5s default on a loaded Windows machine and time out there,
+    // while passing on CI. A full local run with coverage failed on them every
+    // time, and each failure had to be re-run by hand to tell it from a real
+    // one. Local runs get more room; CI keeps the default, so a test that really
+    // hangs is still caught within seconds.
+    testTimeout: process.env.CI ? 5_000 : 20_000,
     // The cap above reduces worker-start failures but does not eliminate them,
     // and when one happens vitest reports only the files that ran and still
     // exits 0. Runs of this suite have silently collected 349 and 353 of 356
