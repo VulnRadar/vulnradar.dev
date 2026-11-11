@@ -1,17 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
+import {
+  burstLimitedResponse,
+  concurrentScanLimitResponse,
+  rateLimitedResponse,
+  type ApiKeyRateLimitState,
+} from "@/lib/api/rate-limit-response";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { parseBearer } from "@/lib/api/bearer";
+import { authenticateApiKey } from "@/lib/api/api-key-auth";
+import { checkRateLimit as checkApiKeyRateLimit } from "@/lib/api/api-keys";
+import { API_KEY_SCOPES } from "@/lib/api/api-key-scopes";
+import { versioned } from "@/lib/api/v4/wrap";
+import { currentRequestId } from "@/lib/database/request-context";
 import {
-  validateApiKey,
-  checkRateLimit as checkApiKeyRateLimit,
-} from "@/lib/api/api-keys";
-import {
-  hasApiKeyScope,
-  apiKeyScopeErrorMessage,
-  API_KEY_SCOPES,
-} from "@/lib/api/api-key-scopes";
+  checkTargetScanLimit,
+  targetScanLimitMessage,
+} from "@/lib/rate-limiting/target-limits";
 import {
   checkRateLimit as checkGlobalRateLimit,
   RATE_LIMITS,
@@ -123,6 +128,33 @@ import { notifyScanComplete } from "@/lib/webhooks/scan-notifications";
  * values instead; Zod schema construction is cheap enough that this costs
  * nothing meaningful per call.
  */
+const DAILY_LIMIT_MESSAGE =
+  "Daily scan limit reached. Upgrade your plan or wait until midnight UTC.";
+
+/**
+ * The 429 for a spent daily scan quota. This answered with
+ * ApiResponse.tooManyRequests, which sends neither Retry-After nor any
+ * X-RateLimit-* header and no quota numbers, while every sibling scan route
+ * answered the same quota with all of them. rateLimitedResponse supplies
+ * those; `status` and `requestId` are added back because the old body carried
+ * them, and a v3 body only gains keys.
+ */
+async function dailyLimitResponse(
+  quota: ApiKeyRateLimitState,
+): Promise<NextResponse> {
+  const base = rateLimitedResponse(quota, DAILY_LIMIT_MESSAGE, {
+    code: "DAILY_LIMIT",
+  });
+  return NextResponse.json(
+    {
+      ...(await base.json()),
+      status: 429,
+      requestId: currentRequestId() ?? undefined,
+    },
+    { status: base.status, headers: base.headers },
+  );
+}
+
 function buildRequestSchema(opts: {
   maxSecretLength: number;
   maxCookies: number;
@@ -156,7 +188,9 @@ function buildRequestSchema(opts: {
   });
 }
 
-export const POST = withErrorHandling(async (request: NextRequest) => {
+async function createAuthenticatedScan(
+  request: NextRequest,
+): Promise<NextResponse> {
   // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). This route runs
   // its whole pipeline inline and never calls into lib/scanner/execute-scan.ts,
   // so a gate placed in the executor would miss it entirely: it needs its own.
@@ -170,7 +204,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  const bearerToken = parseBearer(request.headers.get("authorization"));
   let authedUserId: number | null = null;
   let isApiKeyAuth = false;
   // Set in the session branch when the read-only daily-quota gate passes; the
@@ -180,21 +213,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   let chargeDailyQuota = false;
   let dailyQuotaLimit = -1;
 
-  if (bearerToken !== null) {
-    const keyData = await validateApiKey(bearerToken);
-    if (!keyData)
-      return ApiResponse.unauthorized("Invalid or revoked API key.");
-    if (keyData.needsTermsAcceptance) {
-      return ApiResponse.forbidden(
-        "Please accept our updated Terms of Service before using the API.",
-      );
-    }
-    // scoping: triggering an authenticated scan requires scan:write.
-    if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
-      return ApiResponse.forbidden(
-        apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE),
-      );
-    }
+  if (parseBearer(request.headers.get("authorization")) !== null) {
+    // Validity, the Terms gate and scan:write, in the one shared order.
+    const keyAuth = await authenticateApiKey(request, {
+      scope: API_KEY_SCOPES.SCAN_WRITE,
+    });
+    if (!keyAuth.ok) return keyAuth.response;
+    const keyData = keyAuth.auth;
     const keyRate = await checkApiKeyRateLimit(
       keyData.keyId,
       keyData.dailyLimit,
@@ -216,11 +241,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // cap. Read-only gate here; charged after the session is established below,
     // matching POST /api/v3/scan.
     const dailyQuota = await canMakeRequest(authedUserId);
-    if (!dailyQuota.allowed) {
-      return ApiResponse.tooManyRequests(
-        "Daily scan limit reached. Upgrade your plan or wait until midnight UTC.",
-      );
-    }
+    if (!dailyQuota.allowed) return dailyLimitResponse(dailyQuota);
     chargeDailyQuota = true;
     dailyQuotaLimit = dailyQuota.limit;
   } else {
@@ -235,15 +256,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     if (!rl.allowed) {
       return ApiResponse.tooManyRequests(
         "Scan rate limit reached. Please wait before scanning again.",
+        Math.max(1, Math.ceil(rl.retryAfterSeconds)),
       );
     }
 
     const dailyQuota = await canMakeRequest(session.userId);
-    if (!dailyQuota.allowed) {
-      return ApiResponse.tooManyRequests(
-        "Daily scan limit reached. Upgrade your plan or wait until midnight UTC.",
-      );
-    }
+    if (!dailyQuota.allowed) return dailyLimitResponse(dailyQuota);
     chargeDailyQuota = true;
     dailyQuotaLimit = dailyQuota.limit;
   }
@@ -379,10 +397,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   //    submitting credentials to a login form for validation.
   const submitsCredentials = auth.method === "form";
   const wantsActiveProbing = requestsActiveProbing(scanners);
-  if (
-    (wantsActiveProbing || submitsCredentials) &&
-    !(await isUrlOwnedByUser(url, authedUserId))
-  ) {
+  // Asked at most once per request: both the gate below and the per-target
+  // exemption after it want the same answer.
+  let ownsTarget: boolean | undefined;
+  const ownsUrl = async () =>
+    (ownsTarget ??= await isUrlOwnedByUser(url, authedUserId));
+  if ((wantsActiveProbing || submitsCredentials) && !(await ownsUrl())) {
     return NextResponse.json(
       {
         error: wantsActiveProbing
@@ -391,6 +411,22 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         statusCode: "DOMAIN_NOT_VERIFIED",
       },
       { status: 403 },
+    );
+  }
+
+  // Per-target volume, shared across every account, the same bucket POST
+  // /scan, /scan/crawl and bulk count against. This route never consulted
+  // it, so an authenticated scan (a login and a full scan of the page behind
+  // it) was the one way to keep hitting a third-party site past the limit
+  // the others enforce. Checked before the slot and the login, so a refused
+  // target costs neither. A verified owner of the domain is exempt.
+  // ref: AUDIT-012#abuse-05
+  const targetLimit = await checkTargetScanLimit(url);
+  if (!targetLimit.allowed && !(await ownsUrl())) {
+    return burstLimitedResponse(
+      targetLimit,
+      targetScanLimitMessage(targetLimit.rootDomain),
+      { statusCode: "TARGET_RATE_LIMIT", code: "TARGET_RATE_LIMIT" },
     );
   }
 
@@ -601,6 +637,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     };
 
     let scanHistoryId: number | null = null;
+    let scanPublicId: string | null = null;
     /** Set when the one INSERT this route performs did not land. */
     let persistError: string | null = null;
     try {
@@ -611,7 +648,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
            (user_id, url, summary, findings, findings_count, duration, scanned_at,
             source, response_headers, notes, authenticated, is_public, result_meta, team_id)
          VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9, true, $10, $11, $12)
-         RETURNING id`,
+         RETURNING id, public_id`,
         [
           authedUserId,
           finalScanUrl,
@@ -628,6 +665,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         ],
       );
       scanHistoryId = insertResult.rows[0]?.id ?? null;
+      scanPublicId = insertResult.rows[0]?.public_id ?? null;
       // The INSERT above carries the primary team; this writes the rest of
       // the set into scan_history_teams and is a no-op below two teams.
       if (scanHistoryId !== null) {
@@ -725,6 +763,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     return ApiResponse.success({
       scanHistoryId,
+      // The opaque id the scan's URLs and the v4 API use. scanHistoryId stays
+      // for v3 clients.
+      scanPublicId,
       // Explicit rather than inferred from a null id: a caller reading this
       // response can tell "saved" from "ran, but nothing was written and no
       // notification will follow", which used to be indistinguishable.
@@ -748,11 +789,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     });
   });
   if (!slotted.ok) {
-    // Same body shape POST /api/v3/scan returns for the same condition.
-    return NextResponse.json(
-      { error: slotted.check.message, statusCode: "CONCURRENT_SCAN_LIMIT" },
-      { status: 429 },
-    );
+    // Same body shape POST /api/v3/scan returns for the same condition, now
+    // with Retry-After.
+    return concurrentScanLimitResponse(slotted.check.message);
   }
   return slotted.value;
-});
+}
+
+export const POST = versioned(
+  "scan.createAuthenticated",
+  withErrorHandling(createAuthenticatedScan),
+);
