@@ -355,7 +355,10 @@ export interface RemediationDetailsDraft {
 export const DETAILS_SAVE_FAILED = "Couldn't save that. Try again.";
 
 /** The POST body for a status plus its details. One builder for the status
- *  chips and the details dialog, so the two can never send different shapes. */
+ *  chips and the details dialog, so the two can never send different shapes.
+ *  A cleared field is sent as null: the route keeps the stored value of a
+ *  field the body leaves out, so omitting it would leave the old note in
+ *  place while the dialog showed it gone. */
 export function remediationDetailsBody(
   findingId: string,
   findingUrl: string,
@@ -366,8 +369,8 @@ export function remediationDetailsBody(
     findingId,
     findingUrl,
     status,
-    note: draft.note.trim() || undefined,
-    assignee: draft.assignee.trim() || undefined,
+    note: draft.note.trim() || null,
+    assignee: draft.assignee.trim() || null,
     dueAt: draft.dueAt || null,
   };
 }

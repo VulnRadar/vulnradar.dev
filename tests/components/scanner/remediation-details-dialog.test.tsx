@@ -237,9 +237,27 @@ describe("the details save", () => {
       findingUrl: "https://example.com",
       status: "accepted_risk",
       note: "vendor fix due in Q1",
-      assignee: undefined,
+      assignee: null,
       dueAt: "2027-01-15",
     });
+  });
+
+  // The route keeps the stored value of a field the body leaves out, and
+  // JSON.stringify drops an undefined one, so a cleared field has to travel
+  // as null or the old note stays while the dialog shows it gone.
+  it("sends a cleared note and assignee as null, so the stored ones are cleared", () => {
+    const sent = JSON.parse(
+      JSON.stringify(
+        remediationDetailsBody("f1", "https://example.com", "in_progress", {
+          note: "   ",
+          assignee: "",
+          dueAt: "",
+        }),
+      ),
+    );
+    expect(sent).toHaveProperty("note", null);
+    expect(sent).toHaveProperty("assignee", null);
+    expect(sent).toHaveProperty("dueAt", null);
   });
 
   it("POSTs an edited draft under the current status and returns the saved row", async () => {
