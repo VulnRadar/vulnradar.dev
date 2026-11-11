@@ -99,6 +99,12 @@ export const POST = withErrorHandling(async (request: Request) => {
   const parsed = await parseBody<CreateBody>(request);
   if (!parsed.success) return ApiResponse.badRequest(parsed.error);
   const { url } = parsed.data;
+  // The URL the browser is sent to, and the one the SSRF check sees: the
+  // same string, so what was validated is what gets opened. A bare IPv4
+  // address went to validateScanTarget as typed, which parses it with
+  // new URL() and fails, so every address the launcher advertises was
+  // refused as "Invalid URL format." (sec-outbound-7).
+  let targetUrl = "";
   if (url !== undefined && url !== "" && url.trim()) {
     const trimmed = url.trim();
     const isHttp = /^https?:\/\//i.test(trimmed);
@@ -108,7 +114,8 @@ export const POST = withErrorHandling(async (request: Request) => {
         "url must be a public http(s) URL or a public IPv4 address",
       );
     }
-    const safety = await validateScanTarget(trimmed);
+    targetUrl = isHttp ? trimmed : `http://${trimmed}`;
+    const safety = await validateScanTarget(targetUrl);
     if (!safety.safe) {
       return ApiResponse.error(
         safety.reason || "Refusing to open a browser on this target.",
@@ -180,12 +187,8 @@ export const POST = withErrorHandling(async (request: Request) => {
     // Browserbase has no REST "startUrl" param — CDP is the only way to
     // control navigation after session creation. Errors are swallowed
     // inside navigateBrowserSession; failure must never block the response.
-    const targetUrl = url?.trim() || "";
     if (targetUrl && created.connectUrl) {
-      const navigateUrl = /^https?:\/\//i.test(targetUrl)
-        ? targetUrl
-        : `http://${targetUrl}`;
-      void navigateBrowserSession(created.connectUrl, navigateUrl);
+      void navigateBrowserSession(created.connectUrl, targetUrl);
     }
 
     // Record ownership BEFORE returning success (AUDIT-004#idor-01). This row
@@ -384,8 +387,12 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   // deletes-and-records an expired session; without the row-deletion gate here,
   // an explicit DELETE racing that cleanup would double-count the seconds.
   const deleted = await pool
-    .query<{ user_id: number; created_at: string }>(
-      "DELETE FROM browser_sessions WHERE id = $1 RETURNING user_id, created_at",
+    .query<{
+      user_id: number;
+      created_at: string;
+      expires_at: string | null;
+    }>(
+      "DELETE FROM browser_sessions WHERE id = $1 RETURNING user_id, created_at, expires_at",
       [id],
     )
     .catch((err) => {
@@ -402,11 +409,19 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
 
   const deletedRow = deleted?.rows[0];
   if (deletedRow) {
+    // Charged up to expires_at at most, the same rule the cleanup sweep uses
+    // (lib/database/cleanup.ts). Browserbase ends the session on its own
+    // timeout, so a DELETE that arrives after that (a tab left open, a
+    // retried request) used to bill minutes the session never ran.
+    const end = Math.min(
+      Date.now(),
+      deletedRow.expires_at
+        ? new Date(deletedRow.expires_at).getTime()
+        : Infinity,
+    );
     const elapsedSeconds = Math.max(
       0,
-      Math.round(
-        (Date.now() - new Date(deletedRow.created_at).getTime()) / 1000,
-      ),
+      Math.round((end - new Date(deletedRow.created_at).getTime()) / 1000),
     );
     if (elapsedSeconds > 0) {
       // Swallowed so a usage write never fails the delete, but not silent:

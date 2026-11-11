@@ -306,7 +306,7 @@ describe("POST /api/v3/browser/sessions", () => {
       expect(mockCreateBrowserSession).not.toHaveBeenCalled();
     });
 
-    it("accepts a bare public IPv4 literal", async () => {
+    it("accepts a bare public IPv4 literal, validating the http:// URL it will open", async () => {
       mockCreateBrowserSession.mockResolvedValue({
         id: "sess_ip",
         status: "RUNNING",
@@ -314,7 +314,43 @@ describe("POST /api/v3/browser/sessions", () => {
       });
       const res = await POST(postRequest({ url: "203.0.113.5" }));
       expect(res.status).toBe(200);
-      expect(mockValidateScanTarget).toHaveBeenCalledWith("203.0.113.5");
+      expect(mockValidateScanTarget).toHaveBeenCalledWith("http://203.0.113.5");
+    });
+
+    // sec-outbound-7. The bare IP went to validateScanTarget as typed, which
+    // parses it with new URL() and fails, so every IP the launcher advertises
+    // was refused as "Invalid URL format." These run the real validator.
+    describe("against the real SSRF validator", () => {
+      beforeEach(async () => {
+        const actual = await vi.importActual<
+          typeof import("@/lib/scanner/safe-fetch")
+        >("@/lib/scanner/safe-fetch");
+        mockValidateScanTarget.mockImplementation(actual.validateScanTarget);
+        mockCreateBrowserSession.mockResolvedValue({
+          id: "sess_real",
+          status: "RUNNING",
+          url: "",
+          connectUrl: "wss://connect.example/cdp",
+        });
+      });
+
+      it("opens a bare public IPv4 address", async () => {
+        const res = await POST(postRequest({ url: "8.8.8.8" }));
+        expect(res.status).toBe(200);
+        expect(mockNavigateBrowserSession).toHaveBeenCalledWith(
+          "wss://connect.example/cdp",
+          "http://8.8.8.8",
+        );
+      });
+
+      it("still refuses a bare private address, with the private-address reason", async () => {
+        const res = await POST(postRequest({ url: "10.0.0.1" }));
+        expect(res.status).toBe(400);
+        const json = await res.json();
+        expect(json.error).toMatch(/internal\/private IP addresses/);
+        expect(json.error).not.toMatch(/Invalid URL/);
+        expect(mockCreateBrowserSession).not.toHaveBeenCalled();
+      });
     });
 
     it("skips format check and SSRF validation entirely when no url is given", async () => {
@@ -698,6 +734,38 @@ describe("DELETE /api/v3/browser/sessions", () => {
     const res = await DELETE(getRequest("sess_dbfail"));
     expect(res.status).toBe(403);
     expect(mockEndBrowserSession).not.toHaveBeenCalled();
+  });
+
+  it("charges a late DELETE only up to expires_at, never for minutes the session did not run", async () => {
+    // sec-money-9. Created 8 minutes ago with a 2 minute timeout, so it
+    // expired 6 minutes ago and Browserbase ended it then. The DELETE used to
+    // bill creation-to-now, 480 seconds; the session ran for 120.
+    const now = Date.now();
+    mockQuery.mockResolvedValue({
+      rows: [
+        {
+          user_id: 42,
+          created_at: new Date(now - 8 * 60_000).toISOString(),
+          expires_at: new Date(now - 6 * 60_000).toISOString(),
+        },
+      ],
+    });
+
+    const res = await DELETE(getRequest("sess_late"));
+
+    expect(res.status).toBe(200);
+    expect(mockRecordBrowserbaseSeconds).toHaveBeenCalledWith(42, 120);
+  });
+
+  it("reads expires_at back from the row it deletes", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [{ user_id: 42, created_at: new Date().toISOString() }],
+    });
+    await DELETE(getRequest("sess_mine"));
+    const deleteCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("DELETE FROM browser_sessions"),
+    );
+    expect(deleteCall?.[0]).toMatch(/RETURNING[^;]*\bexpires_at\b/);
   });
 
   it("records the session's real elapsed duration as plan usage on end", async () => {
