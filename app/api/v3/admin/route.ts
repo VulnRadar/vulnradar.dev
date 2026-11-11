@@ -1566,16 +1566,17 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
     }
 
     case "reset_ai_usage": {
-      // Zeroes the user's current-window ai_usage row (AI chat / finding
-      // verification / scan summary tokens, lib/billing/ai-usage.ts) so
-      // their aiTokensPerWindow allowance is immediately available again
-      // instead of waiting out AI_USAGE_WINDOW_HOURS. Deleting the row
-      // (not zeroing tokens_used in place) is equivalent for every
-      // reader -- getAiTokensUsed treats a missing row as 0 -- and avoids
-      // a redundant UPDATE-vs-DELETE branch.
+      // Zeroes the user's current-window verification row in ai_usage
+      // (lib/billing/ai-usage.ts) so their aiTokensPerWindow allowance is
+      // immediately available again instead of waiting out
+      // AI_USAGE_WINDOW_HOURS. Only the 'verify' kind: that is the one row
+      // the allowance reads, and the chat, summary and tag rows are the
+      // operator's record of what those free features cost. Deleting the
+      // row (not zeroing tokens_used in place) is equivalent for every
+      // reader -- getAiTokensUsed treats a missing row as 0.
       const { windowStart: aiWindowStart } = await resolveCurrentWindow();
       await pool.query(
-        "DELETE FROM ai_usage WHERE user_id = $1 AND window_start = $2",
+        "DELETE FROM ai_usage WHERE user_id = $1 AND window_start = $2 AND kind = 'verify'",
         [userId, aiWindowStart],
       );
       await logAction(
