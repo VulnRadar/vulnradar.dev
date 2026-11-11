@@ -131,7 +131,6 @@ describe("syncPlanForRoleChange — demotion out of staff (revoke)", () => {
           pre_staff_plan: "core_supporter",
           stripe_subscription_id: "sub_core",
           subscription_status: "active",
-          gift_plan: null,
         },
       ],
     });
@@ -198,7 +197,6 @@ describe("syncPlanForRoleChange — demotion out of staff (revoke)", () => {
           pre_staff_plan: "core_supporter",
           stripe_subscription_id: null,
           subscription_status: "canceled",
-          gift_plan: null,
         },
       ],
     });
@@ -208,7 +206,6 @@ describe("syncPlanForRoleChange — demotion out of staff (revoke)", () => {
 
     const [selectSql] = mockQuery.mock.calls[0];
     expect(selectSql).toContain("stripe_subscription_id");
-    expect(selectSql).toContain("gifted_subscriptions");
     const [updateSql, updateParams] = mockQuery.mock.calls[1];
     expect(updateSql).toMatch(
       /UPDATE users SET plan = \$1, pre_staff_plan = NULL/,
@@ -224,7 +221,6 @@ describe("syncPlanForRoleChange — demotion out of staff (revoke)", () => {
           pre_staff_plan: "core_supporter",
           stripe_subscription_id: "sub_expired",
           subscription_status: "incomplete_expired",
-          gift_plan: null,
         },
       ],
     });
@@ -235,7 +231,10 @@ describe("syncPlanForRoleChange — demotion out of staff (revoke)", () => {
     expect(mockQuery.mock.calls[1][1]).toEqual(["free", 5]);
   });
 
-  it("restores the saved plan when an active gift covers it, though nothing is paying", async () => {
+  it("writes free under an active gift too, so the saved plan cannot outlast the gift", async () => {
+    // A gift is never written to users.plan: plan reads take the higher of
+    // the column and the live gift. Writing core_supporter here kept it on the
+    // row after the gift expired, a paid tier with nothing paying for it.
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -243,26 +242,8 @@ describe("syncPlanForRoleChange — demotion out of staff (revoke)", () => {
           pre_staff_plan: "core_supporter",
           stripe_subscription_id: null,
           subscription_status: null,
+          // What a query that also read the live gift would hand back.
           gift_plan: "pro_supporter",
-        },
-      ],
-    });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-
-    await syncPlanForRoleChange(5, "admin", "user");
-
-    expect(mockQuery.mock.calls[1][1]).toEqual(["core_supporter", 5]);
-  });
-
-  it("does not let a gift below the saved plan restore it", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          plan: "pro_supporter",
-          pre_staff_plan: "pro_supporter",
-          stripe_subscription_id: null,
-          subscription_status: null,
-          gift_plan: "core_supporter",
         },
       ],
     });

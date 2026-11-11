@@ -13,6 +13,7 @@ import {
 import { creditAiCreditPurchase } from "@/lib/billing/ai-usage";
 import { readDunningExemption } from "@/lib/billing/subscription-writes";
 import { syncPlanForRoleChange } from "@/lib/billing/staff-plan";
+import { getUserPlan } from "@/lib/rate-limiting/daily-limits";
 import { describeIntegration, createUser, unique } from "./_db";
 
 /**
@@ -272,16 +273,24 @@ describeIntegration(
       expect(await user.plan()).toBe("core_supporter");
     });
 
-    it("restores the saved plan while a live gift covers it, and not once the gift has expired", async () => {
+    it("leaves a live gift to plan resolution instead of writing the saved plan, which would outlast it", async () => {
+      // The admin route writes the new role before it syncs the plan.
+      const demoteToUser = async (id: number) => {
+        await pool.query("UPDATE users SET role = 'user' WHERE id = $1", [id]);
+        await syncPlanForRoleChange(id, "admin", "user");
+      };
+
       const covered = await demote({ subscriptionId: null, status: null });
       await gift(covered.id, "pro_supporter", { expiresIn: "7 days" });
-      await syncPlanForRoleChange(covered.id, "admin", "user");
-      expect(await covered.plan()).toBe("core_supporter");
+      await demoteToUser(covered.id);
+      expect(await covered.plan()).toBe("free");
+      expect(await getUserPlan(covered.id)).toBe("pro_supporter");
 
       const lapsed = await demote({ subscriptionId: null, status: null });
       await gift(lapsed.id, "pro_supporter", { expiresIn: "-1 day" });
-      await syncPlanForRoleChange(lapsed.id, "admin", "user");
+      await demoteToUser(lapsed.id);
       expect(await lapsed.plan()).toBe("free");
+      expect(await getUserPlan(lapsed.id)).toBe("free");
     });
   },
 );

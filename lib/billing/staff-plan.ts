@@ -20,8 +20,9 @@
 //     NULL, since nothing was granted.
 //   - Demoted OUT of every staff role back to a regular user: if
 //     pre_staff_plan is set (a grant happened), plan is instantly restored
-//     to it, provided a live subscription or an active gift still covers
-//     it (otherwise 'free'), and pre_staff_plan is cleared -- UNLESS the current plan
+//     to it while a live subscription still pays for it (otherwise 'free';
+//     an active gift needs nothing written, see revokeStaffPlan), and
+//     pre_staff_plan is cleared -- UNLESS the current plan
 //     already ranks higher than pre_staff_plan, meaning a real purchase
 //     (e.g. upgrading to elite_supporter via checkout) moved them past the
 //     granted floor while they were still staff. In that case the real,
@@ -161,13 +162,9 @@ async function revokeStaffPlan(
     pre_staff_plan: string | null;
     stripe_subscription_id: string | null;
     subscription_status: string | null;
-    gift_plan: string | null;
   }>(
-    `SELECT u.plan, u.pre_staff_plan, u.stripe_subscription_id, u.subscription_status,
-            (SELECT gs.plan FROM gifted_subscriptions gs
-              WHERE gs.user_id = u.id AND gs.revoked_at IS NULL AND gs.expires_at > NOW()
-              ORDER BY gs.expires_at DESC LIMIT 1) AS gift_plan
-       FROM users u WHERE u.id = $1`,
+    `SELECT plan, pre_staff_plan, stripe_subscription_id, subscription_status
+       FROM users WHERE id = $1`,
     [userId],
   );
   const row = result.rows[0];
@@ -199,14 +196,17 @@ async function revokeStaffPlan(
   // keeps it current. A subscription cancelled while they were staff lands on
   // the staff floor, so it looks like nothing changed, and restoring the saved
   // plan on demotion handed a former staff member a paid tier with nothing
-  // paying for it. It is only restored while something still pays for it or
-  // covers it.
+  // paying for it. It is only restored while that subscription is still live.
+  //
+  // An active gift is not a reason to write it either. A gift never lives in
+  // users.plan: every plan read takes the higher of the column and the live
+  // gift (resolveEffectivePlan), so 'free' here still leaves a gifted user on
+  // the gift. Writing the saved plan instead would outlast the gift, and the
+  // paid tier would stay on the row after it expired with nothing behind it.
   const subscriptionLive =
     !!row?.stripe_subscription_id &&
     isLiveSubscriptionStatus(row.subscription_status);
-  const giftCovers =
-    !!row?.gift_plan && planRank(row.gift_plan) >= planRank(preStaffPlan);
-  const restoredPlan = subscriptionLive || giftCovers ? preStaffPlan : "free";
+  const restoredPlan = subscriptionLive ? preStaffPlan : "free";
 
   await pool.query(
     "UPDATE users SET plan = $1, pre_staff_plan = NULL, updated_at = NOW() WHERE id = $2",
