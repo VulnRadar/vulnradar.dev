@@ -98,6 +98,11 @@ interface Thread {
   messages: ThreadMessage[];
   viewerIsStaff: boolean;
   viewerIsOwner: boolean;
+  /**
+   * Whether this server can translate at all (an AI provider is set). False
+   * hides the Translate button, which could only fail there.
+   */
+  translationAvailable?: boolean;
 }
 
 // This file used to carry its own timeAgo, whose date fallback rendered
@@ -695,6 +700,9 @@ export function SupportTickets() {
                         body={m.body}
                         bodyLocale={m.bodyLocale}
                         translation={m.translation}
+                        translationAvailable={
+                          thread.translationAvailable !== false
+                        }
                       />
                     </div>
                   </div>
