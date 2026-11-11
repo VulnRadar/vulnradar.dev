@@ -78,4 +78,28 @@ describe("resumeAccountSchedules", () => {
     expect(new Date(due[0]).getUTCHours()).toBe(3);
     expect(new Date(due[1]).getUTCDay()).toBe(4);
   });
+
+  // computeNextRunAt has no answer for a cadence outside FREQUENCIES and the
+  // column has no CHECK. A throw here would come after enable had already
+  // cleared disabled_at, leaving the account on with its schedules paused.
+  it("falls back to weekly for a frequency it does not know, as the worker does", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 21,
+          frequency: "fortnightly",
+          preferred_hour_utc: 6,
+          preferred_day_of_week: 2,
+          preferred_day_of_month: 1,
+        },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    const before = Date.now();
+    expect(await resumeAccountSchedules(5)).toBe(1);
+    const [, params] = mockQuery.mock.calls[1] as [string, unknown[]];
+    const [due] = (params[2] as string[]).map((d) => new Date(d));
+    expect(due.getTime()).toBeGreaterThan(before);
+    expect(due.getUTCDay()).toBe(2);
+  });
 });

@@ -1,7 +1,7 @@
 import pool from "@/lib/database/db";
 import {
   computeNextRunAt,
-  type ScheduleFrequency,
+  isScheduleFrequency,
 } from "@/lib/scanner/schedule-timing";
 
 /**
@@ -62,9 +62,13 @@ export async function resumeAccountSchedules(userId: number): Promise<number> {
   if (paused.rows.length === 0) return 0;
 
   const ids = paused.rows.map((r) => r.id);
+  // The column has no CHECK, and computeNextRunAt throws on a cadence it does
+  // not know. Enable has already cleared disabled_at by the time this runs,
+  // so one legacy value would leave the account enabled, its schedules
+  // paused and no audit row. Same fallback the worker applies.
   const due = paused.rows.map((r) =>
     computeNextRunAt(r.id, {
-      frequency: r.frequency as ScheduleFrequency,
+      frequency: isScheduleFrequency(r.frequency) ? r.frequency : "weekly",
       preferredHourUtc: r.preferred_hour_utc,
       preferredDayOfWeek: r.preferred_day_of_week,
       preferredDayOfMonth: r.preferred_day_of_month,
