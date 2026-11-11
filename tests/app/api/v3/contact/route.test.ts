@@ -63,10 +63,9 @@ vi.mock("@/lib/email/email", () => ({
 // This route never touched the database before that, so mock the resolver
 // directly rather than the whole pool -- no test here asserts on the
 // resolved from-address itself.
+const mockGetSettingImpl = vi.fn();
 vi.mock("@/lib/config/runtime-config", () => ({
-  getSetting: vi.fn(async (key: string) =>
-    key === "CONTACT_MESSAGE_MAX_LENGTH" ? 5000 : "noreply@example.com",
-  ),
+  getSetting: (key: string) => mockGetSettingImpl(key),
 }));
 
 let turnstileSuccess = true;
@@ -80,6 +79,11 @@ mockFetch.mockImplementation(async () => {
 });
 
 const { POST } = await import("@/app/api/v3/contact/route");
+const { SUPPORT_EMAIL } = await import("@/lib/config/constants");
+const CONTACT_NAME_MAX = 120;
+const CONTACT_SUBJECT_MAX = 160;
+const TURNSTILE_UNAVAILABLE_MESSAGE =
+  "We could not verify the captcha just now. Please try again.";
 
 function postRequest(body: unknown): NextRequest {
   return new NextRequest("http://localhost/api/v3/contact", {
@@ -121,6 +125,10 @@ beforeEach(() => {
   mockContactConfirmationEmail.mockReset();
   mockFetch.mockClear();
   turnstileSuccess = true;
+  mockGetSettingImpl.mockReset();
+  mockGetSettingImpl.mockImplementation(async (key: string) =>
+    key === "CONTACT_MESSAGE_MAX_LENGTH" ? 5000 : "noreply@example.com",
+  );
 
   mockGetClientIp.mockResolvedValue("203.0.113.7");
   mockCheckRateLimit.mockResolvedValue({
@@ -167,36 +175,63 @@ describe("POST /api/v3/contact (Turnstile disabled, the default test env state)"
     );
   });
 
-  it("requires all fields", async () => {
-    const res = await POST(postRequest({ ...VALID_BODY, message: "   " }));
+  // "All fields are required." named none of them, so the sender had to work
+  // out which of five fields the server meant.
+  it.each([
+    ["name", "Name is required."],
+    ["email", "Email is required."],
+    ["subject", "Subject is required."],
+    ["message", "Message is required."],
+    ["category", "Category is required."],
+  ])("names the missing %s", async (field, error) => {
+    const res = await POST(postRequest({ ...VALID_BODY, [field]: "   " }));
     const json = await res.json();
 
     expect(res.status).toBe(400);
-    expect(json.error).toBe("All fields are required.");
+    expect(json.error).toBe(error);
+    expect(mockRecordSubmission).not.toHaveBeenCalled();
   });
 
-  it("rejects a name over 120 characters", async () => {
+  // "Message is too long." gave neither the field, the limit nor how far over
+  // it was, on the form a security reporter is most likely to write at length.
+  it.each([
+    ["name", () => CONTACT_NAME_MAX],
+    ["subject", () => CONTACT_SUBJECT_MAX],
+    ["message", () => 5000],
+  ])("says how long the %s is and what the limit is", async (field, max) => {
+    const limit = max();
     const res = await POST(
-      postRequest({ ...VALID_BODY, name: "a".repeat(121) }),
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it("rejects a subject over 160 characters", async () => {
-    const res = await POST(
-      postRequest({ ...VALID_BODY, subject: "a".repeat(161) }),
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it("rejects a message over 5000 characters", async () => {
-    const res = await POST(
-      postRequest({ ...VALID_BODY, message: "a".repeat(5001) }),
+      postRequest({ ...VALID_BODY, [field]: "a".repeat(limit + 1) }),
     );
     const json = await res.json();
 
     expect(res.status).toBe(400);
-    expect(json.error).toBe("Message is too long.");
+    expect(json.error).toBe(
+      `Your ${field} is ${limit + 1} characters; the limit is ${limit}. Shorten it or email ${SUPPORT_EMAIL}.`,
+    );
+    expect(mockRecordSubmission).not.toHaveBeenCalled();
+  });
+
+  it("accepts every field at exactly its limit", async () => {
+    const res = await POST(
+      postRequest({
+        ...VALID_BODY,
+        name: "a".repeat(CONTACT_NAME_MAX),
+        subject: "a".repeat(CONTACT_SUBJECT_MAX),
+        message: "a".repeat(5000),
+      }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("measures the message against the live setting, not a fixed number", async () => {
+    mockGetSettingImpl.mockImplementation(async (key: string) =>
+      key === "CONTACT_MESSAGE_MAX_LENGTH" ? 200 : "noreply@example.com",
+    );
+    const res = await POST(
+      postRequest({ ...VALID_BODY, message: "a".repeat(201) }),
+    );
+    expect((await res.json()).error).toContain("the limit is 200.");
   });
 
   it("maps a known category to its label", async () => {
@@ -208,6 +243,25 @@ describe("POST /api/v3/contact (Turnstile disabled, the default test env state)"
     );
   });
 
+  // A plain-object lookup resolves Object.prototype members, so
+  // CATEGORY_LABELS["constructor"] was the Object function itself: truthy, so
+  // the `|| "Other"` never ran and a function went to the email builders.
+  it.each(["constructor", "toString", "__proto__", "hasOwnProperty"])(
+    "labels the inherited key %s as 'Other', never as an Object.prototype member",
+    async (category) => {
+      const res = await POST(postRequest({ ...VALID_BODY, category }));
+      expect(res.status).toBe(200);
+      await flushMicrotasks();
+
+      expect(mockContactEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ category: "Other" }),
+      );
+      expect(mockContactConfirmationEmail).toHaveBeenCalledWith({
+        category: "Other",
+      });
+    },
+  );
+
   it("falls back to 'Other' for an unrecognized category", async () => {
     await POST(postRequest({ ...VALID_BODY, category: "mystery" }));
     await flushMicrotasks();
@@ -215,6 +269,22 @@ describe("POST /api/v3/contact (Turnstile disabled, the default test env state)"
     expect(mockContactEmail).toHaveBeenCalledWith(
       expect.objectContaining({ category: "Other" }),
     );
+  });
+
+  // The staff alert went to the no-reply sender, a mailbox nobody reads, so a
+  // security report surfaced only if someone happened to open the admin inbox.
+  it("sends the staff alert to the support address, not the no-reply sender", async () => {
+    await POST(postRequest(VALID_BODY));
+    await flushMicrotasks();
+
+    const staffCall = mockSendEmail.mock.calls.find(
+      (c) => c[0].subject === "[Contact] Found a bug",
+    );
+    expect(staffCall).toBeDefined();
+    expect(staffCall?.[0].to).toBe(SUPPORT_EMAIL);
+    expect(
+      mockSendEmail.mock.calls.some((c) => c[0].to === "noreply@example.com"),
+    ).toBe(false);
   });
 
   it("normalizes the email to lowercase before sending", async () => {
@@ -509,6 +579,74 @@ describe("POST /api/v3/contact (Turnstile gating)", () => {
       response: "good-token",
       remoteip: "203.0.113.7",
     });
+  });
+
+  // The siteverify call had no timeout, so a Cloudflare that accepted the
+  // connection and went quiet held the request (and the sender) open for as
+  // long as the socket lived.
+  it("answers within the timeout with a 503 when siteverify never responds", async () => {
+    const gatedPOST = await importGatedPOST();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      // AbortSignal.timeout runs on Node's internal timers, which fake timers
+      // do not reach: the same signal, built on the faked setTimeout.
+      vi.spyOn(AbortSignal, "timeout").mockImplementation((ms: number) => {
+        const controller = new AbortController();
+        setTimeout(
+          () =>
+            controller.abort(
+              new DOMException("The operation timed out.", "TimeoutError"),
+            ),
+          ms,
+        );
+        return controller.signal;
+      });
+      mockFetch.mockImplementationOnce(
+        (_url, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () =>
+              reject(init.signal?.reason),
+            );
+          }),
+      );
+
+      let res: Response | undefined;
+      void gatedPOST(
+        postRequest({ ...VALID_BODY, turnstileToken: "good-token" }),
+      ).then((r) => {
+        res = r;
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(res).toBeDefined();
+      expect(res?.status).toBe(503);
+      expect((await (res as Response).json()).error).toBe(
+        TURNSTILE_UNAVAILABLE_MESSAGE,
+      );
+      expect(mockRecordSubmission).not.toHaveBeenCalled();
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("answers a non-JSON siteverify reply with a 503, not a 500", async () => {
+    const gatedPOST = await importGatedPOST();
+    mockFetch.mockResolvedValueOnce(
+      new Response("<html>cloudflare error</html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+    );
+
+    const res = await gatedPOST(
+      postRequest({ ...VALID_BODY, turnstileToken: "good-token" }),
+    );
+
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toBe(TURNSTILE_UNAVAILABLE_MESSAGE);
+    expect(mockRecordSubmission).not.toHaveBeenCalled();
   });
 
   it("accepts the submission once Cloudflare verifies the token", async () => {

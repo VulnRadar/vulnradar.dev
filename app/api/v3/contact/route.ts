@@ -9,14 +9,21 @@ import {
   contactEmail,
   sendEmail,
 } from "@/lib/email/email";
-import { TURNSTILE_ENABLED } from "@/lib/config/constants";
+import { SUPPORT_EMAIL, TURNSTILE_ENABLED } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import {
+  ApiResponse,
   isValidEmailAddress,
   readJsonObject,
   withErrorHandling,
 } from "@/lib/api/api-utils";
+import { verifyTurnstile } from "@/lib/auth/turnstile";
+import {
+  CONTACT_NAME_MAX,
+  CONTACT_SUBJECT_MAX,
+} from "@/lib/support/contact-limits";
+import { pluralize } from "@/lib/ui/plural";
 import { logError } from "@/lib/logging/log";
 
 // One label per category the form actually offers (components/contact/
@@ -35,6 +42,38 @@ const CATEGORY_LABELS: Record<string, string> = {
   staff_application: "Staff Application",
   feedback: "Feedback",
 };
+
+/**
+ * The label for a category the sender picked. Object.hasOwn rather than a bare
+ * index: CATEGORY_LABELS is a plain object, so "constructor" or "toString"
+ * resolved to an Object.prototype function, which is truthy, skipped the
+ * "Other" fallback and went to the email builders as the category.
+ */
+function categoryLabelFor(category: string): string {
+  return Object.hasOwn(CATEGORY_LABELS, category)
+    ? CATEGORY_LABELS[category]
+    : "Other";
+}
+
+/**
+ * The fields the sender types, in the order the form shows them, so the
+ * first one missing or too long is the first one they would look at.
+ */
+const REQUIRED_FIELDS = [
+  ["name", "Name"],
+  ["email", "Email"],
+  ["subject", "Subject"],
+  ["message", "Message"],
+  ["category", "Category"],
+] as const;
+
+/**
+ * "Message is too long." gave neither the field, the limit nor how far over
+ * it was, on the form a security reporter is most likely to write at length.
+ */
+function tooLongMessage(noun: string, length: number, limit: number): string {
+  return `Your ${noun} is ${pluralize(length, "character")}; the limit is ${limit}. Shorten it or email ${SUPPORT_EMAIL}.`;
+}
 
 function asTrimmedString(value: unknown): string | null {
   if (typeof value !== "string") {
@@ -101,50 +140,30 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const parsed = await readJsonObject(request);
   if (!parsed.ok) return parsed.response;
   const body = parsed.data;
-  const name = asTrimmedString(body.name);
-  const email = asTrimmedString(body.email);
-  const subject = asTrimmedString(body.subject);
-  const message = asTrimmedString(body.message);
-  const category = asTrimmedString(body.category);
-  const turnstileToken = asTrimmedString(body.turnstileToken);
+  const fields = {
+    name: asTrimmedString(body.name),
+    email: asTrimmedString(body.email),
+    subject: asTrimmedString(body.subject),
+    message: asTrimmedString(body.message),
+    category: asTrimmedString(body.category),
+  };
 
-  // Verify Turnstile token only if enabled
   if (TURNSTILE_ENABLED) {
-    if (!turnstileToken) {
-      return NextResponse.json(
-        { error: "Captcha verification required." },
-        { status: 400 },
-      );
-    }
-
-    const turnstileRes = await fetch(
-      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          secret: process.env.TURNSTILE_SECRET_KEY,
-          response: turnstileToken,
-          remoteip: ip,
-        }),
-      },
+    const captcha = await verifyTurnstile(
+      asTrimmedString(body.turnstileToken),
+      ip,
     );
-
-    const turnstileData = await turnstileRes.json();
-    if (!turnstileData.success) {
-      return NextResponse.json(
-        { error: "Captcha verification failed. Please try again." },
-        { status: 400 },
-      );
-    }
+    if (!captcha.ok) return ApiResponse.error(captcha.error, captcha.status);
   }
 
-  if (!name || !email || !subject || !message || !category) {
-    return NextResponse.json(
-      { error: "All fields are required." },
-      { status: 400 },
-    );
+  for (const [key, label] of REQUIRED_FIELDS) {
+    if (!fields[key]) {
+      return ApiResponse.badRequest(`${label} is required.`);
+    }
   }
+  const { name, email, subject, message, category } = fields as {
+    [K in keyof typeof fields]: string;
+  };
 
   const normalizedEmail = email.trim().toLowerCase();
   // Validate the address shape before we send anything. This route emails a
@@ -159,26 +178,22 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       { status: 400 },
     );
   }
-  const categoryLabel = CATEGORY_LABELS[category] || "Other";
+  const categoryLabel = categoryLabelFor(category);
 
   const contactMessageMaxLength = await getSetting(
     "CONTACT_MESSAGE_MAX_LENGTH",
   );
-  if (
-    name.length > 120 ||
-    subject.length > 160 ||
-    message.length > contactMessageMaxLength
-  ) {
-    return NextResponse.json(
-      { error: "Message is too long." },
-      { status: 400 },
-    );
+  const lengthChecks = [
+    ["name", name.length, CONTACT_NAME_MAX],
+    ["subject", subject.length, CONTACT_SUBJECT_MAX],
+    ["message", message.length, contactMessageMaxLength],
+  ] as const;
+  for (const [noun, length, limit] of lengthChecks) {
+    if (length > limit) {
+      return ApiResponse.badRequest(tooLongMessage(noun, length, limit));
+    }
   }
 
-  const noreplyEmail =
-    process.env.SMTP_FROM ||
-    process.env.SMTP_USER ||
-    (await getSetting("NOREPLY_EMAIL"));
   const confirmationPayload = contactConfirmationEmail({
     category: categoryLabel,
   });
@@ -224,9 +239,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const sendEmails = async () => {
     // allSettled, so each message is attempted and judged on its own. The
     // staff copy deliberately has no replyTo and none of the sender's text:
-    // see contactEmail.
+    // see contactEmail. It goes to the support address: it used to go to the
+    // no-reply sender, a mailbox nobody reads, so a security report surfaced
+    // only when someone happened to open the admin contact inbox.
     const [staff, confirmation] = await Promise.allSettled([
-      sendEmail({ to: noreplyEmail, ...emailPayload }),
+      sendEmail({ to: SUPPORT_EMAIL, ...emailPayload }),
       sendEmail({ to: normalizedEmail, ...confirmationPayload }),
     ]);
     await recordContactEmailOutcome(
