@@ -46,6 +46,7 @@ import {
   useCopyFeedback,
   CopiedAnnouncement,
 } from "@/components/shared/copy-feedback";
+import { pluralize } from "@/lib/ui/plural";
 
 // The API issues this many backup codes per set. Kept as one named value so
 // the copy and the progress readout cannot drift apart.
@@ -176,6 +177,21 @@ export const EMPTY_PASSWORD_DRAFT: PasswordDraft = {
 };
 
 /** The sentence that keeps the password dialog open, or null when it can save. */
+
+/**
+ * What Sign out everywhere says once it worked. API keys are not sessions and
+ * keep working, which is worth saying to someone signing out everywhere
+ * because they suspect a leak, so the count DELETE /auth/sessions reports is
+ * named.
+ */
+export function signedOutEverywhereMessage(activeApiKeys: number): string {
+  const done = "All sessions signed out.";
+  const next = "Redirecting to sign in.";
+  if (!(activeApiKeys > 0)) return `${done} ${next}`;
+  const one = activeApiKeys === 1;
+  return `${done} ${pluralize(activeApiKeys, "API key")} still ${one ? "works" : "work"}: revoke ${one ? "it" : "them"} on the API keys page if ${one ? "it" : "they"} may have leaked. ${next}`;
+}
+
 export function passwordDraftProblem(
   draft: PasswordDraft,
   hasPassword: boolean,
@@ -1151,7 +1167,11 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
         // stale cache and flashes a signed-in shell for an account whose
         // sessions were just revoked.
         clearAuthCache();
-        setSuccess("All sessions signed out. Redirecting to sign in.");
+        const data = (await res.json().catch(() => null)) as {
+          activeApiKeys?: unknown;
+        } | null;
+        const keys = Number(data?.activeApiKeys ?? 0);
+        setSuccess(signedOutEverywhereMessage(keys));
         setShowLogoutModal(false);
         // A full document load on purpose, not router.push: this tab's
         // in-memory state belonged to a session that was just revoked.
@@ -1837,8 +1857,9 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
         description={
           <>
             This ends every session for {user?.email || "your account"},
-            including the one you are using now. You will land on the sign-in
-            page and need your password again on every device.
+            including the one you are using now, and forgets every remembered
+            device, so each one asks for two-step sign-in again. API keys keep
+            working: revoke them on the API keys page.
           </>
         }
         confirmLabel="Sign out everywhere"

@@ -1182,6 +1182,23 @@ describe("the rest of the tab", () => {
     );
   });
 
+  it("says remembered devices are forgotten and API keys keep working", () => {
+    // DELETE /auth/sessions also clears trusted devices and reports how many
+    // API keys are still live; someone signing out everywhere over a leak
+    // needs to know the keys were not part of it.
+    expect(SOURCE).toContain("forgets every remembered");
+    expect(SOURCE).toContain("API keys keep");
+    expect(tab.signedOutEverywhereMessage(0)).toBe(
+      "All sessions signed out. Redirecting to sign in.",
+    );
+    expect(tab.signedOutEverywhereMessage(1)).toContain(
+      "1 API key still works: revoke it",
+    );
+    expect(tab.signedOutEverywhereMessage(3)).toContain(
+      "3 API keys still work: revoke them",
+    );
+  });
+
   it("keeps the sign-out-everywhere ConfirmDialog and the per-row confirms", () => {
     expect(SOURCE).toContain('title="Sign out everywhere?"');
     expect(SOURCE).toContain('title: "Sign out this session?"');
