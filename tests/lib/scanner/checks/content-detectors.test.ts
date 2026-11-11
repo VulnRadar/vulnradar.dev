@@ -139,6 +139,21 @@ describe("document-cookie-access", () => {
     expect(run("document-cookie-access", script(code))).toContain(name);
   });
 
+  it("the script-readable double-submit CSRF cookie is the design, not a finding", () => {
+    expect(
+      run(
+        "document-cookie-access",
+        script(`var t = document.cookie.match(/XSRF-TOKEN=([^;]+)/);`),
+      ),
+    ).toBeNull();
+    expect(
+      run(
+        "document-cookie-access",
+        script(`document.cookie = "csrftoken=" + t;`),
+      ),
+    ).toBeNull();
+  });
+
   it("does not guess at a cookie whose name is computed", () => {
     expect(
       run(
@@ -206,6 +221,15 @@ describe("autocomplete-sensitive", () => {
     expect(
       run("autocomplete-sensitive", `<input name="cc_cvv">`),
     ).not.toBeNull();
+  });
+
+  it("a payment-method radio or hidden input named for the card holds no card number", () => {
+    expect(
+      run(
+        "autocomplete-sensitive",
+        `<input type="radio" id="credit-card" name="payment" value="card"><input type="hidden" name="card_number">`,
+      ),
+    ).toBeNull();
   });
 
   it("a card field that names its autocomplete token is fine", () => {

@@ -52,6 +52,10 @@ import {
 const CARD_FIELD_NAME =
   /(?:^|[^a-z0-9])(?:card[-_ ]?num(?:ber)?|cc[-_ ]?num(?:ber)?|credit[-_ ]?card(?:[-_ ]?num(?:ber)?)?|cvv|cvc|cc[-_ ]?csc)(?:[^a-z0-9]|$)/i;
 
+/** Input types that cannot hold a typed card number. */
+const NON_TEXT_INPUT_TYPE =
+  /^\s*(?:radio|checkbox|hidden|submit|button|image|reset)\s*$/i;
+
 /**
  * What follows `document.cookie` when it is written or searched against a
  * literal: `= "NAME=...`, `.indexOf("NAME=")`, `.match(/NAME=/)`. Group 1 is
@@ -80,6 +84,10 @@ function cookieNameAfter(rest: string): string | null {
 }
 
 function isSensitiveCookieName(name: string): boolean {
+  // The double-submit CSRF cookie (Angular's XSRF-TOKEN, Django's csrftoken)
+  // has to be readable by script, so it is the opposite of a finding, the same
+  // call sensitive-meta-tags makes for the csrf meta tag.
+  if (/csrf|xsrf/i.test(name)) return false;
   const words = name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
   // PHPSESSID, JSESSIONID and ASPSESSIONID are one run with no separator.
   return SENSITIVE_COOKIE_WORD.test(words) || /sess(?:ion)?id$/.test(words);
@@ -479,7 +487,10 @@ const rawDetectors: Record<string, DetectFn> = {
     // offer the saved card and an assistive tool can say what the field is.
     const noAC = tagsWith(body, "input", /\b(?:name|id)\s*=/i).filter((tag) => {
       const attrs = startTagAttributes(tag);
+      // A radio or checkbox that picks "credit-card" as the payment method,
+      // and a button or hidden input, holds no card number to autofill.
       return (
+        !NON_TEXT_INPUT_TYPE.test(attrs.type ?? "") &&
         CARD_FIELD_NAME.test(`${attrs.name ?? ""} ${attrs.id ?? ""}`) &&
         !("autocomplete" in attrs)
       );
