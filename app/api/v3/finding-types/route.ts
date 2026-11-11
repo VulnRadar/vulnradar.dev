@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { allCheckDefs, getCategoryCounts } from "@/lib/scanner/registry";
 import { ASYNC_CHECKS } from "@/lib/scanner/async-check-catalog";
 import { getCheckEmission } from "@/lib/scanner/check-emission";
-import { versioned } from "@/lib/api/versioned";
+import { versioned } from "@/lib/api/v4/wrap";
 
 interface FindingTypeRow {
   id: string;
