@@ -26,7 +26,7 @@ vi.mock("@/components/shared/turnstile-widget", () => ({
   TurnstileWidget: () => null,
 }));
 
-const { ShareTicketDialog } =
+const { ShareTicketDialog, droppedShareSentence } =
   await import("@/components/contact/support-tickets");
 
 const ALEX = { userId: 2, email: "alex@example.com", name: "Alex" };
@@ -120,5 +120,39 @@ describe("ShareTicketDialog after a partial failure", () => {
     fireEvent.click(saveButton());
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(sent.filter((r) => r.method === "POST")).toHaveLength(2);
+  });
+});
+
+describe("droppedShareSentence", () => {
+  const add = (entry: typeof ALEX) => ({
+    kind: "add" as const,
+    userId: entry.userId,
+    label: `${entry.name} (${entry.email})`,
+  });
+
+  it("does not call someone the reloaded lists show as shared off the team", () => {
+    // Bea left the eligible list because she is shared now (another tab
+    // shared her), so "not shared with Bea" would be false.
+    const run = {
+      done: [],
+      failed: { op: add(ALEX), error: "Could not share the ticket." },
+      skipped: [add(BEA)],
+    };
+    expect(
+      droppedShareSentence(
+        run,
+        { added: new Set([ALEX.userId]) },
+        { shares: [BEA], eligible: [ALEX] },
+      ),
+    ).toBeNull();
+    expect(
+      droppedShareSentence(
+        run,
+        { added: new Set([ALEX.userId]) },
+        { shares: [], eligible: [ALEX] },
+      ),
+    ).toBe(
+      "Not shared with Bea (bea@example.com), who is no longer on your team.",
+    );
   });
 });

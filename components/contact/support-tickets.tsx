@@ -914,13 +914,18 @@ export function keepListedStage(
 /**
  * Names the skipped adds whose person dropped out of the lists, which the
  * failure message only counted. The op that failed is already named there.
+ * Someone the reloaded lists show as shared (from another tab, say) left the
+ * eligible list for that reason, not because they left the team.
  */
 export function droppedShareSentence(
   run: ShareRunResult,
   kept: { added: ReadonlySet<number> },
+  lists: ShareLists,
 ): string | null {
+  const shared = new Set(lists.shares.map((s) => s.userId));
   const gone = run.skipped.filter(
-    (op) => op.kind === "add" && !kept.added.has(op.userId),
+    (op) =>
+      op.kind === "add" && !kept.added.has(op.userId) && !shared.has(op.userId),
   );
   if (gone.length === 0) return null;
   const who = gone.map((op) => op.label).join(", ");
@@ -1006,7 +1011,7 @@ export function ShareTicketDialog({
         const kept = keepListedStage(left, fresh);
         setAdded(kept.added);
         setRemoved(kept.removed);
-        const dropped = droppedShareSentence(run, kept);
+        const dropped = droppedShareSentence(run, kept, fresh);
         return dropped ? `${message} ${dropped}` : message;
       }}
     >
