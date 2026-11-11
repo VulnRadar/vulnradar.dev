@@ -70,6 +70,11 @@ import {
 import { userMeetsScheduleFrequency } from "@/lib/billing/plan-limits";
 import { checkAccessRules } from "./access-rules";
 import {
+  checkTargetScanLimit,
+  targetScanLimitMessage,
+} from "@/lib/rate-limiting/target-limits";
+import { isUrlOwnedByUser } from "@/lib/domains/scope";
+import {
   canMakeRequest,
   incrementDailyCountCapped,
 } from "@/lib/rate-limiting/daily-limits";
@@ -144,6 +149,7 @@ export interface ProcessOutcome {
     | "plan_gated"
     | "quota_gated"
     | "concurrency_gated"
+    | "target_gated"
     | "error";
   detail?: string;
 }
@@ -354,6 +360,26 @@ export async function processSchedule(
       const reason = accessCheck.reason || "Target blocked by access rules";
       await deactivateForUnsafeTarget(schedule, reason);
       return { id: schedule.id, outcome: "blocked", detail: reason };
+    }
+
+    // abuse: the per-target bucket every manual scan of this site counts
+    // against, shared across accounts. A schedule never consulted it, so an
+    // hourly schedule on each of several accounts was traffic at one site the
+    // manual routes would have refused. A verified owner of the domain is
+    // exempt, as on every route. Over the limit is transient, so the run is
+    // deferred to its next occurrence and the schedule stays active.
+    // ref: AUDIT-012#abuse-05
+    const targetLimit = await checkTargetScanLimit(normalizedUrl);
+    if (
+      !targetLimit.allowed &&
+      !(await isUrlOwnedByUser(normalizedUrl, schedule.user_id))
+    ) {
+      await rescheduleNext(schedule, now);
+      return {
+        id: schedule.id,
+        outcome: "target_gated",
+        detail: targetScanLimitMessage(targetLimit.rootDomain),
+      };
     }
 
     // billing: check the daily scan quota, exactly as every manual path
@@ -668,6 +694,7 @@ export interface RunDueSchedulesStats {
   planGated: number;
   quotaGated: number;
   concurrencyGated: number;
+  targetGated: number;
   errors: number;
 }
 
@@ -678,6 +705,7 @@ const EMPTY_STATS: RunDueSchedulesStats = {
   planGated: 0,
   quotaGated: 0,
   concurrencyGated: 0,
+  targetGated: 0,
   errors: 0,
 };
 
@@ -753,6 +781,7 @@ export async function runDueSchedules(): Promise<RunDueSchedulesStats> {
     planGated: count("plan_gated"),
     quotaGated: count("quota_gated"),
     concurrencyGated: count("concurrency_gated"),
+    targetGated: count("target_gated"),
     errors: count("error"),
   };
 }
@@ -761,7 +790,8 @@ function formatStats(stats: RunDueSchedulesStats): string {
   return (
     `${stats.scanned} scanned, ${stats.blocked} disabled (unsafe target), ` +
     `${stats.planGated} deferred (plan), ${stats.quotaGated} deferred (daily quota), ` +
-    `${stats.concurrencyGated} deferred (at capacity), ${stats.errors} errored ` +
+    `${stats.concurrencyGated} deferred (at capacity), ` +
+    `${stats.targetGated} deferred (target rate limit), ${stats.errors} errored ` +
     `(of ${stats.processed} due)`
   );
 }

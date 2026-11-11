@@ -125,6 +125,21 @@ const mockIncrementDailyCountCapped =
 vi.mock("@/lib/scanner/access-rules", () => ({
   checkAccessRules: (url: string) => mockCheckAccessRules(url),
 }));
+
+// The per-target bucket every manual scan counts against, and the
+// verified-owner exemption from it. Allowed by default.
+const mockCheckTargetScanLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/target-limits", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/lib/rate-limiting/target-limits")
+  >()),
+  checkTargetScanLimit: (...args: unknown[]) =>
+    mockCheckTargetScanLimit(...args),
+}));
+const mockIsUrlOwnedByUser = vi.fn();
+vi.mock("@/lib/domains/scope", () => ({
+  isUrlOwnedByUser: (...args: unknown[]) => mockIsUrlOwnedByUser(...args),
+}));
 vi.mock("@/lib/rate-limiting/daily-limits", () => ({
   canMakeRequest: (userId: number) => mockCanMakeRequest(userId),
   incrementDailyCountCapped: (userId: number, limit: number) =>
@@ -204,6 +219,14 @@ beforeEach(() => {
   mockGetSettings.mockResolvedValue({});
   mockCheckAccessRules.mockReset();
   mockCheckAccessRules.mockResolvedValue({ allowed: true });
+  mockCheckTargetScanLimit.mockReset();
+  mockCheckTargetScanLimit.mockResolvedValue({
+    allowed: true,
+    retryAfterSeconds: 0,
+    rootDomain: "example.com",
+  });
+  mockIsUrlOwnedByUser.mockReset();
+  mockIsUrlOwnedByUser.mockResolvedValue(false);
   mockCanMakeRequest.mockReset();
   mockCanMakeRequest.mockResolvedValue({ allowed: true, limit: 100 });
   mockIncrementDailyCountCapped.mockReset();
@@ -870,6 +893,60 @@ describe("processSchedule", () => {
     expect(rescheduleCall).toBeDefined();
   });
 
+  it("defers a run whose target is over the per-target limit, without scanning, charging or deactivating", async () => {
+    const schedule = makeSchedule({ id: 33, user_id: 79 });
+    mockCheckTargetScanLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 900,
+      rootDomain: "example.com",
+    });
+
+    const result = await processSchedule(schedule, new Date());
+
+    expect(result.id).toBe(33);
+    expect(result.outcome).toBe("target_gated");
+    expect(result.detail).toMatch(/example\.com is temporarily rate limited/);
+    expect(mockIsUrlOwnedByUser).toHaveBeenCalledWith(
+      expect.stringContaining("example.com"),
+      79,
+    );
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+    expect(mockReserveConcurrentScanSlot).not.toHaveBeenCalled();
+    expect(mockIncrementDailyCountCapped).not.toHaveBeenCalled();
+    expect(
+      mockPoolQuery.mock.calls.find(([sql]) =>
+        String(sql).includes("SET active = false"),
+      ),
+    ).toBeUndefined();
+    expect(
+      mockPoolQuery.mock.calls.find(([sql]) =>
+        String(sql).includes("SET next_run_at = $1 WHERE id = $2"),
+      ),
+    ).toBeDefined();
+  });
+
+  it("lets a verified owner's schedule run past the per-target limit", async () => {
+    const schedule = makeSchedule({ id: 34, user_id: 80 });
+    mockCheckTargetScanLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 900,
+      rootDomain: "example.com",
+    });
+    mockIsUrlOwnedByUser.mockResolvedValue(true);
+
+    const result = await processSchedule(schedule, new Date());
+
+    expect(result.outcome).toBe("scanned");
+    expect(mockExecuteScan).toHaveBeenCalled();
+  });
+
+  it("does not ask about ownership when the target is under its limit", async () => {
+    await processSchedule(makeSchedule({ id: 35 }), new Date());
+
+    expect(mockCheckTargetScanLimit).toHaveBeenCalled();
+    expect(mockIsUrlOwnedByUser).not.toHaveBeenCalled();
+  });
+
   it("stops scanning a target an admin blocklisted after the schedule was created", async () => {
     const schedule = makeSchedule({ id: 32 });
     mockCheckAccessRules.mockResolvedValue({
@@ -1092,6 +1169,7 @@ describe("runDueSchedules (end to end: claim + bounded-concurrency processing)",
       planGated: 0,
       quotaGated: 0,
       concurrencyGated: 0,
+      targetGated: 0,
       errors: 0,
     });
     // The claim transaction never even opened, so no due row was soft-locked
@@ -1118,6 +1196,7 @@ describe("runDueSchedules (end to end: claim + bounded-concurrency processing)",
       planGated: 0,
       quotaGated: 0,
       concurrencyGated: 0,
+      targetGated: 0,
       errors: 0,
     });
     // SCHEDULE_WORKER_CLAIM_LIMIT is read unconditionally -- it bounds the
@@ -1211,6 +1290,7 @@ describe("runDueSchedules (end to end: claim + bounded-concurrency processing)",
       planGated: 0,
       quotaGated: 0,
       concurrencyGated: 0,
+      targetGated: 0,
       errors: 1,
     });
     // Only the safe, non-erroring schedule actually reached executeScan.
@@ -1221,12 +1301,18 @@ describe("runDueSchedules (end to end: claim + bounded-concurrency processing)",
   // which every due schedule was over quota logged "0 scanned, 0 disabled,
   // 0 deferred, 0 errored (of N due)" -- which reads as a broken worker, not
   // as N accounts at their cap. Every outcome now has a counter.
-  it("counts a quota-gated and a capacity-gated schedule instead of dropping them from the tally", async () => {
+  it("counts a quota-gated, a capacity-gated and a target-gated schedule instead of dropping them from the tally", async () => {
     mockGetSetting.mockResolvedValue(5);
     const claimed = [
       makeSchedule({ id: 1, user_id: 1 }),
       makeSchedule({ id: 2, user_id: 2 }),
+      makeSchedule({ id: 3, user_id: 3, url: "https://busy.test" }),
     ];
+    mockCheckTargetScanLimit.mockImplementation(async (url: string) => ({
+      allowed: !url.includes("busy.test"),
+      retryAfterSeconds: 60,
+      rootDomain: new URL(url).hostname,
+    }));
     mockClientQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("FOR UPDATE SKIP LOCKED")) return { rows: claimed };
       return { rows: [] };
@@ -1248,12 +1334,13 @@ describe("runDueSchedules (end to end: claim + bounded-concurrency processing)",
     const stats = await runDueSchedules();
 
     expect(stats).toEqual({
-      processed: 2,
+      processed: 3,
       scanned: 0,
       blocked: 0,
       planGated: 0,
       quotaGated: 1,
       concurrencyGated: 1,
+      targetGated: 1,
       errors: 0,
     });
     expect(mockExecuteScan).not.toHaveBeenCalled();
