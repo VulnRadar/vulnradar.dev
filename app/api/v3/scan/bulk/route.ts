@@ -53,7 +53,7 @@ import {
 } from "@/lib/scanner/failure-messages";
 import { DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
 import { logError } from "@/lib/logging/log";
-import { withErrorHandling } from "@/lib/api/api-utils";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
@@ -223,7 +223,9 @@ async function createBulkScan(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const { urls, isPublic, teamId, teamIds } = await request.json();
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { urls, isPublic, teamId, teamIds } = parsed.data;
 
   if (!Array.isArray(urls) || urls.length === 0) {
     return NextResponse.json(

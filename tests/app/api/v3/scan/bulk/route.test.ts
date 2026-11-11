@@ -458,6 +458,22 @@ describe("POST /api/v3/scan/bulk - auth", () => {
 });
 
 describe("POST /api/v3/scan/bulk - request validation", () => {
+  it.each(["{not json", "null", "[]", '"https://example.com"'])(
+    "answers a body that is not a JSON object (%s) with a 400, not a 500",
+    async (body) => {
+      const res = await POST(
+        new NextRequest("http://localhost/api/v3/scan/bulk", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body,
+        }),
+      );
+      expect(res.status).toBe(400);
+      expect((await res.json()).code).toBe("INVALID_REQUEST");
+      expect(insertedRows()).toHaveLength(0);
+    },
+  );
+
   it("rejects a non-array urls field", async () => {
     const res = await POST(postRequest({ urls: "https://example.com" }));
     expect(res.status).toBe(400);
