@@ -284,9 +284,12 @@ export default function TeamsPage() {
             <InlineCode>DELETE /api/v3/teams/members</InlineCode> removes a
             member (by <InlineCode>userId</InlineCode>) or cancels a pending
             invite (by <InlineCode>inviteId</InlineCode>). A non-owner removing
-            their own <InlineCode>userId</InlineCode> leaves the team. The owner
-            cannot leave until they hand the team over: choose Transfer
-            ownership in the team&apos;s menu, or send{" "}
+            their own <InlineCode>userId</InlineCode> leaves the team. Leaving
+            or being removed stops sharing that member&apos;s verified domains,
+            scheduled scans and webhooks with the team in the same step, so
+            nobody on it keeps a scan grant through a domain whose owner has
+            gone. The owner cannot leave until they hand the team over: choose
+            Transfer ownership in the team&apos;s menu, or send{" "}
             <InlineCode>PATCH /api/v3/teams</InlineCode> with{" "}
             <InlineCode>teamId</InlineCode> and{" "}
             <InlineCode>newOwnerId</InlineCode>. The new owner has to be on the
