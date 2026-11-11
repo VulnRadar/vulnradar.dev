@@ -30,7 +30,7 @@ const rateLimitCounts = new Map<string, number>();
 
 let sessionRow: Record<string, unknown> | null = null;
 let totpEnabledRow: { totp_enabled: boolean } | null = null;
-let passwordHashRow: { password_hash: string } | null = null;
+let passwordHashRow: { password_hash: string | null } | null = null;
 let storedTotpSecretRow: { totp_secret: string | null } | null = null;
 
 let totpSecretUpdateCalls: unknown[][] = [];
@@ -110,6 +110,8 @@ const { decryptApiKey } = await import("@/lib/auth/crypto");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
 const { GET, POST } = await import("@/app/api/v3/auth/2fa/setup/route");
+const { STEP_UP_COOKIE, signStepUpToken } = await import("@/lib/auth/reauth");
+const { hashSessionId } = await import("@/lib/auth/auth");
 
 const REAL_PASSWORD = "Qv8&Trmzln42Xq";
 let realPasswordHash: string;
@@ -317,6 +319,31 @@ describe("POST /api/v3/auth/2fa/setup", () => {
     expect(res.status).toBe(403);
     expect(enableUpdateCalls).toHaveLength(0);
   });
+
+  // An authenticator enrolled by whoever holds a stolen session would lock
+  // the owner out, so an account with no password steps up by email first.
+  it("asks an OAuth-only account for the mailed step-up, not its session alone", async () => {
+    login(1);
+    passwordHashRow = { password_hash: null };
+    const { generateSecret } = await import("@/lib/auth/totp");
+    const secret = generateSecret();
+    storedTotpSecretRow = {
+      totp_secret: (await import("@/lib/auth/crypto")).encryptApiKey(secret),
+    };
+
+    const refused = await POST(req("POST", { code: computeTotpCode(secret) }));
+    expect(refused.status).toBe(403);
+    expect((await refused.json()).stepUp).toBe(true);
+    expect(enableUpdateCalls).toHaveLength(0);
+
+    cookieState.set(
+      STEP_UP_COOKIE,
+      signStepUpToken(1, hashSessionId("session-1")),
+    );
+    const res = await POST(req("POST", { code: computeTotpCode(secret) }));
+    expect(res.status).toBe(200);
+    expect(enableUpdateCalls).toHaveLength(1);
+  }, 20_000);
 
   it("rejects a malformed code", async () => {
     login();

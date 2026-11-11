@@ -700,6 +700,33 @@ describe("POST /api/v3/auth/2fa/verify", () => {
     expect(cleared).toContain("discord_pending_login=;");
   });
 
+  // The other way round is the order this route used to get wrong: it took
+  // the provider cookie whenever one was present, however stale, while
+  // email-send mailed the password sign-in.
+  it("checks the code against a newer password sign-in over an older OAuth one", async () => {
+    userRow = {
+      totp_secret: null,
+      totp_enabled: true,
+      backup_codes: null,
+      two_factor_method: "email",
+    };
+    await emailCode(9, "654321", "login");
+    const now = Date.now();
+
+    const res = await POST(
+      verifyRequest(
+        { code: "654321" },
+        {
+          [AUTH_2FA_PENDING_COOKIE]: signedPending(2, now),
+          oauth_pending_login: signedPending(1, now - 60_000),
+        },
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(sessionInsertCalls[0][1]).toBe(2);
+  });
+
   it("refuses a step-up code at the sign-in step", async () => {
     userRow = {
       totp_secret: null,
