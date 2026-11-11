@@ -7,7 +7,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   SkeletonRegion,
   AdminPanelHeader,
-  AdminPasswordConfirmDialog,
   FactPanelSkeleton,
   StatusPill,
   StatusValue,
@@ -28,6 +27,11 @@ import { cn } from "@/lib/ui/utils";
 import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { InlineAlert } from "@/components/shared/inline-alert";
+import {
+  AdminReauthDialog,
+  meHasPassword,
+} from "@/components/admin/shared/admin-reauth-dialog";
+import { useAuth } from "@/components/providers/auth-provider";
 import { API } from "@/lib/config/client-constants";
 
 interface UpdaterStatus {
@@ -160,6 +164,7 @@ export function UpdaterManager() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [job, setJob] = useState<UpdaterJob | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const { me } = useAuth();
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -231,15 +236,14 @@ export function UpdaterManager() {
     hiddenDelayMs: 10_000,
   });
 
-  const startUpdate = async (password: string) => {
+  const startUpdate = async (password: string | undefined) => {
     try {
       const res = await fetch(`${API.ADMIN}/updater/apply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          currentAdminPassword: password,
-          targetVersion: status?.latest || "latest",
-        }),
+        body: JSON.stringify(
+          applyUpdateBody(password, status?.latest || "latest"),
+        ),
       });
       const data = await res.json();
       if (res.ok) {
@@ -560,15 +564,58 @@ export function UpdaterManager() {
         </Card>
       )}
 
-      <AdminPasswordConfirmDialog
+      <ApplyUpdateDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Apply update"
-        description={`This downloads, verifies, and installs v${status?.latest ?? "the latest release"} over this app's files, then runs npm ci and npm run db:migrate (backing up the database first). It does not build or restart the server; you do that yourself once it finishes. Re-enter your password to confirm.`}
-        confirmLabel="Apply update"
-        variant="destructive"
+        latest={status?.latest ?? null}
+        hasPassword={meHasPassword(me)}
         onConfirm={startUpdate}
       />
     </div>
+  );
+}
+
+/**
+ * POST /api/v3/admin/updater/apply. An account with no password confirms
+ * with a mailed code, which the server reads from its step-up cookie, so no
+ * currentAdminPassword key is sent for it.
+ */
+export function applyUpdateBody(
+  currentAdminPassword: string | undefined,
+  targetVersion: string,
+) {
+  return {
+    ...(currentAdminPassword === undefined ? {} : { currentAdminPassword }),
+    targetVersion,
+  };
+}
+
+/** The re-auth gate in front of an update, password or mailed code. */
+export function ApplyUpdateDialog({
+  open,
+  onOpenChange,
+  latest,
+  hasPassword,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  latest: string | null;
+  hasPassword: boolean;
+  onConfirm: (
+    password: string | undefined,
+  ) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  return (
+    <AdminReauthDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Apply update"
+      description={`This downloads, verifies, and installs v${latest ?? "the latest release"} over this app's files, then runs npm ci and npm run db:migrate (backing up the database first). It does not build or restart the server; you do that yourself once it finishes.`}
+      confirmLabel="Apply update"
+      variant="destructive"
+      hasPassword={hasPassword}
+      onConfirm={onConfirm}
+    />
   );
 }

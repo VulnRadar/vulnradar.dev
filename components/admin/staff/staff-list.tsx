@@ -53,12 +53,15 @@ import {
   DataTableSkeleton,
   RowListSkeleton,
   StatBarSkeleton,
-  AdminPasswordConfirmDialog,
   AdminPanelHeader,
   StatusPill,
   type SortDirection,
 } from "@/components/admin/shared";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import {
+  AdminReauthDialog,
+  meHasPassword,
+} from "@/components/admin/shared/admin-reauth-dialog";
 import { formatRelativeTime } from "@/components/admin/utils";
 import {
   FilterChips,
@@ -122,6 +125,23 @@ interface PendingInvite {
  */
 export function canManageStaffInvites(role: string | null | undefined) {
   return getRoleLevel(role) >= STAFF_ROLE_HIERARCHY.admin;
+}
+
+/**
+ * POST /api/v3/admin/staff-invites. An account with no password confirms with
+ * a mailed code instead, which the server reads from its step-up cookie, so
+ * no currentAdminPassword key is sent at all for it.
+ */
+export function staffInviteBody(
+  email: string,
+  role: string,
+  currentAdminPassword: string | undefined,
+) {
+  return {
+    email: email.trim(),
+    role,
+    ...(currentAdminPassword === undefined ? {} : { currentAdminPassword }),
+  };
 }
 
 /**
@@ -268,7 +288,7 @@ export function StaffList({
   }
 
   async function handleSendInvite(
-    currentAdminPassword: string,
+    currentAdminPassword: string | undefined,
   ): Promise<{ ok: boolean; error?: string }> {
     setInviteError("");
     setInviteSuccess("");
@@ -277,11 +297,9 @@ export function StaffList({
       const res = await fetch(`${API.ADMIN}/staff-invites`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: inviteEmail.trim(),
-          role: inviteRole,
-          currentAdminPassword,
-        }),
+        body: JSON.stringify(
+          staffInviteBody(inviteEmail, inviteRole, currentAdminPassword),
+        ),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -1430,14 +1448,15 @@ export function StaffList({
         onCancel={() => setRevokeTarget(null)}
       />
 
-      <AdminPasswordConfirmDialog
+      <AdminReauthDialog
         open={invitePasswordOpen}
         onOpenChange={setInvitePasswordOpen}
         title="Send staff invite"
         description={`This emails ${inviteEmail.trim() || "this address"} a link that grants the ${
           STAFF_ROLE_LABELS[inviteRole] || inviteRole
-        } role. Re-enter your password to confirm.`}
+        } role.`}
         confirmLabel="Send invite"
+        hasPassword={meHasPassword(me)}
         onConfirm={handleSendInvite}
       />
     </>
