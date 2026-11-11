@@ -2942,6 +2942,64 @@ export function teamDeletedEmail(teamName: string) {
   };
 }
 
+// Sent to both people when a team's owner hands it to another member, from
+// PATCH /api/v3/teams. Not behind a preference: it moves who can delete the
+// team and whose plan pays for its seats, and an owner whose session was used
+// to give their team away must hear about it.
+export function teamOwnershipTransferredEmail({
+  teamName,
+  previousOwner,
+  newOwner,
+  recipient,
+}: {
+  teamName: string;
+  /** How the previous owner is named: their name, or their address. */
+  previousOwner: string;
+  /** How the new owner is named. */
+  newOwner: string;
+  recipient: "previous" | "new";
+}) {
+  const safeTeam = escapeHtml(teamName);
+  const safePrevious = escapeHtml(previousOwner);
+  const safeNew = escapeHtml(newOwner);
+  if (recipient === "new") {
+    return {
+      template: "teamOwnershipTransferred",
+      subject: `You now own ${teamName} on ${APP_NAME}`,
+      preheader: `${previousOwner} handed the team to you and is an admin now.`,
+      text: `${previousOwner} transferred ownership of the team "${teamName}" on ${APP_NAME} to you.\n\nYou can now delete the team or transfer it to another member, and its member limit comes from your plan. ${previousOwner} stays on the team as an admin.\n\nView the team: ${APP_URL}/teams`,
+      html: `
+      ${emailHeading("You own a team now")}
+      ${emailLead(`${emailStrong(safePrevious)} transferred ownership of the team "${safeTeam}" to you.`)}
+      ${emailDetailPanel([
+        { label: "Team", value: safeTeam },
+        { label: "Owner", value: safeNew, accent: "brand" },
+        { label: "Previous owner", value: `${safePrevious}, now an admin` },
+      ])}
+      ${emailParagraph("You can now delete the team or transfer it to another member, and its member limit comes from your plan.")}
+      ${emailButton(`${APP_URL}/teams`, "View the team")}
+    `,
+    };
+  }
+  return {
+    template: "teamOwnershipTransferred",
+    subject: `You transferred ${teamName} to ${newOwner}`,
+    preheader: `You are an admin of the team now. Only ${newOwner} can delete it.`,
+    text: `You transferred ownership of the team "${teamName}" on ${APP_NAME} to ${newOwner}.\n\nYou are an admin of the team now. You keep its scans and its members, but only ${newOwner} can delete the team or transfer it back.\n\nIf you did not do this, change your password and email ${SUPPORT_EMAIL}.`,
+    html: `
+      ${emailHeading("You transferred a team")}
+      ${emailLead(`You transferred ownership of the team "${safeTeam}" to ${emailStrong(safeNew)}.`)}
+      ${emailDetailPanel([
+        { label: "Team", value: safeTeam },
+        { label: "Owner", value: safeNew, accent: "brand" },
+        { label: "Your role", value: "Admin" },
+      ])}
+      ${emailParagraph(`You keep the team's scans and its members, but only ${safeNew} can delete the team or transfer it back.`)}
+      ${emailNote(`If you did not do this, change your password and email ${escapeHtml(SUPPORT_EMAIL)}.`)}
+    `,
+  };
+}
+
 // Sent the first time an address is confirmed. The verification mail covers
 // the request; nothing covered the result, so a new account's first successful
 // action produced silence.

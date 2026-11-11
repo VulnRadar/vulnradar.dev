@@ -8,7 +8,7 @@
  * and connect().
  */
 import { dataUrl, realPng } from "../../../../lib/uploads/_avatar-fixtures";
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const mockQuery = vi.fn();
 const mockConnect = vi.fn();
@@ -78,6 +78,17 @@ vi.mock("@/lib/api/request-utils", () => ({
   getClientIp: vi.fn(async () => "127.0.0.1"),
 }));
 
+// Only the transport is replaced: the templates are real, so a test can read
+// the subject each owner would get.
+const mockSendEmail = vi.fn();
+vi.mock("@/lib/email/email", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/email/email")>();
+  return {
+    ...actual,
+    sendEmail: (...args: unknown[]) => mockSendEmail(...args),
+  };
+});
+
 const { GET, POST, PATCH, DELETE } = await import("@/app/api/v3/teams/route");
 
 function jsonRequest(body: unknown): Request {
@@ -89,6 +100,8 @@ function jsonRequest(body: unknown): Request {
 }
 
 beforeEach(() => {
+  mockSendEmail.mockReset();
+  mockSendEmail.mockResolvedValue({ success: true });
   mockLogAction.mockReset();
   mockLogAction.mockResolvedValue(undefined);
   mockQuery.mockReset();
@@ -749,5 +762,313 @@ describe("DELETE /api/v3/teams", () => {
       String(c[0]).includes("DELETE FROM teams"),
     );
     expect(deleteCall?.[1]).toEqual([1]);
+  });
+});
+
+/**
+ * Team ownership transfer (ux-flows-7, owner decision D7). The members route
+ * told an owner who tried to leave to transfer ownership, and there was no way
+ * to: the only way out was deleting the team for everyone on it.
+ */
+describe("PATCH /api/v3/teams, transferring ownership", () => {
+  function transferRequest(body: unknown): Request {
+    return new Request("http://localhost/api/v3/teams", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  interface Roster {
+    /** team_members of team 1, by user id. */
+    roles: Record<number, string>;
+    /** teams.owner_id as the locked read inside the transaction sees it. */
+    ownerId?: number;
+    /** Pending invites counted against the seat cap. */
+    invites?: number;
+    /** Teams the target already owns. */
+    ownedByTarget?: number;
+  }
+
+  /**
+   * Answers both the pool and the transaction's client by what each statement
+   * asks, so a test states the team as it is and reads back what was written.
+   */
+  function team(roster: Roster) {
+    const users: Record<number, { email: string; name: string }> = {
+      42: { email: "ada@example.com", name: "Ada" },
+      7: { email: "sam@example.com", name: "Sam" },
+      9: { email: "lee@example.com", name: "Lee" },
+    };
+    const answer = async (sql: string, params: unknown[] = []) => {
+      const q = String(sql).replace(/\s+/g, " ").trim();
+      if (q.startsWith("SELECT tm.role, t.name AS team_name")) {
+        const role = roster.roles[params[1] as number];
+        return { rows: role ? [{ role, team_name: "Acme" }] : [] };
+      }
+      if (q.startsWith("SELECT tm.role, u.email, u.name")) {
+        const role = roster.roles[params[1] as number];
+        const user = users[params[1] as number];
+        return { rows: role && user ? [{ role, ...user }] : [] };
+      }
+      if (q.startsWith("SELECT email, name FROM users")) {
+        const user = users[params[0] as number];
+        return { rows: user ? [user] : [] };
+      }
+      if (q.includes("FOR UPDATE")) {
+        return { rows: [{ owner_id: roster.ownerId ?? 42 }] };
+      }
+      if (q.includes("AS seats")) {
+        return {
+          rows: [
+            {
+              seats: Object.keys(roster.roles).length + (roster.invites ?? 0),
+            },
+          ],
+        };
+      }
+      if (q.includes("COUNT(*)") && q.includes("role = $2")) {
+        return { rows: [{ cnt: String(roster.ownedByTarget ?? 0) }] };
+      }
+      if (q.startsWith("UPDATE")) return { rows: [], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    };
+    mockQuery.mockImplementation(answer);
+    mockClientQuery.mockImplementation(answer);
+  }
+
+  const writes = () =>
+    [...mockQuery.mock.calls, ...mockClientQuery.mock.calls]
+      .map(([sql, params]) => [
+        String(sql).replace(/\s+/g, " ").trim(),
+        params as unknown[],
+      ])
+      .filter(([sql]) => String(sql).startsWith("UPDATE")) as [
+      string,
+      unknown[],
+    ][];
+
+  /** Mail goes out after the response. */
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  // Let each test's mail land before the next test resets the mocks, or it is
+  // counted against whichever test runs next.
+  afterEach(settle);
+
+  it("makes the member the owner, the old owner an admin, and moves teams.owner_id", async () => {
+    team({ roles: { 42: "owner", 7: "admin", 9: "viewer" } });
+
+    const res = await PATCH(transferRequest({ teamId: 1, newOwnerId: 7 }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      success: true,
+      ownerId: 7,
+      role: "admin",
+    });
+    const ran = writes();
+    expect(ran).toContainEqual([
+      "UPDATE team_members SET role = $3 WHERE team_id = $1 AND user_id = $2",
+      [1, 7, "owner"],
+    ]);
+    expect(ran).toContainEqual([
+      "UPDATE team_members SET role = $3 WHERE team_id = $1 AND user_id = $2",
+      [1, 42, "admin"],
+    ]);
+    expect(ran).toContainEqual([
+      "UPDATE teams SET owner_id = $2 WHERE id = $1",
+      [1, 7],
+    ]);
+    // All three inside one transaction, on the checked-out client.
+    const tx = mockClientQuery.mock.calls.map(([sql]) =>
+      String(sql).replace(/\s+/g, " ").trim(),
+    );
+    expect(tx[0]).toBe("BEGIN");
+    expect(tx.at(-1)).toBe("COMMIT");
+    expect(tx.filter((q) => q.startsWith("UPDATE"))).toHaveLength(3);
+    expect(
+      mockQuery.mock.calls.some(([q]) => String(q).startsWith("UPDATE")),
+    ).toBe(false);
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+  });
+
+  it("works for any member, not only an admin", async () => {
+    team({ roles: { 42: "owner", 9: "viewer" } });
+
+    const res = await PATCH(transferRequest({ teamId: 1, newOwnerId: 9 }));
+
+    expect(res.status).toBe(200);
+  });
+
+  it("writes one audit row with the registered action, against the new owner", async () => {
+    team({ roles: { 42: "owner", 7: "admin" } });
+
+    await PATCH(transferRequest({ teamId: 1, newOwnerId: 7 }));
+
+    expect(mockLogAction).toHaveBeenCalledTimes(1);
+    const [actor, target, action, details, ip] = mockLogAction.mock.calls[0];
+    expect([actor, target, action, ip]).toEqual([
+      42,
+      7,
+      "team.ownership_transferred",
+      "127.0.0.1",
+    ]);
+    expect(details).toBe(
+      'Transferred ownership of team "Acme" (#1) to Sam (sam@example.com). The previous owner is now an admin.',
+    );
+  });
+
+  it("emails both the old and the new owner", async () => {
+    team({ roles: { 42: "owner", 7: "admin" } });
+
+    await PATCH(transferRequest({ teamId: 1, newOwnerId: 7 }));
+    await settle();
+
+    expect(mockSendEmail).toHaveBeenCalledTimes(2);
+    const sent = mockSendEmail.mock.calls.map(
+      ([mail]) => mail as { to: string; subject: string; template: string },
+    );
+    expect(sent.map((m) => m.to).sort()).toEqual([
+      "ada@example.com",
+      "sam@example.com",
+    ]);
+    expect(sent.every((m) => m.template === "teamOwnershipTransferred")).toBe(
+      true,
+    );
+    expect(sent.find((m) => m.to === "sam@example.com")?.subject).toContain(
+      "You now own Acme",
+    );
+    expect(sent.find((m) => m.to === "ada@example.com")?.subject).toContain(
+      "Sam",
+    );
+  });
+
+  it("answers 400 for a target who is not on the team, with no UPDATE", async () => {
+    team({ roles: { 42: "owner", 7: "admin" } });
+
+    const res = await PATCH(transferRequest({ teamId: 1, newOwnerId: 55 }));
+
+    expect(res.status).toBe(400);
+    expect(writes()).toEqual([]);
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("answers 400 for the owner naming themselves", async () => {
+    team({ roles: { 42: "owner", 7: "admin" } });
+
+    const res = await PATCH(transferRequest({ teamId: 1, newOwnerId: 42 }));
+
+    expect(res.status).toBe(400);
+    expect(writes()).toEqual([]);
+  });
+
+  it.each(["admin", "manager", "operator", "member", "viewer"])(
+    "answers 403 to a %s, who does not own the team",
+    async (role) => {
+      mockGetSession.mockResolvedValue({ userId: 7 });
+      team({ roles: { 42: "owner", 7: role, 9: "viewer" } });
+
+      const res = await PATCH(transferRequest({ teamId: 1, newOwnerId: 9 }));
+
+      expect(res.status).toBe(403);
+      expect(writes()).toEqual([]);
+      expect(mockLogAction).not.toHaveBeenCalled();
+    },
+  );
+
+  it("answers 403 to someone who is not on the team", async () => {
+    mockGetSession.mockResolvedValue({ userId: 99 });
+    team({ roles: { 42: "owner", 7: "admin" } });
+
+    const res = await PATCH(transferRequest({ teamId: 1, newOwnerId: 7 }));
+
+    expect(res.status).toBe(403);
+  });
+
+  it("answers 409 when the team would exceed the new owner's seat cap", async () => {
+    // pro_supporter: 3 seats. Four members, counted as the invite path counts.
+    mockGetUserPlan.mockImplementation(async (id: number) =>
+      id === 7 ? "pro_supporter" : "elite_supporter",
+    );
+    team({ roles: { 42: "owner", 7: "admin", 9: "viewer", 11: "member" } });
+
+    const res = await PATCH(transferRequest({ teamId: 1, newOwnerId: 7 }));
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toContain("3");
+    expect(writes()).toEqual([]);
+    expect(
+      mockClientQuery.mock.calls.map(([sql]) => String(sql).trim()),
+    ).toContain("ROLLBACK");
+    expect(mockLogAction).not.toHaveBeenCalled();
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts pending invites against the cap, as an invite does", async () => {
+    mockGetUserPlan.mockImplementation(async (id: number) =>
+      id === 7 ? "pro_supporter" : "elite_supporter",
+    );
+    team({ roles: { 42: "owner", 7: "admin" }, invites: 2 });
+
+    const res = await PATCH(transferRequest({ teamId: 1, newOwnerId: 7 }));
+
+    expect(res.status).toBe(409);
+    expect(writes()).toEqual([]);
+  });
+
+  it("lets a team that fits exactly go to a smaller plan", async () => {
+    mockGetUserPlan.mockImplementation(async (id: number) =>
+      id === 7 ? "pro_supporter" : "elite_supporter",
+    );
+    team({ roles: { 42: "owner", 7: "admin", 9: "viewer" } });
+
+    const res = await PATCH(transferRequest({ teamId: 1, newOwnerId: 7 }));
+
+    expect(res.status).toBe(200);
+  });
+
+  it("answers 409 when the new owner's plan cannot own another team", async () => {
+    // pro_supporter owns at most 1 team, and Sam already owns one.
+    mockGetUserPlan.mockImplementation(async (id: number) =>
+      id === 7 ? "pro_supporter" : "elite_supporter",
+    );
+    team({ roles: { 42: "owner", 7: "admin" }, ownedByTarget: 1 });
+
+    const res = await PATCH(transferRequest({ teamId: 1, newOwnerId: 7 }));
+
+    expect(res.status).toBe(409);
+    expect(writes()).toEqual([]);
+  });
+
+  it("does nothing when another request moved ownership first", async () => {
+    // The membership read said owner; the locked row says otherwise.
+    team({ roles: { 42: "owner", 7: "admin" }, ownerId: 9 });
+
+    const res = await PATCH(transferRequest({ teamId: 1, newOwnerId: 7 }));
+
+    expect(res.status).toBe(409);
+    expect(writes()).toEqual([]);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a word", "abc"],
+    ["a fraction", 1.5],
+    ["zero", 0],
+    ["more than an INTEGER holds", 99999999999],
+  ])("answers 400 for a newOwnerId that is %s", async (_label, newOwnerId) => {
+    const res = await PATCH(transferRequest({ teamId: 1, newOwnerId }));
+
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("refuses to combine a transfer with a rename", async () => {
+    const res = await PATCH(
+      transferRequest({ teamId: 1, newOwnerId: 7, name: "New Name" }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });

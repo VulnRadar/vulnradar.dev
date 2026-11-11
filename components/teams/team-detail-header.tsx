@@ -3,12 +3,14 @@
 import { useState } from "react";
 import {
   ArrowLeft,
+  Crown,
   Pencil,
   UserPlus,
   MoreHorizontal,
   Trash2,
   LogOut,
 } from "lucide-react";
+import { type EditSaveOutcome } from "@/components/shared/edit-dialog";
 import { Button } from "@/components/ui/button";
 import { pluralize } from "@/lib/ui/plural";
 import {
@@ -18,11 +20,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { hasTeamPermission } from "@/lib/config/client-constants";
-import { type Team } from "./teams-types";
+import { type Member, type Team } from "./teams-types";
 import { RolePill } from "./role-pill";
 import { TeamAvatar } from "./team-avatar";
 import { TeamAvatarPicker } from "./team-avatar-picker";
 import { RenameTeamDialog } from "./rename-team-dialog";
+import { TransferOwnershipDialog } from "./transfer-ownership-dialog";
 
 interface TeamDetailHeaderProps {
   team: Team;
@@ -37,6 +40,14 @@ interface TeamDetailHeaderProps {
   /** The team's picture changed: the new URL, or null when it was cleared. */
   onAvatarChange: (avatarUrl: string | null) => void;
   onAvatarError: (message: string) => void;
+  /** The roster, for picking who a transfer of ownership goes to. */
+  members?: readonly Member[];
+  /** Hand the team to this member (PATCH /api/v3/teams { teamId,
+   *  newOwnerId }). Throws, or returns { ok: false, error }, with the reason
+   *  when it is refused. Without it the owner's menu has no transfer item. */
+  onTransferOwnership?: (
+    newOwnerId: number,
+  ) => EditSaveOutcome | Promise<EditSaveOutcome>;
 }
 
 export function TeamDetailHeader({
@@ -50,8 +61,14 @@ export function TeamDetailHeader({
   onLeave,
   onAvatarChange,
   onAvatarError,
+  members = [],
+  onTransferOwnership,
 }: TeamDetailHeaderProps) {
   const [renaming, setRenaming] = useState(false);
+  const [transferring, setTransferring] = useState(false);
+  // "delete_team" is the owner's alone, and so is handing the team on: both
+  // decide who answers for it. The route checks the same thing.
+  const isOwner = hasTeamPermission(currentRole, "delete_team");
   // "manage_team" is the rename permission, and the picture rides with it: both
   // change how the team presents itself to everyone in it. PATCH /api/v3/teams
   // enforces the same check, so hiding the control here is presentation, not
@@ -154,8 +171,14 @@ export function TeamDetailHeader({
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                {hasTeamPermission(currentRole, "delete_team") ? (
+              <DropdownMenuContent align="end" className="w-52">
+                {isOwner && onTransferOwnership && (
+                  <DropdownMenuItem onClick={() => setTransferring(true)}>
+                    <Crown className="h-4 w-4 mr-2" aria-hidden="true" />
+                    Transfer ownership
+                  </DropdownMenuItem>
+                )}
+                {isOwner ? (
                   <DropdownMenuItem
                     className="text-destructive focus:text-destructive"
                     onClick={onDelete}
@@ -183,6 +206,15 @@ export function TeamDetailHeader({
           team={team}
           onRename={onRename}
           onClose={() => setRenaming(false)}
+        />
+      )}
+
+      {transferring && isOwner && onTransferOwnership && (
+        <TransferOwnershipDialog
+          team={team}
+          members={members}
+          onTransfer={onTransferOwnership}
+          onClose={() => setTransferring(false)}
         />
       )}
     </>

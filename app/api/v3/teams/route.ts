@@ -18,7 +18,12 @@ import { parseRowId } from "@/lib/teams/parse-id";
 import { recordTeamAudit, teamAuditLabel } from "@/lib/teams/team-audit";
 import { logAction } from "@/lib/auth/authorization";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
-import { teamDeletedEmail } from "@/lib/email/email";
+import {
+  sendEmail,
+  teamDeletedEmail,
+  teamOwnershipTransferredEmail,
+} from "@/lib/email/email";
+import { pluralize } from "@/lib/ui/plural";
 import {
   deleteTeamAvatarFile,
   readTeamAvatarStamps,
@@ -228,6 +233,27 @@ export const PATCH = withErrorHandling(async (request: Request) => {
   const wantsRename = name !== undefined;
   const wantsAvatar = typeof avatarUrl === "string";
 
+  if (parsed.data.newOwnerId !== undefined) {
+    // A transfer is its own request. Folding a rename into it would make one
+    // permission check (owner) stand in for another (manage_team) and leave a
+    // half-applied answer when one of the two is refused.
+    if (wantsRename || wantsAvatar) {
+      return NextResponse.json(
+        { error: "Transfer ownership on its own, without other changes." },
+        { status: 400 },
+      );
+    }
+    const teamId = parseRowId(rawTeamId);
+    const newOwnerId = parseRowId(parsed.data.newOwnerId);
+    if (teamId === null || newOwnerId === null) {
+      return NextResponse.json(
+        { error: "teamId and newOwnerId must be whole numbers." },
+        { status: 400 },
+      );
+    }
+    return transferOwnership(session.userId, teamId, newOwnerId);
+  }
+
   if (!rawTeamId || (!wantsRename && !wantsAvatar)) {
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
   }
@@ -425,3 +451,225 @@ export const DELETE = withErrorHandling(async (request: Request) => {
 
   return NextResponse.json({ success: true });
 });
+
+const NOT_A_MEMBER =
+  "That person is not on this team. Ownership can only go to a member.";
+
+/**
+ * PATCH /api/v3/teams { teamId, newOwnerId }: hand the team to another member.
+ *
+ * Owners could not leave and there was no way to give a team away, so the
+ * members route sent them to support and the only way out was deleting the
+ * team for everyone on it (ux-flows-7, owner decision D7).
+ *
+ * Owner only, and only to someone already on the team: ownership is the right
+ * to delete the team, and it is never handed to a stranger or minted through an
+ * invite. The new owner's plan is checked, because from here on the seat cap
+ * and the owned-team cap come from it (the invite path already reads the cap
+ * from the owner, not the inviter). The old owner stays on as an admin rather
+ * than being dropped, so the person who built the team keeps working in it.
+ *
+ * The three writes are one transaction under a row lock on the team, so two
+ * transfers, or a transfer racing a delete, cannot leave a team with two
+ * owners or with teams.owner_id naming someone who is not its owner.
+ */
+async function transferOwnership(
+  callerId: number,
+  teamId: number,
+  newOwnerId: number,
+): Promise<NextResponse> {
+  const callerRes = await pool.query<{ role: string; team_name: string }>(
+    `SELECT tm.role, t.name AS team_name
+       FROM team_members tm JOIN teams t ON t.id = tm.team_id
+      WHERE tm.team_id = $1 AND tm.user_id = $2`,
+    [teamId, callerId],
+  );
+  const caller = callerRes.rows[0];
+  if (!caller || caller.role !== TEAM_ROLES.OWNER) {
+    return NextResponse.json(
+      { error: "Only the team's owner can transfer ownership." },
+      { status: 403 },
+    );
+  }
+  if (newOwnerId === callerId) {
+    return NextResponse.json(
+      { error: "You already own this team. Choose another member." },
+      { status: 400 },
+    );
+  }
+
+  const targetRes = await pool.query<{
+    role: string;
+    email: string;
+    name: string | null;
+  }>(
+    `SELECT tm.role, u.email, u.name
+       FROM team_members tm JOIN users u ON u.id = tm.user_id
+      WHERE tm.team_id = $1 AND tm.user_id = $2`,
+    [teamId, newOwnerId],
+  );
+  const target = targetRes.rows[0];
+  if (!target) {
+    return NextResponse.json({ error: NOT_A_MEMBER }, { status: 400 });
+  }
+  const targetName = target.name?.trim() || null;
+  const targetLabel = targetName ?? target.email;
+
+  // null: billing is off, so there is no cap to check.
+  const limits = await getUserPlanLimits(newOwnerId);
+  if (limits) {
+    const owned = await pool.query<{ cnt: string }>(
+      `SELECT COUNT(*) AS cnt FROM team_members WHERE user_id = $1 AND role = $2`,
+      [newOwnerId, TEAM_ROLES.OWNER],
+    );
+    if (!withinPlanLimit(Number(owned.rows[0]?.cnt ?? 0), limits.teams)) {
+      return NextResponse.json(
+        {
+          error:
+            limits.teams === 0
+              ? `${targetLabel}'s plan does not include teams, so they cannot own this one.`
+              : `${targetLabel}'s plan allows them to own ${pluralize(limits.teams, "team")}, and they already do.`,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const locked = await client.query<{ owner_id: number }>(
+      "SELECT owner_id FROM teams WHERE id = $1 FOR UPDATE",
+      [teamId],
+    );
+    if (locked.rows[0]?.owner_id !== callerId) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        {
+          error:
+            "This team's ownership changed while you were choosing. Reload the team and try again.",
+        },
+        { status: 409 },
+      );
+    }
+
+    // Counted the way the invite path counts a seat, members plus live
+    // invites, because an invite accepted tomorrow takes a seat on the new
+    // owner's plan. Inside the lock, so it is the count the transfer commits
+    // against.
+    if (limits && limits.teamMembers !== -1) {
+      const seatRes = await client.query<{ seats: number }>(
+        `SELECT
+           (SELECT COUNT(*)::int FROM team_members WHERE team_id = $1) +
+           (SELECT COUNT(*)::int FROM team_invites
+              WHERE team_id = $1 AND accepted_at IS NULL AND expires_at > NOW()) AS seats`,
+        [teamId],
+      );
+      const seats = Number(seatRes.rows[0]?.seats ?? 0);
+      if (seats > limits.teamMembers) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          {
+            error: `${targetLabel}'s plan allows ${pluralize(limits.teamMembers, "team member")}, and this team has ${seats} counting pending invites. Remove members or withdraw invites first, or ask them to upgrade.`,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
+    const promoted = await client.query(
+      "UPDATE team_members SET role = $3 WHERE team_id = $1 AND user_id = $2",
+      [teamId, newOwnerId, TEAM_ROLES.OWNER],
+    );
+    if (!promoted.rowCount) {
+      // They left between the read above and the lock.
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: NOT_A_MEMBER }, { status: 400 });
+    }
+    await client.query(
+      "UPDATE team_members SET role = $3 WHERE team_id = $1 AND user_id = $2",
+      [teamId, callerId, TEAM_ROLES.ADMIN],
+    );
+    await client.query("UPDATE teams SET owner_id = $2 WHERE id = $1", [
+      teamId,
+      newOwnerId,
+    ]);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Team ownership transfer failed:", err);
+    return NextResponse.json(
+      { error: "Failed to transfer ownership." },
+      { status: 500 },
+    );
+  } finally {
+    client.release();
+  }
+
+  await recordTeamAudit((ip) =>
+    logAction(
+      callerId,
+      newOwnerId,
+      "team.ownership_transferred",
+      `Transferred ownership of team ${teamAuditLabel(teamId, caller.team_name)} to ${targetName ? `${targetName} (${target.email})` : target.email}. The previous owner is now an admin.`,
+      ip,
+    ),
+  );
+
+  // After the response, and unable to undo it: the transfer has committed.
+  setImmediate(() => {
+    void notifyOwnershipTransfer(
+      callerId,
+      caller.team_name,
+      target.email,
+      targetLabel,
+    );
+  });
+
+  return NextResponse.json({
+    success: true,
+    ownerId: newOwnerId,
+    role: TEAM_ROLES.ADMIN,
+  });
+}
+
+/** Both owners hear about it, each from their own side. Best-effort. */
+async function notifyOwnershipTransfer(
+  previousOwnerId: number,
+  teamName: string,
+  newOwnerEmail: string,
+  newOwnerLabel: string,
+): Promise<void> {
+  try {
+    const res = await pool.query<{ email: string; name: string | null }>(
+      "SELECT email, name FROM users WHERE id = $1",
+      [previousOwnerId],
+    );
+    const previous = res.rows[0];
+    const previousLabel =
+      previous?.name?.trim() || previous?.email || "The previous owner";
+    const mails: { to: string; recipient: "new" | "previous" }[] = [
+      { to: newOwnerEmail, recipient: "new" },
+    ];
+    if (previous?.email) {
+      mails.push({ to: previous.email, recipient: "previous" });
+    }
+    await Promise.all(
+      mails.map(({ to, recipient }) =>
+        sendEmail({
+          to,
+          ...teamOwnershipTransferredEmail({
+            teamName,
+            previousOwner: previousLabel,
+            newOwner: newOwnerLabel,
+            recipient,
+          }),
+        }).catch((err: unknown) =>
+          console.error("Team ownership transfer email failed:", err),
+        ),
+      ),
+    );
+  } catch (err) {
+    console.error("Team ownership transfer emails failed:", err);
+  }
+}

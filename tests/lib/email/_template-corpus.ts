@@ -312,6 +312,24 @@ export async function buildTemplateCorpus(
     },
     { name: "teamDeleted", ...e.teamDeletedEmail("Payments Platform") },
     {
+      name: "teamOwnershipTransferredNew",
+      ...e.teamOwnershipTransferredEmail({
+        teamName: "Payments Platform",
+        previousOwner: "Priya",
+        newOwner: "Sam Rivera",
+        recipient: "new",
+      }),
+    },
+    {
+      name: "teamOwnershipTransferredPrevious",
+      ...e.teamOwnershipTransferredEmail({
+        teamName: "Payments Platform",
+        previousOwner: "Priya",
+        newOwner: "Sam Rivera",
+        recipient: "previous",
+      }),
+    },
+    {
       name: "staffInvite",
       ...e.staffInviteEmail(
         "Security Analyst",

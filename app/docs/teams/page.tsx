@@ -285,10 +285,13 @@ export default function TeamsPage() {
             member (by <InlineCode>userId</InlineCode>) or cancels a pending
             invite (by <InlineCode>inviteId</InlineCode>). A non-owner removing
             their own <InlineCode>userId</InlineCode> leaves the team. The owner
-            cannot leave. There is no ownership transfer: to hand a team over,
-            delete it (members&apos; shared scans return to their owners as
-            personal scans) or ask support. Plan for this when choosing who
-            creates the team.
+            cannot leave until they hand the team over: choose Transfer
+            ownership in the team&apos;s menu, or send{" "}
+            <InlineCode>PATCH /api/v3/teams</InlineCode> with{" "}
+            <InlineCode>teamId</InlineCode> and{" "}
+            <InlineCode>newOwnerId</InlineCode>. The new owner has to be on the
+            team already and their plan has to cover its members and pending
+            invites; the old owner stays on as an admin, and both get an email.
           </li>
         </ul>
 

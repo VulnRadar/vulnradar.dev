@@ -714,6 +714,15 @@ export const AUDIT_ACTIONS = {
     verb: "deleted their team",
     icon: "trash-2",
   },
+  // The previous owner is admin_id, the new owner the target. Warning, not
+  // neutral: who can delete a team, and whose plan pays for its seats, moved.
+  "team.ownership_transferred": {
+    category: "data",
+    tone: "warning",
+    label: "Team Ownership Transferred",
+    verb: "transferred team ownership to",
+    icon: "crown",
+  },
 
   // ── Logs & data: the records themselves. Clearing, exporting, backing up
   // or purging them is what an insider review asks about first.
