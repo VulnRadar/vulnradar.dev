@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { InlineAlert } from "@/components/shared/inline-alert";
 import { clearAuthCache } from "@/components/providers/auth-provider";
 import { API, ROUTES } from "@/lib/config/client-constants";
+import { STEP_UP_WINDOW } from "@/lib/auth/step-up-window";
 
 /**
  * "Confirm it is you" for an account with no password.
@@ -140,7 +141,7 @@ export function EmailStepUpView({
   if (phase === "done") {
     return (
       <InlineAlert tone="success" live="polite">
-        Confirmed. You have 10 minutes to finish.
+        Confirmed. You have {STEP_UP_WINDOW} to finish.
       </InlineAlert>
     );
   }
@@ -151,7 +152,7 @@ export function EmailStepUpView({
         <p className="text-sm text-muted-foreground">
           Your account has no password, and this server cannot send email, so
           confirm it is you by signing in again. Then come back and do this
-          within 10 minutes.
+          within {STEP_UP_WINDOW}.
         </p>
         <Button
           type="button"
@@ -188,7 +189,7 @@ export function EmailStepUpView({
         <>
           <p className="text-sm text-muted-foreground">
             We sent a 6-digit code to {maskedEmail ?? "your email address"}. It
-            works for 10 minutes.
+            works for {STEP_UP_WINDOW}.
           </p>
           <div className="flex flex-col gap-2">
             <Label htmlFor={`${idPrefix}-code`}>6-digit code</Label>

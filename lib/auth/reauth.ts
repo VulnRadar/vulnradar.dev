@@ -9,6 +9,12 @@ import { hashSessionId } from "@/lib/auth/auth";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 import { isEmailConfigured } from "@/lib/email/email";
 import { AUTH_SESSION_COOKIE_NAME } from "@/lib/config/constants";
+import {
+  STEP_UP_MAX_AGE_SECONDS,
+  STEP_UP_WINDOW,
+} from "@/lib/auth/step-up-window";
+
+export { STEP_UP_MAX_AGE_SECONDS };
 
 export type ReauthResult =
   { ok: true } | { ok: false; status: 400 | 403; error: string; stepUp?: true };
@@ -20,13 +26,9 @@ export type ReauthResult =
  */
 export const STEP_UP_COOKIE = "vulnradar_step_up";
 
-/** How long one step-up lasts, and how fresh a sign-in counts as one. */
-export const STEP_UP_MAX_AGE_SECONDS = 10 * 60;
-
 export const STEP_UP_CODE_MESSAGE =
   "Confirm it is you with a code from your email first.";
-export const STEP_UP_SIGN_IN_MESSAGE =
-  "Sign in again to confirm it is you, then try this within 10 minutes.";
+export const STEP_UP_SIGN_IN_MESSAGE = `Sign in again to confirm it is you, then try this within ${STEP_UP_WINDOW}.`;
 
 // Same key as the pending-2FA cookie, its own domain string, so neither token
 // can be replayed as the other.
@@ -96,6 +98,11 @@ export function stepUpCookieOptions() {
   };
 }
 
+/**
+ * A session created in the last ten minutes by a sign-in. Never an
+ * impersonation session: staff opening one is not the owner signing in, and
+ * the step-up cookie it could otherwise stand in for is refused to them too.
+ */
 async function sessionIsFresh(
   sessionId: string,
   userId: number,
@@ -103,6 +110,7 @@ async function sessionIsFresh(
   const { rows } = await pool.query(
     `SELECT 1 AS fresh FROM sessions
       WHERE id = $1 AND user_id = $2
+        AND impersonated_by IS NULL
         AND created_at > NOW() - ($3 * INTERVAL '1 second')`,
     [sessionId, userId, STEP_UP_MAX_AGE_SECONDS],
   );

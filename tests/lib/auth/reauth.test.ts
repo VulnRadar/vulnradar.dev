@@ -141,6 +141,9 @@ describe("an account with no password", () => {
       const check = queries.find((q) => q.sql.includes("FROM sessions"))!;
       expect(check.params).toEqual([SESSION_ID, 1, 600]);
       expect(check.sql).toMatch(/created_at > NOW\(\)/);
+      // An impersonation session is staff opening the account, not the
+      // owner signing in, so it never counts as the fresh sign-in.
+      expect(check.sql).toMatch(/impersonated_by IS NULL/);
     });
 
     it("tells an older session to sign in again", async () => {
