@@ -16,10 +16,16 @@ vi.mock("@/lib/email/email", () => ({
   isEmailConfigured: () => emailConfigured,
 }));
 
+let maintenance = false;
+vi.mock("@/lib/admin/service-state", () => ({
+  getServiceState: async () => ({ maintenance }),
+}));
+
 const { GET } = await import("@/app/api/v3/config/client/route");
 
 beforeEach(() => {
   emailConfigured = true;
+  maintenance = false;
   mockGetSettings.mockReset();
   mockGetSettings.mockImplementation(async (keys: readonly string[]) =>
     Object.fromEntries(keys.map((k) => [k, k])),
@@ -48,6 +54,19 @@ describe("GET /api/v3/config/client", () => {
     const body = await (await GET()).json();
     expect(body.scanStatusPollIntervalMs).toBe("SCAN_STATUS_POLL_INTERVAL_MS");
     expect(body.featureBulkScans).toBe("FEATURE_BULK_SCANS");
+  });
+
+  it("says whether maintenance mode is on, for the middleware's 503", async () => {
+    // middleware.ts reads `maintenance === true` from this route; a missing
+    // key reads as off, which leaves crawlers indexing the maintenance screen.
+    expect((await (await GET()).json()).maintenance).toBe(false);
+    maintenance = true;
+    expect((await (await GET()).json()).maintenance).toBe(true);
+  });
+
+  it("sends the contact form's live message limit", async () => {
+    const body = await (await GET()).json();
+    expect(body.contactMessageMaxLength).toBe("CONTACT_MESSAGE_MAX_LENGTH");
   });
 
   it("says whether this server can send mail", async () => {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getServiceState } from "@/lib/admin/service-state";
 import { getSettings } from "@/lib/config/runtime-config";
 import { isEmailConfigured } from "@/lib/email/email";
 
@@ -36,7 +37,11 @@ export async function GET() {
     "FEATURE_BULK_SCANS",
     "FEATURE_EMAIL_NOTIFICATIONS",
     "FEATURE_DOMAIN_VERIFICATION",
+    // The contact form's message limit, so its maxLength and counter follow
+    // the limit the contact route enforces once an admin changes it.
+    "CONTACT_MESSAGE_MAX_LENGTH",
   ] as const);
+  const { maintenance } = await getServiceState();
 
   return NextResponse.json(
     {
@@ -57,11 +62,17 @@ export async function GET() {
       featureBulkScans: settings.FEATURE_BULK_SCANS,
       featureEmailNotifications: settings.FEATURE_EMAIL_NOTIFICATIONS,
       featureDomainVerification: settings.FEATURE_DOMAIN_VERIFICATION,
+      contactMessageMaxLength: settings.CONTACT_MESSAGE_MAX_LENGTH,
       // Whether this server can send mail at all. The Security tab hides
       // email codes without it (the first sign-in after turning them on
       // would wait for a code that never arrives), and the step-up for an
       // account with no password offers a fresh sign-in instead of a code.
       emailConfigured: isEmailConfigured(),
+      // The admin maintenance switch. middleware.ts reads it from here over
+      // loopback (it cannot reach the database) to answer signed-out page
+      // requests with a 503, so crawlers do not index the maintenance screen
+      // as the page. Public anyway: that screen is what everyone is shown.
+      maintenance,
     },
     // Client components already have a compiled-constant fallback for
     // every one of these values, so a short cache is fine -- this is a

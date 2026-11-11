@@ -10,6 +10,7 @@ import {
   SCANNING,
   FEATURES,
 } from "@/lib/config/client-constants";
+import { CONTACT_MESSAGE_MAX_DEFAULT } from "@/lib/support/contact-limits";
 
 export interface ClientConfig {
   versionCookieMaxAgeSeconds: number;
@@ -40,6 +41,10 @@ export interface ClientConfig {
   // it decides whether email codes are offered and how an account with no
   // password confirms a security change (components/shared/email-step-up).
   emailConfigured: boolean;
+  // CONTACT_MESSAGE_MAX_LENGTH, the contact form's message limit. Without it
+  // the textarea capped typing at the default while the server accepted a
+  // raised limit.
+  contactMessageMaxLength: number;
 }
 
 // Compiled-constant fallback: same values a client component used before
@@ -67,6 +72,7 @@ export const DEFAULT_CLIENT_CONFIG: ClientConfig = {
   // The server refuses email codes without mail (409) whatever this says, so
   // assuming it works until the answer arrives costs a refusal, never a lockout.
   emailConfigured: true,
+  contactMessageMaxLength: CONTACT_MESSAGE_MAX_DEFAULT,
 };
 
 /**
@@ -134,6 +140,10 @@ export function parseClientConfig(data: unknown): ClientConfig {
     // Only an explicit false: a response from before the field existed came
     // from a server that offered email codes regardless.
     emailConfigured: d.emailConfigured !== false,
+    contactMessageMaxLength: budget(
+      d.contactMessageMaxLength,
+      DEFAULT_CLIENT_CONFIG.contactMessageMaxLength,
+    ),
   };
 }
 

@@ -10,6 +10,11 @@ import {
   SupportTickets,
   CATEGORIES,
 } from "@/components/contact";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
+import {
+  CONTACT_NAME_MAX,
+  CONTACT_SUBJECT_MAX,
+} from "@/lib/support/contact-limits";
 import {
   getQueryParam,
   getQueryParamInt,
@@ -22,6 +27,7 @@ export default function ContactPage() {
   const [category, setCategory] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [_error, setError] = useState<string | null>(null);
+  const { contactMessageMaxLength } = useClientConfig();
 
   // Handle query param-based category selection (e.g., /contact?category=bug).
   // A ?ticket=N deep link (from the ticket notification email / bell) opens the
@@ -93,6 +99,11 @@ export default function ContactPage() {
             ) : category ? (
               <ContactForm
                 category={category}
+                limits={{
+                  name: CONTACT_NAME_MAX,
+                  subject: CONTACT_SUBJECT_MAX,
+                  message: contactMessageMaxLength,
+                }}
                 onSuccess={() => setSubmitted(true)}
                 onError={setError}
               />
