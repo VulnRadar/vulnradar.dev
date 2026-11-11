@@ -11,6 +11,12 @@ vi.mock("@/lib/auth/team-resource-access", () => ({
     mockGetAssignableTeamIds(...args),
 }));
 
+// FEATURE_DOMAIN_VERIFICATION. On unless a test turns it off.
+const mockGetSetting = vi.fn();
+vi.mock("@/lib/config/runtime-config", () => ({
+  getSetting: (...args: unknown[]) => mockGetSetting(...args),
+}));
+
 const {
   findVerifiedDomainForHost,
   isUrlOwnedByUser,
@@ -21,6 +27,8 @@ beforeEach(() => {
   mockQuery.mockReset();
   mockGetAssignableTeamIds.mockReset();
   mockGetAssignableTeamIds.mockResolvedValue([]);
+  mockGetSetting.mockReset();
+  mockGetSetting.mockResolvedValue(true);
 });
 
 describe("findVerifiedDomainForHost", () => {
@@ -63,6 +71,21 @@ describe("findVerifiedDomainForHost", () => {
     const [, params] = mockQuery.mock.calls[0];
     expect(params[2]).toEqual([7, 9]);
   });
+
+  // sec-authz-3 / gap-domain-verification-active-gating-3: a team-shared
+  // domain kept granting active probing, port sweeps and form login to the
+  // team after the person who verified it left. The team branch has to ask
+  // whether the row's owner is still on the row's team. Behaviour against
+  // Postgres: tests/integration/domains-team-share.test.ts.
+  it("only honours a team-shared row while its owner is still on that team", async () => {
+    mockGetAssignableTeamIds.mockResolvedValueOnce([7]);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await findVerifiedDomainForHost("example.com", 1);
+    const [sql] = mockQuery.mock.calls[0];
+    expect(String(sql).replace(/\s+/g, " ")).toMatch(
+      /team_id = ANY\(\$3::int\[\]\) AND EXISTS \( ?SELECT 1 FROM team_members \w+ WHERE \w+\.team_id = domains\.team_id AND \w+\.user_id = domains\.user_id ?\)/,
+    );
+  });
 });
 
 describe("isUrlOwnedByUser", () => {
@@ -94,6 +117,31 @@ describe("isUrlOwnedByUser", () => {
 
   it("fails closed when the database query throws", async () => {
     mockQuery.mockRejectedValueOnce(new Error("connection reset"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await isUrlOwnedByUser("https://example.com", 1)).toBe(false);
+    errorSpy.mockRestore();
+  });
+
+  // gap-domain-verification-active-gating-4: turning the feature off used to
+  // freeze every verified row as a standing grant, because this check never
+  // read the flag and the re-verification worker stopped with it. Off means
+  // nobody can prove ownership, so nobody holds it.
+  it("fails closed when domain verification is turned off, even for a verified row", async () => {
+    mockGetSetting.mockImplementation(async (key: string) =>
+      key === "FEATURE_DOMAIN_VERIFICATION" ? false : true,
+    );
+    mockQuery.mockResolvedValue({
+      rows: [{ id: 1, domain: "example.com", user_id: 1, team_id: null }],
+    });
+    expect(await isUrlOwnedByUser("https://example.com", 1)).toBe(false);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the setting cannot be read", async () => {
+    mockGetSetting.mockRejectedValue(new Error("settings unavailable"));
+    mockQuery.mockResolvedValue({
+      rows: [{ id: 1, domain: "example.com", user_id: 1, team_id: null }],
+    });
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await isUrlOwnedByUser("https://example.com", 1)).toBe(false);
     errorSpy.mockRestore();

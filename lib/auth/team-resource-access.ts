@@ -16,7 +16,9 @@ export interface TeamResourceAccess {
  *   team membership.
  * - `resourceTeamId` null: only the owner has access -- personal
  *   resources are unaffected by any of this.
- * - `resourceTeamId` set: any co-member of that team can read
+ * - `resourceTeamId` set, and the resource's owner is still on that team
+ *   (once they leave or are removed the team has no claim on it): any
+ *   co-member of that team can read
  *   ("view_reports", granted to every team role); co-members whose role
  *   also has "manage_scans" (owner, admin, operator, member, so not manager
  *   or viewer) can also write.
@@ -34,9 +36,17 @@ export async function getTeamResourceAccess(
   if (callerId === resourceOwnerId) return { canRead: true, canWrite: true };
   if (!resourceTeamId) return { canRead: false, canWrite: false };
 
+  // The owner has to still be on the team too. Sharing is the owner's choice
+  // to share with a team they belong to, and team_id outlives that: rows
+  // tagged before removals started un-sharing them (and any write that races
+  // a removal) still carry it. Without this the team kept reading, and with a
+  // write role editing, the resources of someone who had left (sec-authz-3).
   const memberRes = await pool.query<{ role: string }>(
-    "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
-    [resourceTeamId, callerId],
+    `SELECT role FROM team_members
+      WHERE team_id = $1 AND user_id = $2
+        AND EXISTS (SELECT 1 FROM team_members o
+                     WHERE o.team_id = $1 AND o.user_id = $3)`,
+    [resourceTeamId, callerId, resourceOwnerId],
   );
   const callerRole = memberRes.rows[0]?.role;
   if (!callerRole) return { canRead: false, canWrite: false };

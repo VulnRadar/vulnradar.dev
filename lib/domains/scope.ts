@@ -16,6 +16,7 @@
 
 import pool from "@/lib/database/db";
 import { getAssignableTeamIds } from "@/lib/auth/team-resource-access";
+import { getSetting } from "@/lib/config/runtime-config";
 import { coveringDomainCandidates } from "./covering";
 
 export interface VerifiedDomainMatch {
@@ -49,6 +50,12 @@ export async function findVerifiedDomainForHost(
   if (candidates.length === 0) return null;
   const assignableTeamIds = await getAssignableTeamIds(userId);
 
+  // A team-shared row counts only while the person who verified it is still
+  // on that team. Leaving or being removed un-shares their domains
+  // (DELETE /api/v3/teams/members), but a row tagged before that existed, or
+  // one shared in a race with the removal, still carries the team id, and the
+  // proof of ownership is the owner's, not the team's (sec-authz-3).
+
   const result = await pool.query<{
     id: number;
     domain: string;
@@ -59,7 +66,11 @@ export async function findVerifiedDomainForHost(
      FROM domains
      WHERE status = 'verified'
        AND domain = ANY($1::text[])
-       AND (user_id = $2 OR team_id = ANY($3::int[]))
+       AND (user_id = $2
+            OR (team_id = ANY($3::int[])
+                AND EXISTS (SELECT 1 FROM team_members o
+                             WHERE o.team_id = domains.team_id
+                               AND o.user_id = domains.user_id)))
      ORDER BY (user_id = $2) DESC, verified_at DESC
      LIMIT 1`,
     [candidates, userId, assignableTeamIds],
@@ -80,6 +91,12 @@ export async function findVerifiedDomainForHost(
  * error -- a scope check that can't run must never silently allow
  * intrusive probing, the same fail-closed stance
  * lib/scanner/access-rules.ts's checkAccessRules takes on its own DB error.
+ *
+ * Also false while FEATURE_DOMAIN_VERIFICATION is off. The setting's own help
+ * says turning it off disables active probing, but this check never read it,
+ * so every row verified before the switch stayed a standing grant that nobody
+ * could add to or re-check (gap-domain-verification-active-gating-4). Off
+ * means nobody can prove ownership right now, so nobody holds it.
  */
 export async function isUrlOwnedByUser(
   url: string,
@@ -94,6 +111,7 @@ export async function isUrlOwnedByUser(
   if (!hostname) return false;
 
   try {
+    if (!(await getSetting("FEATURE_DOMAIN_VERIFICATION"))) return false;
     const match = await findVerifiedDomainForHost(hostname, userId);
     return match !== null;
   } catch (err) {

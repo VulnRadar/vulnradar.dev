@@ -121,16 +121,29 @@ afterEach(() => {
 });
 
 describe("runDomainReverifyPass", () => {
-  it("does nothing and queries nothing when FEATURE_DOMAIN_VERIFICATION is off", async () => {
+  // gap-domain-verification-active-gating-4: this pass used to stop with the
+  // feature flag, which froze every verified row exactly as it was. Scope now
+  // fails closed while the flag is off, but the rows have to be true when it
+  // comes back on, so the worker answers only to its own switch.
+  it("still re-checks a due row when FEATURE_DOMAIN_VERIFICATION is off", async () => {
     settings({ FEATURE_DOMAIN_VERIFICATION: false });
-    const stats = await runDomainReverifyPass();
-    expect(stats).toEqual({
-      checked: 0,
-      stillVerified: 0,
-      downgraded: 0,
-      failed: 0,
+    mockQuery.mockResolvedValueOnce({
+      rows: [due(1, "example.com", "tok-1")],
     });
-    expect(mockQuery).not.toHaveBeenCalled();
+    mockCheckDnsVerification.mockResolvedValue({
+      outcome: "not_found",
+      error: "No matching TXT record found.",
+    });
+    const stats = await runDomainReverifyPass();
+    expect(stats.checked).toBe(1);
+    expect(stats.downgraded).toBe(1);
+    expect(mockCheckDnsVerification).toHaveBeenCalledWith(
+      "example.com",
+      "tok-1",
+    );
+    expect(mockGetSetting).not.toHaveBeenCalledWith(
+      "FEATURE_DOMAIN_VERIFICATION",
+    );
   });
 
   it("does nothing and queries nothing when DOMAIN_REVERIFY_ENABLED is off", async () => {

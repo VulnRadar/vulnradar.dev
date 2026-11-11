@@ -87,6 +87,26 @@ describe("getTeamResourceAccess", () => {
     expect(result.canWrite).toBe(false);
   });
 
+  // sec-authz-3: a resource stays tagged with its team after its owner leaves
+  // or is removed. The grant is the owner's choice to share with a team they
+  // are on, so it has to end when they are no longer on it, whatever the
+  // tag says. Behaviour against Postgres: tests/integration/domains-team-share.
+  it("grants a co-member nothing once the resource's owner has left the team", async () => {
+    mockQuery.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (!String(sql).includes("FROM team_members")) {
+        return { rows: [{ role: "user" }] };
+      }
+      // The caller (7) is still on team 1; the owner (5) is not. A lookup
+      // that only asks about the caller finds the caller's role.
+      const asksAboutOwner =
+        /EXISTS\s*\(\s*SELECT 1 FROM team_members/i.test(String(sql)) &&
+        params.includes(5);
+      return { rows: asksAboutOwner ? [] : [{ role: "admin" }] };
+    });
+    const result = await getTeamResourceAccess(7, 5, 1);
+    expect(result).toEqual({ canRead: false, canWrite: false });
+  });
+
   it("treats an unrecognized team role as no access", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ role: "not-a-real-role" }] });
     const result = await getTeamResourceAccess(7, 5, 1);

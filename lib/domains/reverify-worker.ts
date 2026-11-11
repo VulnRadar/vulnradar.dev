@@ -83,9 +83,14 @@ export async function runDomainReverifyPass(): Promise<ReverifyPassStats> {
     failed: 0,
   };
 
-  const featureEnabled = await getSetting("FEATURE_DOMAIN_VERIFICATION");
+  // Its own switch only, not FEATURE_DOMAIN_VERIFICATION. Stopping with the
+  // feature froze every verified row as it was, so a domain that changed hands
+  // while the feature was off came back as a grant the day it was turned on
+  // again. Scope already fails closed while the feature is off
+  // (isUrlOwnedByUser); this keeps the rows true for when it is back on
+  // (gap-domain-verification-active-gating-4).
   const reverifyEnabled = await getSetting("DOMAIN_REVERIFY_ENABLED");
-  if (!featureEnabled || !reverifyEnabled) return stats;
+  if (!reverifyEnabled) return stats;
 
   const intervalDays = await getSetting("DOMAIN_REVERIFY_INTERVAL_DAYS");
   const batchSize = await getSetting("DOMAIN_REVERIFY_BATCH_SIZE");
