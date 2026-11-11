@@ -517,23 +517,6 @@ async function transferOwnership(
 
   // null: billing is off, so there is no cap to check.
   const limits = await getUserPlanLimits(newOwnerId);
-  if (limits) {
-    const owned = await pool.query<{ cnt: string }>(
-      `SELECT COUNT(*) AS cnt FROM team_members WHERE user_id = $1 AND role = $2`,
-      [newOwnerId, TEAM_ROLES.OWNER],
-    );
-    if (!withinPlanLimit(Number(owned.rows[0]?.cnt ?? 0), limits.teams)) {
-      return NextResponse.json(
-        {
-          error:
-            limits.teams === 0
-              ? `${targetLabel}'s plan does not include teams, so they cannot own this one.`
-              : `${targetLabel}'s plan allows them to own ${pluralize(limits.teams, "team")}, and they already do.`,
-        },
-        { status: 409 },
-      );
-    }
-  }
 
   const client = await pool.connect();
   try {
@@ -551,6 +534,32 @@ async function transferOwnership(
         },
         { status: 409 },
       );
+    }
+
+    // The owned-team count, under the per-user lock POST takes before it
+    // counts, so the target creating a team, or a second team being handed
+    // to them, at the same moment cannot both pass a count read before the
+    // other committed and leave them over the cap.
+    if (limits && limits.teams !== -1) {
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+        `team-create:${newOwnerId}`,
+      ]);
+      const owned = await client.query<{ cnt: string }>(
+        `SELECT COUNT(*) AS cnt FROM team_members WHERE user_id = $1 AND role = $2`,
+        [newOwnerId, TEAM_ROLES.OWNER],
+      );
+      if (!withinPlanLimit(Number(owned.rows[0]?.cnt ?? 0), limits.teams)) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          {
+            error:
+              limits.teams === 0
+                ? `${targetLabel}'s plan does not include teams, so they cannot own this one.`
+                : `${targetLabel}'s plan allows them to own ${pluralize(limits.teams, "team")}, and they already do.`,
+          },
+          { status: 409 },
+        );
+      }
     }
 
     // Counted the way the invite path counts a seat, members plus live

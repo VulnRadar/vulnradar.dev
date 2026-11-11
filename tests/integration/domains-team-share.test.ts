@@ -343,7 +343,39 @@ describeIntegration("transferring a team's ownership", () => {
       patchTeam(transferRequest({ teamId, newOwnerId: b.id })),
     ]);
 
-    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    // The loser answers 409 when it read the owner's role before the winner
+    // committed and then found the lock moved, or 403 when the winner had
+    // already committed by the time it read the role. Which one depends on
+    // scheduling; what must never happen is two 200s.
+    const statuses = results.map((r) => r.status).sort();
+    expect(statuses[0]).toBe(200);
+    expect([403, 409]).toContain(statuses[1]);
+    const after = await roles(teamId);
+    const owners = Object.entries(after).filter(([, r]) => r === "owner");
+    expect(owners).toHaveLength(1);
+    expect(await ownerIdOf(teamId)).toBe(Number(owners[0][0]));
+  });
+
+  it("never removes the member a racing transfer made the owner", async () => {
+    // The admin's removal reads A's role before the transfer commits. Without
+    // the locked re-read in the removal, it then deleted the new owner's
+    // membership and left teams.owner_id naming someone not on the team.
+    const owner = await createUser();
+    const admin = await createUser();
+    const a = await createUser();
+    const teamId = await createTeam(owner.id);
+    await addMember(teamId, owner.id, "owner");
+    await addMember(teamId, admin.id, "admin");
+    await addMember(teamId, a.id, "member");
+    mockGetSession
+      .mockResolvedValueOnce({ userId: owner.id })
+      .mockResolvedValueOnce({ userId: admin.id });
+
+    await Promise.all([
+      patchTeam(transferRequest({ teamId, newOwnerId: a.id })),
+      removeMember(memberRequest({ teamId, userId: a.id })),
+    ]);
+
     const after = await roles(teamId);
     const owners = Object.entries(after).filter(([, r]) => r === "owner");
     expect(owners).toHaveLength(1);

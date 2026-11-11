@@ -1083,6 +1083,63 @@ describe("what leaving or being removed does to the member's shared resources", 
     expect(mockRelease).toHaveBeenCalledTimes(1);
   });
 
+  /**
+   * The route reads the target's role before it removes them, and an
+   * ownership transfer can land in between. The removal re-reads the role
+   * under a row lock, so it is the role at the moment of the delete that
+   * decides, and the owner's membership is never the one that goes.
+   */
+  function lockedRoleIs(role: string | null) {
+    const answer = mockQuery.getMockImplementation()!;
+    mockQuery.mockImplementation(async (sql: string, params: unknown[]) =>
+      String(sql).includes("FOR UPDATE")
+        ? { rows: role ? [{ role }] : [] }
+        : answer(sql, params),
+    );
+  }
+
+  it("will not remove someone a transfer made the owner after the role check", async () => {
+    routeMemberQueries({ 1: "admin", 2: "member" });
+    lockedRoleIs("owner");
+
+    const res = await DELETE(deleteRequest({ teamId: 5, userId: 2 }));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Cannot remove the team owner.");
+    const ran = statements().map(([sql]) => sql);
+    expect(ran).toContain("ROLLBACK");
+    expect(ran).not.toContain("COMMIT");
+    expect(membershipDelete()).toBeUndefined();
+    expect(ran.some((sql) => sql.includes("SET team_id = NULL"))).toBe(false);
+    expect(mockLogAction).not.toHaveBeenCalled();
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+  });
+
+  it("will not let someone leave once a transfer has made them the owner", async () => {
+    routeMemberQueries({ 1: "member" });
+    lockedRoleIs("owner");
+
+    const res = await DELETE(deleteRequest({ teamId: 5, userId: "self" }));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe(
+      "Transfer ownership to another member first, or delete the team.",
+    );
+    expect(membershipDelete()).toBeUndefined();
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing when the locked re-read finds the member already gone", async () => {
+    routeMemberQueries({ 1: "admin", 2: "member" });
+    lockedRoleIs(null);
+
+    const res = await DELETE(deleteRequest({ teamId: 5, userId: 2 }));
+
+    expect(res.status).toBe(200);
+    expect(membershipDelete()).toBeUndefined();
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
   it("touches nobody's resources when the caller may not remove the target", async () => {
     routeMemberQueries({ 1: "member", 2: "viewer" });
 

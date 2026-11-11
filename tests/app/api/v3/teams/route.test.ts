@@ -1038,6 +1038,24 @@ describe("PATCH /api/v3/teams, transferring ownership", () => {
 
     expect(res.status).toBe(409);
     expect(writes()).toEqual([]);
+    // Counted inside the transaction, after the same per-user lock a team
+    // create takes, so a create or a second transfer to Sam racing this one
+    // cannot both pass a count read before the other committed.
+    const tx = mockClientQuery.mock.calls.map(([sql, params]) => [
+      String(sql).replace(/\s+/g, " ").trim(),
+      params as unknown[],
+    ]) as [string, unknown[]][];
+    const lock = tx.findIndex(([sql]) => sql.includes("pg_advisory_xact_lock"));
+    const count = tx.findIndex(
+      ([sql]) => sql.includes("COUNT(*)") && sql.includes("role = $2"),
+    );
+    expect(lock).toBeGreaterThan(0);
+    expect(tx[lock][1]).toEqual(["team-create:7"]);
+    expect(count).toBeGreaterThan(lock);
+    expect(tx.map(([sql]) => sql)).toContain("ROLLBACK");
+    expect(
+      mockQuery.mock.calls.some(([sql]) => String(sql).includes("COUNT(*)")),
+    ).toBe(false);
   });
 
   it("does nothing when another request moved ownership first", async () => {

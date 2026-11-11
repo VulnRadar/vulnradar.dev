@@ -95,17 +95,32 @@ async function dropOrphanedTicketShares(
  * the team leaves them. One transaction, so there is no moment in which the
  * person is gone and their resources are still the team's.
  *
- * Returns how many membership rows went: 0 when a racing request got there
- * first. Throws after rolling back, which withErrorHandling answers with a
- * 500, so a removal is never reported done while half of it happened.
+ * The role is read again here, locked, rather than trusted from the route's
+ * earlier read: an ownership transfer (PATCH /api/v3/teams) can make this
+ * person the owner in between, and deleting the owner's membership would leave
+ * a team whose owner_id names someone who is not on it.
+ *
+ * Returns "removed", "gone" when a racing request got there first, or "owner"
+ * when they own the team by now and nothing was changed. Throws after rolling
+ * back, which withErrorHandling answers with a 500, so a removal is never
+ * reported done while half of it happened.
  */
 async function removeMembership(
   teamId: number,
   userId: number,
-): Promise<number> {
+): Promise<"removed" | "gone" | "owner"> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const current = await client.query<{ role: string }>(
+      "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2 FOR UPDATE",
+      [teamId, userId],
+    );
+    const role = current.rows[0]?.role;
+    if (!role || role === TEAM_ROLES.OWNER) {
+      await client.query("ROLLBACK");
+      return role ? "owner" : "gone";
+    }
     const removed = await client.query(
       "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
       [teamId, userId],
@@ -123,7 +138,7 @@ async function removeMembership(
       [userId, teamId],
     );
     await client.query("COMMIT");
-    return removed.rowCount ?? 0;
+    return removed.rowCount ? "removed" : "gone";
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     throw err;
@@ -580,18 +595,20 @@ export const DELETE = withErrorHandling(async (request: Request) => {
   if (targetUserId === session.userId) {
     // Leaving the team. An owner cannot, because a team always has one;
     // PATCH /api/v3/teams { teamId, newOwnerId } hands it to a member first.
-    if (myRole.rows[0].role === TEAM_ROLES.OWNER) {
-      return NextResponse.json(
+    const ownerCannotLeave = () =>
+      NextResponse.json(
         {
           error:
             "Transfer ownership to another member first, or delete the team.",
         },
         { status: 400 },
       );
-    }
+    if (myRole.rows[0].role === TEAM_ROLES.OWNER) return ownerCannotLeave();
     const left = await removeMembership(teamId, targetUserId);
+    // Handed the team while this request was in flight.
+    if (left === "owner") return ownerCannotLeave();
     await dropOrphanedTicketShares(teamId, targetUserId);
-    if (left) {
+    if (left === "removed") {
       const roleWhenLeft = myRole.rows[0].role;
       await recordTeamAudit(async (ip) =>
         logAction(
@@ -663,10 +680,17 @@ export const DELETE = withErrorHandling(async (request: Request) => {
   ]);
 
   const removed = await removeMembership(teamId, targetUserId);
+  // Made the owner by a transfer that landed after the role check above.
+  if (removed === "owner") {
+    return NextResponse.json(
+      { error: "Cannot remove the team owner." },
+      { status: 400 },
+    );
+  }
   await dropOrphanedTicketShares(teamId, targetUserId);
 
   const teamName = teamRow.rows[0]?.name;
-  if (removed) {
+  if (removed === "removed") {
     const roleWhenRemoved = targetRole.rows[0].role;
     await recordTeamAudit((ip) =>
       logAction(
