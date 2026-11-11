@@ -23,13 +23,7 @@ const mockGetStripe = vi.fn();
 vi.mock("@/lib/billing/stripe", () => ({
   getStripe: () => mockGetStripe(),
 }));
-vi.mock("@/lib/billing/ai-usage", () => ({ checkAiUsageQuota: vi.fn() }));
-vi.mock("@/lib/billing/github-review-usage", () => ({
-  checkGithubReviewQuota: vi.fn(),
-}));
-vi.mock("@/lib/admin/alert-webhook", () => ({ sendAdminAlert: vi.fn() }));
 
-const billing = await import("@/app/api/v3/billing/route");
 const cancelRoute =
   await import("@/app/api/v3/billing/subscription/cancel/route");
 
@@ -62,32 +56,20 @@ beforeEach(() => {
 });
 
 describe("immediate cancellation during an impersonation", () => {
-  it("POST /billing cancel_immediately answers 403 and Stripe hears nothing", async () => {
-    mockGetSession.mockResolvedValue(IMPERSONATED);
-    const res = await billing.POST(
-      request("", { action: "cancel_immediately" }),
-    );
-    expect(res.status).toBe(403);
-    expect((await res.json()).impersonationBlocked).toBe(true);
-    expect(subscriptions.cancel).not.toHaveBeenCalled();
-    expect(mockQuery).not.toHaveBeenCalled();
-  });
-
-  it("POST /billing/subscription/cancel with immediate answers 403", async () => {
+  it("POST /billing/subscription/cancel with immediate answers 403 and Stripe hears nothing", async () => {
     mockGetSession.mockResolvedValue(IMPERSONATED);
     const res = await cancelRoute.POST(
       request("/subscription/cancel", { immediate: true }),
     );
     expect(res.status).toBe(403);
     expect((await res.json()).impersonationBlocked).toBe(true);
+    expect(subscriptions.cancel).not.toHaveBeenCalled();
     expect(subscriptions.update).not.toHaveBeenCalled();
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("still lets the impersonation cancel at the period end, which the customer can undo", async () => {
     mockGetSession.mockResolvedValue(IMPERSONATED);
-    const viaBilling = await billing.POST(request("", { action: "cancel" }));
-    expect(viaBilling.status).toBe(200);
     const viaCancel = await cancelRoute.POST(
       request("/subscription/cancel", { immediate: false }),
     );
@@ -99,18 +81,13 @@ describe("immediate cancellation during an impersonation", () => {
 
   it("still cancels immediately for the account holder", async () => {
     mockGetSession.mockResolvedValue(OWN);
-    const res = await billing.POST(
-      request("", { action: "cancel_immediately" }),
-    );
-    expect(res.status).toBe(200);
-    expect(subscriptions.cancel).toHaveBeenCalledWith("sub_1");
-
     const viaCancel = await cancelRoute.POST(
       request("/subscription/cancel", { immediate: true }),
     );
     expect(viaCancel.status).toBe(200);
-    expect(subscriptions.update).toHaveBeenCalledWith("sub_1", {
-      cancel_at: expect.any(Number),
+    expect(subscriptions.cancel).toHaveBeenCalledWith("sub_1", {
+      prorate: false,
+      invoice_now: false,
     });
   });
 });

@@ -212,18 +212,22 @@ describe("impersonation cannot rewrite the account it is impersonating", () => {
       "keys/[id]/rotate/route.ts",
       "keys/[id]/revoke/route.ts",
       "keys/[id]/reset-binding/route.ts",
-      "billing/route.ts",
       "billing/subscription/cancel/route.ts",
     ]) {
       expect(readFileSync(join(API_ROOT, rel), "utf8"), rel).toContain(GUARD);
     }
-    const billing = code(
-      readFileSync(join(API_ROOT, "billing/route.ts"), "utf8"),
+    // The one immediate cancel (POST /billing's duplicate was deleted,
+    // sec-money-6): the guard has to come before the call that ends it.
+    const cancel = code(
+      readFileSync(
+        join(API_ROOT, "billing/subscription/cancel/route.ts"),
+        "utf8",
+      ),
     );
-    const immediate = billing.slice(billing.indexOf('"cancel_immediately"'));
-    expect(
-      immediate.slice(0, immediate.indexOf("subscriptions.cancel(")),
-    ).toContain(GUARD);
+    expect(cancel.indexOf("cancelSubscriptionNow(")).toBeGreaterThan(0);
+    expect(cancel.slice(0, cancel.indexOf("cancelSubscriptionNow("))).toContain(
+      GUARD,
+    );
   });
 
   it("refuses each Stripe server action that moves money before Stripe or the database is touched", () => {

@@ -154,24 +154,27 @@ describe("POST /api/v3/billing/subscription/cancel", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("immediate=true sets cancel_at to now and immediately downgrades the user to free", async () => {
-    const before = Math.floor(Date.now() / 1000);
+  it("immediate=true cancels outright with no proration credit and downgrades the user", async () => {
+    // sec-money-6. This used to send update({cancel_at: now}), which Stripe
+    // runs under the default proration setting: the unused part of the
+    // period came back as a credit on the customer, against the no-refund
+    // policy the dialog states. An outright cancel never prorates.
     const update = vi.fn().mockResolvedValue({});
-    mockGetStripe.mockReturnValue({ subscriptions: { update } });
+    const cancel = vi.fn().mockResolvedValue({ id: "sub_1" });
+    mockGetStripe.mockReturnValue({ subscriptions: { update, cancel } });
     mockQuery.mockResolvedValueOnce({
       rows: [{ stripe_subscription_id: "sub_1" }],
     });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await POST(postRequest({ immediate: true }));
-    const after = Math.floor(Date.now() / 1000);
 
-    expect(update).toHaveBeenCalledTimes(1);
-    const [subId, payload] = update.mock.calls[0];
-    expect(subId).toBe("sub_1");
-    expect(typeof payload.cancel_at).toBe("number");
-    expect(payload.cancel_at).toBeGreaterThanOrEqual(before);
-    expect(payload.cancel_at).toBeLessThanOrEqual(after);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledWith("sub_1", {
+      prorate: false,
+      invoice_now: false,
+    });
+    expect(update).not.toHaveBeenCalled();
 
     // billing: plan is now a CASE on role (staff falls back to
     // pro_supporter, their granted floor, instead of free) -- see the

@@ -3,6 +3,7 @@ import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
+import { cancelSubscriptionNow } from "@/lib/billing/cancel-subscription";
 import {
   staffPlanFloorCase,
   STAFF_PLAN_FLOOR_ROLES,
@@ -39,7 +40,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
   const { immediate } = fields;
-  // Same rule as POST /api/v3/billing's cancel_immediately.
+  // Ending the subscription now forfeits the period the customer already
+  // paid for, and they cannot undo it. A period-end cancel stays open to an
+  // impersonation because reactivating reverses it.
   if (immediate) {
     const refused = refuseWhileImpersonating(
       session,
@@ -85,11 +88,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     // Cancel the subscription
     if (immediate) {
-      // Immediate cancellation - set cancel_at to now
-      const now = Math.floor(Date.now() / 1000);
-      await stripe.subscriptions.update(user.stripe_subscription_id, {
-        cancel_at: now,
-      });
+      // An outright cancel with no proration credit, which is what "no refund"
+      // in the dialog promises. This used to move cancel_at to now through an
+      // update, and Stripe prorated that under its default setting.
+      await cancelSubscriptionNow(stripe, user.stripe_subscription_id);
 
       // Update database - set subscription status to canceled and clear
       // subscription ID. billing: a staff account (lib/billing/staff-plan.ts)

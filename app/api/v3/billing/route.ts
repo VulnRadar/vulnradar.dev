@@ -1,13 +1,15 @@
 // ============================================================================
-// Billing API - Usage tracking and subscription management
+// Billing API - plan, usage and subscription details for the Billing tab.
+// Cancelling and reactivating live in subscription/cancel and
+// subscription/reactivate; the duplicate POST actions this file used to carry
+// were deleted (sec-money-6, owner decision D8).
 
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
 import { stripeKeyMode } from "@/lib/billing/stripe-mode";
-import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
-import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
+import { withErrorHandling } from "@/lib/api/api-utils";
 import { logError } from "@/lib/logging/log";
 import { sendAdminAlert } from "@/lib/admin/alert-webhook";
 import { canMakeRequest } from "@/lib/rate-limiting/daily-limits";
@@ -16,11 +18,7 @@ import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
 import { checkGithubReviewQuota } from "@/lib/billing/github-review-usage";
 import { checkBrowserbaseQuota } from "@/lib/billing/browserbase-usage";
 import { planRank } from "@/lib/billing/plan-limits";
-import {
-  staffPlanFloor,
-  staffPlanFloorCase,
-  STAFF_PLAN_FLOOR_ROLES,
-} from "@/lib/billing/staff-plan";
+import { staffPlanFloor } from "@/lib/billing/staff-plan";
 
 // GET /api/v3/billing - Get user's billing info and usage
 export const GET = withErrorHandling(async () => {
@@ -214,8 +212,8 @@ export const GET = withErrorHandling(async () => {
         // If the subscription doesn't exist in Stripe (a dangling ID left
         // behind by e.g. a database migration from a different Stripe
         // account/mode), clear it AND downgrade the plan -- matching what
-        // the "cancel_immediately" action below already does for a real
-        // cancellation. Previously this only cleared
+        // an immediate cancel (POST /billing/subscription/cancel) does for a
+        // real cancellation. Previously this only cleared
         // stripe_subscription_id/subscription_status and left `plan`
         // untouched, so a user whose subscription no longer exists in
         // Stripe at all kept whatever paid plan they had forever, with no
@@ -363,204 +361,6 @@ export const GET = withErrorHandling(async () => {
     });
     return NextResponse.json(
       { error: "Failed to fetch billing info" },
-      { status: 500 },
-    );
-  }
-});
-
-// POST /api/v3/billing - Cancel subscription
-export const POST = withErrorHandling(async (request: Request) => {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const stripe = getStripe();
-  if (!stripe) {
-    return NextResponse.json(
-      { error: "Stripe is not configured" },
-      { status: 503 },
-    );
-  }
-
-  const parsed = await readJsonObject(request);
-  if (!parsed.ok) return parsed.response;
-  const { action } = parsed.data;
-
-  try {
-    if (action === "cancel") {
-      // Get user's subscription ID (or customer ID to look it up)
-      const userResult = await pool.query(
-        `SELECT stripe_subscription_id, stripe_customer_id FROM users WHERE id = $1`,
-        [session.userId],
-      );
-
-      let subscriptionId = userResult.rows[0]?.stripe_subscription_id;
-      const customerId = userResult.rows[0]?.stripe_customer_id;
-
-      // If no subscription ID but we have a customer ID, try to find the subscription
-      if (!subscriptionId && customerId) {
-        const subscriptions = await stripe.subscriptions.list({
-          customer: customerId,
-          status: "active",
-          limit: 1,
-        });
-        if (subscriptions.data.length > 0) {
-          subscriptionId = subscriptions.data[0].id;
-          // Update the database with the found subscription ID
-          await pool.query(
-            `UPDATE users SET stripe_subscription_id = $1 WHERE id = $2`,
-            [subscriptionId, session.userId],
-          );
-        }
-      }
-
-      if (!subscriptionId) {
-        return NextResponse.json(
-          { error: "No active subscription found" },
-          { status: 400 },
-        );
-      }
-
-      // Cancel at period end (user keeps access until billing period ends)
-      const subscription = await stripe.subscriptions.update(subscriptionId, {
-        cancel_at_period_end: true,
-      });
-
-      // Update user's subscription status in database
-      await pool.query(
-        `UPDATE users SET subscription_status = 'canceling' WHERE id = $1`,
-        [session.userId],
-      );
-
-      return NextResponse.json({
-        success: true,
-        message:
-          "Subscription will be canceled at the end of the billing period",
-        cancelAt: subscription.cancel_at
-          ? new Date(subscription.cancel_at * 1000).toISOString()
-          : null,
-        // Read off the subscription ITEM, which is where Stripe moved it. It
-        // was read off the subscription through an `as unknown as` cast, and
-        // that field no longer exists on the response: the value was
-        // undefined, `undefined * 1000` is NaN, and `new Date(NaN)
-        // .toISOString()` throws RangeError. This route would have answered
-        // 500 AFTER the cancellation had already been committed to both
-        // Stripe and our own users row, so the caller would be told the
-        // cancellation failed when it had succeeded, and retrying would
-        // repeat it. The rest of this file already reads it from the item.
-        //
-        // Null rather than a thrown date when Stripe sends no period: the
-        // cancellation itself is done either way, and the timestamp is
-        // supporting detail.
-        currentPeriodEnd: subscription.items?.data?.[0]?.current_period_end
-          ? new Date(
-              subscription.items.data[0].current_period_end * 1000,
-            ).toISOString()
-          : null,
-      });
-    }
-
-    if (action === "cancel_immediately") {
-      // Ending the subscription now forfeits the period the customer already
-      // paid for, and they cannot undo it. A period-end cancel stays open to
-      // an impersonation because reactivating reverses it.
-      const refused = refuseWhileImpersonating(
-        session,
-        "Cancelling the subscription immediately",
-      );
-      if (refused) return refused;
-
-      // Get user's subscription ID (or customer ID to look it up)
-      const userResult = await pool.query(
-        `SELECT stripe_subscription_id, stripe_customer_id FROM users WHERE id = $1`,
-        [session.userId],
-      );
-
-      let subscriptionId = userResult.rows[0]?.stripe_subscription_id;
-      const customerId = userResult.rows[0]?.stripe_customer_id;
-
-      // If no subscription ID but we have a customer ID, try to find the subscription
-      if (!subscriptionId && customerId) {
-        const subscriptions = await stripe.subscriptions.list({
-          customer: customerId,
-          status: "active",
-          limit: 1,
-        });
-        if (subscriptions.data.length > 0) {
-          subscriptionId = subscriptions.data[0].id;
-        }
-      }
-
-      if (!subscriptionId) {
-        return NextResponse.json(
-          { error: "No active subscription found" },
-          { status: 400 },
-        );
-      }
-
-      // Cancel immediately (user loses access now)
-      await stripe.subscriptions.cancel(subscriptionId);
-
-      // Update user's plan and subscription status in database. billing: a
-      // staff account (lib/billing/staff-plan.ts) already holds a real,
-      // granted pro_supporter floor -- canceling a real paid subscription
-      // on top of that lands back on that floor, not all the way to free.
-      await pool.query(
-        `UPDATE users SET
-          plan = ${staffPlanFloorCase("$2")},
-          subscription_status = 'canceled',
-          stripe_subscription_id = NULL,
-          billing_interval = NULL
-        WHERE id = $1`,
-        [session.userId, STAFF_PLAN_FLOOR_ROLES],
-      );
-
-      return NextResponse.json({
-        success: true,
-        message: "Subscription canceled immediately",
-      });
-    }
-
-    if (action === "reactivate") {
-      // Get user's subscription ID
-      const userResult = await pool.query(
-        `SELECT stripe_subscription_id FROM users WHERE id = $1`,
-        [session.userId],
-      );
-
-      const subscriptionId = userResult.rows[0]?.stripe_subscription_id;
-      if (!subscriptionId) {
-        return NextResponse.json(
-          { error: "No subscription found" },
-          { status: 400 },
-        );
-      }
-
-      // Remove cancel at period end
-      await stripe.subscriptions.update(subscriptionId, {
-        cancel_at_period_end: false,
-      });
-
-      // Update user's subscription status
-      await pool.query(
-        `UPDATE users SET subscription_status = 'active' WHERE id = $1`,
-        [session.userId],
-      );
-
-      return NextResponse.json({
-        success: true,
-        message: "Subscription reactivated",
-      });
-    }
-
-    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
-  } catch (error) {
-    logError("billing", "could not process the billing action", error, {
-      userId: session.userId,
-    });
-    return NextResponse.json(
-      { error: "Failed to process request" },
       { status: 500 },
     );
   }

@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { NextRequest } from "next/server";
 
 /**
- * Route-level tests for GET/POST /api/v3/billing. The pg pool and the
+ * Route-level tests for GET /api/v3/billing. The pg pool and the
  * Stripe SDK client (getStripe()) are mocked at the network/database
  * boundary; everything else (daily-limit calculation, gifted-subscription
- * priority, action dispatch) runs for real.
+ * priority) runs for real. The POST actions this route used to carry were a
+ * duplicate of subscription/cancel and subscription/reactivate and are gone
+ * (sec-money-6, owner decision D8).
  */
 
 const mockQuery = vi.fn();
@@ -39,7 +40,7 @@ vi.mock("@/lib/admin/alert-webhook", () => ({
   sendAdminAlert: (...args: unknown[]) => mockSendAdminAlert(...args),
 }));
 
-const { GET, POST } = await import("@/app/api/v3/billing/route");
+const { GET } = await import("@/app/api/v3/billing/route");
 const { PLAN_LIMITS } = await import("@/lib/rate-limiting/daily-limits");
 const { getPlanById } = await import("@/lib/billing/catalog");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
@@ -75,14 +76,6 @@ beforeEach(() => {
   // Invalidate so each test's pool mock is actually consulted.
   invalidateSettingsCache();
 });
-
-function postRequest(body: unknown): NextRequest {
-  return new NextRequest("http://localhost/api/v3/billing", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
 
 /**
  * Wires the pool mock to answer every query GET /api/v3/billing (and the
@@ -558,213 +551,6 @@ describe("GET /api/v3/billing", () => {
   });
 });
 
-describe("POST /api/v3/billing", () => {
-  it("requires authentication", async () => {
-    mockGetSession.mockResolvedValue(null);
-    const res = await POST(postRequest({ action: "cancel" }));
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 503 when Stripe is not configured", async () => {
-    mockGetStripe.mockReturnValue(null);
-    const res = await POST(postRequest({ action: "cancel" }));
-    expect(res.status).toBe(503);
-  });
-
-  it("returns 400 for an unknown action", async () => {
-    mockGetStripe.mockReturnValue({});
-    mockQuery.mockResolvedValue({ rows: [] });
-    const res = await POST(postRequest({ action: "not-a-real-action" }));
-    expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.error).toBe("Invalid action");
-  });
-
-  describe("action: cancel", () => {
-    it("cancels at period end using an existing stripe_subscription_id", async () => {
-      const update = vi.fn().mockResolvedValue({
-        cancel_at: 1700000500,
-        current_period_end: 1702592000,
-      });
-      mockGetStripe.mockReturnValue({
-        subscriptions: { update, list: vi.fn() },
-      });
-      mockQuery.mockResolvedValueOnce({
-        rows: [
-          { stripe_subscription_id: "sub_1", stripe_customer_id: "cus_1" },
-        ],
-      }); // lookup
-      mockQuery.mockResolvedValueOnce({ rows: [] }); // status update
-
-      const res = await POST(postRequest({ action: "cancel" }));
-
-      expect(update).toHaveBeenCalledWith("sub_1", {
-        cancel_at_period_end: true,
-      });
-      expect(mockQuery).toHaveBeenNthCalledWith(
-        2,
-        expect.stringContaining("subscription_status = 'canceling'"),
-        [42],
-      );
-      expect(res.status).toBe(200);
-      const json = await res.json();
-      expect(json.success).toBe(true);
-    });
-
-    it("finds and persists the subscription id via the customer id when missing on the user row", async () => {
-      const list = vi.fn().mockResolvedValue({ data: [{ id: "sub_found" }] });
-      const update = vi
-        .fn()
-        .mockResolvedValue({ cancel_at: null, current_period_end: 1702592000 });
-      mockGetStripe.mockReturnValue({ subscriptions: { update, list } });
-      mockQuery.mockResolvedValueOnce({
-        rows: [{ stripe_subscription_id: null, stripe_customer_id: "cus_1" }],
-      }); // lookup
-      mockQuery.mockResolvedValueOnce({ rows: [] }); // persist discovered id
-      mockQuery.mockResolvedValueOnce({ rows: [] }); // status update
-
-      const res = await POST(postRequest({ action: "cancel" }));
-
-      expect(list).toHaveBeenCalledWith({
-        customer: "cus_1",
-        status: "active",
-        limit: 1,
-      });
-      expect(mockQuery).toHaveBeenNthCalledWith(
-        2,
-        expect.stringContaining("SET stripe_subscription_id = $1"),
-        ["sub_found", 42],
-      );
-      expect(update).toHaveBeenCalledWith("sub_found", {
-        cancel_at_period_end: true,
-      });
-      expect(res.status).toBe(200);
-    });
-
-    it("returns 400 when no subscription can be found at all", async () => {
-      const list = vi.fn().mockResolvedValue({ data: [] });
-      mockGetStripe.mockReturnValue({
-        subscriptions: { update: vi.fn(), list },
-      });
-      mockQuery.mockResolvedValueOnce({
-        rows: [{ stripe_subscription_id: null, stripe_customer_id: "cus_1" }],
-      });
-
-      const res = await POST(postRequest({ action: "cancel" }));
-      expect(res.status).toBe(400);
-      const json = await res.json();
-      expect(json.error).toBe("No active subscription found");
-    });
-  });
-
-  describe("action: cancel_immediately", () => {
-    it("cancels now and downgrades the user to free", async () => {
-      const cancel = vi.fn().mockResolvedValue({});
-      mockGetStripe.mockReturnValue({
-        subscriptions: { cancel, list: vi.fn() },
-      });
-      mockQuery.mockResolvedValueOnce({
-        rows: [
-          { stripe_subscription_id: "sub_1", stripe_customer_id: "cus_1" },
-        ],
-      });
-      mockQuery.mockResolvedValueOnce({ rows: [] });
-
-      const res = await POST(postRequest({ action: "cancel_immediately" }));
-
-      expect(cancel).toHaveBeenCalledWith("sub_1");
-      // billing: plan is now a CASE on role (staff falls back to
-      // pro_supporter, their granted floor, instead of free) -- see the
-      // matching test below for the staff case.
-      const [sql, params] = mockQuery.mock.calls[1];
-      // The staff floor is derived from lib/billing/staff-plan.ts's own
-      // constants, not a hand-written role triple: the old inline CASE listed
-      // three of the seven staff roles and omitted super_admin entirely, so
-      // four staff roles dropped to free and super_admin lost its
-      // elite_supporter floor.
-      expect(sql).toContain("WHEN role = 'super_admin' THEN 'elite_supporter'");
-      expect(sql).toContain("WHEN role = ANY($2::text[]) THEN 'pro_supporter'");
-      expect(sql).toContain("ELSE 'free' END");
-      expect(sql).toContain("subscription_status = 'canceled'");
-      expect(sql).toContain("stripe_subscription_id = NULL");
-      expect(params[0]).toBe(42);
-      expect(params[1]).toEqual(
-        expect.arrayContaining([
-          "admin",
-          "moderator",
-          "support",
-          "billing",
-          "security_analyst",
-          "content_manager",
-          "ops",
-        ]),
-      );
-      expect(res.status).toBe(200);
-      const json = await res.json();
-      expect(json.message).toBe("Subscription canceled immediately");
-    });
-
-    it("returns 400 when there is no subscription to cancel", async () => {
-      mockGetStripe.mockReturnValue({
-        subscriptions: { cancel: vi.fn(), list: vi.fn() },
-      });
-      mockQuery.mockResolvedValueOnce({
-        rows: [{ stripe_subscription_id: null, stripe_customer_id: null }],
-      });
-
-      const res = await POST(postRequest({ action: "cancel_immediately" }));
-      expect(res.status).toBe(400);
-    });
-  });
-
-  describe("action: reactivate", () => {
-    it("returns 400 when the user has no subscription", async () => {
-      mockGetStripe.mockReturnValue({ subscriptions: { update: vi.fn() } });
-      mockQuery.mockResolvedValueOnce({
-        rows: [{ stripe_subscription_id: null }],
-      });
-
-      const res = await POST(postRequest({ action: "reactivate" }));
-      expect(res.status).toBe(400);
-      const json = await res.json();
-      expect(json.error).toBe("No subscription found");
-    });
-
-    it("removes cancel_at_period_end and marks the subscription active again", async () => {
-      const update = vi.fn().mockResolvedValue({});
-      mockGetStripe.mockReturnValue({ subscriptions: { update } });
-      mockQuery.mockResolvedValueOnce({
-        rows: [{ stripe_subscription_id: "sub_1" }],
-      });
-      mockQuery.mockResolvedValueOnce({ rows: [] });
-
-      const res = await POST(postRequest({ action: "reactivate" }));
-
-      expect(update).toHaveBeenCalledWith("sub_1", {
-        cancel_at_period_end: false,
-      });
-      expect(mockQuery).toHaveBeenNthCalledWith(
-        2,
-        expect.stringContaining("subscription_status = 'active'"),
-        [42],
-      );
-      expect(res.status).toBe(200);
-      const json = await res.json();
-      expect(json.message).toBe("Subscription reactivated");
-    });
-  });
-
-  it("returns 500 when an unexpected error is thrown", async () => {
-    mockGetStripe.mockReturnValue({ subscriptions: { update: vi.fn() } });
-    mockQuery.mockRejectedValueOnce(new Error("db exploded"));
-
-    const res = await POST(postRequest({ action: "cancel" }));
-    expect(res.status).toBe(500);
-    const json = await res.json();
-    expect(json.error).toBe("Failed to process request");
-  });
-});
-
 /**
  * GET /api/v3/billing changes a paid account's plan when Stripe says the stored
  * subscription does not exist. That is deliberate, and it is also the one place
@@ -961,14 +747,5 @@ describe("GET /api/v3/billing: an automatic downgrade is recorded and alerted", 
 
     expect(res.status).toBe(500);
     await expect(res.json()).resolves.toHaveProperty("error");
-  });
-
-  it("wraps POST as well", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    mockGetSession.mockRejectedValue(new Error("session store down"));
-
-    const res = await POST(postRequest({ action: "cancel" }));
-
-    expect(res.status).toBe(500);
   });
 });
