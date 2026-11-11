@@ -1,7 +1,7 @@
 import { it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import pool from "@/lib/database/db";
-import { describeIntegration, createUser, type TestUser } from "./_db";
+import { describeIntegration, createUser, unique, type TestUser } from "./_db";
 
 /**
  * What a broadcast reports about its own delivery, judged by Postgres.
@@ -138,6 +138,25 @@ describeIntegration("broadcast delivery counts", () => {
     expect((await res.json()).recipients).toBe(1);
     await settled(id);
     expect(sent).toEqual([user.email]);
+  });
+
+  // The other half of the fix: users.email keeps the capitalisation an older
+  // account signed up with, so a lower-cased address only finds it through
+  // LOWER(u.email). Without that this one matches nobody and is refused.
+  it("reaches an account whose stored address has capitals in it", async () => {
+    const stored = `Mixed-${unique("case")}@Example.Test`;
+    await pool.query(
+      `INSERT INTO users (email, password_hash, email_verified_at)
+       VALUES ($1, 'not-a-real-hash', NOW())`,
+      [stored],
+    );
+    const id = await draft({ segment: `email:${stored.toLowerCase()}` });
+
+    const res = await call({ action: "send", id });
+    expect(res.status).toBe(200);
+    expect((await res.json()).recipients).toBe(1);
+    await settled(id);
+    expect(sent).toEqual([stored]);
   });
 
   it("refuses a send that would reach nobody and leaves it a draft", async () => {

@@ -1475,10 +1475,10 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       if (action === "delete") {
         const { id } = body;
         // Get title for audit before deleting
-        const titleResult = await pool.query(
-          `SELECT title FROM broadcast_messages WHERE id = $1`,
-          [id],
-        );
+        const titleResult = await pool.query<{
+          title: string;
+          status: string;
+        }>(`SELECT title, status FROM broadcast_messages WHERE id = $1`, [id]);
         const broadcastTitle = titleResult.rows[0]?.title || "Unknown";
 
         // Only drafts, and not one that is being delivered right now: the
@@ -1495,6 +1495,17 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           [id, CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES],
         );
         if (result.rows.length === 0) {
+          // A draft that missed the DELETE is one being delivered. Calling it
+          // "sent" sent the operator looking for a broadcast that was not.
+          if (titleResult.rows[0]?.status === "draft") {
+            return NextResponse.json(
+              {
+                error:
+                  "This broadcast is being sent. It can be deleted once delivery finishes.",
+              },
+              { status: 409 },
+            );
+          }
           return NextResponse.json(
             { error: "Cannot delete sent broadcasts" },
             { status: 400 },

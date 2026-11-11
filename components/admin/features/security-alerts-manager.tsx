@@ -416,10 +416,13 @@ export function SecurityAlertsManager() {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowResolved((v) => !v)}
+                // A toggle keeps one label and reports its state through
+                // aria-pressed: a label that flips to "Hide resolved" as well
+                // is read as "Hide resolved, pressed", which says the opposite.
                 aria-pressed={showResolved}
-                className="h-9 px-3 border-border/40 shrink-0"
+                className="h-11 px-3 sm:h-9 border-border/40 shrink-0"
               >
-                {showResolved ? "Hide resolved" : "Show resolved"}
+                Show resolved
               </Button>
               <Button
                 variant="outline"
@@ -427,7 +430,8 @@ export function SecurityAlertsManager() {
                 onClick={fetchAlerts}
                 disabled={loading}
                 aria-label="Refresh alerts"
-                className="h-9 px-3 gap-2 border-border/40 shrink-0"
+                // Icon-only below sm, so the phone size is the 44px square.
+                className="h-11 w-11 p-0 sm:h-9 sm:w-auto sm:px-3 gap-2 border-border/40 shrink-0"
               >
                 <RefreshCw
                   className={cn("h-4 w-4", loading && "animate-spin")}

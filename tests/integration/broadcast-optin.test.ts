@@ -70,8 +70,8 @@ describeIntegration("broadcast audience", () => {
     return user;
   }
 
-  /** Save a draft, send it through the route, and wait for delivery. */
-  async function broadcast(segmentFilter: unknown): Promise<string[]> {
+  /** Save a draft and ask the route to send it. */
+  async function queue(segmentFilter: unknown) {
     const { rows } = await pool.query<{ id: number }>(
       `INSERT INTO broadcast_messages (title, content, message_type, segment_filter, created_by, status)
        VALUES ('Integration broadcast', '<p>hi</p>', 'email', $1, $2, 'draft')
@@ -88,6 +88,12 @@ describeIntegration("broadcast audience", () => {
         body: JSON.stringify({ section: "broadcast", action: "send", id }),
       }),
     );
+    return { id, res };
+  }
+
+  /** Save a draft, send it through the route, and wait for delivery. */
+  async function broadcast(segmentFilter: unknown): Promise<string[]> {
+    const { id, res } = await queue(segmentFilter);
     expect(res.status).toBe(200);
 
     // Delivery runs on a timer after the response, and the row only turns
@@ -156,8 +162,16 @@ describeIntegration("broadcast audience", () => {
     expect(reached).toEqual([optedOut.email]);
   });
 
+  // The send is refused outright (bug-messaging-18): an audience of nobody is
+  // reported as an error rather than queued and marked sent.
   it("never mails a disabled account, even named as the specific address", async () => {
-    const reached = await broadcast({ segment: `email:${disabled.email}` });
-    expect(reached).toEqual([]);
+    const { id, res } = await queue({ segment: `email:${disabled.email}` });
+    expect(res.status).toBe(422);
+    const { rows } = await pool.query<{ n: number }>(
+      "SELECT COUNT(*)::int AS n FROM broadcast_recipients WHERE message_id = $1",
+      [id],
+    );
+    expect(rows[0].n).toBe(0);
+    expect(sent).not.toContain(disabled.email);
   });
 });

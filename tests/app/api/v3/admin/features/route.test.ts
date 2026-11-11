@@ -1240,6 +1240,21 @@ describe("POST /api/v3/admin/features — broadcast", () => {
     expect(mockLogAction).not.toHaveBeenCalled();
   });
 
+  it("says a draft that is mid-delivery is being sent, not that it was sent", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ title: "Queued one", status: "draft" }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // sent_at inside the cooldown
+    const res = await POST(
+      postRequest({ section: "broadcast", action: "delete", id: 3 }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(409);
+    expect(json.error).toMatch(/being sent/);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
   it("deletes a draft broadcast and audit-logs it", async () => {
     queueRole("admin");
     mockQuery.mockResolvedValueOnce({ rows: [{ title: "Draft one" }] });
