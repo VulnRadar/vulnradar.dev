@@ -25,9 +25,9 @@ export function parseScanRef(raw: unknown): ScanRef | null {
   const text = typeof raw === "number" ? String(raw) : raw;
   if (typeof text !== "string") return null;
   if (isPublicScanId(text)) return { raw: text, numericId: null };
-  // scanNumericId, not the stricter path-id parser: every History subroute
-  // reads "007" as scan 7, and a route that took the same id differently would
-  // stop opening links that work next door.
+  // scanNumericId, the rule every History subroute uses, so a scan id that
+  // opens there opens here and one that is refused there ("007") is refused
+  // here too.
   const numericId = scanNumericId(text);
   return numericId === null ? null : { raw: text, numericId };
 }

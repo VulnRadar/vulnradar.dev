@@ -20,7 +20,6 @@ describe("parseScanRef", () => {
   it("reads a plain integer, as a string or a number, as the primary key", () => {
     expect(parseScanRef("123")).toEqual({ raw: "123", numericId: 123 });
     expect(parseScanRef(123)).toEqual({ raw: "123", numericId: 123 });
-    expect(parseScanRef("007")).toEqual({ raw: "007", numericId: 7 });
     expect(parseScanRef("2147483647")).toEqual({
       raw: "2147483647",
       numericId: 2147483647,
@@ -43,6 +42,7 @@ describe("parseScanRef", () => {
     "1.5",
     "1e3",
     "12abc",
+    "007",
     "2147483648",
     "99999999999999999999",
     1.5,

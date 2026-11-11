@@ -262,13 +262,11 @@ describe("GET /api/v3/scan/status/:id", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("still reads a zero-padded number as the primary key, as History does", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [row({ status: "running" })] });
-
+  it("refuses a zero-padded number with no query, as History does", async () => {
     const res = await GET(req(), ctx("007"));
 
-    expect(res.status).toBe(200);
-    expect(mockQuery.mock.calls[0][1]).toEqual(["007", 7, OWNER_ID]);
+    expect(res.status).toBe(404);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("answers a failed scan with errorMessage beside error, the same sentence", async () => {
