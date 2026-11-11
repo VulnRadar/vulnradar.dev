@@ -56,6 +56,10 @@ export interface SeoCheck {
   references: string[];
   cwe?: string;
   owasp?: string;
+  /** One sentence for the meta description, 90 to 150 characters. Optional. */
+  seoDescription?: string;
+  /** The check's name when its title is too long for a search result. Optional. */
+  shortTitle?: string;
 }
 
 // Raw JSON shape, before we normalise severity casing and drop engine-only
@@ -74,6 +78,8 @@ interface RawCheck {
   references?: string[];
   cwe?: string;
   owasp?: string;
+  seoDescription?: string;
+  shortTitle?: string;
 }
 
 /** Category display order: the same order the JSON files load in the registry. */
@@ -114,6 +120,8 @@ function normalise(raw: RawCheck): SeoCheck {
     references: raw.references ?? [],
     ...(raw.cwe ? { cwe: raw.cwe } : {}),
     ...(raw.owasp ? { owasp: raw.owasp } : {}),
+    ...(raw.seoDescription ? { seoDescription: raw.seoDescription } : {}),
+    ...(raw.shortTitle ? { shortTitle: raw.shortTitle } : {}),
   };
 }
 

@@ -60,9 +60,12 @@ const AMBIGUOUS_TITLES: ReadonlySet<string> = (() => {
 
 export function buildCheckTitle(check: SeoCheck): string {
   const title = normalise(check.title);
+  // A check can carry a shorter name for the <title> alone: the on-page H1 and
+  // every other surface keep the full one.
+  const name = check.shortTitle ? normalise(check.shortTitle) : title;
   const base = AMBIGUOUS_TITLES.has(title)
-    ? `${title} (${getCategoryLabel(check.category)})`
-    : title;
+    ? `${name} (${getCategoryLabel(check.category)})`
+    : name;
   // Keep the "how to fix" query phrasing when it fits, fall back to the
   // shorter " fix" suffix, and finally publish the title on its own. A long
   // title is left whole: search engines truncate the display themselves, and
@@ -92,6 +95,9 @@ function endOnSentence(text: string, max: number, min: number): string | null {
 // matches a search ("Strict-Transport-Security header is missing") came
 // second or got cut. The severity now goes last, and only when it fits.
 export function buildCheckDescription(check: SeoCheck): string {
+  // A sentence written for the snippet is published as is: the clamp below is
+  // only the fallback for checks that have none.
+  if (check.seoDescription) return normalise(check.seoDescription);
   const description = normalise(check.description);
   if (description.length > DESCRIPTION_MAX) {
     // Prefer stopping on a complete sentence; the word-boundary clamp is the
