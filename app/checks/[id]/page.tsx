@@ -31,6 +31,10 @@ import {
   getCategorySeo,
   type SeoCheck,
 } from "@/lib/seo/checks-content";
+import {
+  getCheckEmission,
+  type CheckEmission,
+} from "@/lib/scanner/check-emission";
 import { APP_NAME, ROUTES } from "@/lib/config/constants";
 import { CHECK_CATEGORY_LAST_MODIFIED } from "@/lib/config/check-stats.generated";
 
@@ -93,22 +97,31 @@ export async function generateMetadata({
 // NOT already on the page belong here, which today means the standards
 // mapping, plus a severity answer written as a rationale rather than a repeat
 // of the "Why it matters" paragraph.
-function buildFaq(check: SeoCheck, label: string) {
+// Some entries in dns.json, email.json and tls.json are write-ups for a finding
+// the async layer builds in code, under an `async-<title slug>` id. Promising
+// that "the check id stays the same" for those named an id no scan reports, so
+// the answer names the ids a finding really carries, and an entry that matches
+// nothing a scan reports gets no answer at all.
+function buildFaq(check: SeoCheck, label: string, emission: CheckEmission) {
   const items: { question: string; answer: string }[] = [
     {
       question: `How severe is ${check.title}?`,
       answer: `${APP_NAME} rates this ${check.severity} severity in the ${label.toLowerCase()} category. The severity is fixed per check, not scored per site, so the same finding is the same severity every time it fires.`,
     },
-    {
+  ];
+  if (!emission.documentationOnly) {
+    items.push({
       question: `Does ${APP_NAME} check for this automatically?`,
       // These submit real payloads, so the scan route refuses them without a
       // verified domain. "Yes, on every scan" was wrong on exactly the pages
       // people reach by searching for SQL injection and XSS.
       answer: isActiveProbe(check)
         ? `Only when active probing is switched on, and only for a domain you have verified you own. A standard scan does not submit these payloads. When it does run, the finding carries the check id ${check.id}, which stays the same between runs so you can filter, diff, or gate CI on it.`
-        : `Yes. It runs as part of every scan under the check id ${check.id}, which stays the same between runs so you can filter, diff, or gate CI on it.`,
-    },
-  ];
+        : emission.emitted
+          ? `Yes. It runs as part of every scan under the check id ${check.id}, which stays the same between runs so you can filter, diff, or gate CI on it.`
+          : `Yes. It runs as part of every scan. A finding from it carries an id starting ${emission.emittedAs.join(" or ")}, followed by a hash of the scanned URL, so you can filter, diff, or gate CI on that prefix.`,
+    });
+  }
   if (check.cwe || check.owasp) {
     const parts = [
       check.cwe ? `It maps to ${check.cwe}.` : "",
@@ -141,7 +154,8 @@ export default async function CheckPage({
   const nonce = (await headers()).get("x-nonce") ?? "";
   const label = getCategoryLabel(check.category);
   const categoryPath = `/checks/category/${check.category}`;
-  const faq = buildFaq(check, label);
+  const emission = getCheckEmission(check.id);
+  const faq = buildFaq(check, label, emission);
 
   const siblings = getRelatedChecks(check, 8);
   const seeAlso = getCheckSeeAlso(check);
@@ -346,11 +360,30 @@ export default async function CheckPage({
               page. The check id is <InlineCode>{check.id}</InlineCode>, the
               same between runs so you can filter or diff on it.
             </>
-          ) : (
+          ) : emission.emitted ? (
             <>
               Detected automatically by {APP_NAME}. The check id is{" "}
               <InlineCode>{check.id}</InlineCode>, stable across every scan so
               you can filter or diff on it.
+            </>
+          ) : emission.emittedAs.length > 0 ? (
+            <>
+              Detected automatically by {APP_NAME}. A finding from this check
+              carries an id starting{" "}
+              {emission.emittedAs.map((prefix, i) => (
+                <span key={prefix}>
+                  {i > 0 &&
+                    (i === emission.emittedAs.length - 1 ? " or " : ", ")}
+                  <InlineCode>{prefix}</InlineCode>
+                </span>
+              ))}
+              , followed by a hash of the scanned URL. Filter or diff on the
+              prefix.
+            </>
+          ) : (
+            <>
+              This page is reference material. No scan reports a finding under
+              the id <InlineCode>{check.id}</InlineCode>.
             </>
           )}
         </p>

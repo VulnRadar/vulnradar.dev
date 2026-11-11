@@ -5,6 +5,9 @@ import pool from "@/lib/database/db";
 import { readKnowledgeFile } from "@/lib/ai/knowledge-files";
 import { retrieveKnowledge } from "@/lib/ai/knowledge-retrieval";
 import { allCheckDefs, getCheckDef } from "@/lib/scanner/registry";
+import { LEGACY_DEDUPE_GROUPS } from "@/lib/scanner/dedupe";
+import { pageCheckGroups } from "@/lib/scanner/checks/page-checks";
+import { getCheckById } from "@/lib/seo/checks-content";
 import { resolveScanRow } from "@/lib/history/resolve-scan";
 import { getScanResourceAccess } from "@/lib/teams/scan-teams";
 import { publicScanErrorMessage } from "@/lib/api/scan-error-message";
@@ -92,6 +95,25 @@ function similarCheckIds(query: string): string[] {
     .map((c) => c.id);
 }
 
+/**
+ * The public fix guide for a check, or null when it has none. The page route
+ * 404s an id the SEO catalogue does not list, so a link built from the id
+ * alone sent people to a dead page for every check written against the newer
+ * PageCheck interface. Those that merge into a legacy check (same dedupe
+ * group) point at that sibling's guide instead, which is what the scan
+ * reports them under.
+ */
+function checkPagePath(id: string): string | null {
+  if (getCheckById(id)) return `/checks/${id}`;
+  const group = pageCheckGroups[id];
+  if (!group) return null;
+  const sibling = Object.keys(LEGACY_DEDUPE_GROUPS).find(
+    (legacyId) =>
+      LEGACY_DEDUPE_GROUPS[legacyId] === group && getCheckById(legacyId),
+  );
+  return sibling ? `/checks/${sibling}` : null;
+}
+
 export function getCheck(id: string) {
   const def = getCheckDef(id.trim());
   if (!def) {
@@ -115,7 +137,7 @@ export function getCheck(id: string) {
     cwe: def.cwe ?? null,
     owasp: def.owasp ?? null,
     references: def.references?.slice(0, 5) ?? [],
-    page: `/checks/${def.id}`,
+    page: checkPagePath(def.id),
   };
 }
 

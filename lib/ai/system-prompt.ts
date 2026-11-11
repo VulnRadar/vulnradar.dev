@@ -16,6 +16,7 @@ import {
   CONFIG_SUBDOMAIN_CACHE_TTL_HOURS,
 } from "@/lib/config/config-values";
 import { getCategoryCounts, getCheckDef } from "@/lib/scanner/registry";
+import { getAsyncCheckDef } from "@/lib/scanner/async-check-catalog";
 import { CATEGORY_META } from "@/lib/scanner/category-meta";
 import type { Category } from "@/lib/scanner/types";
 
@@ -139,16 +140,34 @@ export const COMMON_CHECK_IDS = [
   "cookie-httponly-missing",
   "cors-wildcard",
   "tls-legacy-protocol-accepted",
-  "tls-certificate-expiry",
+  "async-expired-tls-certificate",
   "server-header-disclosure",
-  "spf-record",
-  "dmarc-record",
+  "async-missing-spf-record",
+  "async-missing-dmarc-record",
   "dotenv-file-content-leaked",
   "source-map-exposed-production",
 ] as const;
 
+// The email and certificate findings are built in code by the async layer, so
+// their ids are in the async catalog rather than the registry. spf-record,
+// dmarc-record and tls-certificate-expiry used to stand in for them here, and
+// they are write-ups that no scan reports under that id.
+function describeCheck(id: string) {
+  const def = getCheckDef(id);
+  if (def) return { id: def.id, severity: def.severity, title: def.title };
+  const asyncDef = getAsyncCheckDef(id);
+  if (asyncDef) {
+    return {
+      id: asyncDef.checkId,
+      severity: asyncDef.severity,
+      title: asyncDef.title,
+    };
+  }
+  return undefined;
+}
+
 function buildCommonChecks(): string {
-  return COMMON_CHECK_IDS.map((id) => getCheckDef(id))
+  return COMMON_CHECK_IDS.map(describeCheck)
     .filter((def) => def !== undefined)
     .map((def) => `- ${def.id} (${def.severity}): ${def.title}`)
     .join("\n");

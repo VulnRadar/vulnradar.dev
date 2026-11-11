@@ -48,6 +48,45 @@ describe("getCheck", () => {
     expect(out.page).toBe("/checks/hsts-missing");
   });
 
+  it("links a page only for a check that has one", async () => {
+    const { allCheckDefs } = await import("@/lib/scanner/registry");
+    const { getCheckById } = await import("@/lib/seo/checks-content");
+    for (const def of allCheckDefs) {
+      const out = tools.getCheck(def.id);
+      if (!out.found) throw new Error(`${def.id} not found`);
+      if (getCheckById(def.id)) {
+        expect(out.page, def.id).toBe(`/checks/${def.id}`);
+      } else {
+        // Null, or the legacy sibling this check merges into. Never a path
+        // the check page would 404.
+        expect(
+          out.page === null || getCheckById(out.page.replace("/checks/", "")),
+          `${def.id} -> ${out.page}`,
+        ).toBeTruthy();
+      }
+    }
+  });
+
+  it("gives a PageCheck that merges into a legacy check the legacy check's page", async () => {
+    const { pageCheckGroups } =
+      await import("@/lib/scanner/checks/page-checks");
+    const { LEGACY_DEDUPE_GROUPS } = await import("@/lib/scanner/dedupe");
+    const { getCheckById } = await import("@/lib/seo/checks-content");
+    const grouped = Object.keys(pageCheckGroups).filter(
+      (id) =>
+        !getCheckById(id) &&
+        Object.entries(LEGACY_DEDUPE_GROUPS).some(
+          ([legacyId, group]) =>
+            group === pageCheckGroups[id] && getCheckById(legacyId),
+        ),
+    );
+    expect(grouped.length).toBeGreaterThan(0);
+    const out = tools.getCheck(grouped[0]);
+    if (!out.found) throw new Error("not found");
+    expect(out.page).toMatch(/^\/checks\/[a-z0-9-]+$/);
+    expect(out.page).not.toBe(`/checks/${grouped[0]}`);
+  });
+
   it("offers real ids for a near miss instead of a dead end", () => {
     const out = tools.getCheck("hsts");
     expect(out.found).toBe(false);
