@@ -621,7 +621,7 @@ export function StaffList({
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-[11px] text-muted-foreground uppercase tracking-wider">
-                      Admin Since
+                      Account created
                     </p>
                     <p className="text-sm">
                       {new Date(selectedAdmin.created_at).toLocaleDateString(
@@ -1160,7 +1160,7 @@ export function StaffList({
                           </TableHead>
                           <TableHead className="px-4 h-10">
                             <SortableHeader
-                              label="Admin Since"
+                              label="Account created"
                               active={sortColumn === "created_at"}
                               direction={
                                 sortColumn === "created_at"
