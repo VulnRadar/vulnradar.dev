@@ -1,7 +1,8 @@
 /**
  * A write-up that matches nothing a scan reports makes no promise about an id.
- * No entry in the data is marked documentationOnly today (all 47 map to an
- * async check), so the branch is exercised with the emission lookup stubbed.
+ * Only the two retired stubs in headers.json and content.json are marked
+ * documentationOnly, and they have their own test, so this branch is exercised
+ * on a dns.json entry with the emission lookup stubbed.
  */
 import { describe, it, expect, vi } from "vitest";
 import type { ReactNode } from "react";

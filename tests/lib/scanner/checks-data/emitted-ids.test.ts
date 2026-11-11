@@ -105,16 +105,21 @@ describe("emittedAs and documentationOnly", () => {
     });
   }
 
+  // Retired detectors that stay registered as silent stubs until the wave that
+  // 301s their pages removes them with their entries. Nothing else outside the
+  // three async files may claim to be documentation only.
+  const RETIRED_STUBS = new Set(["target-blank-no-noopener", "open-redirect"]);
+
   it("keeps the fields to the three files whose probes live in code", () => {
     for (const category of ALL_CATEGORIES) {
       if ((FILES_WITH_EMISSION as readonly string[]).includes(category)) {
         continue;
       }
       for (const entry of load(category)) {
-        expect(
-          "emittedAs" in entry || "documentationOnly" in entry,
-          `${category}/${entry.id}`,
-        ).toBe(false);
+        expect("emittedAs" in entry, `${category}/${entry.id}`).toBe(false);
+        expect("documentationOnly" in entry, `${category}/${entry.id}`).toBe(
+          RETIRED_STUBS.has(entry.id),
+        );
       }
     }
   });

@@ -6954,6 +6954,8 @@ location /phpmyadmin {
 
 The page contains URL parameters or JavaScript patterns commonly associated with open redirect vulnerabilities.
 
+**Reference only:** no scan reports a finding under `open-redirect`.
+
 **Risk:** Open redirects can be used in phishing attacks by making malicious URLs appear to originate from your trusted domain.
 
 **Why it matters:** Open redirect vulnerabilities occur when a web application takes a user-supplied URL parameter and redirects to it without validation.
@@ -16602,6 +16604,8 @@ add_header Content-Security-Policy "style-src 'self'" always;
 **Reverse Tabnabbing: target=_blank without rel=noopener**
 
 A link uses target="_blank" without rel="noopener". Plain target="_blank" has implied noopener since Chrome 88, Firefox 79 and Safari 12.1, so on those browsers the opened page gets no window.opener. The link stays exposed only on older browsers, or when rel="opener" or a named target opts back in.
+
+**Reference only:** no scan reports a finding under `target-blank-no-noopener`.
 
 **Risk:** On a browser older than those versions, the opened page can use window.opener to send this tab to a phishing page. Current browsers give it no opener unless the link asks for one.
 

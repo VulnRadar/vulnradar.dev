@@ -16,13 +16,20 @@
  *                      write-up (a finding id starts with `<id>--`)
  *   documentationOnly  nothing a scan reports corresponds to it at all
  *
- * Only these three files carry them. The module reads them directly rather
- * than through the registry so the SEO pages that need the answer do not pull
- * the scan detectors into their render path.
+ * dns.json, email.json and tls.json carry them for the async write-ups.
+ * headers.json and content.json carry documentationOnly for the two retired
+ * detectors that stay registered, as silent stubs, until the wave that 301s
+ * their /checks pages removes them with these entries: target-blank-no-noopener
+ * and open-redirect. Without it their pages promised that every scan runs them.
+ * The module reads the JSON directly rather than through the registry so the
+ * SEO pages that need the answer do not pull the scan detectors into their
+ * render path.
  */
 
+import content from "./checks-data/content.json";
 import dns from "./checks-data/dns.json";
 import email from "./checks-data/email.json";
+import headers from "./checks-data/headers.json";
 import tls from "./checks-data/tls.json";
 
 interface EmissionFields {
@@ -41,7 +48,7 @@ export interface CheckEmission {
 }
 
 const BY_ID = new Map<string, EmissionFields>(
-  [...dns, ...email, ...tls].map((entry) => {
+  [...dns, ...email, ...tls, ...headers, ...content].map((entry) => {
     const fields = entry as EmissionFields;
     return [fields.id, fields];
   }),
