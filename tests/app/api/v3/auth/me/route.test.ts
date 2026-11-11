@@ -409,7 +409,7 @@ describe("GET /api/v3/auth/me", () => {
       expect(json.backupCodesInvalid).toBe(false);
     });
 
-    it("prefers an active gifted plan over the account's own plan and reports it as the subscription status", async () => {
+    it("prefers an active gifted plan over the account's own plan and keeps Stripe's status beside it", async () => {
       cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
       sessionRow = defaultSessionRow({ user_id: 7 });
       userInfoRow = {
@@ -433,7 +433,9 @@ describe("GET /api/v3/auth/me", () => {
 
       expect(res.status).toBe(200);
       expect(json.plan).toBe("pro_supporter");
-      expect(json.subscriptionStatus).toBe("gifted");
+      // The paid subscription under the gift is still there to switch or
+      // cancel, so its status is reported as Stripe has it.
+      expect(json.subscriptionStatus).toBe("active");
       expect(json.giftedSubscription).toEqual({
         plan: "pro_supporter",
         expiresAt: "2027-01-01T00:00:00.000Z",

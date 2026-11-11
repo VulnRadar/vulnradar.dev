@@ -299,9 +299,10 @@ export async function meForSession() {
     scansPrivateByDefault: user?.scans_private_by_default || false,
     // Billing/Plan info
     plan: effectivePlan,
-    subscriptionStatus: giftedSubscription
-      ? "gifted"
-      : user?.subscription_status || null,
+    // Stripe's own status, never "gifted": a gift replacing it made a paying
+    // subscriber with a gift look unsubscribed, so the pages that offer a
+    // switch or a cancel hid them. A gift is reported on its own below.
+    subscriptionStatus: user?.subscription_status || null,
     giftedSubscription: giftedSubscription
       ? {
           plan: giftedSubscription.plan,

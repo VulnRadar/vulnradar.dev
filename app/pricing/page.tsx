@@ -123,7 +123,7 @@ export default function PricingPage() {
   const PLANS = buildPlans(usePlanLimits());
 
   const currentPlan = me?.plan || "free";
-  const isGifted = me?.subscriptionStatus === "gifted";
+  const isGifted = !!me?.giftedSubscription;
   const isLoggedIn = !!me?.userId;
 
   // /auth/me carries the plan id but not the billing interval, and the plan id
