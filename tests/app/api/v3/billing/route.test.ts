@@ -135,12 +135,63 @@ describe("GET /api/v3/billing", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("returns 503 when Stripe is not configured", async () => {
+  it("answers 200 with usage, AI usage and limits when Stripe is not configured and there is no subscription", async () => {
+    // bug-api-1. Every self-hosted deployment without a Stripe key got a 503
+    // here, so /profile showed a permanent billing error and none of the
+    // usage meters loaded. Nothing in this read needs Stripe unless there is
+    // a subscription to look up.
     mockGetStripe.mockReturnValue(null);
+    setupPoolForGet({
+      user: {
+        plan: "free",
+        subscription_status: null,
+        stripe_customer_id: null,
+        stripe_subscription_id: null,
+        role: "user",
+      },
+      dailyCount: "3",
+    });
+
     const res = await GET();
-    expect(res.status).toBe(503);
+
+    expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.error).toBe("Stripe is not configured");
+    expect(json.subscription).toBeNull();
+    expect(json.usage).toEqual(expect.objectContaining({ used: 3 }));
+    expect(json.aiUsage).toEqual(
+      expect.objectContaining({ used: 0, limit: 20_000 }),
+    );
+    expect(json.limits).toEqual(
+      expect.objectContaining({ free: expect.any(Number) }),
+    );
+    expect(mockGetStripe).not.toHaveBeenCalled();
+  });
+
+  it("still answers 200, with no subscription details, when a subscription id is stored but Stripe is not configured", async () => {
+    mockGetStripe.mockReturnValue(null);
+    setupPoolForGet({
+      user: {
+        plan: "core_supporter",
+        subscription_status: "active",
+        stripe_customer_id: "cus_1",
+        stripe_subscription_id: "sub_1",
+        role: "user",
+      },
+      dailyPlanRow: { plan: "core_supporter", role: "user", gifted_plan: null },
+    });
+
+    const res = await GET();
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.subscription).toBeNull();
+    expect(json.plan).toBe("core_supporter");
+    // Nothing was learned about the subscription, so nothing is rewritten.
+    expect(
+      mockQuery.mock.calls.some((c) =>
+        String(c[0]).includes("stripe_subscription_id = NULL"),
+      ),
+    ).toBe(false);
   });
 
   it("returns 404 when the user row is missing", async () => {
@@ -371,8 +422,61 @@ describe("GET /api/v3/billing", () => {
     const json = await res.json();
 
     expect(json.plan).toBe("pro_supporter");
-    expect(json.subscriptionStatus).toBe("gifted");
     expect(json.giftedSubscription.plan).toBe("pro_supporter");
+  });
+
+  it("keeps the real Stripe status and the subscription beside a gift, so a paying customer can still manage it", async () => {
+    // sec-money-7. A gift used to overwrite subscriptionStatus with "gifted",
+    // and the tab hid the paid subscription's controls behind the gift, so a
+    // customer still being charged had no way to stop the charge in-product.
+    const retrieve = vi.fn().mockResolvedValue({
+      id: "sub_paid",
+      status: "active",
+      cancel_at_period_end: false,
+      cancel_at: null,
+      items: {
+        data: [
+          {
+            current_period_start: 1700000000,
+            current_period_end: 1702592000,
+            price: {
+              unit_amount: 500,
+              currency: "usd",
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+        ],
+      },
+    });
+    mockGetStripe.mockReturnValue({ subscriptions: { retrieve } });
+    setupPoolForGet({
+      user: {
+        plan: "core_supporter",
+        subscription_status: "active",
+        stripe_customer_id: "cus_1",
+        stripe_subscription_id: "sub_paid",
+        role: "user",
+      },
+      gift: {
+        plan: "elite_supporter",
+        expires_at: "2099-01-01T00:00:00.000Z",
+        created_at: "2025-01-01T00:00:00.000Z",
+      },
+      dailyPlanRow: {
+        plan: "core_supporter",
+        role: "user",
+        gifted_plan: "elite_supporter",
+      },
+    });
+
+    const json = await (await GET()).json();
+
+    expect(json.subscriptionStatus).toBe("active");
+    expect(json.subscription?.id).toBe("sub_paid");
+    expect(json.giftedSubscription).toEqual(
+      expect.objectContaining({ plan: "elite_supporter" }),
+    );
+    expect(json.plan).toBe("elite_supporter");
   });
 
   it("populates subscription details from a live Stripe subscription", async () => {

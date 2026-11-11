@@ -9,7 +9,7 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
 import { stripeKeyMode } from "@/lib/billing/stripe-mode";
-import { withErrorHandling } from "@/lib/api/api-utils";
+import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { logError } from "@/lib/logging/log";
 import { sendAdminAlert } from "@/lib/admin/alert-webhook";
 import { canMakeRequest } from "@/lib/rate-limiting/daily-limits";
@@ -24,16 +24,15 @@ import { staffPlanFloor } from "@/lib/billing/staff-plan";
 export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return ApiResponse.unauthorized();
   }
 
-  const stripe = getStripe();
-  if (!stripe) {
-    return NextResponse.json(
-      { error: "Stripe is not configured" },
-      { status: 503 },
-    );
-  }
+  // No Stripe check up front. This is a read, and everything on it but the
+  // subscription details (usage, the AI and browser meters, the plan limits)
+  // comes from this database, so answering 503 without a Stripe key left
+  // every self-hosted /profile on a permanent billing error with no meters.
+  // Stripe is resolved below only when there is a subscription to look up.
+  // The routes that change a subscription still answer 503.
 
   try {
     // Get user's plan and subscription info
@@ -114,7 +113,8 @@ export const GET = withErrorHandling(async () => {
 
     // Get subscription details from Stripe if user has one
     let subscriptionDetails = null;
-    if (user.stripe_subscription_id) {
+    const stripe = user.stripe_subscription_id ? getStripe() : null;
+    if (stripe && user.stripe_subscription_id) {
       try {
         const subscription = await stripe.subscriptions.retrieve(
           user.stripe_subscription_id,
@@ -304,9 +304,11 @@ export const GET = withErrorHandling(async () => {
     return NextResponse.json({
       billingEnabled,
       plan: effectivePlan,
-      subscriptionStatus: giftedSubscription
-        ? "gifted"
-        : user.subscription_status,
+      // Stripe's own status, never "gifted". A gift used to replace it, and
+      // with it the tab hid the paid subscription's controls, so a customer
+      // still being charged under a gift had no way to stop the charge. The
+      // gift is reported on its own field below.
+      subscriptionStatus: user.subscription_status,
       stripeCustomerId: user.stripe_customer_id,
       subscription: subscriptionDetails,
       giftedSubscription: giftedSubscription
