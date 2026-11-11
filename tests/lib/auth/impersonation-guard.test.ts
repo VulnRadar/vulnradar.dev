@@ -47,14 +47,55 @@ const ACTION_GUARD = "throwIfImpersonating";
  * unbinding one breaks the customer's integrations. The four lib/api/api-keys
  * writers are matched by their call.
  *
- * A Stripe subscription update or cancel, and a billing portal session, move
- * the customer's money: an immediate cancel forfeits a paid period, a price
- * switch prorates against the card on file, and the portal can do either. A
- * file that calls one is held to the same rule; reactivate is the listed
- * exception below.
+ * A Stripe subscription create, update or cancel, a PaymentIntent, and a
+ * billing portal session, move the customer's money: an immediate cancel
+ * forfeits a paid period, a price switch prorates against the card on file, a
+ * new subscription or a PaymentIntent can be paid from what the Stripe
+ * customer already holds, and the portal can do any of it. A file that calls
+ * one is held to the same rule; reactivate is the listed exception below.
  */
-const CREDENTIAL_WRITE =
-  /(?:password_hash|totp_secret|backup_codes|totp_enabled|two_factor_method)\s*(?<![=!<>])=(?!=)|SET email|deleteUserAccountData|\bSET\b(?:(?!\bWHERE\b)[^`"])*?\b(?:google_id|github_id|discord_id)\s*=(?!=)|(?:INSERT INTO|UPDATE|DELETE FROM)\s+discord_connections\b|\bsaveGithubConnection\b|\b(?:generateApiKey|rotateApiKey|revokeApiKey|resetApiKeyBinding)\s*\(|\bsubscriptions\.(?:update|cancel)\s*\(|\bbillingPortal\.sessions\.create\s*\(/;
+const MONEY_MOVE =
+  /\bsubscriptions\.(?:create|update|cancel)\s*\(|\bpaymentIntents\.create\s*\(|\bbillingPortal\.sessions\.create\s*\(/;
+const CREDENTIAL_WRITE = new RegExp(
+  /(?:password_hash|totp_secret|backup_codes|totp_enabled|two_factor_method)\s*(?<![=!<>])=(?!=)|SET email|deleteUserAccountData|\bSET\b(?:(?!\bWHERE\b)[^`"])*?\b(?:google_id|github_id|discord_id)\s*=(?!=)|(?:INSERT INTO|UPDATE|DELETE FROM)\s+discord_connections\b|\bsaveGithubConnection\b|\b(?:generateApiKey|rotateApiKey|revokeApiKey|resetApiKeyBinding)\s*\(/
+    .source +
+    "|" +
+    MONEY_MOVE.source,
+);
+
+/**
+ * Server actions in app/actions/stripe.ts that call Stripe and still do not
+ * need the guard, each with the reason.
+ */
+const ACTIONS_NO_GUARD_NEEDED = new Map<string, string>([
+  [
+    "confirmSubscription",
+    "only retrieves a subscription the customer already paid for and copies its status onto their own row, the same as the webhook",
+  ],
+  [
+    "confirmAiCreditPurchase",
+    "only retrieves a PaymentIntent the customer already paid and credits it once, the same as the webhook",
+  ],
+  [
+    "confirmGithubCreditPurchase",
+    "only retrieves a PaymentIntent the customer already paid and credits it once, the same as the webhook",
+  ],
+  [
+    "confirmBrowserbaseCreditPurchase",
+    "only retrieves a PaymentIntent the customer already paid and credits it once, the same as the webhook",
+  ],
+]);
+
+/** Each exported async function in a server action file, by name. */
+function exportedActions(source: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const starts = [...source.matchAll(/export async function (\w+)\s*\(/g)];
+  for (const [i, m] of starts.entries()) {
+    const end = i + 1 < starts.length ? starts[i + 1].index : source.length;
+    out.set(m[1], source.slice(m.index, end));
+  }
+  return out;
+}
 
 /**
  * Comments are stripped before testing. A guard that reads raw source finds
@@ -179,14 +220,59 @@ describe("impersonation cannot rewrite the account it is impersonating", () => {
     expect(
       immediate.slice(0, immediate.indexOf("subscriptions.cancel(")),
     ).toContain(GUARD);
-    const stripe = code(readFileSync(join(ACTIONS_ROOT, "stripe.ts"), "utf8"));
-    for (const call of [
-      "billingPortal.sessions.create(",
-      "subscriptions.update(",
-    ]) {
-      const before = stripe.slice(0, stripe.indexOf(call));
-      const fn = before.slice(before.lastIndexOf("export async function"));
-      expect(fn, call).toContain(ACTION_GUARD);
+  });
+
+  it("refuses each Stripe server action that moves money before Stripe or the database is touched", () => {
+    const actions = exportedActions(
+      code(readFileSync(join(ACTIONS_ROOT, "stripe.ts"), "utf8")),
+    );
+    // The ones that exist today, so a rename cannot make this pass by
+    // matching nothing.
+    const moving = [...actions].filter(([, body]) => MONEY_MOVE.test(body));
+    expect(moving.map(([name]) => name).sort()).toEqual([
+      "createAiCreditPaymentIntent",
+      "createBillingPortalSession",
+      "createBrowserbaseCreditPaymentIntent",
+      "createGithubCreditPaymentIntent",
+      "createSubscription",
+    ]);
+    for (const [name, body] of moving) {
+      const guard = body.indexOf(`${ACTION_GUARD}(`);
+      expect(guard, `${name} never calls ${ACTION_GUARD}()`).toBeGreaterThan(
+        -1,
+      );
+      // At the top: a guard after the first read or the first Stripe call
+      // leaves a path (the staff floor plan change, a customer created on
+      // the account) that runs before it.
+      for (const first of ["getStripe(", "pool.query(", "stripe."]) {
+        const at = body.indexOf(first);
+        if (at < 0) continue;
+        expect(guard, `${name}: ${ACTION_GUARD}() after ${first}`).toBeLessThan(
+          at,
+        );
+      }
+    }
+  });
+
+  it("lets only the read-only Stripe server actions skip the guard", () => {
+    const actions = exportedActions(
+      code(readFileSync(join(ACTIONS_ROOT, "stripe.ts"), "utf8")),
+    );
+    const unguarded = [...actions]
+      .filter(([, body]) => /getStripe\(/.test(body))
+      .filter(([, body]) => !body.includes(ACTION_GUARD))
+      .map(([name]) => name);
+    expect(unguarded.sort()).toEqual(
+      [...ACTIONS_NO_GUARD_NEEDED.keys()].sort(),
+    );
+    for (const name of ACTIONS_NO_GUARD_NEEDED.keys()) {
+      // An exception is only true while the action calls nothing but
+      // retrieve on Stripe.
+      const calls = [
+        ...actions.get(name)!.matchAll(/\bstripe!?\.(\w+(?:\.\w+)*)\(/g),
+      ].map((m) => m[1]);
+      expect(calls.length, name).toBeGreaterThan(0);
+      for (const call of calls) expect(call, name).toMatch(/\.retrieve$/);
     }
   });
 
@@ -199,6 +285,8 @@ describe("impersonation cannot rewrite the account it is impersonating", () => {
       "await stripe.subscriptions.cancel(subscriptionId)",
       "await stripe.subscriptions.update(id, { cancel_at: now })",
       "await stripe.billingPortal.sessions.create({ customer })",
+      "await stripe.subscriptions.create({ customer: customerId })",
+      "await stripe.paymentIntents.create({ amount, customer })",
     ]) {
       expect(CREDENTIAL_WRITE.test(write), write).toBe(true);
     }
@@ -206,6 +294,7 @@ describe("impersonation cannot rewrite the account it is impersonating", () => {
       "const keys = await getUserApiKeys(session.userId)",
       "await stripe.subscriptions.retrieve(id)",
       "await stripe.subscriptions.list({ customer })",
+      "await stripe.paymentIntents.retrieve(paymentIntentId)",
     ]) {
       expect(CREDENTIAL_WRITE.test(read), read).toBe(false);
     }
