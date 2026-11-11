@@ -282,6 +282,9 @@ export function ProfileBillingTab({
    * is better than the blank line this headline used to be.
    */
   const planLabel = getPlanById(billingInfo.plan)?.name ?? billingInfo.plan;
+  const currentPlanScans =
+    billingInfo.limits[billingInfo.plan as keyof typeof billingInfo.limits] ||
+    billingInfo.limits.free;
 
   return (
     <div className="flex flex-col gap-8">
@@ -336,10 +339,9 @@ export function ProfileBillingTab({
                   {/* A number and our own unit. "25 scans/day" should
                           wrap, never clip to "25 scans/d...". */}
                   <p className="text-sm text-muted-foreground">
-                    {billingInfo.limits[
-                      billingInfo.plan as keyof typeof billingInfo.limits
-                    ] || billingInfo.limits.free}{" "}
-                    scans/day
+                    {currentPlanScans === -1
+                      ? "Unlimited scans"
+                      : `${currentPlanScans} scans/day`}
                   </p>
                 </div>
               </div>

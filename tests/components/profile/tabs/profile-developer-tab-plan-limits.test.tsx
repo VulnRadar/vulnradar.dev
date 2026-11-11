@@ -97,4 +97,12 @@ describe("profile tabs read plan limits from the server", () => {
       /billingInfo\.limits\[paidPlan\.id\] === -1\s*\?\s*"Unlimited scans"/,
     );
   });
+
+  it("does not print -1 scans/day on the current plan line", () => {
+    const billing = fs.readFileSync(
+      path.join(PROFILE_DIR, "tabs/profile-billing-tab.tsx"),
+      "utf8",
+    );
+    expect(billing).toMatch(/currentPlanScans === -1\s*\?\s*"Unlimited scans"/);
+  });
 });
