@@ -184,6 +184,21 @@ describe("POST /api/v3/admin/staff-invites — authorization", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
+  // An address given for the first time: the strict rule, not the lenient
+  // one sign-in uses for accounts that already exist.
+  it.each([
+    "staff@localhost",
+    "staff@.example.com",
+    "st\u0001aff@example.com",
+    "st\u0085aff@example.com",
+  ])("refuses to invite %j", async (email) => {
+    queueRole("admin");
+    const res = await POST(postRequest({ email, role: "support" }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/valid email/i);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects an invalid/unknown role string", async () => {
     queueRole("admin");
     const res = await POST(
