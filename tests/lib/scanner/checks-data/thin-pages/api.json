@@ -1,0 +1,8 @@
+{
+  "api-cors-preflight-cache-missing": 68,
+  "api-graphql-error-stack-trace": 77,
+  "api-graphql-no-rate-limit": 78,
+  "api-graphql-suggestions-enabled": 74,
+  "api-openapi-server-url-leak": 72,
+  "api-rest-allow-methods-delete": 61
+}

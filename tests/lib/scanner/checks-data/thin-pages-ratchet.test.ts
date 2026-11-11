@@ -1,11 +1,19 @@
 /**
- * A critical or high finding sends someone to its page with a real problem, so
- * that page has to say what happened, how to confirm it and how to fix it. A
- * flat floor would have failed on the day it was added, so the pages still
- * under it are listed here and the list only shrinks: a new thin page fails, a
- * listed page that loses words fails, and a page that clears the floor (or
- * stops being critical or high) has to come off.
+ * Every check page sends someone to a real problem, so it has to say what
+ * happened, how to confirm it and how to fix it. A flat floor would have failed
+ * on the day it was added, so the pages still under it are listed and the lists
+ * only shrink: a new thin page fails, a listed page that loses words fails, and
+ * a page that clears the floor (or goes away) has to come off its list.
+ *
+ * There is one list per category, tests/lib/scanner/checks-data/thin-pages/
+ * <category>.json, mapping a page id to the words it had when it was listed.
+ * Whoever rewrites a category's pages shrinks only that category's file, so two
+ * people working on different categories never touch the same lines. Every
+ * severity counts: an info page is still the page a search result lands on.
  */
+
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -13,28 +21,33 @@ import { type CheckPage, loadCheckPages, pageProseWords } from "./_page-prose";
 
 const FLOOR = 80;
 
-/** Id to the words the page had when it was listed. */
-const BASELINE: Readonly<Record<string, number>> = {
-  "csp-unsafe-inline-script": 34,
-  "form-action-http": 67,
-  "tls-protocol-version": 79,
-  "x-frame-options-allowall": 47,
-};
+const BASELINE_DIR = join(
+  process.cwd(),
+  "tests",
+  "lib",
+  "scanner",
+  "checks-data",
+  "thin-pages",
+);
+
+/** One per checks-data file: a page's category is the file it lives in. */
+const CATEGORIES = readdirSync(
+  join(process.cwd(), "lib", "scanner", "checks-data"),
+)
+  .filter((name) => name.endsWith(".json"))
+  .map((name) => name.replace(/.json$/, ""))
+  .sort();
+
+type Baseline = Readonly<Record<string, number>>;
 
 type RatchetPage = Pick<
   CheckPage,
-  "id" | "severity" | "description" | "riskImpact" | "explanation" | "fixSteps"
+  "id" | "description" | "riskImpact" | "explanation" | "fixSteps"
 >;
 
-function ratchet(
-  pages: readonly RatchetPage[],
-  baseline: Readonly<Record<string, number>>,
-) {
+function ratchet(pages: readonly RatchetPage[], baseline: Baseline) {
   const thin = new Map(
     pages
-      .filter(
-        (page) => page.severity === "critical" || page.severity === "high",
-      )
       .map((page) => [page.id, pageProseWords(page)] as const)
       .filter(([, words]) => words < FLOOR),
   );
@@ -50,9 +63,8 @@ function ratchet(
   };
 }
 
-const page = (id: string, words: number, severity = "high"): RatchetPage => ({
+const page = (id: string, words: number): RatchetPage => ({
   id,
-  severity,
   description: Array.from({ length: words }, (_, i) => `w${i}`).join(" "),
   fixSteps: [],
 });
@@ -64,10 +76,6 @@ describe("thin-page ratchet logic", () => {
 
   it("does not report a page at the floor", () => {
     expect(ratchet([page("ok", FLOOR)], {}).added).toEqual([]);
-  });
-
-  it("leaves a thin page below high alone", () => {
-    expect(ratchet([page("low", 5, "medium")], {}).added).toEqual([]);
   });
 
   it("reports a listed page that lost words", () => {
@@ -88,26 +96,65 @@ describe("thin-page ratchet logic", () => {
     expect(ratchet([page("a", FLOOR)], { a: 20 }).cleared).toEqual(["a"]);
   });
 
-  it("wants a demoted or deleted page off the list", () => {
-    expect(ratchet([page("a", 10, "medium")], { a: 10 }).cleared).toEqual([
-      "a",
-    ]);
+  it("wants a deleted page off the list", () => {
     expect(ratchet([], { gone: 10 }).cleared).toEqual(["gone"]);
   });
 });
 
+function readBaseline(category: string): Baseline {
+  const file = join(BASELINE_DIR, `${category}.json`);
+  return existsSync(file)
+    ? (JSON.parse(readFileSync(file, "utf8")) as Baseline)
+    : {};
+}
+
+describe("thin-page baseline files", () => {
+  it("has exactly one file per category", () => {
+    const files = readdirSync(BASELINE_DIR)
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => name.replace(/\.json$/, ""))
+      .sort();
+    expect(files).toEqual(CATEGORIES);
+  });
+
+  it("lists every id in its own category's file, in order", () => {
+    for (const category of CATEGORIES) {
+      const ids = Object.keys(readBaseline(category));
+      expect(ids, category).toEqual([...ids].sort());
+    }
+  });
+
+  it("only lists whole word counts below the floor", () => {
+    for (const category of CATEGORIES) {
+      for (const [id, words] of Object.entries(readBaseline(category))) {
+        expect(Number.isInteger(words), `${category}/${id}`).toBe(true);
+        expect(words, `${category}/${id}`).toBeLessThan(FLOOR);
+      }
+    }
+  });
+});
+
 describe("thin-page ratchet", () => {
-  const result = ratchet(loadCheckPages(), BASELINE);
+  const pages = loadCheckPages();
 
-  it("has no new critical or high page under the floor", () => {
-    expect(result.added).toEqual([]);
-  });
+  for (const category of CATEGORIES) {
+    describe(category, () => {
+      const result = ratchet(
+        pages.filter((p) => p.file === `${category}.json`),
+        readBaseline(category),
+      );
 
-  it("has no listed page with fewer words than when it was listed", () => {
-    expect(result.worse).toEqual([]);
-  });
+      it(`has no new page under ${FLOOR} words`, () => {
+        expect(result.added).toEqual([]);
+      });
 
-  it("has no listed page that no longer belongs on the list", () => {
-    expect(result.cleared).toEqual([]);
-  });
+      it("has no listed page with fewer words than when it was listed", () => {
+        expect(result.worse).toEqual([]);
+      });
+
+      it("has no listed page that no longer belongs on the list", () => {
+        expect(result.cleared).toEqual([]);
+      });
+    });
+  }
 });
