@@ -8,8 +8,18 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockQuery = vi.fn();
+// A removal runs in a transaction on a checked-out client. Its statements go
+// through the same mockQuery, so a test reads one ordered list of everything
+// the route asked, and mockRelease shows the client went back to the pool.
+const mockRelease = vi.fn();
 vi.mock("@/lib/database/db", () => ({
-  default: { query: (...args: unknown[]) => mockQuery(...args) },
+  default: {
+    query: (...args: unknown[]) => mockQuery(...args),
+    connect: async () => ({
+      query: (...args: unknown[]) => mockQuery(...args),
+      release: mockRelease,
+    }),
+  },
 }));
 
 // This route only calls getSession() from @/lib/auth, so mock the module
@@ -106,6 +116,7 @@ beforeEach(async () => {
   // against whichever test happens to run next.
   await new Promise((resolve) => setImmediate(resolve));
   mockQuery.mockReset();
+  mockRelease.mockReset();
   mockSendNotificationEmail.mockReset();
   mockSendNotificationEmail.mockResolvedValue(undefined);
   mockGetSession.mockReset();
@@ -640,7 +651,7 @@ describe("DELETE /api/v3/teams/members", () => {
         const json = await res.json();
 
         expect(res.status).toBe(400);
-        expect(json.error).toContain("Owners cannot leave");
+        expect(json.error).toContain("Transfer ownership to another member");
       }
       expect(membershipDelete()).toBeUndefined();
     });
@@ -975,7 +986,9 @@ describe("audit rows for what happens to a team", () => {
 });
 
 describe("the error an owner gets for trying to leave", () => {
-  it("does not offer a transfer that does not exist", async () => {
+  // PATCH /api/v3/teams { teamId, newOwnerId } exists now, so the refusal
+  // names it instead of sending the owner to support.
+  it("names the ownership transfer as the way out", async () => {
     routeMemberQueries({ 1: "owner" });
 
     const res = await DELETE(deleteRequest({ teamId: 5, userId: "self" }));
@@ -983,9 +996,102 @@ describe("the error an owner gets for trying to leave", () => {
 
     expect(res.status).toBe(400);
     expect(error).toBe(
-      "Owners cannot leave, and there is no ownership transfer. Delete the team, or ask support.",
+      "Transfer ownership to another member first, or delete the team.",
     );
     expect(mockLogAction).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * sec-authz-3 / gap-domain-verification-active-gating-3: a member's domains,
+ * schedules and webhooks used to stay assigned to the team after they left or
+ * were removed, so the team kept a verified domain's active-probing grant and
+ * kept receiving that member's scheduled results. Leaving or being removed
+ * un-shares them, in the same transaction as the membership delete, so there
+ * is no moment when the person is gone and their resources are still shared.
+ */
+describe("what leaving or being removed does to the member's shared resources", () => {
+  const UNSHARED = ["domains", "scheduled_scans", "webhooks"];
+
+  /** Every statement the route ran, in order, as [sql, params]. */
+  const statements = () =>
+    mockQuery.mock.calls.map(([sql, params]) => [
+      String(sql).replace(/\s+/g, " ").trim(),
+      params as unknown[],
+    ]) as [string, unknown[]][];
+
+  function expectUnsharedInTransaction(teamId: number, userId: number) {
+    const ran = statements();
+    const begin = ran.findIndex(([sql]) => sql === "BEGIN");
+    const commit = ran.findIndex(([sql]) => sql === "COMMIT");
+    const membership = ran.findIndex(([sql]) =>
+      sql.startsWith("DELETE FROM team_members"),
+    );
+    expect(begin).toBeGreaterThanOrEqual(0);
+    expect(membership).toBeGreaterThan(begin);
+    expect(commit).toBeGreaterThan(membership);
+    for (const table of UNSHARED) {
+      const at = ran.findIndex(([sql]) =>
+        sql.startsWith(`UPDATE ${table} SET team_id = NULL`),
+      );
+      expect(at, `${table} un-shared`).toBeGreaterThan(begin);
+      expect(at, `${table} un-shared before COMMIT`).toBeLessThan(commit);
+      const [sql, params] = ran[at];
+      expect(sql).toContain("WHERE user_id = $1 AND team_id = $2");
+      expect(params).toEqual([userId, teamId]);
+    }
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+  }
+
+  it("un-shares a member's domains, schedules and webhooks when they leave", async () => {
+    routeMemberQueries({ 1: "member" });
+
+    const res = await DELETE(deleteRequest({ teamId: 5, userId: "self" }));
+
+    expect(res.status).toBe(200);
+    expectUnsharedInTransaction(5, 1);
+  });
+
+  it("un-shares them when an admin removes the member", async () => {
+    routeMemberQueries({ 1: "admin", 2: "member" });
+
+    const res = await DELETE(deleteRequest({ teamId: 5, userId: 2 }));
+
+    expect(res.status).toBe(200);
+    expectUnsharedInTransaction(5, 2);
+  });
+
+  it("rolls the whole removal back when un-sharing fails", async () => {
+    routeMemberQueries({ 1: "admin", 2: "member" });
+    const answer = mockQuery.getMockImplementation()!;
+    mockQuery.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (String(sql).startsWith("UPDATE webhooks")) {
+        throw new Error("connection reset");
+      }
+      return answer(sql, params);
+    });
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await DELETE(deleteRequest({ teamId: 5, userId: 2 }));
+    spy.mockRestore();
+
+    expect(res.status).toBe(500);
+    const ran = statements().map(([sql]) => sql);
+    expect(ran).toContain("ROLLBACK");
+    expect(ran).not.toContain("COMMIT");
+    expect(mockLogAction).not.toHaveBeenCalled();
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+  });
+
+  it("touches nobody's resources when the caller may not remove the target", async () => {
+    routeMemberQueries({ 1: "member", 2: "viewer" });
+
+    const res = await DELETE(deleteRequest({ teamId: 5, userId: 2 }));
+
+    expect(res.status).toBe(403);
+    expect(
+      statements().some(([sql]) => sql.includes("SET team_id = NULL")),
+    ).toBe(false);
   });
 });
 

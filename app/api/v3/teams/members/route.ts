@@ -84,6 +84,54 @@ async function dropOrphanedTicketShares(
   }
 }
 
+/**
+ * Take someone off a team, and take the team off what they had shared with it.
+ *
+ * A member's domains, schedules and webhooks carry the team's id for as long
+ * as nobody clears it, and nothing did: after a member left or was removed the
+ * team kept their verified domain's active-probing grant and kept receiving
+ * their scheduled results (sec-authz-3,
+ * gap-domain-verification-active-gating-3). The rows stay theirs, as deleting
+ * the team leaves them. One transaction, so there is no moment in which the
+ * person is gone and their resources are still the team's.
+ *
+ * Returns how many membership rows went: 0 when a racing request got there
+ * first. Throws after rolling back, which withErrorHandling answers with a
+ * 500, so a removal is never reported done while half of it happened.
+ */
+async function removeMembership(
+  teamId: number,
+  userId: number,
+): Promise<number> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const removed = await client.query(
+      "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
+      [teamId, userId],
+    );
+    await client.query(
+      "UPDATE domains SET team_id = NULL WHERE user_id = $1 AND team_id = $2",
+      [userId, teamId],
+    );
+    await client.query(
+      "UPDATE scheduled_scans SET team_id = NULL WHERE user_id = $1 AND team_id = $2",
+      [userId, teamId],
+    );
+    await client.query(
+      "UPDATE webhooks SET team_id = NULL WHERE user_id = $1 AND team_id = $2",
+      [userId, teamId],
+    );
+    await client.query("COMMIT");
+    return removed.rowCount ?? 0;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 // Get team members
 export const GET = withErrorHandling(async (request: Request) => {
   const session = await getSession();
@@ -530,22 +578,20 @@ export const DELETE = withErrorHandling(async (request: Request) => {
     return NextResponse.json({ error: "Not a member." }, { status: 403 });
 
   if (targetUserId === session.userId) {
-    // Leaving the team (owners can't leave)
+    // Leaving the team. An owner cannot, because a team always has one;
+    // PATCH /api/v3/teams { teamId, newOwnerId } hands it to a member first.
     if (myRole.rows[0].role === TEAM_ROLES.OWNER) {
       return NextResponse.json(
         {
           error:
-            "Owners cannot leave, and there is no ownership transfer. Delete the team, or ask support.",
+            "Transfer ownership to another member first, or delete the team.",
         },
         { status: 400 },
       );
     }
-    const left = await pool.query(
-      "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
-      [teamId, targetUserId],
-    );
+    const left = await removeMembership(teamId, targetUserId);
     await dropOrphanedTicketShares(teamId, targetUserId);
-    if (left.rowCount) {
+    if (left) {
       const roleWhenLeft = myRole.rows[0].role;
       await recordTeamAudit(async (ip) =>
         logAction(
@@ -616,14 +662,11 @@ export const DELETE = withErrorHandling(async (request: Request) => {
     ]),
   ]);
 
-  const removed = await pool.query(
-    "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
-    [teamId, targetUserId],
-  );
+  const removed = await removeMembership(teamId, targetUserId);
   await dropOrphanedTicketShares(teamId, targetUserId);
 
   const teamName = teamRow.rows[0]?.name;
-  if (removed.rowCount) {
+  if (removed) {
     const roleWhenRemoved = targetRole.rows[0].role;
     await recordTeamAudit((ip) =>
       logAction(
