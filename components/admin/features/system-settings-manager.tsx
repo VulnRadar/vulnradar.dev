@@ -19,7 +19,6 @@ import {
   CheckCircle2,
   X,
   Trash2,
-  CheckCheck,
   Download,
   Upload,
 } from "lucide-react";
@@ -28,6 +27,7 @@ import {
   type ChangeItem,
 } from "@/components/shared/save-confirmation-modal";
 import { ListSearchInput } from "@/components/shared/list-filter-bar";
+import { InlineAlert } from "@/components/shared/inline-alert";
 import { downloadBlob } from "@/lib/ui/download";
 import { API, APP_SLUG } from "@/lib/config/client-constants";
 import {
@@ -134,6 +134,42 @@ async function callFeaturesApi(
   });
   const data = await res.json().catch(() => ({}));
   return { ok: res.ok, data };
+}
+
+/**
+ * Write each setting with its own request and report which went through.
+ *
+ * Never throws. A dropped connection on one key used to escape the save loop,
+ * which skipped the `setSaving(false)` after it, so Save and Discard stayed
+ * disabled until a reload, and the keys that had already saved were never
+ * marked as saved, which invited saving the same values a second time.
+ */
+export async function saveSettingsOneByOne(
+  entries: [SettingKey, FieldValue][],
+  call: (
+    body: Record<string, unknown>,
+  ) => Promise<{ ok: boolean; data: Record<string, unknown> }>,
+  verb: "save" | "import",
+): Promise<{ saved: SettingKey[]; failures: string[] }> {
+  const saved: SettingKey[] = [];
+  const failures: string[] = [];
+  for (const [key, value] of entries) {
+    try {
+      const { ok, data } = await call({
+        section: "system_settings",
+        action: "set",
+        key,
+        value,
+      });
+      if (ok) saved.push(key);
+      else failures.push((data.error as string) || `Failed to ${verb} ${key}`);
+    } catch {
+      failures.push(
+        `Could not reach the server to ${verb} ${key}. Check the connection and try again.`,
+      );
+    }
+  }
+  return { saved, failures };
 }
 
 export function SystemSettingsManager() {
@@ -274,22 +310,19 @@ export function SystemSettingsManager() {
   const handleSave = async () => {
     setSaving(true);
     setSaveError(null);
-    const failures: string[] = [];
-    const succeeded: SettingKey[] = [];
-
-    for (const key of pendingKeys) {
-      const { ok, data } = await callFeaturesApi({
-        section: "system_settings",
-        action: "set",
-        key,
-        value: changes[key],
-      });
-      if (ok) {
-        succeeded.push(key);
-      } else {
-        failures.push((data.error as string) || `Failed to save ${key}`);
-      }
+    try {
+      await applySave();
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const applySave = async () => {
+    const { saved: succeeded, failures } = await saveSettingsOneByOne(
+      pendingKeys.map((key) => [key, changes[key] as FieldValue]),
+      callFeaturesApi,
+      "save",
+    );
 
     if (succeeded.length > 0) {
       setEffective((prev) => {
@@ -320,13 +353,13 @@ export function SystemSettingsManager() {
       });
     }
 
-    setSaving(false);
     if (failures.length > 0) {
       setSaveError(failures.join(" "));
       // Thrown so SaveConfirmationModal's own try/catch keeps the dialog
-      // open instead of playing the success animation. Error display is
-      // handled by this component, not the modal.
-      throw new Error("Some settings failed to save");
+      // open instead of playing the success animation. The modal prints the
+      // message, and the banner on the page sits behind its scrim, so the
+      // reasons go in the message.
+      throw new Error(failures.join(" "));
     }
   };
 
@@ -472,37 +505,54 @@ export function SystemSettingsManager() {
 
   const handleConfirmImport = async () => {
     setImporting(true);
-    const failures: string[] = [];
-    for (const [key, value] of Object.entries(importPending) as [
-      SettingKey,
-      FieldValue,
-    ][]) {
-      const { ok, data } = await callFeaturesApi({
-        section: "system_settings",
-        action: "set",
-        key,
-        value,
-      });
-      if (ok) {
-        if (isSecretSetting(key)) {
-          setSecretsSet((prev) => {
-            const next = new Set(prev);
-            if (value) next.add(key);
-            else next.delete(key);
-            return next;
-          });
-        } else {
-          setEffective((prev) => ({ ...prev, [key]: value }));
-        }
-        setOverridden((prev) => new Set(prev).add(key));
-      } else {
-        failures.push((data.error as string) || `Failed to import ${key}`);
-      }
+    let outcome: { saved: SettingKey[]; failures: string[] };
+    try {
+      outcome = await saveSettingsOneByOne(
+        Object.entries(importPending) as [SettingKey, FieldValue][],
+        callFeaturesApi,
+        "import",
+      );
+    } finally {
+      setImporting(false);
     }
-    setImporting(false);
+    const { saved, failures } = outcome;
+    if (saved.length > 0) {
+      setSecretsSet((prev) => {
+        const next = new Set(prev);
+        for (const key of saved) {
+          if (!isSecretSetting(key)) continue;
+          if (importPending[key]) next.add(key);
+          else next.delete(key);
+        }
+        return next;
+      });
+      setEffective((prev) => {
+        const next = { ...prev };
+        for (const key of saved) {
+          if (!isSecretSetting(key)) next[key] = importPending[key];
+        }
+        return next;
+      });
+      setOverridden((prev) => {
+        const next = new Set(prev);
+        for (const key of saved) next.add(key);
+        return next;
+      });
+    }
     if (failures.length > 0) {
       setSaveError(failures.join(" "));
-      throw new Error("Some settings failed to import");
+      // What did go through is applied, so a retry from the same dialog
+      // sends only what is left rather than the whole file again.
+      const done = new Set<string>(saved);
+      setImportPending((prev) => {
+        const next = { ...prev };
+        for (const key of done) delete next[key as SettingKey];
+        return next;
+      });
+      setImportPreview(
+        (prev) => prev?.filter((item) => !done.has(item.field)) ?? prev,
+      );
+      throw new Error(failures.join(" "));
     }
     setImportPreview(null);
     setImportPending({});
@@ -608,34 +658,13 @@ export function SystemSettingsManager() {
   return (
     <div className="space-y-6">
       {saveError && (
-        <div
-          role="alert"
-          className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4"
+        <InlineAlert
+          tone="error"
+          title="Some settings could not be saved"
+          onDismiss={() => setSaveError(null)}
         >
-          <div className="shrink-0 rounded-md bg-destructive/20 p-2">
-            <AlertTriangle
-              className="h-4 w-4 text-destructive"
-              aria-hidden="true"
-            />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-destructive">
-              Some settings could not be saved
-            </p>
-            <p className="mt-0.5 text-xs leading-relaxed text-destructive/80 wrap-break-word">
-              {saveError}
-            </p>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-11 w-11 shrink-0 p-0 sm:h-7 sm:w-7"
-            onClick={() => setSaveError(null)}
-            aria-label="Dismiss"
-          >
-            <X className="h-3.5 w-3.5" aria-hidden="true" />
-          </Button>
-        </div>
+          <p className="wrap-break-word">{saveError}</p>
+        </InlineAlert>
       )}
 
       <Card
@@ -899,49 +928,43 @@ export function SystemSettingsManager() {
               {cleanupRunning ? "Running..." : "Run cleanup now"}
             </Button>
           </div>
-          {cleanupResult && (
-            <div
-              className={cn(
-                "mt-4 rounded-lg border p-3",
-                cleanupResult.success
-                  ? "border-[hsl(var(--success))]/20 bg-[hsl(var(--success))]/5"
-                  : "border-destructive/20 bg-destructive/5",
-              )}
-              role="status"
-            >
-              {cleanupResult.success ? (
-                <div>
-                  <p className="flex items-center gap-1.5 text-sm font-medium text-[hsl(var(--success))]">
-                    <CheckCheck className="h-4 w-4" aria-hidden="true" />
-                    Cleanup completed
-                  </p>
-                  {cleanupResult.stats &&
-                    Object.keys(cleanupResult.stats).length > 0 && (
-                      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                        {Object.entries(cleanupResult.stats).map(
-                          ([key, count]) =>
-                            count > 0 ? (
-                              <div
-                                key={key}
-                                className="text-xs text-muted-foreground"
-                              >
-                                <span className="font-medium text-foreground tabular-nums">
-                                  {count.toLocaleString()}
-                                </span>{" "}
-                                {CLEANUP_STAT_LABELS[key] ?? deCamel(key)}
-                              </div>
-                            ) : null,
-                        )}
-                      </div>
-                    )}
-                </div>
-              ) : (
-                <p className="text-sm text-destructive">
-                  {cleanupResult.error || "Cleanup failed"}
-                </p>
-              )}
-            </div>
-          )}
+          {cleanupResult &&
+            (cleanupResult.success ? (
+              <InlineAlert
+                tone="success"
+                title="Cleanup completed"
+                className="mt-4"
+                onDismiss={() => setCleanupResult(null)}
+              >
+                {cleanupResult.stats &&
+                  Object.keys(cleanupResult.stats).length > 0 && (
+                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {Object.entries(cleanupResult.stats).map(
+                        ([key, count]) =>
+                          count > 0 ? (
+                            <div
+                              key={key}
+                              className="text-xs text-muted-foreground"
+                            >
+                              <span className="font-medium text-foreground tabular-nums">
+                                {count.toLocaleString()}
+                              </span>{" "}
+                              {CLEANUP_STAT_LABELS[key] ?? deCamel(key)}
+                            </div>
+                          ) : null,
+                      )}
+                    </div>
+                  )}
+              </InlineAlert>
+            ) : (
+              <InlineAlert
+                tone="error"
+                className="mt-4"
+                onDismiss={() => setCleanupResult(null)}
+              >
+                {cleanupResult.error || "Cleanup failed"}
+              </InlineAlert>
+            ))}
         </CardContent>
       </Card>
 
