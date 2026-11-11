@@ -12,7 +12,7 @@
  */
 export type ReplyDrafts = ReadonlyMap<number, string>;
 
-export const NO_DRAFTS: ReplyDrafts = new Map();
+export const NO_DRAFTS: ReadonlyMap<number, string> = new Map();
 
 /** What the box shows for this ticket: its draft, or empty. */
 export function readDraft(

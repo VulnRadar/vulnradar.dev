@@ -182,7 +182,7 @@ export function EmailStepUpView({
             onClick={onSend}
           >
             {spinner}
-            Email me a code
+            {"Email me a code"}
           </Button>
         </>
       ) : (
@@ -226,7 +226,7 @@ export function EmailStepUpView({
                 onClick={onConfirm}
               >
                 {spinner}
-                Confirm
+                {"Confirm"}
               </Button>
             </div>
           </div>

@@ -350,6 +350,7 @@ export const SELF_BLOCKED_ACTIONS: readonly string[] = [
   "reset_password",
   "set_role",
   "grant_credits",
+  "clear_rate_limits",
 ];
 
 /** The account that owns the instance: only it may act on itself or others. */

@@ -39,6 +39,7 @@ import { findVerifiedDomainForHost } from "./scope";
 import { firstHopOutsideZone } from "./covering";
 import { verificationRecordValue } from "./verification";
 import pool from "@/lib/database/db";
+import { globalSingleton } from "@/lib/runtime/global-singleton";
 import { isPrivateIP, pinToResolvedIp } from "@/lib/scanner/safe-fetch";
 import { readBoundedBody } from "@/lib/scanner/read-bounded-body";
 import { SCANNER_UA } from "@/lib/scanner/user-agent";
@@ -63,8 +64,13 @@ export type TargetProofResult =
   | { ok: false; code: "DOMAIN_NOT_VERIFIED"; reason: string };
 
 // Only proveTargetControl adds to this, so a caller cannot hand the sweep an
-// object literal with an address of its choosing and call it a proof.
-const issued = new WeakSet<object>();
+// object literal with an address of its choosing and call it a proof. One set
+// per process, not per bundled copy: a proof issued by the route's copy of
+// this module has to be recognised by the copy port-scan.ts imports.
+const issued = globalSingleton(
+  "vulnradar.targetProof.issued",
+  () => new WeakSet<object>(),
+);
 
 /** Whether `value` is a proof this module issued, rather than a look-alike. */
 export function isProvenTarget(value: unknown): value is ProvenTarget {

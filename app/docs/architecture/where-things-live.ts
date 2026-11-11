@@ -161,6 +161,10 @@ const NOTES: Record<RepoPath, { what: string; doc: string }> = {
     what: "SARIF, Markdown, CSV, PDF and compliance reports.",
     doc: "/docs/reports",
   },
+  "lib/runtime": {
+    what: "Process-wide state that every bundled copy of a server module shares.",
+    doc: "/docs/architecture",
+  },
   "lib/scanner": {
     what: "The detection engine: checks, check data, active probes, protocol scanners.",
     doc: "/docs/architecture#scanner",

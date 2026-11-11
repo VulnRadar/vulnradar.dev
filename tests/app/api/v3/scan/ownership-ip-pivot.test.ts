@@ -137,7 +137,6 @@ const { scanPorts } = await import("@/lib/scanner/port-scan");
 
 /** The database as user 1 sees it: attacker.example, verified, theirs. */
 function answerQuery(sql: string, params: unknown[] = []) {
-  if (sql.includes("FROM team_members")) return { rows: [] };
   if (sql.includes("verification_token")) {
     return params[0] === 7
       ? { rows: [{ verification_token: TOKEN }] }
@@ -155,6 +154,9 @@ function answerQuery(sql: string, params: unknown[] = []) {
         }
       : { rows: [] };
   }
+  // After the domains branch: the verified-domain lookup names team_members
+  // too, in its owner-still-on-the-team condition.
+  if (sql.includes("FROM team_members")) return { rows: [] };
   return { rows: [], rowCount: 1 };
 }
 

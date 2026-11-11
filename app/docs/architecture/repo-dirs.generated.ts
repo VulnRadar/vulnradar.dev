@@ -39,6 +39,7 @@ export const REPO_DIRS = {
     "notifications",
     "rate-limiting",
     "reports",
+    "runtime",
     "scanner",
     "security",
     "seo",
