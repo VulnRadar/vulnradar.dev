@@ -123,9 +123,17 @@ describe("syncPlanForRoleChange — promotion into staff (grant)", () => {
 });
 
 describe("syncPlanForRoleChange — demotion out of staff (revoke)", () => {
-  it("instantly restores the original plan and clears pre_staff_plan when the grant was never upgraded", async () => {
+  it("instantly restores the original plan and clears pre_staff_plan when the subscription behind it is still live", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ plan: "pro_supporter", pre_staff_plan: "core_supporter" }],
+      rows: [
+        {
+          plan: "pro_supporter",
+          pre_staff_plan: "core_supporter",
+          stripe_subscription_id: "sub_core",
+          subscription_status: "active",
+          gift_plan: null,
+        },
+      ],
     });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
@@ -176,6 +184,93 @@ describe("syncPlanForRoleChange — demotion out of staff (revoke)", () => {
       /UPDATE users SET plan = \$1, pre_staff_plan = NULL/,
     );
     expect(updateParams).toEqual(["free", 5]);
+  });
+
+  it("demotes to free when the subscription behind the saved plan was cancelled while they were staff", async () => {
+    // Promoted while paying for Core, cancelled the subscription while staff
+    // (the cancel landed them on the staff floor, so nothing looked wrong),
+    // then demoted. pre_staff_plan still said core_supporter and was restored,
+    // so a former staff member kept a paid tier with nothing paying for it.
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          plan: "pro_supporter",
+          pre_staff_plan: "core_supporter",
+          stripe_subscription_id: null,
+          subscription_status: "canceled",
+          gift_plan: null,
+        },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await syncPlanForRoleChange(5, "admin", "user");
+
+    const [selectSql] = mockQuery.mock.calls[0];
+    expect(selectSql).toContain("stripe_subscription_id");
+    expect(selectSql).toContain("gifted_subscriptions");
+    const [updateSql, updateParams] = mockQuery.mock.calls[1];
+    expect(updateSql).toMatch(
+      /UPDATE users SET plan = \$1, pre_staff_plan = NULL/,
+    );
+    expect(updateParams).toEqual(["free", 5]);
+  });
+
+  it("demotes to free when the row still names a subscription that is no longer live", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          plan: "pro_supporter",
+          pre_staff_plan: "core_supporter",
+          stripe_subscription_id: "sub_expired",
+          subscription_status: "incomplete_expired",
+          gift_plan: null,
+        },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await syncPlanForRoleChange(5, "moderator", "user");
+
+    expect(mockQuery.mock.calls[1][1]).toEqual(["free", 5]);
+  });
+
+  it("restores the saved plan when an active gift covers it, though nothing is paying", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          plan: "pro_supporter",
+          pre_staff_plan: "core_supporter",
+          stripe_subscription_id: null,
+          subscription_status: null,
+          gift_plan: "pro_supporter",
+        },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await syncPlanForRoleChange(5, "admin", "user");
+
+    expect(mockQuery.mock.calls[1][1]).toEqual(["core_supporter", 5]);
+  });
+
+  it("does not let a gift below the saved plan restore it", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          plan: "pro_supporter",
+          pre_staff_plan: "pro_supporter",
+          stripe_subscription_id: null,
+          subscription_status: null,
+          gift_plan: "core_supporter",
+        },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await syncPlanForRoleChange(5, "admin", "user");
+
+    expect(mockQuery.mock.calls[1][1]).toEqual(["free", 5]);
   });
 
   it("does nothing to plan when pre_staff_plan is NULL (was already elite_supporter when promoted)", async () => {

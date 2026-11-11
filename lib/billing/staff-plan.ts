@@ -20,7 +20,8 @@
 //     NULL, since nothing was granted.
 //   - Demoted OUT of every staff role back to a regular user: if
 //     pre_staff_plan is set (a grant happened), plan is instantly restored
-//     to it and pre_staff_plan is cleared -- UNLESS the current plan
+//     to it, provided a live subscription or an active gift still covers
+//     it (otherwise 'free'), and pre_staff_plan is cleared -- UNLESS the current plan
 //     already ranks higher than pre_staff_plan, meaning a real purchase
 //     (e.g. upgrading to elite_supporter via checkout) moved them past the
 //     granted floor while they were still staff. In that case the real,
@@ -44,6 +45,7 @@
 import pool from "@/lib/database/db";
 import { STAFF_ROLES } from "@/lib/rate-limiting/daily-limits";
 import { planRank } from "@/lib/billing/plan-limits";
+import { isLiveSubscriptionStatus } from "@/lib/billing/subscription-status";
 
 const GRANTED_PLAN = "pro_supporter";
 /** super_admin gets a tier above the rest of staff -- see this file's header. */
@@ -157,7 +159,17 @@ async function revokeStaffPlan(
   const result = await pool.query<{
     plan: string | null;
     pre_staff_plan: string | null;
-  }>("SELECT plan, pre_staff_plan FROM users WHERE id = $1", [userId]);
+    stripe_subscription_id: string | null;
+    subscription_status: string | null;
+    gift_plan: string | null;
+  }>(
+    `SELECT u.plan, u.pre_staff_plan, u.stripe_subscription_id, u.subscription_status,
+            (SELECT gs.plan FROM gifted_subscriptions gs
+              WHERE gs.user_id = u.id AND gs.revoked_at IS NULL AND gs.expires_at > NOW()
+              ORDER BY gs.expires_at DESC LIMIT 1) AS gift_plan
+       FROM users u WHERE u.id = $1`,
+    [userId],
+  );
   const row = result.rows[0];
   const preStaffPlan = row?.pre_staff_plan;
   if (!preStaffPlan) return; // never granted -- they were already elite_supporter
@@ -183,9 +195,22 @@ async function revokeStaffPlan(
     return;
   }
 
+  // pre_staff_plan is what they had the day they were promoted, and nothing
+  // keeps it current. A subscription cancelled while they were staff lands on
+  // the staff floor, so it looks like nothing changed, and restoring the saved
+  // plan on demotion handed a former staff member a paid tier with nothing
+  // paying for it. It is only restored while something still pays for it or
+  // covers it.
+  const subscriptionLive =
+    !!row?.stripe_subscription_id &&
+    isLiveSubscriptionStatus(row.subscription_status);
+  const giftCovers =
+    !!row?.gift_plan && planRank(row.gift_plan) >= planRank(preStaffPlan);
+  const restoredPlan = subscriptionLive || giftCovers ? preStaffPlan : "free";
+
   await pool.query(
     "UPDATE users SET plan = $1, pre_staff_plan = NULL, updated_at = NOW() WHERE id = $2",
-    [preStaffPlan, userId],
+    [restoredPlan, userId],
   );
 }
 
