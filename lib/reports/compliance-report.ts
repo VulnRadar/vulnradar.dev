@@ -14,7 +14,7 @@ import {
  * Compliance mapping report (Markdown).
  *
  * Takes a completed scan and expresses each finding as the framework controls
- * it touches (PCI DSS 4.0, SOC 2, ISO/IEC 27001:2022, OWASP ASVS), so an
+ * it touches (PCI DSS 4.0.1, SOC 2, ISO/IEC 27001:2022, OWASP ASVS 4.0.3), so an
  * engineer or a GRC reviewer can see "these findings are relevant to PCI
  * requirement X" without hand-mapping every result.
  *
