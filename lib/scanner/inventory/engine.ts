@@ -210,9 +210,13 @@ interface RuleHit {
   version?: VersionCandidate & { headerName?: string; headerValue?: string };
 }
 
-/** Printable ASCII only and bounded, so a label cannot carry markup or a secret by length. */
+/**
+ * Printable ASCII only, without the characters that open or close markup, and
+ * bounded. An attribute name read from a hostile page can contain `<`, quotes
+ * and backticks, and a label ends up in reports and exports.
+ */
 function safeLabel(text: string): string {
-  return text.replace(/[^ -~]/g, "").slice(0, MAX_LABEL_CHARS);
+  return text.replace(/[^ -~]|[<>"'`]/g, "").slice(0, MAX_LABEL_CHARS);
 }
 
 /** An asset's path with its host, query and fragment removed. */

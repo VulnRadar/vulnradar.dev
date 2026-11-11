@@ -571,6 +571,13 @@ describe("detect: output", () => {
     ]);
   });
 
+  it("keeps markup characters from a hostile attribute name out of a label", () => {
+    const found = run('<div wire:<img src=x onerror=1 class="a"></div>');
+    const labels = byName(found, "Livewire")?.evidence ?? [];
+    expect(labels).toEqual(["attribute div wire:img"]);
+    for (const label of labels) expect(label).not.toMatch(/[<>"'`]/);
+  });
+
   it("lists evidence strongest first without repeating a label", () => {
     const found = run(
       '<script src="/livewire/livewire.js"></script><div wire:click="x"></div><div wire:model="y"></div>',
