@@ -35,7 +35,7 @@ const CATEGORIES = readdirSync(
   join(process.cwd(), "lib", "scanner", "checks-data"),
 )
   .filter((name) => name.endsWith(".json"))
-  .map((name) => name.replace(/.json$/, ""))
+  .map((name) => name.replace(/\.json$/, ""))
   .sort();
 
 type Baseline = Readonly<Record<string, number>>;
