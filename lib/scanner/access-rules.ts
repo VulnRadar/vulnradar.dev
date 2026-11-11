@@ -90,8 +90,8 @@ export interface AccessRuleCheckOptions {
   /**
    * The addresses the caller already resolved the target to (for example
    * validateScanTarget's resolvedIp, the one the scan will connect to). When
-   * given, these are what the ip rules are matched against and DNS is not
-   * asked again; when omitted, the hostname is resolved here.
+   * given, these are what the blacklist ip rules are matched against and DNS
+   * is not asked again; when omitted, the hostname is resolved here.
    */
   resolvedAddresses?: readonly string[];
 }
@@ -185,6 +185,12 @@ function firstMatchingRule<T extends { value: string; value_type: string }>(
  *   an IP literal, so every hostname pointed into a blocked range was scanned
  *   freely and the operator believed the range was protected
  *   (gap-domain-verification-active-gating-2).
+ * - A whitelist ip rule still admits only a target typed as that address.
+ *   Admitting a hostname because one of its addresses is listed would turn
+ *   the strict allowlist into a bypass: give the name a second A record, or
+ *   re-point it between this check and the scan's own lookups (none of which
+ *   are pinned to the address checked here), and the scan connects to a
+ *   server nobody listed.
  */
 export async function checkAccessRules(
   url: string,
@@ -197,12 +203,13 @@ export async function checkAccessRules(
     // wrapped IPv6 in brackets, so a literal is recognized here without any
     // un-obfuscating of our own.
     const bare = hostname.replace(/^\[|\]$/g, "");
-    const addresses =
-      isIP(bare) !== 0
-        ? [bare]
-        : options.resolvedAddresses
-          ? options.resolvedAddresses.filter((a) => isIP(a) !== 0)
-          : await resolveAll(hostname);
+    const isLiteral = isIP(bare) !== 0;
+    const addresses = isLiteral
+      ? [bare]
+      : options.resolvedAddresses
+        ? options.resolvedAddresses.filter((a) => isIP(a) !== 0)
+        : await resolveAll(hostname);
+    const whitelistAddresses = isLiteral ? addresses : [];
     const cacheKey = `${hostname}|${[...new Set(addresses)].sort().join(",")}`;
 
     const cached = readRuleCache(cacheKey);
@@ -228,6 +235,8 @@ export async function checkAccessRules(
     // ipRuleCovers decides. The admin UI accepts CIDR ranges (e.g.
     // "192.168.1.0/24") as well as plain IPs, and both are matched there.
     const ipCondition = addresses.length > 0 ? "value_type = 'ip'" : "false";
+    const whitelistIpCondition =
+      whitelistAddresses.length > 0 ? "value_type = 'ip'" : "false";
 
     // scanner: blacklist still wins. If any active blacklist rule
     // matches, the URL is blocked regardless of any whitelist.
@@ -289,12 +298,12 @@ export async function checkAccessRules(
                LOWER($1) = LOWER(value)
                OR LOWER($1) LIKE '%.' || LOWER(value)
              ))
-             OR ${ipCondition}
+             OR ${whitelistIpCondition}
            )
          ORDER BY (value_type = 'url') DESC`,
         queryParams,
       );
-      if (!firstMatchingRule(whitelistResult.rows, addresses)) {
+      if (!firstMatchingRule(whitelistResult.rows, whitelistAddresses)) {
         const notListed: AccessRuleCheckResult = {
           allowed: false,
           reason: "Target is not on the active whitelist.",

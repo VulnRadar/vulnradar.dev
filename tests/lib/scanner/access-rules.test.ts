@@ -299,15 +299,48 @@ describe("checkAccessRules: ip rules against the addresses a hostname resolves t
     expect(exact.matchedValue).toBe("198.51.100.1");
   });
 
-  it("lets a whitelist ip range admit a hostname that resolves into it", async () => {
+  // The whitelist is the strict allowlist, so an address a hostname resolves
+  // to never admits it: a second A record, or a re-point between this check
+  // and the scan's own unpinned lookups, would aim the scan at a server
+  // nobody listed. Only a target typed as the listed address is admitted.
+  it("does not let a whitelist ip range admit a hostname that resolves into it", async () => {
+    mockQuery.mockImplementation(async (sql: string) => {
+      const text = String(sql);
+      if (text.includes("COUNT(*)")) return { rows: [{ count: 1 }] };
+      if (text.includes("rule_type = 'whitelist'")) {
+        return /OR\s+value_type = 'ip'/.test(text)
+          ? {
+              rows: [
+                { value: "203.0.113.0/24", value_type: "ip", reason: null },
+              ],
+            }
+          : { rows: [] };
+      }
+      return { rows: [] };
+    });
+    mockLookup.mockResolvedValue([
+      { address: "203.0.113.7", family: 4 },
+      { address: "198.51.100.1", family: 4 },
+    ]);
+
+    const byName = await checkAccessRules("https://inside.example/");
+    const byPassedAddress = await checkAccessRules("https://passed.example/", {
+      resolvedAddresses: ["203.0.113.7"],
+    });
+
+    expect(byName.allowed).toBe(false);
+    expect(byName.ruleType).toBe("whitelist");
+    expect(byPassedAddress.allowed).toBe(false);
+  });
+
+  it("still lets a whitelist ip range admit a target typed as an address in it", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] }); // blacklist: nothing
     mockQuery.mockResolvedValueOnce({ rows: [{ count: 1 }] });
     mockQuery.mockResolvedValueOnce({
       rows: [{ value: "203.0.113.0/24", value_type: "ip", reason: null }],
     });
-    mockLookup.mockResolvedValue([{ address: "203.0.113.7", family: 4 }]);
 
-    const result = await checkAccessRules("https://inside.example/");
+    const result = await checkAccessRules("http://203.0.113.7/");
 
     expect(result.allowed).toBe(true);
   });
