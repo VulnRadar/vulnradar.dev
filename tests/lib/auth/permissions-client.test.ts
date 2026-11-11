@@ -14,6 +14,10 @@ import {
   canPerformAction,
   ADMIN_ACTIONS,
   hasGodMode,
+  canActOnTarget,
+  targetRefusal,
+  SELF_BLOCKED_ACTIONS,
+  TARGET_REFUSAL,
 } from "@/lib/auth/permissions-client";
 import { STAFF_ROLES } from "@/lib/config/client-constants";
 
@@ -505,5 +509,86 @@ describe("publicRole", () => {
     expect(publicRole(null)).toBe("user");
     expect(publicRole(undefined)).toBe("user");
     expect(publicRole("root")).toBe("user");
+  });
+});
+
+describe("canActOnTarget mirrors the admin route's target rules", () => {
+  const moderator = { id: 20, role: STAFF_ROLES.MODERATOR };
+  const admin = { id: 30, role: STAFF_ROLES.ADMIN };
+  const superAdmin = { id: 1, role: STAFF_ROLES.SUPER_ADMIN };
+  const user = { id: 99, role: STAFF_ROLES.USER };
+
+  it("a moderator may act on a user but not on an admin", () => {
+    expect(canActOnTarget(moderator, user)).toBe(true);
+    expect(canActOnTarget(moderator, admin)).toBe(false);
+    expect(targetRefusal(moderator, admin)).toBe(TARGET_REFUSAL.rank);
+  });
+
+  it("an admin may act on a moderator but not on a peer admin", () => {
+    expect(canActOnTarget(admin, moderator)).toBe(true);
+    expect(canActOnTarget(admin, { id: 31, role: STAFF_ROLES.ADMIN })).toBe(
+      false,
+    );
+  });
+
+  it("a peer at the same rung is refused for every specialist role too", () => {
+    const ops = { id: 40, role: STAFF_ROLES.OPS };
+    expect(canActOnTarget(ops, { id: 41, role: STAFF_ROLES.BILLING })).toBe(
+      false,
+    );
+    expect(canActOnTarget(ops, user)).toBe(true);
+  });
+
+  it("the super admin may act on an admin, never on another god-mode account", () => {
+    expect(canActOnTarget(superAdmin, admin)).toBe(true);
+    expect(
+      canActOnTarget(superAdmin, { id: 2, role: STAFF_ROLES.SUPER_ADMIN }),
+    ).toBe(false);
+  });
+
+  it("nobody but the owner account may touch user 1", () => {
+    const ownerAsUser = { id: 1, role: STAFF_ROLES.USER };
+    expect(targetRefusal(admin, ownerAsUser)).toBe(TARGET_REFUSAL.protected);
+    expect(
+      targetRefusal(superAdmin, { id: 1, role: STAFF_ROLES.SUPER_ADMIN }),
+    ).toBeNull();
+  });
+
+  it("a caller may edit their own account but not run the destructive actions on it", () => {
+    expect(canActOnTarget(admin, admin)).toBe(true);
+    for (const action of SELF_BLOCKED_ACTIONS) {
+      expect(targetRefusal(admin, admin, action)).toBe(TARGET_REFUSAL.self);
+    }
+    expect(canActOnTarget(admin, admin, "add_note")).toBe(true);
+  });
+
+  it("an unknown caller id is never treated as the target", () => {
+    expect(canActOnTarget({ id: null, role: STAFF_ROLES.ADMIN }, admin)).toBe(
+      false,
+    );
+  });
+
+  it("the self-blocked list is the one the route enforces", () => {
+    const route = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "app",
+        "api",
+        "v3",
+        "admin",
+        "route.ts",
+      ),
+      "utf8",
+    );
+    const start = route.indexOf("// Prevent self-modification");
+    const block = route.slice(
+      start,
+      route.indexOf("].includes(action)", start),
+    );
+    const inRoute = [...block.matchAll(/"([a-z_]+)",/g)].map((m) => m[1]);
+    expect([...inRoute].sort()).toEqual([...SELF_BLOCKED_ACTIONS].sort());
   });
 });

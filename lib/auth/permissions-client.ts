@@ -339,6 +339,88 @@ export function hasGodMode(role: string | null | undefined): boolean {
 }
 
 /**
+ * Actions the admin route refuses when the caller aims them at their own
+ * account (app/api/v3/admin/route.ts, "Prevent self-modification"). Kept
+ * beside canActOnTarget so the panel can ask the same question the route does.
+ */
+export const SELF_BLOCKED_ACTIONS: readonly string[] = [
+  "remove_admin",
+  "delete",
+  "disable",
+  "reset_password",
+  "set_role",
+  "grant_credits",
+];
+
+/** The account that owns the instance: only it may act on itself or others. */
+const OWNER_USER_ID = 1;
+
+export const TARGET_REFUSAL = {
+  protected: "This account is protected and cannot be modified.",
+  self: "You cannot do this to your own account.",
+  godMode: "This account cannot be modified.",
+  rank: "Your role cannot act on this account.",
+} as const;
+
+export interface AdminActor {
+  /** null while the signed-in user has not loaded. */
+  id: number | null | undefined;
+  role: string | null | undefined;
+}
+
+export interface AdminTarget {
+  id: number;
+  role: string | null | undefined;
+}
+
+/**
+ * Why the admin route would refuse an action on this account, or null when it
+ * would not on account of who the target is. It mirrors the checks the PATCH
+ * route runs before it asks for a password, in the same order: the protected
+ * owner account (id 1), self-targeting of the dangerous actions, a god-mode
+ * target, and the rank rule (strictly lower rank only, except for the super
+ * admin).
+ *
+ * This is the panel asking a question whose answer is already known, so it
+ * never prompts for a password only to be refused afterwards. The server
+ * still decides.
+ *
+ * `action` is optional: without it the self rule is skipped, which is the
+ * answer for the controls that edit something other than a destructive action
+ * (the account dialog, the badge and note controls).
+ */
+export function targetRefusal(
+  caller: AdminActor,
+  target: AdminTarget,
+  action?: string,
+): string | null {
+  const isSelf = caller.id != null && caller.id === target.id;
+  if (target.id === OWNER_USER_ID && caller.id !== OWNER_USER_ID) {
+    return TARGET_REFUSAL.protected;
+  }
+  if (isSelf && action !== undefined && SELF_BLOCKED_ACTIONS.includes(action)) {
+    return TARGET_REFUSAL.self;
+  }
+  if (!isSelf && hasGodMode(target.role)) return TARGET_REFUSAL.godMode;
+  if (
+    !isSelf &&
+    caller.role !== STAFF_ROLES.SUPER_ADMIN &&
+    getRoleLevel(target.role) >= getRoleLevel(caller.role)
+  ) {
+    return TARGET_REFUSAL.rank;
+  }
+  return null;
+}
+
+export function canActOnTarget(
+  caller: AdminActor,
+  target: AdminTarget,
+  action?: string,
+): boolean {
+  return targetRefusal(caller, target, action) === null;
+}
+
+/**
  * Check if role can access admin panel
  */
 export function canAccessAdmin(role: string | null | undefined): boolean {
