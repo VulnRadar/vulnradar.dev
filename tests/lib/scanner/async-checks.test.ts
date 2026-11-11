@@ -1782,11 +1782,9 @@ describe("checkDNSSecurity: what the SPF and MX answers say about mail", () => {
       // Nothing mail-shaped is asked of the www name. (The bare www name is
       // read once for the structured DNS records panel, which describes the
       // scanned host.)
-      expect(
-        txtNames.filter(
-          (n) => n !== "www.example.com" && n.includes("www.example.com"),
-        ),
-      ).toEqual([]);
+      expect(txtNames.filter((n) => n.endsWith(".www.example.com"))).toEqual(
+        [],
+      );
       // MX belongs to the mail domain too.
       expect(dnsMock.resolveMx).toHaveBeenCalledWith("example.com");
       // NS is a property of the host being scanned.
@@ -1845,7 +1843,8 @@ describe("the dns branch and hosting platforms", () => {
       if (name === "fastmail.com")
         return [["v=spf1 include:spf.messagingengine.com ?all"]];
       if (name === "_dmarc.fastmail.com") return [["v=DMARC1; p=none"]];
-      if (name.endsWith("www.fastmail.com")) throw dnsError("ENOTFOUND");
+      if (name === "www.fastmail.com" || name.endsWith(".www.fastmail.com"))
+        throw dnsError("ENOTFOUND");
       throw dnsError("ENODATA");
     });
     dnsMock.resolveMx.mockImplementation(async (name: string) => {
@@ -2798,6 +2797,28 @@ describe("checkLiveFetch: service exposure probes", () => {
         "text/plain",
       );
       expect(await titles()).not.toContain("IIS web.config File Exposed");
+    });
+
+    it("reports one that opens with comments before the root element", async () => {
+      answer(
+        "/web.config",
+        200,
+        '\uFEFF<?xml version="1.0"?>\n<!-- a -->\n<!---->  <configuration>\n</configuration>',
+        "application/xml",
+      );
+      expect(await titles()).toContain("IIS web.config File Exposed");
+    });
+
+    it("reads a body of many comment pairs in linear time and rejects an unclosed one", async () => {
+      answer(
+        "/web.config",
+        200,
+        "<!--" + "--><!--".repeat(50_000),
+        "application/xml",
+      );
+      const started = Date.now();
+      expect(await titles()).not.toContain("IIS web.config File Exposed");
+      expect(Date.now() - started).toBeLessThan(5_000);
     });
 
     it("does not report a document that has <configuration> only somewhere inside", async () => {

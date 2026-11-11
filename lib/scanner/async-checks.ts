@@ -3366,11 +3366,29 @@ async function checkExposedFiles(
    * declaration and comments, and refusing an HTML content type, is what a
    * real file passes and a page about one does not.
    */
-  const looksLikeWebConfig = (body: string, contentType: string): boolean =>
-    !/text\/html/i.test(contentType) &&
-    /^\uFEFF?\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<configuration[\s>]/i.test(
-      body,
-    );
+  const looksLikeWebConfig = (body: string, contentType: string): boolean => {
+    if (/text\/html/i.test(contentType)) return false;
+    // Walked by index rather than with one regex: a repeated lazy comment
+    // group backtracks exponentially on a body of many "<!--" and "-->" pairs,
+    // and the body is whatever the target chose to send.
+    const skipSpace = (from: number): number => {
+      let i = from;
+      while (i < body.length && /[\s\uFEFF]/.test(body[i])) i++;
+      return i;
+    };
+    let at = skipSpace(0);
+    if (body.startsWith("<?xml", at)) {
+      const close = body.indexOf("?>", at);
+      if (close === -1) return false;
+      at = skipSpace(close + 2);
+    }
+    while (body.startsWith("<!--", at)) {
+      const close = body.indexOf("-->", at + 4);
+      if (close === -1) return false;
+      at = skipSpace(close + 3);
+    }
+    return /^<configuration[\s>]/i.test(body.slice(at, at + 15));
+  };
 
   interface FileProbe {
     path: string;
