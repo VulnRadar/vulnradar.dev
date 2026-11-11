@@ -4,6 +4,7 @@ import {
   normalizeBlockedDomain,
   findScansForBlockedDomain,
   deleteScansForBlockedDomain,
+  searchScansForBlockedDomain,
 } from "@/lib/admin/blocked-domain-scans";
 import { describeIntegration, createUser, unique } from "./_db";
 
@@ -122,6 +123,37 @@ describeIntegration("purging the scans of a blocked domain", () => {
       [domain],
     );
     expect(rows[0].n).toBe(0);
+  });
+
+  // bug-ui-admin-4: the list stops at 100 and the delete does not, and the
+  // confirm quoted the list's length, so "delete 100 scans" removed all of
+  // them. The total is a COUNT over the delete's own predicate.
+  it("reports the exact total past the list cap, and the delete removes that many", async () => {
+    const label = unique("many").replace(/[^a-z0-9]/g, "");
+    const domain = `${label}.example.test`;
+    const owner = await createUser();
+    const other = await createUser();
+    await pool.query(
+      `INSERT INTO scan_history (user_id, url, status, started_at, scanned_at, scan_type)
+       SELECT CASE WHEN g % 2 = 0 THEN $1::int ELSE $2::int END,
+              CASE WHEN g % 3 = 0 THEN 'https://sub.' || $3::text || '/' || g
+                   ELSE 'https://' || $3::text || '/' || g END,
+              'completed', NOW(), NOW() - make_interval(secs => g), 'web'
+         FROM generate_series(1, 150) AS g`,
+      [owner.id, other.id, domain],
+    );
+
+    const found = await searchScansForBlockedDomain(domain);
+    expect(found.scans).toHaveLength(100);
+    expect(found.total).toBe(150);
+    expect(found.truncated).toBe(true);
+
+    expect(await deleteScansForBlockedDomain(domain)).toBe(150);
+    expect(await searchScansForBlockedDomain(domain)).toEqual({
+      scans: [],
+      total: 0,
+      truncated: false,
+    });
   });
 
   it("treats LIKE metacharacters as characters, not wildcards", async () => {

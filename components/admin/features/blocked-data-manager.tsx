@@ -85,6 +85,40 @@ const sourceBadgeClass = (source: string) =>
   SOURCE_BADGE[source] ?? "bg-muted text-muted-foreground border-border";
 
 /**
+ * What a find_scans search found: the listed rows, and how many match in all.
+ *
+ * The list is capped at 100 and the delete is not, so the count the panel and
+ * its confirms quote has to be `total`, never the list's length. An older
+ * server that sends no total is read as "the list is everything".
+ */
+export interface ScanMatches {
+  scans: MatchingScan[];
+  total: number;
+  truncated: boolean;
+}
+
+export function readScanMatches(data: unknown): ScanMatches {
+  const body = (data ?? {}) as {
+    scans?: unknown;
+    total?: unknown;
+    truncated?: unknown;
+  };
+  const scans = Array.isArray(body.scans) ? (body.scans as MatchingScan[]) : [];
+  const total =
+    typeof body.total === "number" && Number.isFinite(body.total)
+      ? Math.max(body.total, scans.length)
+      : scans.length;
+  return { scans, total, truncated: total > scans.length };
+}
+
+/** The line under a list of matches, saying how much of the total it is. */
+export function scanListFootnote(matches: ScanMatches): string {
+  return matches.truncated
+    ? `Showing the ${matches.scans.length} most recent of ${matches.total}. Deleting removes all ${matches.total}.`
+    : `${pluralize(matches.total, "scan")} total. Scroll to view all.`;
+}
+
+/**
  * The matching-scans list, rendered identically for the free-form lookup and
  * for the per-rule drawer. Extracted because both copies were byte-identical,
  * and because both needed the same fix: a four-column table with no md:hidden
@@ -195,7 +229,7 @@ export function BlockedDataManager() {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedRule, setExpandedRule] = useState<number | null>(null);
   const [matchingScans, setMatchingScans] = useState<
-    Record<number, MatchingScan[]>
+    Record<number, ScanMatches>
   >({});
   const [loadingScans, setLoadingScans] = useState<number | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -215,7 +249,7 @@ export function BlockedDataManager() {
   // scan an admin needs gone right now, before (or without ever) adding a
   // formal blacklist rule for it.
   const [lookupValue, setLookupValue] = useState("");
-  const [lookupScans, setLookupScans] = useState<MatchingScan[] | null>(null);
+  const [lookupScans, setLookupScans] = useState<ScanMatches | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [pendingLookupDelete, setPendingLookupDelete] = useState<{
     value: string;
@@ -275,7 +309,10 @@ export function BlockedDataManager() {
         return;
       }
       const data = await res.json();
-      setMatchingScans((prev) => ({ ...prev, [ruleId]: data.scans || [] }));
+      setMatchingScans((prev) => ({
+        ...prev,
+        [ruleId]: readScanMatches(data),
+      }));
     } catch (error) {
       console.error("Error fetching matching scans:", error);
       setToast({ message: "Failed to fetch matching scans", type: "error" });
@@ -351,7 +388,7 @@ export function BlockedDataManager() {
       });
       const data = await res.json();
       if (res.ok) {
-        setLookupScans(data.scans || []);
+        setLookupScans(readScanMatches(data));
       } else {
         setToast({ message: data.error || "Lookup failed", type: "error" });
       }
@@ -381,7 +418,7 @@ export function BlockedDataManager() {
           message: `Deleted ${pluralize(data.deletedCount || 0, "scan")} for ${pendingLookupDelete.value}`,
           type: "success",
         });
-        setLookupScans([]);
+        setLookupScans({ scans: [], total: 0, truncated: false });
         setPendingLookupDelete(null);
         return { ok: true };
       }
@@ -438,7 +475,7 @@ export function BlockedDataManager() {
   );
 
   const totalScansFound = Object.values(matchingScans).reduce(
-    (sum, scans) => sum + scans.length,
+    (sum, matches) => sum + matches.total,
     0,
   );
 
@@ -497,7 +534,7 @@ export function BlockedDataManager() {
         title="Delete Blocked Data"
         description={
           pendingDelete
-            ? `This will permanently delete ${pendingDelete.scanCount} scan${pendingDelete.scanCount !== 1 ? "s" : ""} of history for "${pendingDelete.value}". This action cannot be undone.`
+            ? `This will permanently delete ${pluralize(pendingDelete.scanCount, "scan")} of history for "${pendingDelete.value}", across every account. This action cannot be undone.`
             : undefined
         }
         confirmText="Delete All Data"
@@ -514,7 +551,7 @@ export function BlockedDataManager() {
         title="Delete Scan History"
         description={
           pendingLookupDelete
-            ? `This will permanently delete ${pendingLookupDelete.scanCount} scan${pendingLookupDelete.scanCount !== 1 ? "s" : ""} of history for "${pendingLookupDelete.value}". This action cannot be undone.`
+            ? `This will permanently delete ${pluralize(pendingLookupDelete.scanCount, "scan")} of history for "${pendingLookupDelete.value}", across every account. This action cannot be undone.`
             : undefined
         }
         confirmText="Delete All Data"
@@ -652,15 +689,15 @@ export function BlockedDataManager() {
                     the admin pasted in, usually a full URL, and unbroken it
                     pushed this row wider than the page. */}
                 <p className="min-w-0 wrap-anywhere text-xs text-muted-foreground">
-                  {lookupScans.length === 0 ? (
+                  {lookupScans.total === 0 ? (
                     "No scan history found for that value."
                   ) : (
                     <>
                       Found{" "}
                       <span className="font-medium text-foreground tabular-nums">
-                        {lookupScans.length}
+                        {lookupScans.total}
                       </span>{" "}
-                      {plural(lookupScans.length, "scan")} for{" "}
+                      {plural(lookupScans.total, "scan")} for{" "}
                       <span className="font-mono text-foreground">
                         {lookupValue.trim()}
                       </span>
@@ -690,7 +727,7 @@ export function BlockedDataManager() {
                     )}
                     Purge host reputation
                   </Button>
-                  {lookupScans.length > 0 && (
+                  {lookupScans.total > 0 && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -698,7 +735,7 @@ export function BlockedDataManager() {
                       onClick={() =>
                         setPendingLookupDelete({
                           value: lookupValue.trim(),
-                          scanCount: lookupScans.length,
+                          scanCount: lookupScans.total,
                         })
                       }
                       disabled={deletingLookupScans}
@@ -717,9 +754,16 @@ export function BlockedDataManager() {
                 </div>
               </div>
 
-              {lookupScans.length > 0 && (
+              {lookupScans.scans.length > 0 && (
                 <div className="border-t border-border/40">
-                  <MatchingScansList scans={lookupScans} />
+                  <MatchingScansList scans={lookupScans.scans} />
+                  {lookupScans.truncated && (
+                    <div className="px-4 py-2 bg-muted/20 border-t border-border/30 text-center">
+                      <p className="text-xs text-muted-foreground tabular-nums">
+                        {scanListFootnote(lookupScans)}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -798,7 +842,9 @@ export function BlockedDataManager() {
               <div className="divide-y divide-border/40">
                 {filteredRules.map((rule) => {
                   const isExpanded = expandedRule === rule.id;
-                  const scans = matchingScans[rule.id] || [];
+                  const matches = matchingScans[rule.id];
+                  const scans = matches?.scans ?? [];
+                  const scanTotal = matches?.total ?? 0;
                   const isLoadingThisRule = loadingScans === rule.id;
 
                   return (
@@ -858,12 +904,12 @@ export function BlockedDataManager() {
                             <Badge
                               className={cn(
                                 "text-[11px] px-2 py-0.5 font-medium tabular-nums",
-                                scans.length > 0
+                                scanTotal > 0
                                   ? "bg-destructive/10 text-destructive border-destructive/20"
                                   : "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
                               )}
                             >
-                              {pluralize(scans.length, "scan")}
+                              {pluralize(scanTotal, "scan")}
                             </Badge>
                           )}
                           {isLoadingThisRule ? (
@@ -898,7 +944,7 @@ export function BlockedDataManager() {
                                 Searching scan history...
                               </span>
                             </div>
-                          ) : scans.length === 0 ? (
+                          ) : scanTotal === 0 ? (
                             <div className="flex items-center gap-3 py-6 justify-center">
                               <CheckCircle2
                                 aria-hidden="true"
@@ -915,9 +961,9 @@ export function BlockedDataManager() {
                                 <p className="text-xs text-muted-foreground">
                                   Found{" "}
                                   <span className="font-medium text-foreground tabular-nums">
-                                    {scans.length}
+                                    {scanTotal}
                                   </span>{" "}
-                                  {plural(scans.length, "scan")} matching this
+                                  {plural(scanTotal, "scan")} matching this
                                   blocked entry
                                 </p>
                                 {/* Same delete as the lookup card runs, so the
@@ -931,7 +977,7 @@ export function BlockedDataManager() {
                                   onClick={() =>
                                     setPendingDelete({
                                       ruleId: rule.id,
-                                      scanCount: scans.length,
+                                      scanCount: scanTotal,
                                       value: rule.ip_address,
                                     })
                                   }
@@ -962,9 +1008,7 @@ export function BlockedDataManager() {
                                 <MatchingScansList scans={scans} />
                                 <div className="px-4 py-2 bg-muted/20 border-t border-border/30 text-center">
                                   <p className="text-xs text-muted-foreground tabular-nums">
-                                    {scans.length} scan
-                                    {scans.length !== 1 ? "s" : ""} total.
-                                    Scroll to view all.
+                                    {matches && scanListFootnote(matches)}
                                   </p>
                                 </div>
                               </div>

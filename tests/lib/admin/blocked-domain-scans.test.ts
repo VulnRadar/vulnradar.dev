@@ -14,6 +14,8 @@ const {
   normalizeBlockedDomain,
   findScansForBlockedDomain,
   deleteScansForBlockedDomain,
+  searchScansForBlockedDomain,
+  BLOCKED_DOMAIN_SCAN_LIST_LIMIT,
 } = await import("@/lib/admin/blocked-domain-scans");
 const { hostOfUrlSql } = await import("@/lib/database/sql-fragments");
 
@@ -90,6 +92,64 @@ describe("the host match", () => {
   });
 });
 
+// bug-ui-admin-4: the list stops at 100 and the delete does not, and the
+// confirm quoted the list's length. The count has to run the delete's
+// predicate, so the number an admin confirms is the number that goes.
+describe("the search total", () => {
+  function answer(listRows: number, total: number) {
+    mockQuery.mockImplementation((sql: string) =>
+      Promise.resolve(
+        sql.includes("COUNT(*)")
+          ? { rows: [{ n: total }] }
+          : {
+              rows: Array.from({ length: listRows }, (_, i) => ({ id: i + 1 })),
+            },
+      ),
+    );
+  }
+
+  it("counts with the same predicate the delete uses, uncapped", async () => {
+    answer(100, 150);
+    await searchScansForBlockedDomain("evil.com");
+    const count = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes("COUNT(*)"),
+    );
+    const host = hostOfUrlSql("url");
+    expect(String(count?.[0])).toContain(`${host} = $1 OR ${host} LIKE $2`);
+    expect(String(count?.[0])).not.toContain("LIMIT");
+    expect(count?.[1]).toEqual(["evil.com", "%.evil.com"]);
+  });
+
+  it("reports the exact total and that the list is truncated", async () => {
+    answer(100, 150);
+    const found = await searchScansForBlockedDomain("evil.com");
+    expect(found.scans).toHaveLength(100);
+    expect(found.total).toBe(150);
+    expect(found.truncated).toBe(true);
+  });
+
+  it("is not truncated when the list is everything", async () => {
+    answer(3, 3);
+    const found = await searchScansForBlockedDomain("evil.com");
+    expect(found).toMatchObject({ total: 3, truncated: false });
+  });
+
+  it("never reports fewer than it lists", async () => {
+    // A scan written between the two statements.
+    answer(4, 3);
+    const found = await searchScansForBlockedDomain("evil.com");
+    expect(found).toMatchObject({ total: 4, truncated: false });
+  });
+
+  it("lists the same cap it documents", async () => {
+    answer(0, 0);
+    await findScansForBlockedDomain("evil.com");
+    expect(String(mockQuery.mock.calls[0][0])).toContain(
+      `LIMIT ${BLOCKED_DOMAIN_SCAN_LIST_LIMIT}`,
+    );
+  });
+});
+
 describe("a value that normalizes to nothing", () => {
   // A pasted ":8080", "?x=1", "#top", "@" or "user@" is only a port, a query, a
   // fragment or userinfo, and reduces to the empty string. The subdomain arm of
@@ -110,5 +170,14 @@ describe("a value that normalizes to nothing", () => {
   it("deletes nothing", async () => {
     expect(await deleteScansForBlockedDomain("")).toBe(0);
     expect(mockPurge).not.toHaveBeenCalled();
+  });
+
+  it("counts nothing", async () => {
+    expect(await searchScansForBlockedDomain("")).toEqual({
+      scans: [],
+      total: 0,
+      truncated: false,
+    });
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });

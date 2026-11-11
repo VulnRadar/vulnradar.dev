@@ -58,6 +58,9 @@ export interface BlockedDomainScanRow {
   user_email: string | null;
 }
 
+/** How many matching scans the search lists. The delete is not capped. */
+export const BLOCKED_DOMAIN_SCAN_LIST_LIMIT = 100;
+
 /**
  * Up to 100 most recent scans of the domain, or of any subdomain of it.
  *
@@ -78,10 +81,46 @@ export async function findScansForBlockedDomain(
        LEFT JOIN users u ON sh.user_id = u.id
       WHERE ${host} = $1 OR ${host} LIKE $2
       ORDER BY sh.scanned_at DESC
-      LIMIT 100`,
+      LIMIT ${BLOCKED_DOMAIN_SCAN_LIST_LIMIT}`,
     [domain, likePattern(domain)],
   );
   return rows;
+}
+
+export interface BlockedDomainScanSearch {
+  /** The most recent matches, at most BLOCKED_DOMAIN_SCAN_LIST_LIMIT. */
+  scans: BlockedDomainScanRow[];
+  /** Every match, which is what the delete removes. */
+  total: number;
+  /** True when `scans` is not all of them. */
+  truncated: boolean;
+}
+
+/**
+ * The listed matches plus the exact number the delete would remove.
+ *
+ * The list stops at 100 and the delete does not, and the confirm used to
+ * quote the list's length: "delete 100 scans" in front of an action that then
+ * removed 4,000 across every account. The count runs the same predicate as
+ * the delete, so the number in the confirm is the number that goes.
+ */
+export async function searchScansForBlockedDomain(
+  domain: string,
+): Promise<BlockedDomainScanSearch> {
+  if (!domain) return { scans: [], total: 0, truncated: false };
+  const host = hostOfUrlSql("url");
+  const [scans, counted] = await Promise.all([
+    findScansForBlockedDomain(domain),
+    pool.query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM scan_history
+        WHERE ${host} = $1 OR ${host} LIKE $2`,
+      [domain, likePattern(domain)],
+    ),
+  ]);
+  // A scan written between the two statements can put the list one ahead of
+  // the count; the total is never reported below what is on screen.
+  const total = Math.max(counted.rows[0]?.n ?? 0, scans.length);
+  return { scans, total, truncated: total > scans.length };
 }
 
 /**
