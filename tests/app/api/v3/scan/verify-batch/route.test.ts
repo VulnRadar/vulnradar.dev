@@ -310,6 +310,38 @@ describe("POST /api/v3/scan/verify-batch: AI-disabled setting", () => {
   });
 });
 
+// The probe sends real traffic to the target, so a domain owner's "block
+// scanning" and the admin blocklist stop it exactly as they stop a scan.
+describe("POST /api/v3/scan/verify-batch: access rules", () => {
+  it("answers 403 BLOCKED and never runs the pass for a blocked target", async () => {
+    mockCheckAccessRules.mockResolvedValueOnce({
+      allowed: false,
+      reason: "Blocked by the domain owner.",
+      ruleType: "blacklist",
+    });
+
+    const res = await POST(
+      postRequest({ url: "https://blocked.example", findings }),
+    );
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.statusCode).toBe("BLOCKED");
+    expect(json.error).toBe("This target cannot be scanned.");
+    expect(mockCheckAccessRules).toHaveBeenCalledWith(
+      "https://blocked.example",
+    );
+    expect(mockReserveAiTokens).not.toHaveBeenCalled();
+    expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
+  });
+
+  it("checks a bare host the way the probe will reach it", async () => {
+    const res = await POST(postRequest({ url: "example.com", findings }));
+    expect(res.status).toBe(200);
+    expect(mockCheckAccessRules).toHaveBeenCalledWith("https://example.com");
+    expect(mockVerifyFindingsBatch).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("POST /api/v3/scan/verify-batch: request validation", () => {
   it("rejects invalid JSON", async () => {
     const req = new NextRequest("http://localhost/api/v3/scan/verify-batch", {

@@ -15,6 +15,7 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { reserveAiTokens } from "@/lib/billing/ai-usage";
 import { getSettings } from "@/lib/config/runtime-config";
 import { isAiDisabledForUser } from "@/lib/ai/user-ai-config";
+import { checkAccessRules } from "@/lib/scanner/access-rules";
 import type { Vulnerability } from "@/lib/scanner/types";
 
 export const runtime = "nodejs";
@@ -102,6 +103,24 @@ export const POST = versioned(
       return NextResponse.json(
         { error: "url must be an http or https address." },
         { status: 400 },
+      );
+    }
+
+    // security: the pass probes the target with a real request, so the admin
+    // blocklist and a domain owner's "block scanning" stop it as they stop a
+    // scan, with the same answer. The URL is checked in the form the probe
+    // will fetch, since a bare host is accepted. checkAccessRules fails
+    // closed on its own database error.
+    const access = await checkAccessRules(asProbeUrl(url));
+    if (!access.allowed) {
+      return NextResponse.json(
+        {
+          error: "This target cannot be scanned.",
+          details:
+            "This domain or IP address has been restricted from scanning for security, privacy, or compliance reasons. Access controls are enforced to protect sensitive infrastructure and user data. If you believe this is an error, please contact support.",
+          statusCode: "BLOCKED",
+        },
+        { status: 403 },
       );
     }
 
