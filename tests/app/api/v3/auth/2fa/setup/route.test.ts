@@ -183,6 +183,17 @@ describe("GET /api/v3/auth/2fa/setup", () => {
     // Encryption round-trips back to the same secret returned to the client.
     expect(decryptApiKey(storedEncrypted)).toBe(json.secret);
   });
+
+  it("is refused during an impersonation, like POST { action: 'start' } is", async () => {
+    // The old entry point to the same write: guarding only the POST would
+    // leave a cached client's GET as the way around it.
+    login(1);
+    sessionRow = defaultSessionRow({ user_id: 1, impersonated_by: 9 });
+    const res = await GET();
+    expect(res.status).toBe(403);
+    expect((await res.json()).impersonationBlocked).toBe(true);
+    expect(totpSecretUpdateCalls).toHaveLength(0);
+  });
 });
 
 // Starting enrolment writes a new totp_secret, so it is a POST: a GET is

@@ -86,6 +86,12 @@ async function startEnrolment(session: { userId: number; email: string }) {
 export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
+  // The same write as POST { action: "start" }, so the same refusal.
+  const refused = refuseWhileImpersonating(
+    session,
+    "Enabling two-factor authentication",
+  );
+  if (refused) return refused;
   return startEnrolment(session);
 });
 
