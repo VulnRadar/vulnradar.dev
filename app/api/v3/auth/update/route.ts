@@ -57,7 +57,10 @@ async function confirmCurrentPassword(
       {
         error: `Too many attempts. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
       },
-      { status: 429 },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfterSeconds) },
+      },
     );
   }
 
@@ -91,7 +94,10 @@ export async function PATCH(request: NextRequest) {
       {
         error: `Too many update attempts. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
       },
-      { status: 429 },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfterSeconds) },
+      },
     );
   }
 

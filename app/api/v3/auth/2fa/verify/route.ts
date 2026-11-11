@@ -25,6 +25,19 @@ import { upsertTrustedDevice } from "@/lib/auth/device-trust";
 import { loginsPausedResponseFor } from "@/lib/admin/service-state";
 import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 
+/** users.backup_codes is a JSON array of hashes in a TEXT column. */
+function parseBackupCodes(raw: unknown): string[] {
+  if (typeof raw !== "string" || raw === "") return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((h): h is string => typeof h === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp();
   const userAgent = await getUserAgent();
@@ -122,6 +135,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       if (!rl.allowed) {
         return ApiResponse.tooManyRequests(
           `Too many 2FA attempts. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
+          rl.retryAfterSeconds,
         );
       }
     }
@@ -143,54 +157,63 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (backupCode && method === "app") {
     // Verify backup code against hashed codes (only for app-based 2FA).
-    // Hold a row-level lock for the entire read-modify-write cycle so two
-    // concurrent attempts can't both observe the same hash, both splice it
-    // out, and both UPDATE — which would otherwise let a single backup
-    // code be replayed once.
+    //
+    // Each comparison is a 128 MiB scrypt, up to eight of them, two at a time
+    // under lib/auth/password-hash's limiter: seconds of work. Doing it inside
+    // the transaction below held a pooled connection and a FOR UPDATE lock on
+    // the users row for all of it, stalling every writer of that row. So the
+    // hashes come from the plain read above, the comparisons run first, and
+    // the lock is taken only to confirm the matched hash is still there and
+    // remove it.
     const normalizedInput = backupCode
       .trim()
       .toUpperCase()
       .replace(/[\s-]/g, "");
-    const lockClient = await pool.connect();
-    try {
-      await lockClient.query("BEGIN");
-      const lockResult = await lockClient.query(
-        "SELECT backup_codes FROM users WHERE id = $1 FOR UPDATE",
-        [effectiveUserId],
-      );
-      const storedHashes: string[] = lockResult.rows[0]?.backup_codes
-        ? JSON.parse(lockResult.rows[0].backup_codes)
-        : [];
-      // Compare against every stored code before picking a match. Checking
-      // them all in parallel keeps the work off the event loop and makes the
-      // response time independent of which slot matched, so the timing does
-      // not reveal a code's position.
-      const comparisons = await Promise.all(
-        storedHashes.map(async (hash: string) => {
-          try {
-            return await verifyPassword(normalizedInput, hash);
-          } catch {
-            return false;
-          }
-        }),
-      );
-      const matchIndex = comparisons.indexOf(true);
-      if (matchIndex < 0) {
-        await lockClient.query("ROLLBACK");
-      } else {
-        storedHashes.splice(matchIndex, 1);
-        await lockClient.query(
-          "UPDATE users SET backup_codes = $1 WHERE id = $2",
-          [JSON.stringify(storedHashes), effectiveUserId],
+    const storedHashes = parseBackupCodes(user.backup_codes);
+    // Compare against every stored code before picking a match. Checking
+    // them all keeps the response time independent of which slot matched,
+    // so the timing does not reveal a code's position.
+    const comparisons = await Promise.all(
+      storedHashes.map(async (hash: string) => {
+        try {
+          return await verifyPassword(normalizedInput, hash);
+        } catch {
+          return false;
+        }
+      }),
+    );
+    const matchIndex = comparisons.indexOf(true);
+    if (matchIndex >= 0) {
+      const matchedHash = storedHashes[matchIndex];
+      // Two requests with the same code can both get this far, because the
+      // comparisons above hold no lock. The re-read under FOR UPDATE is what
+      // keeps a code single-use: the second one finds its hash already gone.
+      const lockClient = await pool.connect();
+      try {
+        await lockClient.query("BEGIN");
+        const lockResult = await lockClient.query(
+          "SELECT backup_codes FROM users WHERE id = $1 FOR UPDATE",
+          [effectiveUserId],
         );
-        verified = true;
-        await lockClient.query("COMMIT");
+        const current = parseBackupCodes(lockResult.rows[0]?.backup_codes);
+        const stillThere = current.indexOf(matchedHash);
+        if (stillThere < 0) {
+          await lockClient.query("ROLLBACK");
+        } else {
+          current.splice(stillThere, 1);
+          await lockClient.query(
+            "UPDATE users SET backup_codes = $1 WHERE id = $2",
+            [JSON.stringify(current), effectiveUserId],
+          );
+          await lockClient.query("COMMIT");
+          verified = true;
+        }
+      } catch (lockErr) {
+        await lockClient.query("ROLLBACK").catch(() => {});
+        throw lockErr;
+      } finally {
+        lockClient.release();
       }
-    } catch (lockErr) {
-      await lockClient.query("ROLLBACK").catch(() => {});
-      throw lockErr;
-    } finally {
-      lockClient.release();
     }
   } else if (code) {
     const codeError = Validate.multiple([

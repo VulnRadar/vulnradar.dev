@@ -85,7 +85,10 @@ export async function POST(request: NextRequest) {
     const minutes = Math.ceil(rl.retryAfterSeconds / 60);
     return NextResponse.json(
       { error: `Too many attempts. Please try again in ${minutes} minute(s).` },
-      { status: 429 },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfterSeconds) },
+      },
     );
   }
 

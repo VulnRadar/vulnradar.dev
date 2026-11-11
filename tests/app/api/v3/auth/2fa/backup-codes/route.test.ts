@@ -170,6 +170,7 @@ describe("POST /api/v3/auth/2fa/backup-codes", () => {
     rateLimitCounts.set("backup-codes:1:unknown", 5);
     const res = await POST(postReq({ password: REAL_PASSWORD }));
     expect(res.status).toBe(429);
+    expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
   });
 
   it("requires a password", async () => {

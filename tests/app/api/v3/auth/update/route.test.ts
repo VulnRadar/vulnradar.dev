@@ -236,6 +236,21 @@ describe("PATCH /api/v3/auth/update", () => {
     );
   });
 
+  it("says when to retry once the current-password check is rate limited", async () => {
+    logIn();
+    rateLimitCounts.set("profile-reauth:7:unknown", 100);
+
+    const res = await PATCH(
+      updateRequest({
+        email: "new@example.com",
+        currentPassword: CURRENT_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(429);
+    expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
+    expect(emailUpdateCalls).toHaveLength(0);
+  });
+
   it("rate limits repeated update attempts", async () => {
     logIn();
     rateLimitCounts.set("profile-update:7:unknown", 100); // RATE_LIMITS.api maxAttempts is well under 100
@@ -244,6 +259,7 @@ describe("PATCH /api/v3/auth/update", () => {
       updateRequest({ name: "New Name", currentPassword: CURRENT_PASSWORD }),
     );
     expect(res.status).toBe(429);
+    expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
     expect(nameUpdateCalls).toHaveLength(0);
   });
 
