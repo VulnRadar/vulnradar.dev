@@ -105,6 +105,22 @@ describe("checkAccessRules: URL/domain normalization before hitting the query", 
   });
 
   it.each([
+    ["a trailing dot", "https://blocked.com./"],
+    ["an encoded trailing dot", "https://blocked.com%2e/"],
+    ["case, a port and a trailing dot", "https://Blocked.COM.:443/"],
+  ])(
+    "matches %s against the rule written for the bare host",
+    async (_label, url) => {
+      // "blocked.com." is the same host to DNS and to safeFetch, which strips
+      // the dot before it connects, so a rule for "blocked.com" must see it.
+      mockNoRulesConfigured();
+      await checkAccessRules(url);
+      const [, params] = mockQuery.mock.calls[0];
+      expect(params[0]).toBe("blocked.com");
+    },
+  );
+
+  it.each([
     ["decimal", "http://2130706433/"],
     ["hex", "http://0x7f000001/"],
     ["octal", "http://0177.0.0.1/"],

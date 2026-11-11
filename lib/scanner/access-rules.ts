@@ -198,7 +198,10 @@ export async function checkAccessRules(
 ): Promise<AccessRuleCheckResult> {
   try {
     const parsedUrl = new URL(url);
-    const hostname = parsedUrl.hostname.toLowerCase();
+    // A trailing dot is the same host to DNS and to safeFetch, which strips
+    // it before connecting, so "blocked.com." has to meet the rules written
+    // for "blocked.com" rather than slip past every url rule.
+    const hostname = parsedUrl.hostname.toLowerCase().replace(/\.+$/, "");
     // WHATWG URL already normalized decimal/octal/hex IPv4 to dotted form and
     // wrapped IPv6 in brackets, so a literal is recognized here without any
     // un-obfuscating of our own.
