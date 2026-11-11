@@ -3,16 +3,16 @@
 export type { AuditStats } from "@/lib/admin/audit-query";
 
 export interface AdminStats {
-  total_users: string;
-  total_scans: string;
-  active_api_keys: string;
-  active_schedules: string;
-  active_webhooks: string;
-  users_with_2fa: string;
-  scans_24h: string;
-  new_users_7d: string;
-  disabled_users: string;
-  shared_scans: string;
+  total_users: number;
+  total_scans: number;
+  active_api_keys: number;
+  active_schedules: number;
+  active_webhooks: number;
+  users_with_2fa: number;
+  scans_24h: number;
+  new_users_7d: number;
+  disabled_users: number;
+  shared_scans: number;
 }
 
 export interface AdminUser {
