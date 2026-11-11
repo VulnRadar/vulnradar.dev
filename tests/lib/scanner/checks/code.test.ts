@@ -17,6 +17,75 @@ import { detectors } from "@/lib/scanner/checks/code";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "code-cookie-without-httponly": [
+    {
+      description: "a script writing a session cookie fires",
+      body: "<script>document.cookie = 'session=' + id + '; path=/';</script>",
+      expect: "fire",
+      evidenceIncludes: '"session"',
+    },
+    {
+      // The old pattern matched a word anywhere in the right-hand side, so the
+      // variable `token` in Shopify's conversion script counted.
+      description: "regression: `token` as a variable value is not the cookie",
+      body: "<script>document.cookie = 'loggedConversion=' + token + '; expires=' + d;</script>",
+      expect: "skip",
+    },
+    {
+      description:
+        "regression: a response whose only cookie is a locale has no finding here",
+      cookies: ["locale=en; Path=/; SameSite=Lax"],
+      body: "<html><body>hello</body></html>",
+      expect: "skip",
+    },
+    {
+      description:
+        "regression: prose that says HttpOnly does not suppress a real session write",
+      body: "<p>Use HttpOnly cookies.</p><script>document.cookie = 'sid=' + v;</script>",
+      expect: "fire",
+    },
+    {
+      description: "text outside a script is not a cookie write",
+      body: "<p>document.cookie = 'session=' + id</p>",
+      expect: "skip",
+    },
+    {
+      description: "a CSRF token written for Axios is readable by design",
+      body: "<script>document.cookie = 'csrftoken=' + t + '; path=/';</script>",
+      expect: "skip",
+    },
+  ],
+
+  "code-cookie-write-no-samesite": [
+    {
+      description: "a session cookie write with no SameSite fires",
+      body: "<script>document.cookie = 'session=' + id + '; path=/';</script>",
+      expect: "fire",
+      evidenceIncludes: "SameSite",
+    },
+    {
+      description: "the write sets SameSite itself",
+      body: "<script>document.cookie = 'session=' + id + '; path=/; SameSite=Lax';</script>",
+      expect: "skip",
+    },
+    {
+      description: "a SameSite on another line does not cover this write",
+      body: "<script>other = 'a; SameSite=Lax';\ndocument.cookie = 'session=' + id;</script>",
+      expect: "fire",
+    },
+    {
+      description: "a non-session cookie is not worth the finding",
+      body: "<script>document.cookie = 'loggedConversion=' + token;</script>",
+      expect: "skip",
+    },
+    {
+      description:
+        "regression: a Set-Cookie header alone is judged by the per-cookie checks, not here",
+      cookies: ["locale=en; Path=/"],
+      expect: "skip",
+    },
+  ],
+
   "code-cookie-missing-secure-http": [
     {
       description: "a cookie without Secure fires",

@@ -100,6 +100,30 @@ describe("buildPageContext", () => {
     expect(theme.sessionLike).toBe(false);
   });
 
+  it("marks session names, including CamelCase, and not CSRF tokens read by design", () => {
+    const headers = new Headers();
+    for (const c of [
+      "XSRF-TOKEN=a; Secure",
+      "laravel_session=a; Secure",
+      "ASP.NET_SessionId=a",
+      "MoodleSession=a",
+      "csrftoken=a",
+    ]) {
+      headers.append("set-cookie", c);
+    }
+    const byName = Object.fromEntries(
+      buildPageContext("https://example.com/", headers, "").cookies.map((c) => [
+        c.name,
+        c.sessionLike,
+      ]),
+    );
+    expect(byName["XSRF-TOKEN"]).toBe(false);
+    expect(byName["csrftoken"]).toBe(false);
+    expect(byName["laravel_session"]).toBe(true);
+    expect(byName["ASP.NET_SessionId"]).toBe(true);
+    expect(byName["MoodleSession"]).toBe(true);
+  });
+
   it("resolves CSP directive fallback to default-src via .effective()", () => {
     const c = ctx(
       "https://example.com/",

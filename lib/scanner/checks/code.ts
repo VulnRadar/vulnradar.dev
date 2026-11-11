@@ -20,6 +20,7 @@ import {
   type EvidenceFn as DetectFn,
   extractScriptContents,
 } from "../_helpers";
+import { isSessionLikeName } from "../cookie-names";
 import { openTags, hasTagWith } from "./_tag-scan";
 import { plainSlashView } from "./_plain-slashes";
 import { leadingHost } from "./_url-hosts";
@@ -49,6 +50,32 @@ function splitAtLineBreak(text: string): string {
  */
 function inlineScriptContent(body: string): string {
   return extractScriptContents(body).join("\n");
+}
+
+/**
+ * Session-like cookies a script writes with `document.cookie =`.
+ *
+ * The cookie NAME is the leading string literal before `=`, so
+ * `'loggedConversion=' + token` is a cookie called loggedConversion, not
+ * something to do with the variable `token`. The assignment is read to the end
+ * of its line, capped, which is what the SameSite test looks at too: a
+ * SameSite set by some other statement does not cover this write.
+ */
+function sessionLikeCookieWrites(
+  body: string,
+): { name: string; assignment: string }[] {
+  const writes: { name: string; assignment: string }[] = [];
+  for (const script of extractScriptContents(body)) {
+    for (const m of script.matchAll(/document\.cookie\s*=(?!=)/g)) {
+      const rhs = script
+        .slice(m.index + m[0].length, m.index + m[0].length + 400)
+        .split(/\r?\n/, 1)[0];
+      const name = /^\s*(['"`])([^'"`=;\s$]+)=/.exec(rhs)?.[2];
+      if (name && isSessionLikeName(name))
+        writes.push({ name, assignment: rhs });
+    }
+  }
+  return writes;
 }
 
 // ── Hardcoded-secrets pattern tiers ─────────────────────────────────────
@@ -1785,36 +1812,22 @@ const rawDetectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "code-cookie-without-httponly": (_url, headers, body) => {
-    if (
-      /document\.cookie\s*=[^;]*\b(?:token|password|session|sid)/i.test(body) &&
-      !/HttpOnly/i.test(body)
-    ) {
-      return "document.cookie write missing HttpOnly - readable from JS / XSS.";
-    }
-    if (
-      headers.has("set-cookie") &&
-      !/HttpOnly/i.test(headers.get("set-cookie") || "")
-    ) {
-      return "Set-Cookie header lacks HttpOnly - readable from JavaScript.";
-    }
-    return null;
+  "code-cookie-without-httponly": (_url, _headers, body) => {
+    // Only a cookie the SCRIPT writes belongs here. A Set-Cookie header is
+    // judged per cookie by cookie-httponly-missing and page-cookie-missing-
+    // httponly; testing the joined header string fired on any site whose
+    // cookies were not all flagged, including a lone `locale`.
+    const write = sessionLikeCookieWrites(body)[0];
+    if (!write) return null;
+    return `A script writes the session-like cookie "${write.name}" with document.cookie. A cookie written from JavaScript can never be HttpOnly, so any script on the page can read it. Issue it from the server with Set-Cookie instead.`;
   },
 
-  "code-cookie-write-no-samesite": (_url, headers, body) => {
-    if (
-      /document\.cookie\s*=[^;]*(?:token|session|sid)/i.test(body) &&
-      !/SameSite/i.test(body)
-    ) {
-      return "document.cookie write missing SameSite attribute.";
-    }
-    if (
-      headers.has("set-cookie") &&
-      !/SameSite/i.test(headers.get("set-cookie") || "")
-    ) {
-      return "Set-Cookie header lacks SameSite attribute.";
-    }
-    return null;
+  "code-cookie-write-no-samesite": (_url, _headers, body) => {
+    const write = sessionLikeCookieWrites(body).find(
+      (w) => !/SameSite/i.test(w.assignment),
+    );
+    if (!write) return null;
+    return `A script writes the session-like cookie "${write.name}" with document.cookie and the write sets no SameSite attribute.`;
   },
 
   "code-window-open-without-noopener": (_url, _headers, body) => {

@@ -11,6 +11,7 @@
 
 import { pluralize } from "@/lib/ui/plural";
 import {
+  cookieHasAttribute,
   getHeader,
   getSetCookies,
   hasHeader,
@@ -147,7 +148,10 @@ export const detectors: Record<string, DetectFn> = {
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
       const name = parseCookieName(c);
-      if (/_session$/i.test(name)) {
+      // Rails names the key `_<app>_session`, with the leading underscore.
+      // Laravel's `<app>_session` and CodeIgniter's `ci_session` do not have
+      // it, and a bare `_session$` test blamed both on Rails.
+      if (/^_[A-Za-z0-9-]+_session$/.test(name)) {
         return `Cookie '${name}' matches the Rails '_session' default. Set a custom session_store :key.`;
       }
     }
@@ -190,15 +194,30 @@ export const detectors: Record<string, DetectFn> = {
     // wiring reads it and echoes it back as a header), so only Secure and
     // SameSite apply there; the *_session cookie should also be HttpOnly.
     const cookies = getSetCookies(headers);
+    // Laravel names the session cookie after the app (`<app>_session`), so the
+    // name alone is ambiguous: CodeIgniter's `ci_session` has the same shape.
+    // The framework's own XSRF-TOKEN beside it is what makes a custom name
+    // Laravel's.
+    const setsXsrfToken = cookies.some((c) =>
+      /^XSRF-TOKEN$/i.test(parseCookieName(c)),
+    );
     for (const c of cookies) {
       const name = parseCookieName(c);
       const isXsrfCookie = /^XSRF-TOKEN$/i.test(name);
-      const isSessionCookie = /_session$/i.test(name);
+      const isSessionCookie =
+        /^laravel_session$/i.test(name) ||
+        (setsXsrfToken &&
+          /_session$/i.test(name) &&
+          !/^ci_session$/i.test(name));
       if (!isXsrfCookie && !isSessionCookie) continue;
       const missing: string[] = [];
-      if (!/secure/i.test(c)) missing.push("Secure");
-      if (!/samesite/i.test(c)) missing.push("SameSite");
-      if (isSessionCookie && !/httponly/i.test(c)) missing.push("HttpOnly");
+      // cookieHasAttribute reads attribute tokens only: a bare /secure/ test
+      // on the whole line counted `Domain=secure.example.com` as the flag.
+      if (!cookieHasAttribute(c, "secure")) missing.push("Secure");
+      if (!cookieHasAttribute(c, "samesite")) missing.push("SameSite");
+      if (isSessionCookie && !cookieHasAttribute(c, "httponly")) {
+        missing.push("HttpOnly");
+      }
       // continue, not return null: Laravel sets XSRF-TOKEN *and* the
       // *_session cookie on the same response, so returning on the first
       // clean one let a hardened XSRF-TOKEN mask a laravel_session that was
