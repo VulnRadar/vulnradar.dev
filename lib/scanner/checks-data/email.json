@@ -72,7 +72,7 @@
     "title": "TLS-RPT Record Missing rua= Reporting URI",
     "category": "email",
     "severity": "low",
-    "description": "Async check: a v=TLSRPTv1 TXT record exists at _smtp._tls.<domain>, but it has no rua= tag specifying where to send reports. Without rua=, the record has no effect.",
+    "description": "A TLS-RPT record exists at _smtp._tls but has no rua= tag, so it requests no reports and has no effect.",
     "evidence": "Email-auth finding for `email-tls-rpt-rua-missing` against {{domain}}.",
     "riskImpact": "Without a working rua= reporting address, TLS-RPT reports cannot be delivered, so you have no visibility into SMTP TLS failures even though the TXT record looks present.",
     "explanation": "TLS-RPT is a companion to MTA-STS: it tells receivers where to send aggregate reports about SMTP TLS negotiation failures. The rua= tag specifies that destination; a record without it publishes the protocol version but never actually receives reports.",

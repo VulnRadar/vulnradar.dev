@@ -800,7 +800,6 @@
       "https://datatracker.ietf.org/doc/html/rfc1034#section-3.6.2",
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/10-Test_for_Subdomain_Takeover"
     ],
-    "cwe": "CWE-1104",
     "owasp": "A05:2021",
     "_idx": 25
   },

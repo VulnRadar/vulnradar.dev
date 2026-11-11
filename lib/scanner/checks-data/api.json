@@ -1710,7 +1710,7 @@
       "https://datatracker.ietf.org/doc/html/rfc8414",
       "https://datatracker.ietf.org/doc/html/rfc7636"
     ],
-    "cwe": "CWE-1021",
+    "cwe": "CWE-294",
     "owasp": "A07:2021",
     "_idx": 51
   },
