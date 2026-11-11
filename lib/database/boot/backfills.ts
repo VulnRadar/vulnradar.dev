@@ -43,7 +43,7 @@ type BackfillExecutor = Pick<Pool, "query">;
 
 /**
  * The ones that walk whole tables (scan_history, admin_audit_log,
- * scheduled_scans, scan_finding_feedback, finding_remediation) run on the boot's own connection,
+ * scheduled_scans, scan_finding_feedback) run on the boot's own connection,
  * with its ten-minute statement timeout and five-second lock timeout, rather
  * than under the app pool's 30 seconds (ops-10): on a large scan_history the
  * URL rewrite was cancelled part way at every boot. Everything before them is
@@ -65,12 +65,11 @@ export async function runBootBackfills(
     await backfillSubDailyScheduleSlots(executor, appName);
     await canonicalizeStoredScanUrls(executor);
     await redactSecretSettingAuditRows(executor);
+    // Awaited, unlike the finding id remap that follows it (see
+    // carryOverLegacyTriage): every read that hides a finding goes by
+    // source, so an AI row still marked human would suppress a finding from
+    // the first request on.
     await backfillAiFeedbackSource(executor);
-    // After the source backfill, so the copies it makes carry the AI marking.
-    // Every boot rather than once: there is no run-once flag table, and the
-    // copy is ON CONFLICT DO NOTHING, so a boot with nothing left to carry
-    // over inserts nothing.
-    await remapLegacyFindingIds(executor);
   }).catch((err) => {
     logError(
       "db",
@@ -81,7 +80,8 @@ export async function runBootBackfills(
 }
 
 /**
- * Mark the AI verifier's feedback rows as AI (owner decision T2).
+ * Mark the AI verifier's feedback rows written before 4.0.0 as AI (owner
+ * decision T2).
  *
  * scan_finding_feedback.source defaults to 'human', which is right for every
  * row a person wrote and wrong for the ones the verifier pre-filled, about
@@ -89,9 +89,10 @@ export async function runBootBackfills(
  * writes, and only by it: a person who then clicks a verdict overwrites the
  * note, which is what makes that row theirs, so it stays human.
  *
- * Runs on every boot rather than once, so rows the verifier writes before it
- * sets source itself are picked up by the next boot. IS DISTINCT FROM keeps a
- * boot with nothing to fix from rewriting a single row.
+ * Only until the legacy carry-over has finished (carryOverLegacyTriage): from
+ * 4.0.0 on the verifier writes source = 'ai' and a person's verdict writes
+ * source = 'human', so the column is the record and the note is only text. IS
+ * DISTINCT FROM keeps a boot with nothing to fix from rewriting a single row.
  */
 export async function backfillAiFeedbackSource(
   executor: BackfillExecutor,
@@ -101,13 +102,87 @@ export async function backfillAiFeedbackSource(
       `UPDATE scan_finding_feedback
           SET source = 'ai'
         WHERE notes = $1
-          AND source IS DISTINCT FROM 'ai'`,
+          AND source IS DISTINCT FROM 'ai'
+          AND EXISTS (SELECT 1 FROM vulnradar_schema_meta
+                       WHERE id = 1 AND legacy_triage_done_at IS NULL)`,
       [AI_FEEDBACK_NOTE],
     );
   } catch (err) {
     logError(
       "scan",
       "Failed to mark AI-written scan feedback as AI (non-fatal)",
+      err,
+    );
+  }
+}
+
+/** Any fixed key, as long as nothing else in the app takes the same one. */
+const LEGACY_TRIAGE_LOCK_KEY = "vulnradar.legacy-triage-carry-over";
+
+/**
+ * Carry triage written before 4.0.0 over to the finding ids the scanner now
+ * produces (lib/scanner/finding-id-remap.ts), once per database.
+ *
+ * Once, because the copies are a snapshot of triage at the moment the ids
+ * changed and the legacy rows are kept on purpose. A second pass after people
+ * have triaged under the new ids undoes their work: setting a finding back to
+ * open deletes its row under the new key (POST /scan/remediation), and the
+ * next pass copied the legacy accepted_risk or wont_fix row back over it, so
+ * the finding was silently re-triaged and its regression alerts stopped again
+ * after every deploy. A confirmed verdict under the new id that retention
+ * pruned was replaced the same way by the legacy false_positive, which never
+ * ages out.
+ *
+ * Recorded in vulnradar_schema_meta.legacy_triage_done_at only after a pass
+ * that walked both tables with no error, so a pass cut short by a restart or
+ * a failed query runs again in full on the next boot, where the part already
+ * copied inserts nothing. A database with nothing to carry over (every fresh
+ * install) records it on its first boot.
+ *
+ * Not awaited by register(), the way runInitialCleanup is not: Next serves
+ * nothing until register() resolves, and this walks both triage tables and
+ * looks up a stored finding for each multi-hit row. It runs on a connection of
+ * its own with the boot timeouts, under a session advisory lock that ends with
+ * the connection, so two processes starting together do not both walk the
+ * tables. Never throws.
+ */
+export async function carryOverLegacyTriage(
+  pool: Pool,
+  appName: string,
+): Promise<void> {
+  try {
+    await withBootClient(pool, async (executor) => {
+      const lock = await executor.query<{ locked: boolean }>(
+        "SELECT pg_try_advisory_lock(hashtext($1)) AS locked",
+        [LEGACY_TRIAGE_LOCK_KEY],
+      );
+      if (lock.rows[0]?.locked !== true) return;
+
+      const meta = await executor.query<{ done_at: Date | null }>(
+        "SELECT legacy_triage_done_at AS done_at FROM vulnradar_schema_meta WHERE id = 1",
+      );
+      // No meta row means nowhere to record a finished pass, and a pass that
+      // cannot be recorded would run on every boot, which is the bug this
+      // exists to stop. ensureSchemaVersion writes the row before the schema.
+      if (meta.rows.length === 0 || meta.rows[0].done_at !== null) return;
+
+      const counts = await remapLegacyFindingIds(executor);
+      if (!counts.complete) return;
+      await executor.query(
+        `UPDATE vulnradar_schema_meta
+            SET legacy_triage_done_at = NOW()
+          WHERE id = 1 AND legacy_triage_done_at IS NULL`,
+      );
+      if (counts.feedback + counts.remediation > 0) {
+        console.log(
+          `[${appName}] Carried ${counts.feedback} verdict(s) and ${counts.remediation} remediation status(es) over to the new finding ids.`,
+        );
+      }
+    });
+  } catch (err) {
+    logError(
+      "scan",
+      "Failed to carry triage over to the new finding ids (non-fatal)",
       err,
     );
   }

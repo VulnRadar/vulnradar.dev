@@ -13,10 +13,11 @@
  * So each scan_finding_feedback and finding_remediation row whose id or URL
  * would now be spelled differently gets a copy under the new spelling. The
  * original row stays: scans that already ran still carry the old ids in their
- * findings, and their views keep showing the verdict. Idempotent through the
- * tables' own (user_id, finding_id, finding_url) UNIQUE: a second run inserts
- * nothing, and a verdict the person has since given under the new id is never
- * overwritten.
+ * findings, and their views keep showing the verdict. A pass is safe to repeat
+ * while nobody has triaged under the new ids yet, through the tables' own
+ * (user_id, finding_id, finding_url) UNIQUE, but it must not be repeated after
+ * that: the boot runs it until one pass completes and never again
+ * (carryOverLegacyTriage in lib/database/boot/backfills.ts has why).
  */
 import type { Pool } from "pg";
 
@@ -172,18 +173,25 @@ async function keyFor(
 export interface RemapCounts {
   feedback: number;
   remediation: number;
+  /** Both tables were walked to the end with no error. */
+  complete: boolean;
 }
 
 /**
  * Walk both triage tables by id and insert the copies. Rows with no user
  * (an account deleted since, SET NULL on feedback) are left alone: there is
  * nobody left for the verdict to apply to. Never throws: a failure is logged
- * and the counts so far are returned, and the next run picks up the rest.
+ * and the counts so far are returned with `complete: false`, so the caller
+ * knows the pass has to run again.
+ *
+ * A feedback copy keeps who wrote the row (source) and what the AI verifier
+ * said and saw, so an AI suggestion is still an AI suggestion under its new
+ * id and never turns into a verdict that suppresses the finding.
  */
 export async function remapLegacyFindingIds(
   pool: RemapExecutor,
 ): Promise<RemapCounts> {
-  const counts: RemapCounts = { feedback: 0, remediation: 0 };
+  const counts: RemapCounts = { feedback: 0, remediation: 0, complete: false };
   try {
     let afterId = 0;
     for (;;) {
@@ -206,8 +214,10 @@ export async function remapLegacyFindingIds(
         if (!key) continue;
         const res = await pool.query(
           `INSERT INTO scan_finding_feedback
-             (user_id, scan_history_id, finding_id, finding_url, verdict, notes, created_at)
-           SELECT user_id, scan_history_id, $2, $3, verdict, notes, created_at
+             (user_id, scan_history_id, finding_id, finding_url, verdict, notes, created_at,
+              source, ai_reason, ai_probe_status)
+           SELECT user_id, scan_history_id, $2, $3, verdict, notes, created_at,
+                  source, ai_reason, ai_probe_status
              FROM scan_finding_feedback
             WHERE id = $1
            ON CONFLICT (user_id, finding_id, finding_url) DO NOTHING`,
@@ -251,12 +261,13 @@ export async function remapLegacyFindingIds(
       if (rows.length < PAGE) break;
       afterId = rows[rows.length - 1].id;
     }
+    counts.complete = true;
   } catch (err) {
     logError(
       "scan",
       "Failed to carry triage over to the new finding ids (non-fatal)",
       err,
-      { ...counts },
+      { feedback: counts.feedback, remediation: counts.remediation },
     );
   }
   return counts;

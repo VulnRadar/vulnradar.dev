@@ -41,7 +41,12 @@ vi.mock("@/lib/webhooks/secret", () => ({
   },
 }));
 
-const { runBootBackfills, backfillAiFeedbackSource } =
+const mockRemap = vi.fn();
+vi.mock("@/lib/scanner/finding-id-remap", () => ({
+  remapLegacyFindingIds: (...args: unknown[]) => mockRemap(...args),
+}));
+
+const { runBootBackfills, backfillAiFeedbackSource, carryOverLegacyTriage } =
   await import("@/lib/database/boot/backfills");
 const { DEFAULT_BADGES_SQL } = await import("@/lib/database/schema/seeds.mjs");
 const { AI_FEEDBACK_NOTE } = await import("@/lib/scanner/feedback-source");
@@ -53,7 +58,6 @@ const SQL_PHASES: Array<[string, (sql: string) => boolean]> = [
   ["scan-urls", (sql) => sql.includes("FROM scan_history")],
   ["audit-redaction", (sql) => sql.includes("UPDATE admin_audit_log")],
   ["feedback-source", (sql) => sql.includes("UPDATE scan_finding_feedback")],
-  ["finding-id-remap", (sql) => sql.includes("FROM finding_remediation")],
 ];
 
 /** The phases that walk whole tables, which the boot connection runs. */
@@ -62,7 +66,6 @@ const TABLE_PHASES = [
   "scan-urls",
   "audit-redaction",
   "feedback-source",
-  "finding-id-remap",
 ];
 
 function bootPool() {
@@ -112,10 +115,12 @@ describe("runBootBackfills", () => {
       "scan-urls",
       "audit-redaction",
       "feedback-source",
-      "finding-id-remap",
     ]);
     expect(onClient).toEqual(TABLE_PHASES);
     expect(release).toHaveBeenCalledWith(true);
+    // The finding id remap is not part of the awaited boot any more: it runs
+    // once, in the background (carryOverLegacyTriage below).
+    expect(mockRemap).not.toHaveBeenCalled();
   });
 
   it("keeps going when a phase fails", async () => {
@@ -153,6 +158,9 @@ describe("backfillAiFeedbackSource", () => {
     expect(sql).toContain("WHERE notes = $1");
     // A boot with nothing to fix rewrites no row.
     expect(sql).toContain("source IS DISTINCT FROM 'ai'");
+    // Only rows from before 4.0.0: once the carry-over has finished, source
+    // is written by the verifier and by the person, and the note is text.
+    expect(sql).toContain("legacy_triage_done_at IS NULL");
     expect(params).toEqual([AI_FEEDBACK_NOTE]);
     expect(AI_FEEDBACK_NOTE).toBe(
       "Set automatically from an AI verify verdict.",
@@ -166,5 +174,102 @@ describe("backfillAiFeedbackSource", () => {
     await expect(
       backfillAiFeedbackSource({ query } as unknown as Pool),
     ).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * The carry-over of triage to the new finding ids runs once per database.
+ * Run at every boot it undid people's triage: reopening a finding deletes its
+ * row under the new key, and the next boot copied the legacy accepted_risk
+ * row back over it.
+ */
+describe("carryOverLegacyTriage", () => {
+  function carryPool(
+    opts: { locked?: boolean; doneAt?: Date | null; metaRow?: boolean } = {},
+  ) {
+    const sent: string[] = [];
+    const release = vi.fn();
+    const clientQuery = vi.fn(async (config: { text: string }) => {
+      sent.push(config.text);
+      if (config.text.includes("pg_try_advisory_lock")) {
+        return { rows: [{ locked: opts.locked ?? true }] };
+      }
+      if (config.text.includes("SELECT legacy_triage_done_at")) {
+        return {
+          rows:
+            opts.metaRow === false ? [] : [{ done_at: opts.doneAt ?? null }],
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const pool = {
+      query: vi.fn(),
+      connect: vi.fn(async () => ({ query: clientQuery, release })),
+    } as unknown as Pool;
+    const recorded = () =>
+      sent.some((sql) => sql.includes("SET legacy_triage_done_at = NOW()"));
+    return { pool, sent, release, recorded };
+  }
+
+  beforeEach(() => {
+    mockRemap.mockReset();
+    mockRemap.mockResolvedValue({
+      feedback: 2,
+      remediation: 1,
+      complete: true,
+    });
+  });
+
+  it("runs the remap and records that it finished", async () => {
+    const { pool, recorded, release } = carryPool();
+    await carryOverLegacyTriage(pool, "App");
+    expect(mockRemap).toHaveBeenCalledTimes(1);
+    expect(recorded()).toBe(true);
+    // Its own connection, destroyed afterwards, which also ends the lock.
+    expect(release).toHaveBeenCalledWith(true);
+  });
+
+  it("does nothing on a database where it has already finished", async () => {
+    const { pool, recorded } = carryPool({ doneAt: new Date("2026-11-01") });
+    await carryOverLegacyTriage(pool, "App");
+    expect(mockRemap).not.toHaveBeenCalled();
+    expect(recorded()).toBe(false);
+  });
+
+  it("leaves it to the process that holds the lock", async () => {
+    const { pool, sent } = carryPool({ locked: false });
+    await carryOverLegacyTriage(pool, "App");
+    expect(mockRemap).not.toHaveBeenCalled();
+    expect(sent.some((sql) => sql.includes("legacy_triage_done_at"))).toBe(
+      false,
+    );
+  });
+
+  it("does not record a pass that stopped partway, so the next boot runs it again", async () => {
+    mockRemap.mockResolvedValue({
+      feedback: 1,
+      remediation: 0,
+      complete: false,
+    });
+    const { pool, recorded } = carryPool();
+    await carryOverLegacyTriage(pool, "App");
+    expect(mockRemap).toHaveBeenCalledTimes(1);
+    expect(recorded()).toBe(false);
+  });
+
+  it("does not run where there is no meta row to record it in", async () => {
+    const { pool } = carryPool({ metaRow: false });
+    await carryOverLegacyTriage(pool, "App");
+    expect(mockRemap).not.toHaveBeenCalled();
+  });
+
+  it("never throws, so a boot is never stopped by it", async () => {
+    const pool = {
+      query: vi.fn(),
+      connect: vi.fn(async () => {
+        throw new Error("timeout exceeded when trying to connect");
+      }),
+    } as unknown as Pool;
+    await expect(carryOverLegacyTriage(pool, "App")).resolves.toBeUndefined();
   });
 });

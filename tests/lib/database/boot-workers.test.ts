@@ -77,6 +77,7 @@ vi.mock("@/lib/database/boot/apply-boot-schema", () => ({
 }));
 vi.mock("@/lib/database/boot/backfills", () => ({
   runBootBackfills: vi.fn(async () => {}),
+  carryOverLegacyTriage: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/database/boot/safety-nets", () => ({
   runBootSafetyNets: vi.fn(async () => {}),

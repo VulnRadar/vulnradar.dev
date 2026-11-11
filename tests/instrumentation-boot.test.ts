@@ -45,6 +45,11 @@ vi.mock("@/lib/database/boot/apply-boot-schema", () => ({
 }));
 vi.mock("@/lib/database/boot/backfills", () => ({
   runBootBackfills: h.step("runBootBackfills"),
+  carryOverLegacyTriage: vi.fn(() => {
+    h.order.push("carryOverLegacyTriage");
+    // Never settles: register() must not be waiting on it.
+    return new Promise(() => {});
+  }),
 }));
 vi.mock("@/lib/database/boot/workers", () => ({
   runInitialCleanup: h.step("runInitialCleanup"),
@@ -124,6 +129,16 @@ describe("register()", () => {
   it("releases the lock after the last phase", async () => {
     await register();
     expect(h.order.at(-1)).toBe("releaseLock");
+  });
+
+  it("starts the legacy triage carry-over after the backfills without waiting on it", async () => {
+    // It walks both triage tables, and Next serves nothing until register()
+    // resolves. The mock never settles, so a register() that awaited it
+    // would never get here.
+    await register();
+    expect(h.order.indexOf("runBootBackfills")).toBeLessThan(
+      h.order.indexOf("carryOverLegacyTriage"),
+    );
   });
 
   it("arms the workers before the first cleanup pass", async () => {

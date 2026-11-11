@@ -118,12 +118,21 @@ describe("remapLegacyFindingIds", () => {
 
     const counts = await remapLegacyFindingIds(pool);
 
-    expect(counts).toEqual({ feedback: 1, remediation: 0 });
+    expect(counts).toEqual({ feedback: 1, remediation: 0, complete: true });
     const insert = query.mock.calls.find(([sql]) =>
       (sql as string).startsWith("INSERT INTO scan_finding_feedback"),
     );
     expect(insert?.[0]).toContain(
       "ON CONFLICT (user_id, finding_id, finding_url) DO NOTHING",
+    );
+    // An AI suggestion stays an AI suggestion under its new id: without
+    // source the copy fell to the column default, 'human', and became a
+    // verdict that suppresses the finding.
+    expect(insert?.[0]).toMatch(
+      /verdict, notes, created_at,\s+source, ai_reason, ai_probe_status\)/,
+    );
+    expect(insert?.[0]).toMatch(
+      /SELECT user_id, scan_history_id, \$2, \$3, verdict, notes, created_at,\s+source, ai_reason, ai_probe_status/,
     );
     expect(insert?.[1]).toEqual([
       9,
@@ -135,11 +144,12 @@ describe("remapLegacyFindingIds", () => {
     ).toBe(false);
   });
 
-  it("never throws, and reports what it managed", async () => {
+  it("never throws, and reports what it managed and that it did not finish", async () => {
     query.mockRejectedValue(new Error("db down"));
     await expect(remapLegacyFindingIds(pool)).resolves.toEqual({
       feedback: 0,
       remediation: 0,
+      complete: false,
     });
   });
 });

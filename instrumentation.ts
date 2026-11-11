@@ -156,9 +156,12 @@ export async function register() {
         await import("./lib/database/boot/apply-boot-schema");
       await applyBootSchema(pool, APP_NAME);
 
-      const { runBootBackfills } =
+      const { runBootBackfills, carryOverLegacyTriage } =
         await import("./lib/database/boot/backfills");
       await runBootBackfills(pool, APP_NAME);
+      // Not awaited, for the same reason as runInitialCleanup below. It runs
+      // once per database and records when it has (see its own comment).
+      void carryOverLegacyTriage(pool, APP_NAME);
 
       const { reportAppUrlDrift } =
         await import("./lib/database/boot/app-url-drift");
