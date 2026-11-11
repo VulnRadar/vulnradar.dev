@@ -266,6 +266,8 @@ describe("POST /api/v3/admin/features — access_rules", () => {
 describe("POST /api/v3/admin/features — security_alerts", () => {
   it("lists alerts", async () => {
     queueRole("admin");
+    // The header counts are issued first, then the page.
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // unresolved counts
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, severity: "high" }] });
     const res = await POST(
       postRequest({ section: "security_alerts", action: "list" }),
@@ -274,9 +276,95 @@ describe("POST /api/v3/admin/features — security_alerts", () => {
     expect(res.status).toBe(200);
     expect(json.alerts).toHaveLength(1);
     // The panel names the account an alert concerns before offering to block it.
-    const sql = String(mockQuery.mock.calls[1][0]);
+    const sql = String(mockQuery.mock.calls[2][0]);
     expect(sql).toMatch(/JOIN users u ON u\.id = sa\.user_id/);
     expect(sql).toMatch(/u\.email AS user_email/);
+    // Without the flag every alert is listed, resolved or not.
+    expect(sql).not.toContain("resolved_at IS NULL");
+  });
+
+  // bug-ui-admin-6: the panel fetched the newest 100 alerts of any kind and
+  // dropped the resolved ones itself, so an unresolved alert older than 100
+  // resolved ones never arrived and the header said "All clear" over it.
+  describe("the unresolved view", () => {
+    async function list(body: Record<string, unknown>) {
+      queueRole("admin");
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          { severity: "critical", n: 2 },
+          { severity: "low", n: 5 },
+        ],
+      });
+      mockQuery.mockResolvedValueOnce({
+        rows: Array.from({ length: 3 }, (_, i) => ({ id: i + 1 })),
+      });
+      const res = await POST(
+        postRequest({ section: "security_alerts", action: "list", ...body }),
+      );
+      return {
+        res,
+        json: await res.json(),
+        countSql: String(mockQuery.mock.calls[1][0]),
+        countParams: mockQuery.mock.calls[1][1] as unknown[],
+        listSql: String(mockQuery.mock.calls[2][0]),
+        listParams: mockQuery.mock.calls[2][1] as unknown[],
+      };
+    }
+
+    it("filters on resolved_at in SQL when unresolved_only is set", async () => {
+      const { res, listSql } = await list({ unresolved_only: true });
+      expect(res.status).toBe(200);
+      expect(listSql).toContain("AND sa.resolved_at IS NULL");
+    });
+
+    it("counts every unresolved alert by severity for the header, whatever the page", async () => {
+      const { json, countSql } = await list({
+        unresolved_only: true,
+        severity: "high",
+        limit: 2,
+      });
+      expect(countSql).toContain("WHERE sa.resolved_at IS NULL");
+      // The severity filter narrows the list, never the header counts.
+      expect(countSql).not.toContain("sa.severity =");
+      expect(json.unresolved).toEqual({
+        total: 7,
+        critical: 2,
+        high: 0,
+        medium: 0,
+        low: 5,
+      });
+    });
+
+    it("asks for one row past the page and reports it as hasMore", async () => {
+      const { json, listParams } = await list({ limit: 2, offset: 4 });
+      expect(listParams.slice(-2)).toEqual([3, 4]);
+      expect(json.alerts).toHaveLength(2);
+      expect(json.hasMore).toBe(true);
+    });
+
+    it("reports no more when the page is not full", async () => {
+      const { json } = await list({ limit: 5 });
+      expect(json.alerts).toHaveLength(3);
+      expect(json.hasMore).toBe(false);
+    });
+
+    it("scopes the counts to a user when the list is", async () => {
+      const { countSql, countParams } = await list({ user_id: 9 });
+      expect(countSql).toContain("AND sa.user_id = $1");
+      expect(countParams).toEqual([9]);
+    });
+
+    it("refuses an offset that is not a whole number", async () => {
+      queueRole("admin");
+      const res = await POST(
+        postRequest({
+          section: "security_alerts",
+          action: "list",
+          offset: "abc",
+        }),
+      );
+      expect(res.status).toBe(400);
+    });
   });
 
   it("resolves an alert and audit-logs it", async () => {
@@ -992,6 +1080,66 @@ describe("POST /api/v3/admin/features — broadcast", () => {
     );
   });
 
+  // bug-messaging-18: the address was stored as typed and compared with
+  // u.email = $1, so " Alice@Example.com" reached nobody and was marked sent.
+  it("stores a specific address trimmed and lower-cased", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, status: "draft" }] });
+    const res = await POST(
+      postRequest({
+        section: "broadcast",
+        action: "create",
+        title: "Hello",
+        content: "<p>hi</p>",
+        message_type: "email",
+        segment_filter: {
+          segment: "email:  Alice@Example.COM ",
+          preference_col: "email_tips_guides",
+        },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const params = mockQuery.mock.calls[1][1] as unknown[];
+    expect(params[3]).toEqual({
+      segment: "email:alice@example.com",
+      preference_col: "email_tips_guides",
+    });
+  });
+
+  it("refuses a specific-address draft with no address", async () => {
+    queueRole("admin");
+    const res = await POST(
+      postRequest({
+        section: "broadcast",
+        action: "create",
+        title: "Hello",
+        content: "<p>hi</p>",
+        message_type: "email",
+        segment_filter: { segment: "email:   " },
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a segment draft's filter as it was", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, status: "draft" }] });
+    await POST(
+      postRequest({
+        section: "broadcast",
+        action: "create",
+        title: "Hello",
+        content: "<p>hi</p>",
+        message_type: "email",
+        segment_filter: { segment: "premium" },
+      }),
+    );
+    expect((mockQuery.mock.calls[1][1] as unknown[])[3]).toEqual({
+      segment: "premium",
+    });
+  });
+
   it("lists broadcasts", async () => {
     queueRole("admin");
     mockQuery.mockResolvedValueOnce({ rows: [] });
@@ -999,6 +1147,84 @@ describe("POST /api/v3/admin/features — broadcast", () => {
       postRequest({ section: "broadcast", action: "list" }),
     );
     expect(res.status).toBe(200);
+  });
+
+  // bug-ui-admin-11: a sent broadcast showed only "Sent" and a time, never
+  // who it went to or how many got it, and a queued one looked like a draft.
+  it("lists each broadcast's audience, delivery counts and sending state", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await POST(
+      postRequest({ section: "broadcast", action: "list" }),
+    );
+    const json = await res.json();
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain("bm.segment_filter");
+    expect(sql).toContain("AS recipients");
+    expect(sql).toContain("COUNT(*) FILTER (WHERE br.status = 'sent')");
+    expect(sql).toContain("COUNT(*) FILTER (WHERE br.status = 'failed')");
+    expect(sql).toContain("THEN 'sending'");
+    expect(params).toEqual([CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES]);
+    // The logo real mail carries, which a client bundle cannot read.
+    expect(typeof json.logoUrl).toBe("string");
+    expect(json.logoUrl.length).toBeGreaterThan(0);
+  });
+
+  describe("the audience action", () => {
+    it("counts who a send started now would reach, split by delivery state", async () => {
+      queueRole("admin");
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ segment_filter: { segment: "premium" } }],
+      });
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            audience: 10,
+            new_recipients: 3,
+            failed: 2,
+            pending: 1,
+            already_sent: 4,
+          },
+        ],
+      });
+      const res = await POST(
+        postRequest({ section: "broadcast", action: "audience", id: 7 }),
+      );
+      const json = await res.json();
+      expect(res.status).toBe(200);
+      expect(json.counts).toEqual({
+        audience: 10,
+        newRecipients: 3,
+        failed: 2,
+        alreadySent: 4,
+        pending: 1,
+        toReach: 5,
+      });
+      const [sql, params] = mockQuery.mock.calls[2];
+      // The same audience WHERE the delivery walk uses, joined to this
+      // broadcast's rows only.
+      expect(sql).toContain("u.plan != 'free'");
+      expect(sql).toContain("u.disabled_at IS NULL");
+      expect(sql).toContain("br.message_id = $1 AND br.user_id = u.id");
+      expect(params).toEqual([7]);
+    });
+
+    it("404s a broadcast that does not exist", async () => {
+      queueRole("admin");
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+      const res = await POST(
+        postRequest({ section: "broadcast", action: "audience", id: 7 }),
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("refuses an id that is not a row id", async () => {
+      queueRole("admin");
+      const res = await POST(
+        postRequest({ section: "broadcast", action: "audience", id: "x" }),
+      );
+      expect(res.status).toBe(400);
+    });
   });
 
   it("refuses to delete a broadcast that has already been sent", async () => {
@@ -1029,6 +1255,11 @@ describe("POST /api/v3/admin/features — broadcast", () => {
       expect.stringContaining("Draft one"),
       "127.0.0.1",
     );
+    // A queued draft is mid-delivery and its rows would cascade away with it.
+    const [deleteSql, deleteParams] = mockQuery.mock.calls[2];
+    expect(deleteSql).toContain("status = 'draft'");
+    expect(deleteSql).toContain("sent_at IS NULL");
+    expect(deleteParams).toEqual([2, CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES]);
   });
 
   it("returns 404 sending a broadcast that is not a pending draft", async () => {
@@ -1040,19 +1271,38 @@ describe("POST /api/v3/admin/features — broadcast", () => {
     expect(res.status).toBe(404);
   });
 
+  /** An audience-count row as the count query returns it. */
+  function countRow(over: Partial<Record<string, number>> = {}) {
+    return {
+      rows: [
+        {
+          audience: 2,
+          new_recipients: 2,
+          failed: 0,
+          pending: 0,
+          already_sent: 0,
+          ...over,
+        },
+      ],
+    };
+  }
+
   it("sends a draft broadcast and audit-logs it", async () => {
     vi.useFakeTimers();
     try {
       queueRole("admin");
-      mockQuery.mockResolvedValueOnce({ rows: [{ id: 5 }] }); // check
-      mockQuery.mockResolvedValueOnce({ rows: [{ title: "Go live" }] }); // title lookup
-      mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE status='sent'
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ title: "Go live", segment_filter: { segment: "all" } }],
+      }); // check
+      mockQuery.mockResolvedValueOnce(countRow({ new_recipients: 2 })); // audience
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 5 }], rowCount: 1 }); // claim
       const res = await POST(
         postRequest({ section: "broadcast", action: "send", id: 5 }),
       );
       const json = await res.json();
       expect(res.status).toBe(200);
       expect(json.message).toMatch(/queued/i);
+      expect(json.recipients).toBe(2);
       expect(mockLogAction).toHaveBeenCalledWith(
         1,
         null,
@@ -1060,11 +1310,72 @@ describe("POST /api/v3/admin/features — broadcast", () => {
         expect.stringContaining("Go live"),
         "127.0.0.1",
       );
+      // The queue stamp is the claim: two clicks cannot both queue a draft,
+      // and a draft whose delivery died is claimable again after the cooldown.
+      const [claimSql, claimParams] = mockQuery.mock.calls[3];
+      expect(claimSql).toContain("SET sent_by = $1, sent_at = NOW()");
+      expect(claimSql).toContain("status = 'draft'");
+      expect(claimSql).toContain("make_interval(mins => $3)");
+      expect(claimParams).toEqual([
+        1,
+        5,
+        CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES,
+      ]);
       // The background setTimeout email job is left un-advanced deliberately
       // so it never fires during (or bleeds into) this suite's mocks.
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("refuses to queue a draft that is already being sent", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ title: "Go live", segment_filter: { segment: "all" } }],
+    });
+    mockQuery.mockResolvedValueOnce(countRow());
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // claim lost
+    const res = await POST(
+      postRequest({ section: "broadcast", action: "send", id: 5 }),
+    );
+    expect(res.status).toBe(409);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  // bug-messaging-18: a send that could reach nobody was queued, mailed
+  // nobody and was marked sent, so a mistyped address looked delivered.
+  describe("a send that would reach nobody", () => {
+    async function sendWith(segmentFilter: unknown) {
+      queueRole("admin");
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ title: "Go live", segment_filter: segmentFilter }],
+      });
+      mockQuery.mockResolvedValueOnce(
+        countRow({ audience: 0, new_recipients: 0 }),
+      );
+      const res = await POST(
+        postRequest({ section: "broadcast", action: "send", id: 5 }),
+      );
+      return { res, json: await res.json() };
+    }
+
+    it("is refused with the address it could not find, and nothing is queued", async () => {
+      const { res, json } = await sendWith({
+        segment: "email:Nobody@Example.com",
+      });
+      expect(res.status).toBe(422);
+      expect(json.error).toContain("nobody@example.com");
+      expect(json.error).toContain("Nothing was sent");
+      // No claim, no status change, no audit row claiming it went out.
+      expect(mockQuery).toHaveBeenCalledTimes(3);
+      expect(mockLogAction).not.toHaveBeenCalled();
+    });
+
+    it("explains an empty segment the same way", async () => {
+      const { res, json } = await sendWith({ segment: "all" });
+      expect(res.status).toBe(422);
+      expect(json.error).toMatch(/Nobody in this audience/);
+    });
   });
 
   // AUDIT-013 schema-08: delivery used to guard duplicates with a SELECT,
@@ -1096,13 +1407,13 @@ describe("POST /api/v3/admin/features — broadcast", () => {
             ],
           });
         }
-        if (sql.includes("SELECT id FROM broadcast_messages")) {
-          return Promise.resolve({ rows: [{ id: 5 }] });
+        if (sql.includes("COUNT(*)::int AS audience")) {
+          return Promise.resolve(countRow());
         }
-        if (sql.includes("SELECT title FROM broadcast_messages")) {
-          return Promise.resolve({ rows: [{ title: "Go live" }] });
+        if (sql.includes("UPDATE broadcast_messages SET sent_by")) {
+          return Promise.resolve({ rows: [{ id: 5 }], rowCount: 1 });
         }
-        if (sql.includes("FROM users u")) {
+        if (sql.includes("u.unsubscribe_token FROM users u")) {
           // One page, then the empty page that ends the keyset walk.
           if (pageServed) return Promise.resolve({ rows: [] });
           pageServed = true;
@@ -1238,7 +1549,9 @@ describe("POST /api/v3/admin/features — broadcast", () => {
           "email_product_updates",
         );
         // The audience itself is still the people who want login alerts.
-        const page = sqlCalls().find((s) => s.includes("FROM users u"));
+        const page = sqlCalls().find((s) =>
+          s.includes("u.unsubscribe_token FROM users u"),
+        );
         expect(page).toContain("COALESCE(np.email_new_login, true) = true");
       } finally {
         vi.useRealTimers();
@@ -1264,7 +1577,9 @@ describe("POST /api/v3/admin/features — broadcast", () => {
         // Tips & Guides is opt-in in the schema, so a missing row means NO.
         // The filter used to read "np.user_id IS NULL OR np.col = true", which
         // put everyone who never saved a preference into this audience.
-        const page = sqlCalls().find((s) => s.includes("FROM users u"));
+        const page = sqlCalls().find((s) =>
+          s.includes("u.unsubscribe_token FROM users u"),
+        );
         expect(page).toContain("COALESCE(np.email_tips_guides, false) = true");
         expect(page).not.toContain("np.user_id IS NULL");
       } finally {
@@ -1290,7 +1605,9 @@ describe("POST /api/v3/admin/features — broadcast", () => {
 
         // Not interpolated, and not a way out of the preference check either:
         // it is treated as no category, which is the announcements column.
-        const page = sqlCalls().find((s) => s.includes("FROM users u"));
+        const page = sqlCalls().find((s) =>
+          s.includes("u.unsubscribe_token FROM users u"),
+        );
         expect(page).not.toContain("DROP");
         expect(page).toContain(
           "COALESCE(np.email_product_updates, true) = true",
@@ -1315,7 +1632,7 @@ describe("POST /api/v3/admin/features — broadcast", () => {
           );
           await vi.advanceTimersByTimeAsync(200);
           const call = mockQuery.mock.calls.find((c) =>
-            String(c[0]).includes("FROM users u"),
+            String(c[0]).includes("u.unsubscribe_token FROM users u"),
           );
           return {
             sql: String(call?.[0] ?? ""),
@@ -1362,10 +1679,22 @@ describe("POST /api/v3/admin/features — broadcast", () => {
           segment: "email:someone@example.com",
         });
         expect(sql).not.toContain("COALESCE(np.");
-        expect(sql).toContain("u.email = $1");
+        expect(sql).toContain("LOWER(u.email) = $1");
         expect(params[0]).toBe("someone@example.com");
         // A disabled account is not mailed even when named.
         expect(sql).toContain("u.disabled_at IS NULL");
+      });
+
+      // bug-messaging-18: users.email keeps the capitalisation an account
+      // signed up with, and a draft saved before create normalised the
+      // address still carries it as typed.
+      it("matches a specific address whatever its capitalisation or padding", async () => {
+        const { sql, params } = await pageSqlFor({
+          segment: "email:  Someone@Example.COM ",
+        });
+        expect(sql).toContain("LOWER(u.email) = $1");
+        expect(sql).not.toMatch(/[^(]u\.email = \$1/);
+        expect(params[0]).toBe("someone@example.com");
       });
 
       it("still applies a category an admin chose for a specific address", async () => {
@@ -1419,9 +1748,9 @@ describe("POST /api/v3/admin/features — broadcast", () => {
 
   it("rejects resending a broadcast that was never sent", async () => {
     queueRole("admin");
-    // The claiming UPDATE matches nothing, then the status read explains why.
-    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] });
-    mockQuery.mockResolvedValueOnce({ rows: [{ status: "draft" }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ status: "draft", segment_filter: null }],
+    });
     const res = await POST(
       postRequest({ section: "broadcast", action: "resend", id: 9 }),
     );
@@ -1429,16 +1758,21 @@ describe("POST /api/v3/admin/features — broadcast", () => {
     expect(res.status).toBe(400);
     expect(json.error).toMatch(/Can only resend sent broadcasts/);
     expect(mockLogAction).not.toHaveBeenCalled();
+    // Nothing is counted or claimed for a draft.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
   });
 
-  it("refuses a second resend inside the cooldown instead of mailing everyone twice", async () => {
+  it("refuses a second resend inside the cooldown instead of queueing it twice", async () => {
     // The old guard was status = 'sent', which a resend leaves unchanged, so
-    // every call re-delivered to the whole user base: one double-clicked
-    // button was enough. The cooldown lives in the UPDATE's own WHERE, so two
-    // concurrent clicks cannot both win it.
+    // every call queued another delivery: one double-clicked button was
+    // enough. The cooldown lives in the UPDATE's own WHERE, so two concurrent
+    // clicks cannot both win it.
     queueRole("admin");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ status: "sent", segment_filter: null }],
+    });
+    mockQuery.mockResolvedValueOnce(countRow({ failed: 1, new_recipients: 0 }));
     mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // claim lost
-    mockQuery.mockResolvedValueOnce({ rows: [{ status: "sent" }] });
     const res = await POST(
       postRequest({ section: "broadcast", action: "resend", id: 9 }),
     );
@@ -1447,16 +1781,47 @@ describe("POST /api/v3/admin/features — broadcast", () => {
     expect(json.error).toMatch(/within the last/i);
     expect(mockLogAction).not.toHaveBeenCalled();
 
-    const [claimSql, claimParams] = mockQuery.mock.calls[1];
+    const [claimSql, claimParams] = mockQuery.mock.calls[3];
     expect(claimSql).toContain("make_interval(mins => $3)");
     expect(claimParams[2]).toBe(CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES);
   });
 
-  it("resends a broadcast: stamps sent_by/sent_at and audit-logs it, without 500ing on a column that never existed", async () => {
+  // bug-ui-admin-11: "Send again" was a silent no-op for everyone who already
+  // had it. It is a retry of the failures plus anyone new, and when there is
+  // neither it says so rather than queueing nothing and starting the cooldown.
+  it("refuses a resend with nothing to retry and nobody new, without stamping the cooldown", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ status: "sent", segment_filter: { segment: "all" } }],
+    });
+    mockQuery.mockResolvedValueOnce(
+      countRow({ audience: 4, new_recipients: 0, failed: 0, already_sent: 4 }),
+    );
+    const res = await POST(
+      postRequest({ section: "broadcast", action: "resend", id: 9 }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(409);
+    expect(json.error).toMatch(/Nothing to resend/);
+    expect(mockQuery).toHaveBeenCalledTimes(3);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("resends a broadcast: stamps sent_by/sent_at, reports what it retries, and audit-logs it", async () => {
     vi.useFakeTimers();
     try {
       queueRole("admin");
-      // One statement now: the claim both checks and stamps.
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ status: "sent", segment_filter: { segment: "all" } }],
+      });
+      mockQuery.mockResolvedValueOnce(
+        countRow({
+          audience: 9,
+          new_recipients: 2,
+          failed: 3,
+          already_sent: 4,
+        }),
+      );
       mockQuery.mockResolvedValueOnce({
         rowCount: 1,
         rows: [{ id: 9, title: "Go live again" }],
@@ -1467,8 +1832,10 @@ describe("POST /api/v3/admin/features — broadcast", () => {
       const json = await res.json();
       expect(res.status).toBe(200);
       expect(json.success).toBe(true);
+      expect(json.retried).toBe(3);
+      expect(json.newRecipients).toBe(2);
 
-      const [updateSql, updateParams] = mockQuery.mock.calls[1];
+      const [updateSql, updateParams] = mockQuery.mock.calls[3];
       expect(updateSql).toContain("UPDATE broadcast_messages");
       expect(updateSql).toContain("SET sent_by = $1, sent_at = NOW()");
       expect(updateParams).toEqual([

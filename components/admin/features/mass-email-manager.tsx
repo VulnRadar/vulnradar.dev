@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useId } from "react";
+import { useState, useEffect, useId, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,7 +38,12 @@ import {
   SUPPORT_EMAIL,
 } from "@/lib/config/client-constants";
 import { getPaidPlans } from "@/lib/billing/catalog";
-import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal";
+import {
+  SaveConfirmationModal,
+  type ChangeItem,
+} from "@/components/shared/save-confirmation-modal";
+import { InlineAlert } from "@/components/shared/inline-alert";
+import { pluralize } from "@/lib/ui/plural";
 import {
   SkeletonRegion,
   AdminPanelHeader,
@@ -58,7 +63,7 @@ import {
   type SavedTemplate,
 } from "./campaign-template-picker";
 
-interface Broadcast {
+export interface Broadcast {
   id: string;
   title: string;
   status: string;
@@ -66,6 +71,24 @@ interface Broadcast {
   sent_at?: string;
   created_by_name?: string;
   sent_by_name?: string;
+  segment_filter?: { segment?: string; preference_col?: string } | null;
+  /** Delivery rows written so far, and what became of them. */
+  recipients?: number;
+  sent_count?: number;
+  failed_count?: number;
+  pending_count?: number;
+  /** status, except 'sending' while a send or resend is being delivered. */
+  state?: "draft" | "sending" | "sent";
+}
+
+/** The route's audience action: who a send started now would mail. */
+export interface AudienceCounts {
+  audience: number;
+  newRecipients: number;
+  failed: number;
+  alreadySent: number;
+  pending: number;
+  toReach: number;
 }
 
 const SEGMENT_LABELS: Record<string, string> = {
@@ -107,6 +130,129 @@ const CATEGORY_OPTIONS: { value: string; label: string }[] = [
   { value: "email_team_changes", label: "Team Changes" },
 ];
 
+/** Draft, sending or sent, with older servers' rows read by their status. */
+export function broadcastPhase(msg: Broadcast): "draft" | "sending" | "sent" {
+  if (msg.state === "sending") return "sending";
+  return msg.status === "draft" ? "draft" : "sent";
+}
+
+/** Who a saved broadcast was written for, as the composer labelled it. */
+export function audienceLabel(filter: Broadcast["segment_filter"]): string {
+  const segment = filter?.segment || "all";
+  const who = segment.startsWith("email:")
+    ? segment.slice("email:".length)
+    : (SEGMENT_LABELS[segment] ?? SEGMENT_LABELS.all);
+  const category = filter?.preference_col;
+  if (!category) return who;
+  const label = CATEGORY_OPTIONS.find((c) => c.value === category)?.label;
+  return `${who}, ${label ?? category} opt-ins`;
+}
+
+/** What happened to a broadcast's mail, for its row in the list. */
+export function deliverySummary(msg: Broadcast): string | null {
+  const phase = broadcastPhase(msg);
+  if (phase === "draft") return null;
+  const sent = Number(msg.sent_count ?? 0);
+  const failed = Number(msg.failed_count ?? 0);
+  if (phase === "sending") {
+    return `Sending: ${sent} delivered so far`;
+  }
+  const delivered =
+    sent === 0
+      ? "Delivered to nobody"
+      : `Delivered to ${pluralize(sent, "recipient")}`;
+  return failed > 0 ? `${delivered}, ${failed} failed` : delivered;
+}
+
+/**
+ * What the Send and Resend confirms say, from the audience counts.
+ *
+ * The confirm used to name no number at all, and the Resend one said it would
+ * mail everyone again, which a resend never did: it retries the deliveries
+ * that failed and reaches anyone who joined the audience since. While the
+ * counts load there is nothing to confirm, so no change rows are returned and
+ * the confirm button stays disabled.
+ */
+export function sendConfirmCopy(
+  msg: Broadcast,
+  counts: AudienceCounts | null | "error",
+): { description: string; changes: ChangeItem[] } {
+  const isDraft = broadcastPhase(msg) === "draft";
+  const audience = audienceLabel(msg.segment_filter);
+  if (counts === null) {
+    return { description: "Counting the recipients...", changes: [] };
+  }
+  if (counts === "error") {
+    return {
+      description: `Could not count the recipients of "${msg.title}". The server counts again before anything is sent, and refuses a send that would reach nobody.`,
+      changes: [
+        {
+          field: "status",
+          label: "Status",
+          oldValue: isDraft ? "Draft" : "Sent",
+          newValue: isDraft ? "Sending" : "Resending",
+        },
+      ],
+    };
+  }
+  // Nothing to confirm, so nothing to press: the server refuses both of these
+  // anyway, and saying why here beats an error after the click.
+  if (counts.audience === 0) {
+    return {
+      description: `Nobody in this audience (${audience}) can receive "${msg.title}" right now: no verified, active account matches it and is opted in.`,
+      changes: [],
+    };
+  }
+  if (!isDraft && counts.toReach === 0) {
+    return {
+      description: `Nothing to resend: every delivery of "${msg.title}" succeeded and nobody has joined the audience since.`,
+      changes: [],
+    };
+  }
+  if (isDraft) {
+    return {
+      description: `This immediately emails ${pluralize(counts.toReach, "person", "people")} for "${msg.title}" (${audience}). It cannot be undone once sending starts.`,
+      changes: [
+        {
+          field: "status",
+          label: "Status",
+          oldValue: "Draft",
+          newValue: "Sending",
+        },
+        {
+          field: "recipients",
+          label: "Recipients",
+          oldValue: "None yet",
+          newValue: pluralize(counts.toReach, "recipient"),
+        },
+      ],
+    };
+  }
+  return {
+    description: `This retries ${pluralize(counts.failed, "failed delivery", "failed deliveries")} and mails ${pluralize(counts.newRecipients, "person", "people")} who joined the audience since (${audience}). The ${pluralize(counts.alreadySent, "recipient")} who already have it are not mailed again.`,
+    changes: [
+      {
+        field: "failed",
+        label: "Failed deliveries",
+        oldValue: counts.failed,
+        newValue: counts.failed > 0 ? "Retrying" : "None to retry",
+      },
+      {
+        field: "new",
+        label: "Joined since",
+        oldValue: counts.newRecipients,
+        newValue: counts.newRecipients > 0 ? "Mailing" : "Nobody new",
+      },
+      {
+        field: "already",
+        label: "Already received",
+        oldValue: counts.alreadySent,
+        newValue: "Skipped",
+      },
+    ],
+  };
+}
+
 /** The line under "Sends to:" saying which preference decides who gets it. */
 export function audienceFilterNote(segment: string, category: string): string {
   if (category !== "none") {
@@ -144,6 +290,17 @@ export function MassEmailManager() {
     "all",
   );
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
+  // The logo real mail carries. Only the server can read a custom LOGO_URL,
+  // so the list response brings it; the client constant is the fallback.
+  const [logoUrl, setLogoUrl] = useState<string>(LOGO_URL);
+  // Broadcasts this tab just queued, and when. A resend reads as sent on the
+  // server for the moment before its first recipients are claimed, and the
+  // row must not offer "Send again" in that gap.
+  const [queued, setQueued] = useState<Record<string, number>>({});
+  const [confirmCounts, setConfirmCounts] = useState<
+    AudienceCounts | null | "error"
+  >(null);
 
   // Stable ids so each <label htmlFor> actually names its control. Without
   // them a screen reader reads four unnamed fields in a row, one of which
@@ -158,21 +315,44 @@ export function MassEmailManager() {
 
   // The mount effect below calls loadMessages, which sets no state before its
   // first await, so loading starts true and only a refresh turns it back on.
-  async function loadMessages() {
+  const loadMessages = useCallback(async () => {
     try {
       const res = await fetch(`${API.ADMIN}/features`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "list", section: "broadcast" }),
       });
+      // A failed list used to render as "No broadcasts yet", which on this
+      // panel reads as "nothing was ever sent".
+      if (!res.ok) {
+        setListError("Could not load broadcasts.");
+        return;
+      }
       const data = await res.json();
-      setMessages(data.messages || []);
+      const rows: Broadcast[] = data.messages || [];
+      setListError(null);
+      setMessages(rows);
+      if (typeof data.logoUrl === "string" && data.logoUrl) {
+        setLogoUrl(data.logoUrl);
+      }
+      const now = Date.now();
+      setQueued((prev) => {
+        const next: Record<string, number> = {};
+        for (const [id, at] of Object.entries(prev)) {
+          const row = rows.find((m) => String(m.id) === id);
+          if (now - at < 2500 || (row && broadcastPhase(row) === "sending")) {
+            next[id] = at;
+          }
+        }
+        return next;
+      });
     } catch (err) {
       console.error("Error fetching messages:", err);
+      setListError("Could not load broadcasts.");
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   async function fetchMessages() {
     setLoading(true);
@@ -253,7 +433,53 @@ export function MassEmailManager() {
     // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: loadMessages sets state only after its request resolves, not synchronously in this effect
     loadMessages();
     fetchTemplates();
-  }, []);
+  }, [loadMessages]);
+
+  // While anything is being delivered the list refreshes itself, so a row
+  // goes from Sending to its delivered and failed counts without a click.
+  const anySending =
+    Object.keys(queued).length > 0 ||
+    messages.some((m) => broadcastPhase(m) === "sending");
+  useEffect(() => {
+    if (!anySending) return;
+    const timer = setInterval(() => {
+      loadMessages();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [anySending, loadMessages]);
+
+  // The numbers the Send and Resend confirms state, counted when one opens.
+  const pendingSendId = pendingSend?.id ?? null;
+  useEffect(() => {
+    if (pendingSendId === null) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API.ADMIN}/features`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "audience",
+            section: "broadcast",
+            id: pendingSendId,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        setConfirmCounts(res.ok && data.counts ? data.counts : "error");
+      } catch {
+        if (!cancelled) setConfirmCounts("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingSendId]);
+
+  function openSendConfirm(msg: Broadcast) {
+    setConfirmCounts(null);
+    setPendingSend(msg);
+  }
 
   async function handleSaveTemplate() {
     if (!templateName.trim() || !title || !content) return;
@@ -336,7 +562,7 @@ export function MassEmailManager() {
     try {
       const segmentFilter: Record<string, string> =
         segment === "specific"
-          ? { segment: `email:${specificEmail}` }
+          ? { segment: `email:${specificEmail.trim().toLowerCase()}` }
           : { segment };
       if (category !== "none") {
         segmentFilter.preference_col = category;
@@ -395,7 +621,14 @@ export function MassEmailManager() {
       if (!res.ok) {
         return { ok: false, error: data.error || "Failed to send broadcast" };
       }
-      fetchMessages();
+      setQueued((prev) => ({ ...prev, [id]: Date.now() }));
+      if (typeof data.recipients === "number") {
+        setToast({
+          message: `Sending to ${pluralize(data.recipients, "recipient")}.`,
+          type: "success",
+        });
+      }
+      loadMessages();
       return { ok: true };
     } catch (err) {
       console.error("Error sending:", err);
@@ -420,7 +653,17 @@ export function MassEmailManager() {
           error: data.error || "Failed to resend broadcast",
         };
       }
-      fetchMessages();
+      setQueued((prev) => ({ ...prev, [id]: Date.now() }));
+      if (
+        typeof data.retried === "number" &&
+        typeof data.newRecipients === "number"
+      ) {
+        setToast({
+          message: `Retrying ${pluralize(data.retried, "failed delivery", "failed deliveries")} and mailing ${pluralize(data.newRecipients, "new recipient")}.`,
+          type: "success",
+        });
+      }
+      loadMessages();
       return { ok: true };
     } catch (err) {
       console.error("Error resending:", err);
@@ -461,14 +704,20 @@ export function MassEmailManager() {
     }
   }
 
-  const drafts = messages.filter((m) => m.status === "draft");
-  const sent = messages.filter((m) => m.status === "sent");
+  const drafts = messages.filter((m) => broadcastPhase(m) === "draft");
+  // Sending counts with sent: it has left the building.
+  const sent = messages.filter((m) => broadcastPhase(m) !== "draft");
   const isFormValid =
-    title && content && (segment !== "specific" || specificEmail);
+    title && content && (segment !== "specific" || specificEmail.trim());
   const visibleMessages =
     historyFilter === "all"
       ? messages
-      : messages.filter((m) => m.status === historyFilter);
+      : historyFilter === "draft"
+        ? drafts
+        : sent;
+  const sendConfirm = pendingSend
+    ? sendConfirmCopy(pendingSend, confirmCounts)
+    : null;
 
   return (
     <div className="space-y-4">
@@ -697,7 +946,7 @@ export function MassEmailManager() {
                         content || "<p>Email content will appear here...</p>",
                       appName: APP_NAME,
                       appUrl: APP_URL,
-                      logoSrc: LOGO_URL,
+                      logoSrc: logoUrl,
                       supportEmail: SUPPORT_EMAIL,
                       // Every broadcast recipient has an unsubscribe token, so
                       // the real message always carries this button. The preview
@@ -708,9 +957,9 @@ export function MassEmailManager() {
                       unsubscribeUrl: `${APP_URL}/unsubscribe`,
                     })}
                     sandbox=""
-                    // rounded-xl: a 700px full-bleed content surface is a panel,
-                    // not a small card.
-                    className="w-full h-[700px] border border-border/50 rounded-xl"
+                    // rounded-lg, the dialog's own rung: a child never gets a
+                    // larger radius than the container it sits in.
+                    className="w-full h-[700px] border border-border/50 rounded-lg"
                     title="Email Preview"
                   />
                 </DialogBody>
@@ -841,7 +1090,7 @@ export function MassEmailManager() {
           // The subtitle used to reprint the strip 200px above it ("N total,
           // N drafts, N sent"), so the same three numbers appeared twice on
           // one screen. It says what the list does instead.
-          subtitle="Sending is immediate and cannot be undone. A resend goes to the whole audience again, including everyone who already received it."
+          subtitle="Sending is immediate and cannot be undone. A resend retries the deliveries that failed and reaches anyone who joined the audience since. Nobody gets it twice."
           actions={
             <Button
               variant="outline"
@@ -860,7 +1109,26 @@ export function MassEmailManager() {
           }
         />
 
-        {loading && messages.length === 0 ? (
+        {listError && (
+          <div className="px-4 pt-4 sm:px-5">
+            <InlineAlert tone="error">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>{listError}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  onClick={fetchMessages}
+                  disabled={loading}
+                >
+                  Retry
+                </Button>
+              </div>
+            </InlineAlert>
+          </div>
+        )}
+        {listError && messages.length === 0 ? null : loading &&
+          messages.length === 0 ? (
           // A divided list of broadcast rows, each an icon tile beside a few
           // lines of text. DataTableSkeleton's table header bar and round
           // avatar belong to a shape this panel never renders.
@@ -882,9 +1150,11 @@ export function MassEmailManager() {
         ) : (
           <div className="divide-y divide-border/40">
             {visibleMessages.map((msg) => {
-              const isDraft = msg.status === "draft";
-              const isSending = sending === msg.id;
+              const phase = queued[msg.id] ? "sending" : broadcastPhase(msg);
+              const isDraft = phase === "draft";
+              const isSending = sending === msg.id || phase === "sending";
               const isDeleting = deleting === msg.id;
+              const delivery = deliverySummary(msg);
               return (
                 <div
                   key={msg.id}
@@ -918,8 +1188,14 @@ export function MassEmailManager() {
                       <p className="text-sm font-medium text-foreground truncate">
                         {msg.title}
                       </p>
-                      <StatusPill tone={isDraft ? "warn" : "ok"}>
-                        {STATUS_LABELS[msg.status] ?? msg.status}
+                      <StatusPill
+                        tone={
+                          isDraft ? "warn" : phase === "sending" ? "info" : "ok"
+                        }
+                      >
+                        {phase === "sending"
+                          ? "Sending"
+                          : (STATUS_LABELS[msg.status] ?? msg.status)}
                       </StatusPill>
                     </div>
                     {/* One timestamp format, from formatTimestamp. This row
@@ -940,7 +1216,16 @@ export function MassEmailManager() {
                           </span>
                         </span>
                       )}
-                      {!isDraft && msg.sent_at && (
+                      <span className="text-xs text-muted-foreground flex items-center gap-1 min-w-0">
+                        <Users
+                          className="h-3 w-3 shrink-0"
+                          aria-hidden="true"
+                        />
+                        <span className="truncate">
+                          {audienceLabel(msg.segment_filter)}
+                        </span>
+                      </span>
+                      {phase === "sent" && msg.sent_at && (
                         <span className="text-xs text-muted-foreground flex items-center gap-1 tabular-nums">
                           <Send className="h-3 w-3" aria-hidden="true" />
                           Sent {formatTimestamp(msg.sent_at)}
@@ -952,6 +1237,19 @@ export function MassEmailManager() {
                               </span>
                             </span>
                           )}
+                        </span>
+                      )}
+                      {delivery && (
+                        <span
+                          className={cn(
+                            "text-xs tabular-nums",
+                            Number(msg.failed_count ?? 0) > 0 &&
+                              phase === "sent"
+                              ? "text-[hsl(var(--warning))]"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          {delivery}
                         </span>
                       )}
                     </div>
@@ -971,7 +1269,7 @@ export function MassEmailManager() {
                         <Button
                           size="sm"
                           className="h-8 gap-1.5 px-3 text-xs"
-                          onClick={() => setPendingSend(msg)}
+                          onClick={() => openSendConfirm(msg)}
                           disabled={isSending || isDeleting}
                         >
                           {isSending ? (
@@ -1015,14 +1313,15 @@ export function MassEmailManager() {
                         </Button>
                       </>
                     ) : (
-                      // Resend emails the whole audience a second time. With a
-                      // RefreshCw glyph on a neutral outline it read as a
-                      // reload button, which is the one thing it is not.
+                      // Resend mails people: the failed deliveries and anyone
+                      // who joined since. With a RefreshCw glyph on a neutral
+                      // outline it read as a reload button, which is the one
+                      // thing it is not.
                       <Button
                         size="sm"
                         variant="outline"
                         className="h-8 gap-1.5 px-3 text-xs border-[hsl(var(--warning))]/30 text-[hsl(var(--warning))] hover:bg-[hsl(var(--warning))]/10 hover:text-[hsl(var(--warning))]"
-                        onClick={() => setPendingSend(msg)}
+                        onClick={() => openSendConfirm(msg)}
                         disabled={isSending}
                       >
                         {isSending ? (
@@ -1135,32 +1434,8 @@ export function MassEmailManager() {
             ? "Send Broadcast"
             : "Resend Broadcast"
         }
-        description={
-          pendingSend
-            ? pendingSend.status === "draft"
-              ? `This immediately emails everyone in the audience selected when "${pendingSend.title}" was drafted. It cannot be undone once sending starts.`
-              : `This emails the audience for "${pendingSend.title}" again, including anyone who already received it. It cannot be undone once sending starts.`
-            : undefined
-        }
-        changes={
-          pendingSend
-            ? [
-                pendingSend.status === "draft"
-                  ? {
-                      field: "status",
-                      label: "Status",
-                      oldValue: "Draft",
-                      newValue: "Sent",
-                    }
-                  : {
-                      field: "status",
-                      label: "Status",
-                      oldValue: "Sent",
-                      newValue: "Resending",
-                    },
-              ]
-            : []
-        }
+        description={sendConfirm?.description}
+        changes={sendConfirm?.changes ?? []}
         loading={sending === pendingSend?.id}
         confirmText={
           pendingSend?.status === "draft" ? "Send Now" : "Resend Now"

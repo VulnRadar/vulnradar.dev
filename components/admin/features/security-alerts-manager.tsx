@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,9 +12,10 @@ import {
   AlertCircle,
   Clock,
   ShieldAlert,
-  X,
+  Loader2,
 } from "lucide-react";
 import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal";
+import { InlineAlert } from "@/components/shared/inline-alert";
 import {
   SkeletonRegion,
   StatBar,
@@ -130,56 +131,124 @@ const SEVERITY_ROW_TINT: Record<SecurityAlert["severity"], string> = {
   low: "",
 };
 
+/** How a resolved alert was closed, for the row that shows it. */
+const ACTION_TAKEN_LABELS: Record<string, string> = {
+  manual_review: "Closed after review",
+  block_user: "Account blocked",
+};
+
+/** One page of the list. Load more asks for the next one. */
+export const ALERTS_PAGE_SIZE = 100;
+
+/** The server's count of every unresolved alert, by severity. */
+export interface UnresolvedCounts {
+  total: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+}
+
+/**
+ * The list request for one page.
+ *
+ * Unresolved only unless the operator asked to see resolved alerts too, and
+ * the severity filter goes to the server. Both used to be applied here to the
+ * newest 100 alerts of any kind, so an unresolved alert older than 100
+ * resolved ones never arrived and the panel said "All clear" over it.
+ */
+export function alertsListBody(opts: {
+  showResolved: boolean;
+  severity: string;
+  offset: number;
+}): Record<string, unknown> {
+  return {
+    action: "list",
+    section: "security_alerts",
+    limit: ALERTS_PAGE_SIZE,
+    offset: opts.offset,
+    unresolved_only: !opts.showResolved,
+    ...(opts.severity === "all" ? {} : { severity: opts.severity }),
+  };
+}
+
 export function SecurityAlertsManager() {
   const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [unresolved, setUnresolved] = useState<UnresolvedCounts | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedSeverity, setSelectedSeverity] = useState<string>("all");
+  const [showResolved, setShowResolved] = useState(false);
   const [pendingResolve, setPendingResolve] = useState<{
     alert: SecurityAlert;
     action: string;
   } | null>(null);
   const [resolving, setResolving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Which request is current. A filter change while a page is loading must
+  // not let the older response land on top of the newer one.
+  const requestSeq = useRef(0);
 
-  const fetchAlerts = useCallback(async () => {
-    setLoading(true);
-    setFetchError(null);
-    try {
-      const res = await fetch(`${API.ADMIN}/features`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "list",
-          section: "security_alerts",
-          limit: 100,
-          // Always fetch every severity; the severity filter is applied
-          // client-side below. Filtering on the server made the per-severity
-          // counters (computed from this list) show 0 for every severity except
-          // the selected one -- so filtering to High hid that criticals exist.
-        }),
-      });
-      if (!res.ok) {
-        // A failed fetch must never render as "0 alerts" -- in a security
-        // panel specifically, that reads as a false all-clear rather than
-        // the load failure it actually is.
-        setFetchError("Could not load security alerts.");
-        return;
+  const fetchPage = useCallback(
+    async (offset: number) => {
+      const seq = ++requestSeq.current;
+      if (offset === 0) {
+        setLoading(true);
+        setFetchError(null);
+      } else {
+        setLoadingMore(true);
       }
-      const data = await res.json();
-      setAlerts(data.alerts || []);
-    } catch (error) {
-      console.error("Error fetching alerts:", error);
-      setFetchError("Could not load security alerts.");
-    } finally {
-      setLoading(false);
-    }
-    // No selectedSeverity dep: the filter is client-side, so changing it must
-    // not refetch (and re-narrow the counters).
-  }, []);
+      try {
+        const res = await fetch(`${API.ADMIN}/features`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            alertsListBody({
+              showResolved,
+              severity: selectedSeverity,
+              offset,
+            }),
+          ),
+        });
+        if (seq !== requestSeq.current) return;
+        if (!res.ok) {
+          // A failed fetch must never render as "0 alerts" -- in a security
+          // panel specifically, that reads as a false all-clear rather than
+          // the load failure it actually is.
+          setFetchError("Could not load security alerts.");
+          return;
+        }
+        const data = await res.json();
+        if (seq !== requestSeq.current) return;
+        const page: SecurityAlert[] = data.alerts || [];
+        setAlerts((prev) => {
+          if (offset === 0) return page;
+          const seen = new Set(prev.map((a) => a.id));
+          return [...prev, ...page.filter((a) => !seen.has(a.id))];
+        });
+        setHasMore(data.hasMore === true);
+        setUnresolved(data.unresolved ?? null);
+      } catch (error) {
+        console.error("Error fetching alerts:", error);
+        if (seq === requestSeq.current) {
+          setFetchError("Could not load security alerts.");
+        }
+      } finally {
+        if (seq === requestSeq.current) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
+      }
+    },
+    [showResolved, selectedSeverity],
+  );
+
+  const fetchAlerts = useCallback(() => fetchPage(0), [fetchPage]);
 
   useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
+    // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount and on filter change: setState only fires after the request resolves, apart from the loading flag the request itself owns
     fetchAlerts();
   }, [fetchAlerts]);
 
@@ -217,20 +286,16 @@ export function SecurityAlertsManager() {
     }
   };
 
-  // List is filtered client-side by the selected severity; the counters below
-  // are always computed from the full unfiltered set so they stay accurate no
-  // matter which severity is selected.
-  // Worst severity first, then newest first. The id tiebreak is what keeps the
+  // Worst severity first, then newest first, with unresolved alerts above
+  // resolved ones when those are shown. The id tiebreak is what keeps the
   // order stable between polls: two alerts written in the same second would
   // otherwise trade places on every refresh, which makes a list you are
   // working down unusable.
-  const unresolvedAlerts = alerts
-    .filter(
-      (a) =>
-        !a.resolved_at &&
-        (selectedSeverity === "all" || a.severity === selectedSeverity),
-    )
+  const visibleAlerts = alerts
+    .filter((a) => showResolved || !a.resolved_at)
     .sort((a, b) => {
+      const byResolved = Number(!!a.resolved_at) - Number(!!b.resolved_at);
+      if (byResolved !== 0) return byResolved;
       const bySeverity =
         (SEVERITY_RANK[b.severity] ?? -1) - (SEVERITY_RANK[a.severity] ?? -1);
       if (bySeverity !== 0) return bySeverity;
@@ -239,23 +304,24 @@ export function SecurityAlertsManager() {
       if (byTime !== 0) return byTime;
       return b.id - a.id;
     });
-  const severityStats = {
-    critical: alerts.filter((a) => a.severity === "critical" && !a.resolved_at)
-      .length,
-    high: alerts.filter((a) => a.severity === "high" && !a.resolved_at).length,
-    medium: alerts.filter((a) => a.severity === "medium" && !a.resolved_at)
-      .length,
-    low: alerts.filter((a) => a.severity === "low" && !a.resolved_at).length,
-  };
 
-  const unresolvedTotal = alerts.filter((a) => !a.resolved_at).length;
+  // The counters come from the server's count of every unresolved alert, not
+  // from the page on screen, so they hold whichever severity or page is shown.
+  const severityStats = {
+    critical: unresolved?.critical ?? 0,
+    high: unresolved?.high ?? 0,
+    medium: unresolved?.medium ?? 0,
+    low: unresolved?.low ?? 0,
+  };
+  const unresolvedTotal = unresolved?.total ?? 0;
+  const countsKnown = unresolved !== null;
   // The header tile reports state, not category: red only when something
   // actually needs a human now. A failed or in-flight load is never green,
   // for the same reason the list body distinguishes an error from an empty
   // list: on a security surface "all clear" has to mean it.
   const headerTone = fetchError
     ? "warn"
-    : loading && alerts.length === 0
+    : !countsKnown
       ? "neutral"
       : severityStats.critical > 0
         ? "crit"
@@ -266,7 +332,7 @@ export function SecurityAlertsManager() {
             : "ok";
   const headerStatus = fetchError
     ? "Status unknown"
-    : loading && alerts.length === 0
+    : !countsKnown
       ? "Checking..."
       : unresolvedTotal === 0
         ? "All clear"
@@ -274,29 +340,17 @@ export function SecurityAlertsManager() {
 
   return (
     <>
+      {/* Through InlineAlert for its role="alert": the hand-rolled box this
+          replaced had none, so a screen-reader admin whose Block failed heard
+          nothing at all. */}
       {actionError && (
-        <div className="flex items-start gap-3 p-4 mb-4 rounded-lg border border-destructive/30 bg-destructive/10">
-          <div className="p-2 rounded-lg bg-destructive/20 shrink-0">
-            <AlertTriangle
-              className="h-4 w-4 text-destructive"
-              aria-hidden="true"
-            />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium text-destructive">
-              {actionError}
-            </p>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-11 w-11 sm:h-8 sm:w-8 p-0 shrink-0"
-            onClick={() => setActionError(null)}
-            aria-label="Dismiss"
-          >
-            <X className="h-3.5 w-3.5" aria-hidden="true" />
-          </Button>
-        </div>
+        <InlineAlert
+          tone="error"
+          onDismiss={() => setActionError(null)}
+          className="mb-4"
+        >
+          {actionError}
+        </InlineAlert>
       )}
 
       {/* Severity stats, doubling as the severity filter */}
@@ -304,11 +358,10 @@ export function SecurityAlertsManager() {
         className="mb-4"
         items={[
           {
-            // Full unresolved count from the unfiltered set -- unresolvedAlerts
-            // is narrowed by the active severity filter, so using it here made
-            // "All Alerts" show only the selected severity's count.
+            // Every unresolved alert, from the server's count: the list itself
+            // is one page, narrowed by the severity filter.
             label: "All Alerts",
-            value: alerts.filter((a) => !a.resolved_at).length,
+            value: unresolvedTotal,
             icon: ShieldAlert,
             tone: "primary",
             onClick: () => setSelectedSeverity("all"),
@@ -358,20 +411,31 @@ export function SecurityAlertsManager() {
           subtitle="Monitor and respond to suspicious activity"
           status={<StatusPill tone={headerTone}>{headerStatus}</StatusPill>}
           actions={
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchAlerts}
-              disabled={loading}
-              aria-label="Refresh alerts"
-              className="h-9 px-3 gap-2 border-border/40 shrink-0"
-            >
-              <RefreshCw
-                className={cn("h-4 w-4", loading && "animate-spin")}
-                aria-hidden="true"
-              />
-              <span className="hidden sm:inline">Refresh</span>
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowResolved((v) => !v)}
+                aria-pressed={showResolved}
+                className="h-9 px-3 border-border/40 shrink-0"
+              >
+                {showResolved ? "Hide resolved" : "Show resolved"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchAlerts}
+                disabled={loading}
+                aria-label="Refresh alerts"
+                className="h-9 px-3 gap-2 border-border/40 shrink-0"
+              >
+                <RefreshCw
+                  className={cn("h-4 w-4", loading && "animate-spin")}
+                  aria-hidden="true"
+                />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+            </>
           }
         />
 
@@ -389,7 +453,17 @@ export function SecurityAlertsManager() {
               title="Couldn't load alerts"
               description={fetchError}
             />
-          ) : unresolvedAlerts.length === 0 ? (
+          ) : visibleAlerts.length === 0 && showResolved ? (
+            <EmptyState
+              icon={ShieldAlert}
+              title={
+                selectedSeverity === "all"
+                  ? "No security alerts"
+                  : `No ${selectedSeverity} alerts`
+              }
+              description="Nothing has raised an alert yet."
+            />
+          ) : visibleAlerts.length === 0 ? (
             // Not the shared EmptyState: its icon sits in the neutral grey
             // circle from data-table.tsx, so "everything has been dealt with"
             // rendered exactly like "there is nothing here". On a security
@@ -407,11 +481,13 @@ export function SecurityAlertsManager() {
                   : `No unresolved ${selectedSeverity} alerts`}
               </p>
               <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-                Every security alert has been addressed.
+                {selectedSeverity === "all"
+                  ? "Every security alert has been addressed."
+                  : "Nothing at this severity is waiting on you."}
               </p>
             </div>
           ) : (
-            unresolvedAlerts.map((alert) => {
+            visibleAlerts.map((alert) => {
               const config = severityConfig[alert.severity];
               const Icon = config.icon;
               const isMajor =
@@ -492,36 +568,51 @@ export function SecurityAlertsManager() {
                           collapsed to "OK" and a bare letter "X", so the
                           control that blocks a user account was a single
                           unlabelled character. */}
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            setPendingResolve({
-                              alert,
-                              action: "manual_review",
-                            })
-                          }
-                          className="h-8 gap-1.5 border-border/40"
-                        >
-                          <CheckCircle2
-                            className="h-3 w-3"
-                            aria-hidden="true"
-                          />
-                          Resolve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            setPendingResolve({ alert, action: "block_user" })
-                          }
-                          className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        >
-                          <Ban className="h-3 w-3" aria-hidden="true" />
-                          Block user
-                        </Button>
-                      </div>
+                      {alert.resolved_at ? (
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <StatusPill tone="ok">Resolved</StatusPill>
+                          <span className="tabular-nums">
+                            {formatTimestamp(alert.resolved_at)}
+                          </span>
+                          {alert.action_taken && (
+                            <span>
+                              {ACTION_TAKEN_LABELS[alert.action_taken] ??
+                                alert.action_taken}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setPendingResolve({
+                                alert,
+                                action: "manual_review",
+                              })
+                            }
+                            className="h-8 gap-1.5 border-border/40"
+                          >
+                            <CheckCircle2
+                              className="h-3 w-3"
+                              aria-hidden="true"
+                            />
+                            Resolve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setPendingResolve({ alert, action: "block_user" })
+                            }
+                            className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          >
+                            <Ban className="h-3 w-3" aria-hidden="true" />
+                            Block user
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -529,6 +620,24 @@ export function SecurityAlertsManager() {
             })
           )}
         </div>
+        {/* One page at a time. Without this the panel showed the newest page
+            and nothing said there was more behind it. */}
+        {hasMore && !fetchError && (
+          <div className="flex justify-center border-t border-border/40 px-4 py-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchPage(alerts.length)}
+              disabled={loadingMore || loading}
+              className="h-9 gap-2 border-border/40"
+            >
+              {loadingMore && (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              )}
+              Load more
+            </Button>
+          </div>
+        )}
       </Card>
 
       {/* Resolve Alert Confirmation Modal */}

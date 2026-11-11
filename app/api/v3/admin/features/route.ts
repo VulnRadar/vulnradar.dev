@@ -13,7 +13,11 @@ import {
   hasStaffPermission,
   STAFF_PERMISSIONS,
 } from "@/lib/auth/permissions-client";
-import { STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
+import {
+  LOGO_URL,
+  STAFF_ROLES,
+  STAFF_ROLE_HIERARCHY,
+} from "@/lib/config/constants";
 import { CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES } from "@/lib/config/config-values";
 import {
   sendEmail,
@@ -21,6 +25,7 @@ import {
   broadcastPreheader,
 } from "@/lib/email/email";
 import { htmlToText } from "@/lib/email/html-to-text";
+import { claimBroadcastRecipients } from "@/lib/admin/broadcast-recipients";
 import {
   BROADCAST_FALLBACK_COLUMN,
   isNotificationColumn,
@@ -64,23 +69,42 @@ const TEMPLATE_SUBJECT_MAX = 255;
 const BROADCAST_PAGE_SIZE = 200;
 const BROADCAST_SEND_CONCURRENCY = 5;
 
-async function deliverBroadcast(messageId: number): Promise<void> {
-  const messageResult = await pool.query(
-    `SELECT id, title, content, segment_filter FROM broadcast_messages WHERE id = $1`,
-    [messageId],
-  );
-  const message = messageResult.rows[0];
-  if (!message) return;
+/** The address a "specific address" segment names, as it is stored and
+ *  compared: trimmed and lower-cased. */
+function specificAddressOf(segment: unknown): string | null {
+  if (typeof segment !== "string" || !segment.startsWith("email:")) {
+    return null;
+  }
+  return segment.slice("email:".length).trim().toLowerCase();
+}
 
-  const segment = message.segment_filter?.segment || message.segment_filter;
-  const prefCol = message.segment_filter?.preference_col;
+interface BroadcastAudience {
+  /** The notification_preferences JOIN, or "" when no preference applies. */
+  join: string;
+  /** WHERE conditions over `u` (and `np`), joined with AND. */
+  conditions: string[];
+  params: unknown[];
+  /** Set when the segment names one address. */
+  specificAddress: string | null;
+  /** The column the one-click unsubscribe link turns off. */
+  unsubscribeColumn: NotificationColumn;
+}
+
+/**
+ * Who a broadcast's segment_filter reaches, as SQL over `users u`.
+ *
+ * One builder for the delivery walk and for the counts the list and the
+ * confirms show, so "this reaches 120 people" is computed by the same WHERE
+ * that then mails them.
+ */
+function broadcastAudience(segmentFilter: unknown): BroadcastAudience {
+  const filter =
+    segmentFilter && typeof segmentFilter === "object"
+      ? (segmentFilter as { segment?: unknown; preference_col?: unknown })
+      : null;
+  const segment = filter ? filter.segment : segmentFilter;
+  const prefCol = filter?.preference_col;
   const safeCol = isNotificationColumn(prefCol) ? prefCol : null;
-  const broadcastUnsubscribeColumn =
-    safeCol && !isSecurityColumn(safeCol) ? safeCol : BROADCAST_FALLBACK_COLUMN;
-
-  // The plain-text part is made once for the whole send, not once per
-  // recipient: it is the same message for everyone.
-  const broadcastText = htmlToText(message.content);
 
   // A disabled account is never mailed, whatever the segment. disabled_at was
   // checked by nothing here, so an account staff had shut down kept receiving
@@ -89,9 +113,8 @@ async function deliverBroadcast(messageId: number): Promise<void> {
     "u.email_verified_at IS NOT NULL",
     "u.disabled_at IS NULL",
   ];
-  const queryParams: unknown[] = [];
-  const isSpecificAddress =
-    typeof segment === "string" && segment.startsWith("email:");
+  const params: unknown[] = [];
+  const specificAddress = specificAddressOf(segment);
 
   if (segment && segment !== "all") {
     if (segment === "premium") {
@@ -102,11 +125,16 @@ async function deliverBroadcast(messageId: number): Promise<void> {
       segment === "pro_supporter" ||
       segment === "elite_supporter"
     ) {
-      queryParams.push(segment);
-      conditions.push(`u.plan = $${queryParams.length}`);
-    } else if (isSpecificAddress) {
-      queryParams.push(segment.replace("email:", ""));
-      conditions.push(`u.email = $${queryParams.length}`);
+      params.push(segment);
+      conditions.push(`u.plan = $${params.length}`);
+    } else if (specificAddress !== null) {
+      // LOWER on both sides. users.email keeps whatever capitalisation the
+      // account signed up with, so "Alice@Example.com" typed against a row
+      // stored as "alice@example.com" matched nobody and the broadcast was
+      // still marked sent. Drafts saved before create lower-cased the address
+      // are covered by lower-casing it here as well.
+      params.push(specificAddress);
+      conditions.push(`LOWER(u.email) = $${params.length}`);
     }
   }
   // Every audience is gated on a preference. With no category chosen the
@@ -121,10 +149,114 @@ async function deliverBroadcast(messageId: number): Promise<void> {
   // column, which put people who never saved a preference into an audience
   // filtered on Tips & Guides, an opt-in category.
   const audienceCol: NotificationColumn | null =
-    safeCol ?? (isSpecificAddress ? null : BROADCAST_FALLBACK_COLUMN);
+    safeCol ?? (specificAddress !== null ? null : BROADCAST_FALLBACK_COLUMN);
   if (audienceCol) {
     conditions.push(optedInCondition(audienceCol));
   }
+
+  return {
+    join: audienceCol
+      ? "LEFT JOIN notification_preferences np ON np.user_id = u.id"
+      : "",
+    conditions,
+    params,
+    specificAddress,
+    unsubscribeColumn:
+      safeCol && !isSecurityColumn(safeCol)
+        ? safeCol
+        : BROADCAST_FALLBACK_COLUMN,
+  };
+}
+
+interface AudienceCounts {
+  /** Everyone the segment reaches right now. */
+  audience: number;
+  /** In the audience with no delivery row yet: never mailed this broadcast. */
+  newRecipients: number;
+  /** In the audience with a failed delivery, which the next send retries. */
+  failed: number;
+  /** In the audience and already delivered. A send never mails them again. */
+  alreadySent: number;
+  /** Claimed by a send that has not finished (or died mid-handshake). */
+  pending: number;
+  /** What a send or resend started now would actually mail. */
+  toReach: number;
+}
+
+/**
+ * The audience of one broadcast, split by what has happened to each person.
+ *
+ * A LEFT JOIN onto this message's delivery rows rather than a second count
+ * of broadcast_recipients, because the rows that matter are the audience as
+ * it stands today: someone who received it and has since unsubscribed is not
+ * in the audience any more and is not counted anywhere.
+ */
+async function countBroadcastAudience(
+  messageId: number,
+  segmentFilter: unknown,
+): Promise<AudienceCounts> {
+  const { join, conditions, params } = broadcastAudience(segmentFilter);
+  const result = await pool.query<{
+    audience: number;
+    new_recipients: number;
+    failed: number;
+    already_sent: number;
+    pending: number;
+  }>(
+    `SELECT COUNT(*)::int AS audience,
+            COUNT(*) FILTER (WHERE br.status IS NULL)::int AS new_recipients,
+            COUNT(*) FILTER (WHERE br.status = 'failed')::int AS failed,
+            COUNT(*) FILTER (WHERE br.status = 'pending')::int AS pending,
+            COUNT(*) FILTER (
+              WHERE br.status IS NOT NULL AND br.status NOT IN ('failed', 'pending')
+            )::int AS already_sent
+       FROM users u
+       ${join}
+       LEFT JOIN broadcast_recipients br
+         ON br.message_id = $${params.length + 1} AND br.user_id = u.id
+      WHERE ${conditions.join(" AND ")}`,
+    [...params, messageId],
+  );
+  const row = result.rows[0];
+  const audience = row?.audience ?? 0;
+  const newRecipients = row?.new_recipients ?? 0;
+  const failed = row?.failed ?? 0;
+  return {
+    audience,
+    newRecipients,
+    failed,
+    alreadySent: row?.already_sent ?? 0,
+    pending: row?.pending ?? 0,
+    toReach: newRecipients + failed,
+  };
+}
+
+/** Why a send that would reach nobody was refused, in the operator's terms. */
+function emptyAudienceError(segmentFilter: unknown): string {
+  const { specificAddress } = broadcastAudience(segmentFilter);
+  return specificAddress !== null
+    ? `No verified, active account with the address ${specificAddress} can receive this broadcast. Nothing was sent.`
+    : "Nobody in this audience can receive this broadcast: no verified, active account matches it and is opted in. Nothing was sent.";
+}
+
+async function deliverBroadcast(messageId: number): Promise<void> {
+  const messageResult = await pool.query(
+    `SELECT id, title, content, segment_filter FROM broadcast_messages WHERE id = $1`,
+    [messageId],
+  );
+  const message = messageResult.rows[0];
+  if (!message) return;
+
+  const {
+    join,
+    conditions,
+    params: queryParams,
+    unsubscribeColumn: broadcastUnsubscribeColumn,
+  } = broadcastAudience(message.segment_filter);
+
+  // The plain-text part is made once for the whole send, not once per
+  // recipient: it is the same message for everyone.
+  const broadcastText = htmlToText(message.content);
 
   // Keyset, not OFFSET: the page query re-runs after each batch and OFFSET
   // would re-scan and discard every row already sent.
@@ -137,7 +269,7 @@ async function deliverBroadcast(messageId: number): Promise<void> {
       unsubscribe_token: string | null;
     }>(
       `SELECT u.id, u.email, u.unsubscribe_token FROM users u
-       ${audienceCol ? "LEFT JOIN notification_preferences np ON np.user_id = u.id" : ""}
+       ${join}
        WHERE ${conditions.join(" AND ")} AND u.id > $${queryParams.length + 1}
        ORDER BY u.id
        LIMIT $${queryParams.length + 2}`,
@@ -146,31 +278,14 @@ async function deliverBroadcast(messageId: number): Promise<void> {
     if (page.rows.length === 0) return;
     cursor = page.rows[page.rows.length - 1].id;
 
-    // AUDIT-013 schema-08: this used to be a read-then-insert guard -- SELECT
-    // "have we sent to these people", then sendEmail, then INSERT. The whole
-    // SMTP round trip sat inside that window, so an admin double-clicking
-    // send, or a resend racing a still-running first send, passed the SELECT
-    // for the same recipient twice and mailed them twice. Duplicate mass mail
-    // is the fastest way to get a sending domain reputation-flagged.
-    //
-    // The claim is now the INSERT itself, made atomic by the unique index on
-    // (message_id, user_id) that instrumentation.ts adds. Only the writer
-    // whose row came back sends. A send that then fails is marked 'failed'
-    // and the DO UPDATE re-claims exactly those rows on a later resend, so
-    // retry still works; a row left 'pending' by a process that died
-    // mid-send is deliberately NOT re-claimable, because a second sender
-    // cannot tell "the first one crashed before sending" from "the first one
-    // is mid-handshake right now".
-    const ids = page.rows.map((r) => r.id);
-    const claimed = await pool.query<{ user_id: number }>(
-      `INSERT INTO broadcast_recipients (message_id, user_id, status)
-       SELECT $1, u, 'pending' FROM unnest($2::int[]) AS u
-       ON CONFLICT (message_id, user_id) DO UPDATE SET status = 'pending'
-         WHERE broadcast_recipients.status = 'failed'
-       RETURNING user_id`,
-      [messageId, ids],
+    // Only the rows this call claims are mailed: see claimBroadcastRecipients
+    // for why the INSERT is the guard and which rows a resend re-claims.
+    const mine = new Set(
+      await claimBroadcastRecipients(
+        messageId,
+        page.rows.map((r) => r.id),
+      ),
     );
-    const mine = new Set(claimed.rows.map((r) => r.user_id));
     const pending = page.rows.filter((r) => mine.has(r.id));
 
     for (let i = 0; i < pending.length; i += BROADCAST_SEND_CONCURRENCY) {
@@ -517,6 +632,12 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           );
         }
 
+        // The panel asks for unresolved alerts only. It used to fetch the
+        // newest 100 of every alert and filter out the resolved ones itself,
+        // so an unresolved alert older than 100 resolved ones was never in
+        // the page at all and the header read "All clear" over it.
+        const unresolvedOnly = body.unresolved_only === true;
+
         // The account each alert is about. The panel's "Block user" action
         // blocks this user, and the row used to show only the alert type, an
         // IP and a time, so an operator confirmed a block without seeing who.
@@ -525,6 +646,16 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           LEFT JOIN users u ON u.id = sa.user_id
           WHERE 1=1`;
         const params: unknown[] = [];
+        // The header counts are every unresolved alert, whichever severity
+        // or page is on screen: they are what says whether anything is left.
+        let countQuery = `SELECT sa.severity, COUNT(*)::int AS n
+          FROM security_alerts sa
+          WHERE sa.resolved_at IS NULL`;
+        const countParams: unknown[] = [];
+
+        if (unresolvedOnly) {
+          query += ` AND sa.resolved_at IS NULL`;
+        }
 
         if (severity) {
           query += ` AND sa.severity = $${params.length + 1}`;
@@ -534,13 +665,38 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         if (user_id) {
           query += ` AND sa.user_id = $${params.length + 1}`;
           params.push(user_id);
+          countQuery += ` AND sa.user_id = $${countParams.length + 1}`;
+          countParams.push(user_id);
         }
+        countQuery += ` GROUP BY sa.severity`;
 
-        query += ` ORDER BY sa.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-        params.push(limit, offset);
+        // One row past the page says whether there is another page, without a
+        // second COUNT over the filtered set.
+        query += ` ORDER BY sa.created_at DESC, sa.id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+        params.push(limit + 1, offset);
 
-        const result = await pool.query(query, params);
-        return NextResponse.json({ alerts: result.rows });
+        const [counts, result] = await Promise.all([
+          pool.query<{ severity: string; n: number }>(countQuery, countParams),
+          pool.query(query, params),
+        ]);
+        const unresolved = {
+          total: 0,
+          critical: 0,
+          high: 0,
+          medium: 0,
+          low: 0,
+        };
+        for (const row of counts.rows) {
+          unresolved.total += row.n;
+          if (row.severity in unresolved && row.severity !== "total") {
+            unresolved[row.severity as keyof typeof unresolved] += row.n;
+          }
+        }
+        return NextResponse.json({
+          alerts: result.rows.slice(0, limit),
+          hasMore: result.rows.length > limit,
+          unresolved,
+        });
       }
 
       if (action === "resolve") {
@@ -833,8 +989,30 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
     if (section === "broadcast") {
       if (action === "create") {
-        const { title, content, message_type, segment_filter, scheduled_at } =
-          body;
+        const { title, content, message_type, scheduled_at } = body;
+        let segment_filter = body.segment_filter;
+
+        // A single address is stored the way it is compared: trimmed and
+        // lower-cased. Stored as typed, " Alice@Example.com" matched no row
+        // and the send still reported success.
+        if (
+          segment_filter &&
+          typeof segment_filter === "object" &&
+          !Array.isArray(segment_filter)
+        ) {
+          const address = specificAddressOf(
+            (segment_filter as { segment?: unknown }).segment,
+          );
+          if (address !== null) {
+            if (!address) {
+              return NextResponse.json(
+                { error: "Enter the address to send this broadcast to." },
+                { status: 400 },
+              );
+            }
+            segment_filter = { ...segment_filter, segment: `email:${address}` };
+          }
+        }
 
         const result = await pool.query(
           `INSERT INTO broadcast_messages (title, content, message_type, segment_filter, created_by, scheduled_at, status)
@@ -1118,6 +1296,15 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       }
 
       if (action === "list") {
+        // Each broadcast's audience and what became of it. A sent broadcast
+        // used to show only "Sent" and a time, so nobody could tell whether it
+        // reached 3 people or 3,000, or that 40 of them failed.
+        //
+        // state is 'sending' while a send or resend is still being delivered:
+        // a queued draft (sent_at stamped, status still 'draft') or a sent one
+        // with claimed rows outstanding. Both expire after the resend cooldown,
+        // because a process that died mid-delivery leaves exactly that shape
+        // behind and it must not read as "sending" forever.
         const result = await pool.query(
           `SELECT
              bm.id,
@@ -1125,14 +1312,63 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
              bm.status,
              bm.created_at,
              bm.sent_at,
+             bm.segment_filter,
              cu.name as created_by_name,
-             su.name as sent_by_name
+             su.name as sent_by_name,
+             COALESCE(r.recipients, 0) AS recipients,
+             COALESCE(r.sent_count, 0) AS sent_count,
+             COALESCE(r.failed_count, 0) AS failed_count,
+             COALESCE(r.pending_count, 0) AS pending_count,
+             CASE
+               WHEN bm.sent_at > NOW() - make_interval(mins => $1)
+                    AND (bm.status = 'draft' OR COALESCE(r.pending_count, 0) > 0)
+                 THEN 'sending'
+               ELSE bm.status
+             END AS state
            FROM broadcast_messages bm
            LEFT JOIN users cu ON bm.created_by = cu.id
            LEFT JOIN users su ON bm.sent_by = su.id
+           LEFT JOIN LATERAL (
+             SELECT COUNT(*)::int AS recipients,
+                    COUNT(*) FILTER (WHERE br.status = 'sent')::int AS sent_count,
+                    COUNT(*) FILTER (WHERE br.status = 'failed')::int AS failed_count,
+                    COUNT(*) FILTER (WHERE br.status = 'pending')::int AS pending_count
+               FROM broadcast_recipients br
+              WHERE br.message_id = bm.id
+           ) r ON true
            ORDER BY bm.created_at DESC`,
+          [CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES],
         );
-        return NextResponse.json({ messages: result.rows });
+        // The logo the mail itself carries (lib/email/email.ts), so a custom
+        // LOGO_URL, which only the server can read, previews as it is mailed.
+        return NextResponse.json({ messages: result.rows, logoUrl: LOGO_URL });
+      }
+
+      // The numbers the Send and Resend confirms state before anything goes
+      // out: who the audience is today and what a send started now would mail.
+      if (action === "audience") {
+        const id = parseRowId(body.id);
+        if (id === null) {
+          return NextResponse.json(
+            { error: "Invalid broadcast id" },
+            { status: 400 },
+          );
+        }
+        const message = await pool.query<{ segment_filter: unknown }>(
+          `SELECT segment_filter FROM broadcast_messages WHERE id = $1`,
+          [id],
+        );
+        if (message.rows.length === 0) {
+          return NextResponse.json(
+            { error: "Broadcast not found" },
+            { status: 404 },
+          );
+        }
+        const counts = await countBroadcastAudience(
+          id,
+          message.rows[0].segment_filter,
+        );
+        return NextResponse.json({ counts });
       }
 
       if (action === "send") {
@@ -1144,9 +1380,11 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           );
         }
 
-        // Get message first to validate it exists
-        const check = await pool.query(
-          `SELECT id FROM broadcast_messages WHERE id = $1 AND status = 'draft'`,
+        const check = await pool.query<{
+          title: string;
+          segment_filter: unknown;
+        }>(
+          `SELECT title, segment_filter FROM broadcast_messages WHERE id = $1 AND status = 'draft'`,
           [id],
         );
         if (check.rows.length === 0) {
@@ -1155,27 +1393,52 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
             { status: 404 },
           );
         }
+        const broadcastTitle = check.rows[0].title || "Unknown";
 
-        // Get broadcast title for audit
-        const titleResult = await pool.query(
-          `SELECT title FROM broadcast_messages WHERE id = $1`,
-          [id],
+        // A send that can reach nobody is refused here rather than queued.
+        // It used to go through, mail nobody and be marked sent, which is how
+        // a mistyped address looked exactly like a delivered broadcast.
+        const counts = await countBroadcastAudience(
+          id,
+          check.rows[0].segment_filter,
         );
-        const broadcastTitle = titleResult.rows[0]?.title || "Unknown";
+        if (counts.audience === 0) {
+          return NextResponse.json(
+            { error: emptyAudienceError(check.rows[0].segment_filter) },
+            { status: 422 },
+          );
+        }
 
         // NOTE: status is flipped to 'sent' only AFTER the send loop below
         // finishes, not here. Marking it sent up front meant a crash or a
         // partial failure during delivery still showed the broadcast as fully
         // sent when many recipients never got it.
         //
-        // sent_by IS set here though. Only the resend branch used to write it,
-        // so a broadcast's first send left the column NULL and the list above
-        // (which LEFT JOINs users on bm.sent_by for sent_by_name) showed no
+        // sent_at is stamped here and is what the list reads as "sending": a
+        // draft that was queued used to look like any other draft, Send now
+        // and all, for as long as delivery took. The stamp is also the claim.
+        // Two clicks cannot both queue the draft, and a draft whose delivery
+        // died can be queued again once the resend cooldown has passed, which
+        // resumes it (the recipient claim skips everyone already mailed).
+        //
+        // sent_by is set here too. Only the resend branch used to write it, so
+        // a broadcast's first send left the column NULL and the list showed no
         // "sent by" until someone happened to resend it.
-        await pool.query(
-          `UPDATE broadcast_messages SET sent_by = $1 WHERE id = $2`,
-          [user.id, id],
+        const claimed = await pool.query(
+          `UPDATE broadcast_messages SET sent_by = $1, sent_at = NOW()
+            WHERE id = $2
+              AND status = 'draft'
+              AND (sent_at IS NULL
+                   OR sent_at <= NOW() - make_interval(mins => $3))
+            RETURNING id`,
+          [user.id, id, CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES],
         );
+        if (claimed.rows.length === 0) {
+          return NextResponse.json(
+            { error: "This broadcast is already being sent." },
+            { status: 409 },
+          );
+        }
 
         await logAction(
           user.id,
@@ -1190,9 +1453,9 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           try {
             await deliverBroadcast(id);
             // Only now is the broadcast actually sent. A crash before this
-            // leaves it 'draft', so re-triggering resumes (the per-page dedupe
-            // in deliverBroadcast means already-delivered recipients aren't
-            // emailed again).
+            // leaves it 'draft', so sending it again once the cooldown has
+            // passed resumes it (the per-page claim in deliverBroadcast means
+            // already-delivered recipients aren't emailed again).
             await pool.query(
               `UPDATE broadcast_messages SET status = 'sent', sent_at = NOW() WHERE id = $1`,
               [id],
@@ -1205,6 +1468,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         return NextResponse.json({
           success: true,
           message: "Broadcast queued for sending",
+          recipients: counts.toReach,
         });
       }
 
@@ -1217,10 +1481,18 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         );
         const broadcastTitle = titleResult.rows[0]?.title || "Unknown";
 
-        // Only allow deleting drafts
+        // Only drafts, and not one that is being delivered right now: the
+        // cascade would take its delivery rows with it mid-send. A queued
+        // draft whose delivery died is deletable again once the list stops
+        // showing it as sending (the same cooldown).
         const result = await pool.query(
-          `DELETE FROM broadcast_messages WHERE id = $1 AND status = 'draft' RETURNING id`,
-          [id],
+          `DELETE FROM broadcast_messages
+            WHERE id = $1
+              AND status = 'draft'
+              AND (sent_at IS NULL
+                   OR sent_at <= NOW() - make_interval(mins => $2))
+            RETURNING id`,
+          [id, CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES],
         );
         if (result.rows.length === 0) {
           return NextResponse.json(
@@ -1249,19 +1521,52 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           );
         }
 
+        const existing = await pool.query<{
+          status: string;
+          segment_filter: unknown;
+        }>(
+          `SELECT status, segment_filter FROM broadcast_messages WHERE id = $1`,
+          [id],
+        );
+        if (existing.rows[0]?.status !== "sent") {
+          return NextResponse.json(
+            { error: "Can only resend sent broadcasts" },
+            { status: 400 },
+          );
+        }
+
+        // What a resend does: it retries the deliveries that failed and
+        // reaches anyone who has joined the audience since. Nobody who already
+        // has it is mailed again, because the recipient claim in
+        // deliverBroadcast only takes a row that is missing or 'failed'. The
+        // panel used to say a resend went to everyone again, which it never
+        // did, so "Send again" looked like a silent no-op. When there is
+        // nothing to retry and nobody new, the resend is refused with that
+        // reason instead of being queued to do nothing.
+        const counts = await countBroadcastAudience(
+          id,
+          existing.rows[0].segment_filter,
+        );
+        if (counts.toReach === 0) {
+          return NextResponse.json(
+            {
+              error:
+                counts.audience === 0
+                  ? emptyAudienceError(existing.rows[0].segment_filter)
+                  : "Nothing to resend: every delivery succeeded and nobody has joined the audience since.",
+            },
+            { status: 409 },
+          );
+        }
+
         // Claim the resend, rather than checking then writing.
         //
-        // "send" is safe because status = 'draft' is consumed by the send
-        // itself. A resend leaves status = 'sent', so the old guard was
-        // satisfied every time and this route would mail the whole user base
-        // again on every call: a double-clicked button sent the same
-        // announcement to everyone twice, and there was no rate limit either.
-        //
-        // The cooldown lives in the UPDATE's WHERE, so two concurrent
-        // requests cannot both win it, and the row itself is the lock. A
-        // failed claim cannot tell "never sent" from "sent too recently" in
-        // one statement, so the reason is looked up only once the claim has
-        // already failed, where an extra read costs nothing.
+        // A resend leaves status = 'sent', so a status guard alone is
+        // satisfied every time: a double-clicked button queued the same
+        // delivery twice, and there was no rate limit either. The cooldown
+        // lives in the UPDATE's WHERE, so two concurrent requests cannot both
+        // win it, and the row itself is the lock. The status was read above,
+        // so a claim that loses here lost to the cooldown.
         const claimed = await pool.query<{ id: number; title: string }>(
           `UPDATE broadcast_messages
               SET sent_by = $1, sent_at = NOW()
@@ -1273,20 +1578,10 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           [user.id, id, CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES],
         );
 
-        if (claimed.rowCount === 0) {
-          const existing = await pool.query<{ status: string }>(
-            `SELECT status FROM broadcast_messages WHERE id = $1`,
-            [id],
-          );
-          if (existing.rows[0]?.status !== "sent") {
-            return NextResponse.json(
-              { error: "Can only resend sent broadcasts" },
-              { status: 400 },
-            );
-          }
+        if (claimed.rows.length === 0) {
           return NextResponse.json(
             {
-              error: `This broadcast was sent within the last ${CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES} minutes. Wait before sending it to everyone again.`,
+              error: `This broadcast was sent within the last ${CONFIG_BROADCAST_RESEND_COOLDOWN_MINUTES} minutes. Try the resend again after that.`,
             },
             { status: 429 },
           );
@@ -1298,7 +1593,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           user.id,
           null,
           "broadcast_resent",
-          `Resent broadcast: ${broadcastTitle}`,
+          `Resent broadcast: ${broadcastTitle} (retrying ${counts.failed} failed, ${counts.newRecipients} new)`,
           ip,
         );
 
@@ -1314,6 +1609,8 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         return NextResponse.json({
           success: true,
           message: "Broadcast resent",
+          retried: counts.failed,
+          newRecipients: counts.newRecipients,
         });
       }
     }
