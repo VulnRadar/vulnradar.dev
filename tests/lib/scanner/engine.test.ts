@@ -482,4 +482,82 @@ describe("runSyncChecks reports a root cause once", () => {
     expect(count(/object-src-(unsafe|unrestricted)/)).toBe(1);
     expect(ids).not.toContain("weak-csp-directives");
   });
+
+  it("reports one server banner once, not once per header it names", () => {
+    const headers = new Headers({
+      "content-type": "text/html",
+      server: "nginx/1.18.0",
+      "x-powered-by": "PHP/7.4.3",
+      "x-aspnet-version": "4.0.30319",
+    });
+    const ids = runSyncChecks("https://example.com/", headers, body, [
+      "headers",
+    ]).findings.map((f) => f.id.split("--")[0]);
+    const disclosure = ids.filter((id) =>
+      [
+        "server-header-disclosure",
+        "server-version-detailed",
+        "server-info",
+        "version-disclosure",
+        "x-powered-by-exposed",
+        "x-aspnet-version-exposed",
+      ].includes(id),
+    );
+    expect(disclosure).toHaveLength(1);
+  });
+
+  it("reports a stylesheet without integrity once, and keeps it apart from a script", () => {
+    const html = `<!doctype html><html><head>
+      <link rel="stylesheet" href="https://cdn.other.com/a.css">
+      <script src="https://cdn.other.com/a.js"></script>
+    </head><body>ok</body></html>`;
+    const { findings } = runSyncChecks(
+      "https://example.com/",
+      new Headers({ "content-type": "text/html" }),
+      html,
+    );
+    const ids = findings.map((f) => f.id.split("--")[0]);
+    const stylesheet = ids.filter(
+      (id) =>
+        id === "sri-stylesheet-missing" || id === "page-stylesheet-missing-sri",
+    );
+    const script = ids.filter((id) =>
+      [
+        "sri-missing",
+        "third-party-script-no-sri",
+        "supply-chain-sri-external-script",
+        "page-script-missing-sri",
+      ].includes(id),
+    );
+    expect(stylesheet).toHaveLength(1);
+    expect(script).toHaveLength(1);
+  });
+
+  it("reports a third-party iframe, a password field and a redirect link once each", () => {
+    const html = `<!doctype html><html><body>
+      <iframe src="https://widget.other.com/w"></iframe>
+      <form method="post" action="/login"><input type="password" name="p"></form>
+      <a href="/go?next=https://evil.example/x">go</a>
+    </body></html>`;
+    const ids = runSyncChecks(
+      "https://example.com/",
+      new Headers({ "content-type": "text/html" }),
+      html,
+    ).findings.map((f) => f.id.split("--")[0]);
+    const count = (candidates: string[]) =>
+      ids.filter((id) => candidates.includes(id)).length;
+    expect(
+      count([
+        "iframe-third-party-without-sandbox",
+        "page-third-party-iframe-no-sandbox",
+      ]),
+    ).toBe(1);
+    expect(
+      count([
+        "autocomplete-sensitive",
+        "page-password-field-autocomplete-wrong",
+      ]),
+    ).toBe(1);
+    expect(count(["open-redirect", "page-open-redirect-param-shape"])).toBe(1);
+  });
 });
