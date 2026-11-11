@@ -316,6 +316,10 @@ describe("detection coverage (no silent no-ops)", () => {
     const ASYNC_BACKED = new Set([
       "sourcemap-sourcescontent-exposed", // execute-scan.ts .map follow-up fetch
       "osv-vulnerable-library", // osv-check.ts
+      // Retired by decision D1 and left silent for one release step: the
+      // retirement pass removes the detector, its definition, the fixtures
+      // and this line together, and adds the /checks redirect.
+      "target-blank-no-noopener",
     ]);
     const moduleFiles = [...CATEGORIES_WITH_INLINE_DETECTORS].map((c) =>
       path.resolve("lib/scanner/checks", `${c}.ts`),

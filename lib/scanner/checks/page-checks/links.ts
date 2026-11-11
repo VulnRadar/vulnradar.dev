@@ -12,6 +12,33 @@
 
 import type { PageCheck } from "../../check-types";
 import { excerpt } from "../../check-types";
+import type { AnchorRef } from "../../page-context";
+import { plural, pluralize } from "@/lib/ui/plural";
+import { classifySubresource } from "../_subresource";
+
+const NON_POPUP_TARGETS = new Set(["_blank", "_self", "_parent", "_top"]);
+
+/**
+ * Whether the link hands the opened page its window.opener. A plain
+ * target="_blank" does not (implicit noopener, every current browser), so it
+ * takes either an explicit rel="opener" on a _blank link or a named target,
+ * which opens a window the page can be reached through.
+ */
+function keepsOpener(a: AnchorRef): boolean {
+  const target = (a.target ?? "").trim().toLowerCase();
+  if (!target) return false;
+  const rel = (a.rel ?? "").toLowerCase().split(/s+/);
+  if (rel.includes("noopener") || rel.includes("noreferrer")) return false;
+  if (target === "_blank") return rel.includes("opener");
+  return !NON_POPUP_TARGETS.has(target);
+}
+
+/** Another site: not the page's origin, and not its www or a subdomain of it. */
+function isOtherSite(resolved: string | null, pageUrl: string): boolean {
+  if (!resolved) return false;
+  const cls = classifySubresource(resolved, pageUrl);
+  return cls !== null && cls !== "same-origin" && cls !== "same-site";
+}
 
 const REDIRECT_PARAM_NAMES = new Set([
   "next",
@@ -181,19 +208,20 @@ export const linkChecks: PageCheck[] = [
 
   {
     id: "page-anchor-target-blank-no-noopener",
-    title: 'Link opens in a new tab without rel="noopener"',
+    title: "Link keeps window.opener",
     category: "content",
     severity: "low",
     method: "dom-structure",
     confidence: 85,
     description:
-      'A link to a different origin sets target="_blank" without rel="noopener" (or "noreferrer").',
+      'A link to another site opts back in to window.opener, either with rel="opener" on a target="_blank" link or with a named target such as target="help" that has no rel="noopener" or "noreferrer".',
     riskImpact:
-      "The opened page runs in a separate process but can still reach back through window.opener to navigate the original tab to a phishing page (reverse tabnabbing), and can read the referring URL via window.opener.location.",
+      "The opened page can reach back through window.opener and navigate the original tab to a phishing page (reverse tabnabbing), so a compromised or hostile destination gets a handle on the page the visitor came from.",
     explanation:
-      'Current Chromium and Firefox versions implicitly apply noopener behavior to target="_blank" links, which limits this in up-to-date browsers, but older browsers, embedded WebViews, and code that opens the link programmatically via window.open may not get that protection. Declaring it explicitly removes the ambiguity.',
+      'A plain target="_blank" is already safe: Chrome 88, Firefox 79 and Safari 12.1 treat it as rel="noopener". This check only reports the two cases that still hand the opener over, an explicit rel="opener" and a named target that is not _blank, _self, _parent or _top. Links to the same site, including www and subdomains of it, are not reported.',
     fixSteps: [
-      'Add rel="noopener" (or "noreferrer" if the Referer header should also be suppressed) to every target="_blank" anchor pointing off-site.',
+      'Remove rel="opener" from the link, or add rel="noopener" to it.',
+      'For a named target, add rel="noopener" (or "noreferrer" if the Referer header should also be suppressed), or use target="_blank" instead.',
     ],
     codeExamples: [
       {
@@ -204,22 +232,19 @@ export const linkChecks: PageCheck[] = [
     ],
     references: [
       "https://developer.mozilla.org/en-US/docs/Web/API/Window/open#noopener",
+      "https://html.spec.whatwg.org/multipage/links.html#link-type-opener",
     ],
     needs: ["html"],
     dedupeGroup: "anchor-target-blank-no-noopener",
     run(ctx) {
-      const offending = ctx.anchors.filter((a) => {
-        if ((a.target ?? "").toLowerCase() !== "_blank") return false;
-        if (!a.thirdParty) return false;
-        const rel = (a.rel ?? "").toLowerCase().split(/\s+/);
-        return !rel.includes("noopener") && !rel.includes("noreferrer");
-      });
+      const offending = ctx.anchors.filter(
+        (a) => keepsOpener(a) && isOtherSite(a.resolved, ctx.url),
+      );
       if (offending.length === 0) return null;
+      const urls = [...new Set(offending.map((a) => a.resolved ?? a.href))];
       return {
-        evidence: `${offending.length} cross-origin target="_blank" link(s) without rel="noopener".`,
-        excerpts: offending
-          .slice(0, 10)
-          .map((a) => excerpt("a href", a.resolved ?? a.href)),
+        evidence: `${pluralize(offending.length, "link")} to ${pluralize(urls.length, "other address", "other addresses")} ${plural(offending.length, "keeps", "keep")} window.opener. Plain target=_blank is already safe in Chrome 88, Firefox 79 and Safari 12.1; ${plural(offending.length, "this link opts", "these links opt")} back in.`,
+        excerpts: urls.slice(0, 5).map((u) => excerpt("a href", u)),
       };
     },
   },
