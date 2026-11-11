@@ -1,4 +1,4 @@
-import { describe } from "vitest";
+import { describe, it, expect } from "vitest";
 import { cookieChecks } from "@/lib/scanner/checks/page-checks/cookies";
 import { runPageCheckTests, type PageCheckFixtures } from "./_test-harness";
 
@@ -74,6 +74,47 @@ const fixtures: PageCheckFixtures = {
       description: "session cookie with HttpOnly",
       cookies: ["session_id=abc; Secure; HttpOnly; SameSite=Lax; Path=/"],
       expect: "skip",
+    },
+    {
+      description: "Laravel XSRF-TOKEN is readable by design",
+      cookies: ["XSRF-TOKEN=eyJ0; secure; samesite=lax; path=/"],
+      expect: "skip",
+    },
+    {
+      description: "Django csrftoken is readable by design",
+      cookies: ["csrftoken=abc; Secure; SameSite=Lax"],
+      expect: "skip",
+    },
+    {
+      description: "Twitter ct0 is readable by design",
+      cookies: ["ct0=abc; Secure; Path=/"],
+      expect: "skip",
+    },
+    {
+      description:
+        "regression: the XSRF-TOKEN beside a hardened session cookie does not fire",
+      cookies: [
+        "XSRF-TOKEN=eyJ0; secure; samesite=lax",
+        "wslatl-llc-session=abc; secure; httponly",
+      ],
+      expect: "skip",
+    },
+    {
+      description: "PHPSESSID without HttpOnly fires",
+      cookies: ["PHPSESSID=abc; path=/"],
+      expect: "fire",
+      evidenceIncludes: "PHPSESSID",
+    },
+    {
+      description: "a CamelCase MoodleSession is session-like",
+      cookies: ["MoodleSession=abc; path=/; secure; SameSite=None"],
+      expect: "fire",
+      evidenceIncludes: "MoodleSession",
+    },
+    {
+      description: "session_token without HttpOnly fires",
+      cookies: ["session_token=abc; Secure"],
+      expect: "fire",
     },
   ],
   "page-cookie-missing-samesite": [
@@ -174,4 +215,13 @@ const fixtures: PageCheckFixtures = {
 
 describe("page-checks/cookies", () => {
   runPageCheckTests(cookieChecks, fixtures);
+});
+
+describe("page-cookie-missing-httponly severity", () => {
+  it("is medium: HttpOnly only limits the damage of an XSS that already exists", () => {
+    const check = cookieChecks.find(
+      (c) => c.id === "page-cookie-missing-httponly",
+    )!;
+    expect(check.severity).toBe("medium");
+  });
 });

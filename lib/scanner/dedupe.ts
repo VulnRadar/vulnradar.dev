@@ -94,9 +94,17 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   "form-action-http": "form-over-http",
   "insecure-form-submission": "form-over-http",
 
-  // Server software version disclosed in a response header.
+  // Server software version disclosed in a response header. server-info and
+  // server-header-disclosure read the same Server / X-Powered-By /
+  // X-AspNet-Version list with the same cloudflare and Vercel exemption, and
+  // the other three each restate one header of it, so one response used to
+  // read as three or four findings for the same leak.
   "server-header-disclosure": "server-version-disclosure",
   "server-version-detailed": "server-version-disclosure",
+  "server-info": "server-version-disclosure",
+  "version-disclosure": "server-version-disclosure",
+  "x-powered-by-exposed": "server-version-disclosure",
+  "x-aspnet-version-exposed": "server-version-disclosure",
 
   // Timing-Allow-Origin set to a wildcard.
   "timing-allow-origin-wide": "timing-allow-origin-wildcard",
@@ -112,6 +120,14 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   "mixed-protocol-content": "mixed-content",
   "supply-chain-http-script-on-https": "mixed-content",
 
+  // A session cookie whose default name gives the framework away. The generic
+  // check and the PHP one both read the Set-Cookie name PHPSESSID, so it was
+  // reported twice for one fact. rails-version-exposure is not in the group:
+  // cookie-name-disclosure does not know a Rails cookie, so the two never
+  // describe the same cookie.
+  "cookie-name-disclosure": "framework-cookie-name",
+  "php-version-exposed-in-cookie": "framework-cookie-name",
+
   // SQL error text rendered into the page.
   "sql-error-in-page": "sql-error-disclosure",
   "sql-error-exposure": "sql-error-disclosure",
@@ -123,9 +139,20 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   // wildcard and one http: source produced four. The group names are the ones
   // the PageChecks already use in lib/scanner/checks/page-checks/.
   "cookie-secure-missing": "cookie-missing-secure",
+  // The only "code-" cookie check that still reads a Set-Cookie header. The
+  // other two (code-cookie-without-httponly, code-cookie-write-no-samesite)
+  // look at cookies a script writes with document.cookie, which is a different
+  // cookie from the Set-Cookie one the groups here describe, so they stay
+  // separate findings.
+  "code-cookie-missing-secure-http": "cookie-missing-secure",
   "cookie-httponly-missing": "cookie-missing-httponly",
   "cookie-jwt-value-not-httponly": "cookie-missing-httponly",
   "cookie-samesite-missing": "cookie-missing-samesite",
+  // One script-written session cookie: code.ts reports the write, content.ts
+  // reports the same document.cookie access by the same cookie name, and both
+  // give the advice to issue it from the server with HttpOnly.
+  "code-cookie-without-httponly": "script-readable-session-cookie",
+  "document-cookie-access": "script-readable-session-cookie",
   // Fires only when a session cookie lacks SameSite=Lax/Strict, which is the
   // condition above restated as a CSRF risk. One fix, one finding.
   "cookie-no-csrf-token": "cookie-missing-samesite",
@@ -150,6 +177,30 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   "code-clickjack-x-frame-options": "clickjacking",
   "csp-frame-ancestors-missing": "clickjacking",
   "target-blank-no-noopener": "anchor-target-blank-no-noopener",
+
+  // A third-party iframe with no sandbox attribute: the body-regex check and
+  // the parsed-DOM PageCheck fired together on every page that had one.
+  "iframe-third-party-without-sandbox": "third-party-iframe-no-sandbox",
+  "page-third-party-iframe-no-sandbox": "third-party-iframe-no-sandbox",
+
+  // TRACE reachable. The Allow header lists it (passive), or the OPTIONS probe
+  // saw it advertised, or the TRACE request itself was echoed back. The
+  // echoed one is a CONFIRMING_CHECK, so it wins over the two that infer.
+  "trace-method-enabled": "trace-method",
+  "async-http-trace-advertised-in-allow-header": "trace-method",
+  "async-http-trace-method-enabled": "trace-method",
+
+  // A link or form action carrying a redirect-shaped parameter. The legacy
+  // check's first pattern is the absolute-URL subset of what the PageCheck
+  // reads from parsed anchors and form actions.
+  "open-redirect": "open-redirect-param",
+  "page-open-redirect-param-shape": "open-redirect-param",
+
+  // Inline markup that runs script from page output. An <img onerror="..."> with
+  // a sink call in it satisfies both detectors, so one tag read as two
+  // findings.
+  "html-injection-patterns": "html-injection-handler",
+  "dangerous-html-attrs": "html-injection-handler",
   // GraphQL introspection. Two passive keyword checks and the live query that
   // confirms it; the survivor is the confirmed one whenever it ran.
   "graphql-introspection": "graphql-introspection",
@@ -174,10 +225,12 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
  * the same issue whatever the two severities say, because its severity is
  * the measured one: OSV.dev scores each advisory, where the offline library
  * snapshot can only know the advisories it was given, and the live GraphQL
- * query proves what the keyword matches guess at.
+ * query proves what the keyword matches guess at, and a TRACE request that is
+ * echoed back proves what the Allow header only advertises.
  */
 const CONFIRMING_CHECKS: ReadonlySet<string> = new Set([
   "osv-vulnerable-library",
+  "async-http-trace-method-enabled",
   "async-graphql-introspection-enabled",
   "async-symfony-profiler-exposed",
 ]);

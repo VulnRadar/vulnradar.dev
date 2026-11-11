@@ -27,7 +27,12 @@
       "https://datatracker.ietf.org/doc/html/rfc8446"
     ],
     "cwe": "CWE-298",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "emittedAs": [
+      "async-expired-tls-certificate",
+      "async-tls-certificate-expiring-soon",
+      "async-tls-certificate-expiring-within-30-days"
+    ]
   },
   {
     "id": "tls-protocol-version",
@@ -57,7 +62,8 @@
       "https://datatracker.ietf.org/doc/html/rfc8996"
     ],
     "cwe": "CWE-326",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "emittedAs": ["async-weak-tls-protocol-version"]
   },
   {
     "id": "tls-cert-key-size-rsa",
@@ -91,7 +97,8 @@
     ],
     "_idx": 2,
     "cwe": "CWE-326",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "emittedAs": ["async-weak-tls-certificate-key-size"]
   },
   {
     "id": "tls-cert-self-signed",
@@ -120,7 +127,8 @@
     ],
     "_idx": 3,
     "cwe": "CWE-295",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "emittedAs": ["async-self-signed-tls-certificate"]
   },
   {
     "id": "tls-tls-1-3-not-supported",
@@ -147,7 +155,8 @@
       "https://datatracker.ietf.org/doc/html/rfc8446",
       "https://datatracker.ietf.org/doc/html/rfc8996"
     ],
-    "_idx": 4
+    "_idx": 4,
+    "emittedAs": ["async-tls-1-3-not-supported"]
   },
   {
     "id": "tls-cert-san-missing",
@@ -181,7 +190,8 @@
     ],
     "_idx": 5,
     "cwe": "CWE-295",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "emittedAs": ["async-subject-alternative-name-san-missing"]
   },
   {
     "id": "tls-cert-key-size-ecdsa",
@@ -215,7 +225,8 @@
     ],
     "cwe": "CWE-326",
     "owasp": "A02:2021",
-    "_idx": 6
+    "_idx": 6,
+    "emittedAs": ["async-ecdsa-key-size-below-p-256"]
   },
   {
     "id": "tls-cert-expired-ca-chain",
@@ -250,7 +261,8 @@
     ],
     "cwe": "CWE-298",
     "owasp": "A02:2021",
-    "_idx": 7
+    "_idx": 7,
+    "emittedAs": ["async-expired-certificate-in-ca-chain"]
   },
   {
     "id": "tls-http-no-https-upgrade",
@@ -749,7 +761,8 @@
     ],
     "cwe": "CWE-297",
     "owasp": "A02:2021",
-    "_idx": 22
+    "_idx": 22,
+    "emittedAs": ["async-tls-certificate-does-not-match-the-hostname"]
   },
   {
     "id": "tls-cert-untrusted",
@@ -776,6 +789,7 @@
     "references": ["https://datatracker.ietf.org/doc/html/rfc5280#section-6"],
     "cwe": "CWE-295",
     "owasp": "A02:2021",
-    "_idx": 23
+    "_idx": 23,
+    "emittedAs": ["async-untrusted-tls-certificate"]
   }
 ]

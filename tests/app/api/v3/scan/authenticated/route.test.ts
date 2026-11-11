@@ -99,11 +99,10 @@ vi.mock("@/lib/rate-limiting/concurrent-scans", () => ({
 // tests/app/api/v3/scan/route.test.ts.
 const mockValidateScanTarget = vi.fn();
 const mockCheckAccessRules = vi.fn();
+const mockSafeFetch = vi.fn();
 vi.mock("@/lib/scanner/safe-fetch", () => ({
   validateScanTarget: (...args: unknown[]) => mockValidateScanTarget(...args),
-  safeFetch: vi.fn(
-    async () => new Response("<html>ok</html>", { status: 200 }),
-  ),
+  safeFetch: (...args: unknown[]) => mockSafeFetch(...args),
 }));
 
 vi.mock("@/lib/scanner/access-rules", () => ({
@@ -113,6 +112,26 @@ vi.mock("@/lib/scanner/access-rules", () => ({
 const mockIsUrlOwnedByUser = vi.fn();
 vi.mock("@/lib/domains/scope", () => ({
   isUrlOwnedByUser: (...args: unknown[]) => mockIsUrlOwnedByUser(...args),
+}));
+
+// The per-target bucket every scan path counts against. Allowed by default;
+// the cases below drive the refusal.
+const mockCheckTargetScanLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/target-limits", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/lib/rate-limiting/target-limits")
+  >()),
+  checkTargetScanLimit: (...args: unknown[]) =>
+    mockCheckTargetScanLimit(...args),
+}));
+
+// The account-level "scans are private by default" resolver the other scan
+// routes use. This route must never consult it (owner decision D25): it is
+// mocked to answer "public" so a call to it would show up as a public scan.
+const mockResolveScanIsPublic = vi.fn(async () => true);
+vi.mock("@/lib/scanner/scan-privacy", () => ({
+  resolveScanIsPublic: (...args: unknown[]) =>
+    mockResolveScanIsPublic(...(args as [])),
 }));
 
 vi.mock("@/lib/scanner/registry", () => ({
@@ -160,6 +179,8 @@ vi.mock("@/lib/webhooks/scan-notifications", () => ({
 }));
 
 const { POST } = await import("@/app/api/v3/scan/authenticated/route");
+const { userAgentOf } = await import("@/tests/lib/scanner/_user-agent-of");
+const { SCANNER_UA_AUTHENTICATED } = await import("@/lib/scanner/user-agent");
 
 function postRequest(body: unknown): NextRequest {
   return new NextRequest("http://localhost/api/v3/scan/authenticated", {
@@ -178,8 +199,19 @@ beforeEach(() => {
   mockLogAction.mockClear();
   mockIsUrlOwnedByUser.mockReset();
   mockIsUrlOwnedByUser.mockResolvedValue(true);
+  mockCheckTargetScanLimit.mockReset();
+  mockCheckTargetScanLimit.mockResolvedValue({
+    allowed: true,
+    retryAfterSeconds: 0,
+    rootDomain: "example.com",
+  });
+  mockResolveScanIsPublic.mockClear();
   mockValidateScanTarget.mockReset();
   mockValidateScanTarget.mockResolvedValue({ safe: true });
+  mockSafeFetch.mockReset();
+  mockSafeFetch.mockImplementation(
+    async () => new Response("<html>ok</html>", { status: 200 }),
+  );
   mockCheckAccessRules.mockReset();
   mockCheckAccessRules.mockResolvedValue({ allowed: true });
   mockRunAsyncChecksDetailed.mockReset();
@@ -214,8 +246,201 @@ describe("POST /api/v3/scan/authenticated - concurrency slot", () => {
     const res = await POST(postRequest(FORM_AUTH_BODY));
 
     expect(res.status).toBe(429);
-    expect((await res.json()).statusCode).toBe("CONCURRENT_SCAN_LIMIT");
+    expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
+    const json = await res.json();
+    expect(json.statusCode).toBe("CONCURRENT_SCAN_LIMIT");
+    expect(json.code).toBe("CONCURRENT_SCAN_LIMIT");
+    expect(json.error).toBe("You already have 1 scan(s) running.");
     expect(mockEstablishScanSession).not.toHaveBeenCalled();
+  });
+});
+
+const HEADER_AUTH_BODY = {
+  url: "https://app.example.com/dashboard",
+  auth: {
+    method: "header",
+    headerName: "Authorization",
+    headerValue: "Bearer super-secret-token",
+  },
+};
+
+describe("POST /api/v3/scan/authenticated - per-target limit", () => {
+  it("refuses a target scanned too much in the last hour, before the slot and the login", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(false);
+    mockCheckTargetScanLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 1800,
+      rootDomain: "example.com",
+    });
+
+    const res = await POST(postRequest(HEADER_AUTH_BODY));
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("1800");
+    const json = await res.json();
+    expect(json.statusCode).toBe("TARGET_RATE_LIMIT");
+    expect(json.code).toBe("TARGET_RATE_LIMIT");
+    expect(json.error).toMatch(/example\.com is temporarily rate limited/);
+    expect(mockCheckTargetScanLimit).toHaveBeenCalledWith(HEADER_AUTH_BODY.url);
+    expect(mockInlineSlot).not.toHaveBeenCalled();
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+  });
+
+  it("lets a verified owner of the domain past the limit, asking about ownership once", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(true);
+    mockCheckTargetScanLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 1800,
+      rootDomain: "example.com",
+    });
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 960 }] });
+
+    // A form login needs ownership for its own reason, so both checks want
+    // the answer and it is asked for once.
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+
+    expect(res.status).toBe(200);
+    expect(mockIsUrlOwnedByUser).toHaveBeenCalledTimes(1);
+    expect(mockEstablishScanSession).toHaveBeenCalled();
+  });
+
+  it("does not ask about ownership when the target is under its limit and nothing else needs it", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 961 }] });
+
+    await POST(postRequest(HEADER_AUTH_BODY));
+
+    expect(mockIsUrlOwnedByUser).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v3/scan/authenticated - quota and rate refusals", () => {
+  it("answers a spent daily quota with Retry-After, the X-RateLimit-* set and the quota body", async () => {
+    const dailyLimits = await import("@/lib/rate-limiting/daily-limits");
+    const resetsAt = new Date(Date.now() + 3600_000).toISOString();
+    vi.mocked(dailyLimits.canMakeRequest).mockResolvedValueOnce({
+      allowed: false,
+      limit: 10,
+      used: 10,
+      remaining: 0,
+      resetsAt,
+    });
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+
+    expect(res.status).toBe(429);
+    expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(3500);
+    expect(res.headers.get("X-RateLimit-Limit")).toBe("10");
+    expect(res.headers.get("X-RateLimit-Remaining")).toBe("0");
+    const json = await res.json();
+    expect(json).toMatchObject({
+      error:
+        "Daily scan limit reached. Upgrade your plan or wait until midnight UTC.",
+      code: "DAILY_LIMIT",
+      status: 429,
+      limit: 10,
+      used: 10,
+      remaining: 0,
+      resets_at: resetsAt,
+    });
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+  });
+
+  it("answers the session scan rate limit with the wait it computed", async () => {
+    const rateLimit = await import("@/lib/rate-limiting/rate-limit");
+    vi.mocked(rateLimit.checkRateLimit).mockResolvedValueOnce({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 42.2,
+    } as Awaited<ReturnType<typeof rateLimit.checkRateLimit>>);
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("43");
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v3/scan/authenticated - privacy (owner decision D25)", () => {
+  it("is private when the request says nothing, even on an account whose default is public", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockImplementation(async (sql: string) =>
+      String(sql).includes("scans_private_by_default")
+        ? { rows: [{ scans_private_by_default: false }] }
+        : String(sql).includes("INSERT INTO scan_history")
+          ? { rows: [{ id: 970, public_id: "a".repeat(32) }] }
+          : { rows: [] },
+    );
+
+    await POST(postRequest(HEADER_AUTH_BODY));
+
+    const insert = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(insert![1][9]).toBe(false);
+    expect(mockResolveScanIsPublic).not.toHaveBeenCalled();
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("scans_private_by_default"),
+      ),
+    ).toBe(false);
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("INSERT INTO host_reputation"),
+      ),
+    ).toBe(false);
+  });
+
+  it("is public when the request explicitly asks for it", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockImplementation(async (sql: string) =>
+      String(sql).includes("INSERT INTO scan_history")
+        ? { rows: [{ id: 971, public_id: "b".repeat(32) }] }
+        : { rows: [] },
+    );
+
+    await POST(postRequest({ ...HEADER_AUTH_BODY, isPublic: true }));
+
+    const insert = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(insert![1][9]).toBe(true);
+  });
+});
+
+describe("POST /api/v3/scan/authenticated - identifiers", () => {
+  it("returns the scan's public id beside its numeric id", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 980, public_id: "c".repeat(32) }],
+    });
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+    const json = await res.json();
+
+    expect(json.scanHistoryId).toBe(980);
+    expect(json.scanPublicId).toBe("c".repeat(32));
+    const insert = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(insert![0]).toContain("RETURNING id, public_id");
   });
 });
 
@@ -397,20 +622,24 @@ describe("POST /api/v3/scan/authenticated", () => {
     );
     expect(reputationCalls).toHaveLength(0);
     // No account-default lookup either: this endpoint never consults
-    // scans_private_by_default. The only queries are the scan_history
-    // INSERT, lib/tags/auto-tags.ts's promoted-rules lookup (loadPromotedRules,
-    // part of saveAutoTags), and the auto-tags save itself -- unlike
-    // host_reputation, auto tags are saved regardless of is_public. Located
-    // by content rather than a fixed index: saveAutoTags' own promoted-rules
-    // SELECT (an extra await before the INSERT) makes the exact call order
-    // relative to the rest of the fire-and-forget chain not worth pinning
-    // down here.
-    expect(mockQuery).toHaveBeenCalledTimes(3);
-    const tagsCall = mockQuery.mock.calls.find(([sql]) =>
-      String(sql).includes("INSERT INTO scan_tags"),
+    // scans_private_by_default. Asserted by content, not by a call count:
+    // the other queries are lib/tags/auto-tags.ts's promoted-rules lookup,
+    // which is cached for the module's life and so runs only for whichever
+    // test saves tags first, and the auto-tags save itself, which unlike
+    // host_reputation runs regardless of is_public. Both are detached from
+    // the response, so the save is waited for.
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("scans_private_by_default"),
+      ),
+    ).toBe(false);
+    await vi.waitFor(() =>
+      expect(
+        mockQuery.mock.calls.some(([sql]) =>
+          String(sql).includes("INSERT INTO scan_tags"),
+        ),
+      ).toBe(true),
     );
-    expect(tagsCall).toBeDefined();
-    expect(tagsCall![0]).toContain("INSERT INTO scan_tags");
   });
 
   it("persists is_public=false and skips host_reputation when the request explicitly asks for a private scan", async () => {
@@ -687,6 +916,62 @@ function persistedResultMeta(calls: unknown[][]): Record<string, unknown> {
   );
   return JSON.parse(String((insert![1] as unknown[])[10]));
 }
+
+describe("POST /api/v3/scan/authenticated - the page behind the login", () => {
+  it("does not grade a refusal served after the login as the signed-in page", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockSafeFetch.mockImplementation(
+      async () =>
+        new Response("<html><title>403 Forbidden</title></html>", {
+          status: 403,
+          headers: { "content-type": "text/html", server: "awselb/2.0" },
+        }),
+    );
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 950 }] });
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.checksRun).toBe(0);
+    expect(json.incomplete).toContain("bot-challenge");
+    expect(mockRunAsyncChecksDetailed.mock.calls[0][4]).toBe("network");
+    const meta = persistedResultMeta(mockQuery.mock.calls);
+    expect(meta.pageBlocked).toEqual({ status: 403, server: "awselb/2.0" });
+  });
+
+  it("records no block for a page it could grade", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 951 }] });
+
+    await POST(postRequest(FORM_AUTH_BODY));
+
+    expect(mockRunAsyncChecksDetailed.mock.calls[0][4]).toBe("all");
+    expect(persistedResultMeta(mockQuery.mock.calls).pageBlocked).toBe(
+      undefined,
+    );
+  });
+
+  it("fetches the page with the authenticated User-Agent, which says what it is doing", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 952 }] });
+
+    await POST(postRequest(FORM_AUTH_BODY));
+
+    expect(userAgentOf(mockSafeFetch.mock.calls[0][1] as RequestInit)).toBe(
+      SCANNER_UA_AUTHENTICATED,
+    );
+  });
+});
 
 describe("POST /api/v3/scan/authenticated - an unfinished scan cannot present as clean", () => {
   it("names the branches that did not finish, and does not read as clean, when the async layer comes back short", async () => {

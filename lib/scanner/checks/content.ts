@@ -10,6 +10,7 @@
 import {
   extractScriptContents,
   findAwsAccessKeyIds,
+  getEffectiveCsp,
   isPlausibleAwsSecretKey,
   stripExampleContent,
   stripDocBlocks,
@@ -23,12 +24,16 @@ import { safeReadBody } from "../read-bounded-body";
 import { versionBelow } from "../library-fingerprints";
 import { SCANNER_UA } from "../user-agent";
 import { DISCORD_HOST_RUN } from "./code";
+import { isSessionLikeName } from "../cookie-names";
+import { startTagAttributes, tokenize } from "../html/tokenizer";
 import { plainSlashView } from "./_plain-slashes";
+import { looksBundled } from "./_sinks";
 import { leadingHost, loadsFrom, urlRefs, type HostRule } from "./_url-hosts";
 import {
   hasTagWith,
   htmlComments,
   openingTagOf,
+  openTagsAt,
   stripTagElements,
   tagElementContents,
   tagElements,
@@ -38,6 +43,84 @@ import {
   discordWebhookPattern,
   isDiscordHost,
 } from "@/lib/net/discord-webhook";
+
+/**
+ * A form control named for a payment card. Matched against the control's name
+ * and id with a boundary of anything that is not a letter or a digit on both
+ * sides, which is looser than `\b` on one point that matters: `\b` does not
+ * sit between `_` and a letter, so `cc_cvv` never matched `cvv`.
+ */
+const CARD_FIELD_NAME =
+  /(?:^|[^a-z0-9])(?:card[-_ ]?num(?:ber)?|cc[-_ ]?num(?:ber)?|credit[-_ ]?card(?:[-_ ]?num(?:ber)?)?|cvv|cvc|cc[-_ ]?csc)(?:[^a-z0-9]|$)/i;
+
+/** Input types that cannot hold a typed card number. */
+const NON_TEXT_INPUT_TYPE =
+  /^\s*(?:radio|checkbox|hidden|submit|button|image|reset)\s*$/i;
+
+/**
+ * What follows `document.cookie` when it is written or searched against a
+ * literal: `= "NAME=...`, `.indexOf("NAME=")`, `.match(/NAME=/)`. Group 1 is
+ * a quoted literal, group 2 a regex literal. Both are bounded, and the regex
+ * body alternates an escape with a character that is not one, so neither can
+ * backtrack across the other.
+ */
+const COOKIE_NAME_LITERAL =
+  /^\s*(?:=\s*|\.\s*(?:indexOf|includes|match|search|startsWith|test)\s*\(\s*)(?:["'`]([^"'`]{0,80})|\/((?:\\.|[^/\\\n]){1,120})\/)/;
+
+/** The cookie name a `document.cookie` access is written against, or null
+ *  when the name is computed and cannot be read from the source. */
+function cookieNameAfter(rest: string): string | null {
+  const m = COOKIE_NAME_LITERAL.exec(rest);
+  if (!m) return null;
+  const quoted = m[1] !== undefined;
+  const literal = m[1] ?? m[2];
+  const named = /([A-Za-z0-9_.%-]+)\s*=/.exec(literal);
+  if (named) return named[1];
+  const bare = literal.trim();
+  return quoted && /^[A-Za-z0-9_.%-]+$/.test(bare) ? bare : null;
+}
+
+/** Code that reads as an injected probe or payload, not as page behaviour. */
+const INJECTION_PAYLOAD =
+  /\b(?:alert|prompt|confirm|eval)\s*\(|document\.(?:cookie|domain)|\bfetch\s*\(|\blocation\s*=|\batob\s*\(|String\.fromCharCode|javascript:/i;
+
+/** The src an error-forcing probe uses: nothing, or one throwaway token. */
+const INJECTION_PROBE_SRC = /^(?:x|1|#)?$/i;
+
+/** `</title>` followed straight away by a script whose first statement is a
+ *  payload. The adjacency alone is how every minified head is written. */
+const TITLE_BREAKOUT = new RegExp(
+  String.raw`<\/title\s*>\s*<script\b[^>]{0,200}>\s*(?:${INJECTION_PAYLOAD.source})`,
+  "i",
+);
+
+/** How much of an event-handler attribute is read to tell handlers apart. */
+const INLINE_HANDLER_WINDOW = 300;
+
+const CDN_FALLBACK_HOSTS = new Set([
+  "cdnjs.cloudflare.com",
+  "cdn.jsdelivr.net",
+  "unpkg.com",
+]);
+
+/** Characters after a CDN script tag that can still be its fallback. */
+const CDN_FALLBACK_WINDOW = 600;
+
+/** The two shapes a local fallback takes: a truthiness test on the global the
+ *  library defines, or a typeof test for it. */
+const CDN_FALLBACK_SHAPE =
+  /!\s*window\.\w+|window\.\w+\s*\|\||typeof\s+\w+\s*===?\s*["']undefined["']/;
+
+/** Whether a script src names one of the public CDNs by its whole hostname. */
+function isFallbackCdnHost(src: string): boolean {
+  try {
+    return CDN_FALLBACK_HOSTS.has(
+      new URL(src.trim(), "https://page.invalid/").hostname,
+    );
+  } catch {
+    return false;
+  }
+}
 
 const DISCORD_WEBHOOK = discordWebhookPattern(
   DISCORD_HOST_RUN,
@@ -382,17 +465,25 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "autocomplete-sensitive": (_url, _headers, body) => {
-    const pwFields = tagsWith(body, "input", /type=["']password["']/i);
-    const ccFields = tagsWith(
-      body,
-      "input",
-      /(?:name|id)=["'][^"']*\b(?:card[-_]?number|cc[-_]?number|credit[-_]?card|cvv|cvc)\b[^"']*["']/i,
-    );
-    const noAC = [...pwFields, ...ccFields].filter(
-      (f) => !/autocomplete\s*=/i.test(f),
-    );
+    // Card fields only. A password field with no autocomplete attribute is the
+    // browser default and works with password managers, so reporting it was
+    // advice from the era when autocomplete="off" was honoured, and
+    // page-password-field-autocomplete-wrong owns the password case where the
+    // attribute is wrong rather than missing. A card number does gain from
+    // naming its token (cc-number, cc-exp, cc-csc): the browser can then
+    // offer the saved card and an assistive tool can say what the field is.
+    const noAC = tagsWith(body, "input", /\b(?:name|id)\s*=/i).filter((tag) => {
+      const attrs = startTagAttributes(tag);
+      // A radio or checkbox that picks "credit-card" as the payment method,
+      // and a button or hidden input, holds no card number to autofill.
+      return (
+        !NON_TEXT_INPUT_TYPE.test(attrs.type ?? "") &&
+        CARD_FIELD_NAME.test(`${attrs.name ?? ""} ${attrs.id ?? ""}`) &&
+        !("autocomplete" in attrs)
+      );
+    });
     return noAC.length > 0
-      ? `Found ${pluralize(noAC.length, "sensitive field")} without autocomplete attribute.`
+      ? `Found ${pluralize(noAC.length, "card field")} without an autocomplete attribute (cc-number, cc-exp and cc-csc let the browser fill it).`
       : null;
   },
 
@@ -508,14 +599,34 @@ const rawDetectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "base-tag": (_url, _headers, body) => {
-    const baseTag = body.match(/<base[^>]{0,2000}href=["']([^"']+)["']/i);
-    if (!baseTag) return null;
-    const csp = body.match(
-      /<meta[^>]{0,2000}content=["'][^"']*base-uri[^"']*["']/i,
-    );
-    if (csp) return null;
-    return `<base> tag found with href="${baseTag[1]}". Without CSP base-uri, this can be hijacked.`;
+  "base-tag": (url, headers, body) => {
+    // A <base href="/"> is how an app shell makes its relative URLs work, and
+    // a <base> that is already there adds no hijack risk: one injected ahead
+    // of it wins whether or not it exists. What is worth a finding is a base
+    // that points the page's relative URLs somewhere else, so the href is
+    // resolved against the page (protocol-relative and scheme changes
+    // included) and only another origin reports. A base-uri directive in the
+    // header or the meta CSP is the control that stops an injected base, so
+    // either one clears it.
+    const base = tagsWith(body, "base", /\bhref\s*=/i)
+      .map((tag) => startTagAttributes(tag).href)
+      .find((href) => href !== undefined && href.trim() !== "");
+    if (base === undefined) return null;
+    if (/\bbase-uri\b/i.test(getEffectiveCsp(headers, body))) return null;
+    let pageOrigin: string | null = null;
+    try {
+      pageOrigin = new URL(url).origin;
+    } catch {
+      pageOrigin = null;
+    }
+    let target: URL;
+    try {
+      target = new URL(base.trim(), url);
+    } catch {
+      return null;
+    }
+    if (target.origin === pageOrigin) return null;
+    return `<base> tag found with href="${base.trim().slice(0, 200)}", which sends the page's relative URLs to ${target.origin === "null" ? target.protocol : target.origin}. Without CSP base-uri, a <base> can also be injected.`;
   },
 
   "sensitive-meta-tags": (_url, _headers, body) => {
@@ -526,7 +637,6 @@ const rawDetectors: Record<string, DetectFn> = {
       /content=["'][^"']+["']/i,
     );
     const sensitiveNames = [
-      "csrf",
       "token",
       "api-key",
       "secret",
@@ -534,14 +644,21 @@ const rawDetectors: Record<string, DetectFn> = {
       "internal",
     ];
     // Match against the tag's name/property identifier only (e.g.
-    // name="csrf-token"), never the freeform content= value -- otherwise
+    // name="api-secret"), never the freeform content= value -- otherwise
     // ordinary copy that happens to use a word like "secrets" (e.g. a meta
     // description mentioning "...headers, TLS, cookies, DNS, and secrets")
     // gets flagged as if a real credential were exposed.
+    //
+    // csrf and xsrf names are left out on purpose: a CSRF token in a meta tag
+    // is the documented Laravel, Rails and Django way to hand the token to
+    // script, and any same-origin script can read it from a hidden input
+    // anyway. They have to be skipped by name, not just dropped from the
+    // list, because "csrf-token" also contains "token".
     const found = metas.filter((m) => {
       const identifier = m.match(/(?:name|property)=["']([^"']*)["']/i)?.[1];
       if (!identifier) return false;
       const lower = identifier.toLowerCase();
+      if (/csrf|xsrf/.test(lower)) return false;
       return sensitiveNames.some((s) => lower.includes(s));
     });
     return found.length > 0
@@ -655,13 +772,27 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "cdn-fallback-missing": (_url, _headers, body) => {
-    const cdnScripts = tagsWith(
-      body,
-      "script",
-      /src=["'][^"']*(?:cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com)[^"']*["']/i,
+    // Judged per script. The page used to be cleared by any `onerror=` in the
+    // whole body, so an unrelated <img onerror> hid a cdnjs script with no
+    // fallback. A script has one if its own tag handles onerror, or if the
+    // inline code right after it tests for the library and loads a local copy
+    // (`window.jQuery || document.write(...)`, `typeof X === "undefined"`).
+    // That inline block is also where a script that is configured after it
+    // loads (MathJax) puts its setup, so the window runs past the closing tag.
+    const withoutFallback = openTagsAt(body, ["script"]).filter(
+      ({ index, tag }) => {
+        const attrs = startTagAttributes(tag);
+        if (!attrs.src || !isFallbackCdnHost(attrs.src)) return false;
+        if ("onerror" in attrs) return false;
+        const after = body.slice(
+          index + tag.length,
+          index + tag.length + CDN_FALLBACK_WINDOW,
+        );
+        return !CDN_FALLBACK_SHAPE.test(after);
+      },
     );
-    if (cdnScripts.length > 0 && !/onerror\s*=/i.test(body)) {
-      return `${pluralize(cdnScripts.length, "CDN script")} without fallback mechanism.`;
+    if (withoutFallback.length > 0) {
+      return `${pluralize(withoutFallback.length, "CDN script")} without fallback mechanism.`;
     }
     return null;
   },
@@ -882,11 +1013,22 @@ const rawDetectors: Record<string, DetectFn> = {
     // Authored inline scripts only, by extractScriptContents' rules. This
     // walked the tags itself and skipped any script whose text contained
     // "src=", which included every script that sets an image's src.
-    const scripts = extractScriptContents(body);
+    //
+    // First-party code only: a script that looksBundled is a vendor library
+    // (a proof-of-work interstitial's js-sha1 was graded as the site's own
+    // code), and what is dangerous in a library is not something the site
+    // can act on from here.
+    //
+    // eval( and .innerHTML = are not in this list any more. They are the
+    // sinks eval-in-client-script and innerhtml-xss-sink report, with a
+    // literal-argument and a taint rule this id never had: it fired on
+    // `box.innerHTML = ""` and on `eval("require('crypto')")`, and the same
+    // line came back as three findings.
+    const scripts = extractScriptContents(body).filter(
+      (script) => !looksBundled(script),
+    );
     const dangerousPatterns = [
-      /eval\s*\(/i,
       /document\.write\s*\(/i,
-      /\.innerHTML\s*=\s*(?!['"]<)/i,
       // Was /Function\s*\(/i, which (case-insensitively) matched the
       // ordinary `function(` keyword present in almost every inline
       // script on the web -- not just the actual Function constructor
@@ -910,11 +1052,32 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "inline-event-handlers": (_url, _headers, body) => {
-    const handlers = body.match(
-      /\son(click|error|load|mouseover|focus|blur|submit|change|input)\s*=\s*["']/gi,
-    );
-    if (!handlers || handlers.length < 3) return null;
-    return `${handlers.length} inline event handler attributes found (onclick, onerror, etc.).`;
+    // Counted as attributes and as distinct bodies: a framework that stamps the
+    // same onerror on fifty images (Nuxt Image does) is one handler written
+    // once, and the report used to show fifty identical lines of it. The
+    // sample is capped at five distinct handlers. Each body is read from a
+    // fixed-size window, so an opening quote with no partner cannot make the
+    // scan run to the end of the page from every handler in it.
+    const opener =
+      /\son(click|error|load|mouseover|focus|blur|submit|change|input)\s*=\s*(["'])/gi;
+    let count = 0;
+    const distinct = new Map<string, string>();
+    for (const m of body.matchAll(opener)) {
+      count++;
+      const start = m.index + m[0].length;
+      const chunk = body.slice(start, start + INLINE_HANDLER_WINDOW);
+      const close = chunk.indexOf(m[2]);
+      const code = (close === -1 ? chunk : chunk.slice(0, close)).trim();
+      const key = `${m[1].toLowerCase()}=${code}`;
+      if (!distinct.has(key)) {
+        distinct.set(key, `on${m[1].toLowerCase()}="${code.slice(0, 60)}"`);
+      }
+    }
+    if (count < 3) return null;
+    const sample = [...distinct.values()].slice(0, 5).join("; ");
+    const more =
+      distinct.size > 5 ? `; and ${distinct.size - 5} more distinct` : "";
+    return `${count} inline event handler attributes, ${distinct.size} distinct handlers: ${sample}${more}.`;
   },
 
   "dangerous-html-attrs": (_url, _headers, body) => {
@@ -1293,23 +1456,29 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "document-cookie-access": (_url, _headers, body) => {
-    // Require each access to sit near a session/auth-looking key name, the
-    // same key-name-allowlist idea storage-api-usage already applies a few
-    // lines below -- a raw document.cookie count alone can't distinguish a
-    // cookie-consent banner or analytics client-id housekeeping (which read
-    // document.cookie constantly) from real session-cookie handling.
-    const sensitiveKey = /token|jwt|auth|session|secret|password/i;
+    // Judge the cookie's NAME, never the text around the access. A raw
+    // document.cookie count can't distinguish a cookie-consent banner or an
+    // analytics client id (which read document.cookie constantly) from
+    // session-cookie handling, and the first fix, looking for a keyword
+    // within 60 characters, matched "auth" inside "author" and a function
+    // parameter called token. The name is the string or regex literal the
+    // access is written against; an access whose name is computed at run time
+    // can't be judged from here and is not reported.
     const re = /document\.cookie/g;
     let m: RegExpExecArray | null;
+    const names: string[] = [];
     let sensitive = 0;
     while ((m = re.exec(body))) {
-      if (
-        sensitiveKey.test(body.slice(Math.max(0, m.index - 60), m.index + 60))
-      )
+      const name = cookieNameAfter(
+        body.slice(m.index + m[0].length, m.index + m[0].length + 200),
+      );
+      if (name !== null && isSessionLikeName(name)) {
         sensitive++;
+        if (!names.includes(name) && names.length < 5) names.push(name);
+      }
     }
     if (sensitive > 0) {
-      return `${pluralize(sensitive, "document.cookie access", "document.cookie accesses")} near session/auth data - consider HttpOnly cookies.`;
+      return `${pluralize(sensitive, "document.cookie access", "document.cookie accesses")} near session or auth cookie names (${names.join(", ")}). A cookie that script can read can be stolen by XSS, so set HttpOnly on anything that authenticates.`;
     }
     return null;
   },
@@ -1324,10 +1493,18 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "clipboard-access": (_url, _headers, body) => {
+    // Reads only. Writing is what every copy button does, and it needs no
+    // permission, so `navigator.clipboard.writeText(addr.value)` told a page
+    // with a copy-address button that it was a data exfiltration vector.
+    // Reading the clipboard is permission-gated and is the call that can
+    // take something the user copied elsewhere; clipboard-hijack-pattern
+    // already covers a page rewriting what the user copies.
     if (
-      /navigator\.clipboard|document\.execCommand\s*\(\s*["']copy/gi.test(body)
+      /navigator\.clipboard\s*\.\s*read(?:Text)?\s*\(|document\.execCommand\s*\(\s*["']paste["']/i.test(
+        body,
+      )
     ) {
-      return "Clipboard API access detected - potential data exfiltration vector.";
+      return "Page script reads the clipboard (navigator.clipboard.read or a paste command).";
     }
     return null;
   },
@@ -1349,11 +1526,32 @@ const rawDetectors: Record<string, DetectFn> = {
   // ── HTML patterns (link / iframe / form) ────────────────────────────────
 
   "html-injection-patterns": (_url, _headers, body) => {
-    // Strip scripts so the scanner's own detection patterns in the JS bundle
-    // don't self-trigger when scanning this application.
+    // Two shapes, each judged by what the injected code does. A bare
+    // <img onerror> is not one: Nuxt Image writes
+    // onerror="this.setAttribute('data-error', 1)" on every image it renders,
+    // and a high-severity finding that said user input was reflected fired
+    // fifty times on a page with no input at all. The handler has to be
+    // payload-shaped (a probe like alert(1), a cookie read, a beacon), or the
+    // src has to be the throwaway value a probe uses to force the error.
+    //
+    // Scripts are stripped for the image half so the scanner's own detection
+    // patterns in a JS bundle don't self-trigger when scanning this
+    // application. The title half is the opposite: the script IS the thing
+    // looked for, so it reads the page with only code samples removed. It
+    // used to read the stripped view too, where it could never match.
     const html = stripExampleContent(body);
-    if (/<\/title><script|<img[^>]{0,2000}onerror/gi.test(html)) {
-      return "HTML injection patterns detected in page output.";
+    for (const tag of tagsWith(html, "img", /\bonerror\s*=/i)) {
+      const attrs = startTagAttributes(tag);
+      const probeSrc =
+        "src" in attrs &&
+        INJECTION_PROBE_SRC.test(attrs.src) &&
+        !Object.keys(attrs).some((name) => /^data-.*src/.test(name));
+      if (probeSrc || INJECTION_PAYLOAD.test(attrs.onerror ?? "")) {
+        return "HTML injection patterns detected in page output: an <img> with an onerror handler that looks like an injected payload.";
+      }
+    }
+    if (TITLE_BREAKOUT.test(stripDocBlocks(body))) {
+      return "HTML injection patterns detected in page output: the title is closed and a script that looks like an injected payload follows it.";
     }
     return null;
   },
@@ -1560,30 +1758,16 @@ const rawDetectors: Record<string, DetectFn> = {
 
   // ── Open redirect ────────────────────────────────────────────────────────
 
-  "open-redirect": (_url, _headers, body) => {
-    const patterns = [
-      // Only flag when the redirect parameter value starts with an absolute
-      // URL (http/https or protocol-relative //). Relative values like
-      // ?next=/dashboard are normal SPA navigation — flagging them causes
-      // false positives on virtually every authenticated web app.
-      /[?&](?:redirect|return|next|url|goto|dest|redir|returnTo|continue|forward|target)=(?:https?%3A|https?:|\/\/)[^&"'\s]*/gi,
-      // The optional wrapper call sat between two `\s*` runs and could match
-      // nothing, which left the two runs adjacent and free to split the same
-      // whitespace every way: `"window.location =" + " ".repeat(n)` measured
-      // 274 ms at 16 KB and 16,246 ms at 128 KB. Folding the paren into the
-      // optional group means the group can only start on `d`, `u` or `(`, so
-      // the leading `\s*` is the only run that can claim a space.
-      /window\.location\s*=\s*(?:(?:decodeURIComponent|unescape)?\(\s*)?(?:new\s+URLSearchParams|location\.(?:search|hash))/gi,
-    ];
-    const found: string[] = [];
-    for (const p of patterns) {
-      const matches = body.match(p) || [];
-      found.push(...matches.slice(0, 3));
-    }
-    return found.length > 0
-      ? `Found ${pluralize(found.length, "open-redirect pattern")}: ${found.slice(0, 2).join(", ")}`
-      : null;
-  },
+  // Inert on purpose (owner decision D1): the check is retired in favour of
+  // page-open-redirect-param-shape, which reads the same links against the
+  // page's own origin and a parameter-name allowlist. This one matched `url=`
+  // and `target=` values, the names oEmbed endpoints and /_next/image use for
+  // a same-origin or image URL, and reported one real redirect link twice
+  // (once here, once there). Its second branch, location assigned from the
+  // query string, is what open-redirect-client-js reports. The id stays
+  // defined so a stored scan that carries it still renders; the wave that
+  // retires the id removes this stub with its checks-data object.
+  "open-redirect": () => null,
 
   // ── Server-info (config headers + version disclosure) ──────────────────
 
@@ -2326,12 +2510,66 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "iframe-allow-scripts-allow-same-origin": (url, _headers, body) => {
-    const iframes = tagsWith(body, "iframe", /sandbox\s*=\s*["'][^"']+["']/i);
-    const bad = iframes.filter(
-      (f) => /allow-scripts/.test(f) && /allow-same-origin/.test(f),
-    );
-    if (bad.length > 0)
-      return `Found ${pluralize(bad.length, "sandboxed iframe")} allowing both scripts and same-origin.`;
+    // allow-scripts with allow-same-origin lets the framed document remove its
+    // own sandbox, but only a document that can reach the embedder's DOM can
+    // do that, which means one with the embedder's origin: a same-origin or
+    // relative src, a srcdoc, a blob: URL the page made, or nothing loaded
+    // yet (about:blank inherits the origin). A cross-origin src is cut off by
+    // the same-origin policy whatever the flags say, which is why Discord's
+    // own widget snippet (allow-scripts and allow-same-origin on
+    // discord.com/widget) is not a finding. data: gets an opaque origin, so it
+    // is cross-origin for this purpose too.
+    //
+    // The tokenizer reads the tags, not tagsWith: a srcdoc value may hold an
+    // unescaped ">" and that ends the tag early for a regex, dropping a
+    // sandbox attribute written after it.
+    let pageOrigin: string | null = null;
+    try {
+      pageOrigin = new URL(url).origin;
+    } catch {
+      pageOrigin = null;
+    }
+    let bad = 0;
+    for (const token of tokenize(body)) {
+      if (token.kind !== "start" || token.tag !== "iframe") continue;
+      const flags = (token.attrs.sandbox ?? "").toLowerCase().split(/\s+/);
+      if (
+        !flags.includes("allow-scripts") ||
+        !flags.includes("allow-same-origin")
+      ) {
+        continue;
+      }
+      if ("srcdoc" in token.attrs) {
+        bad++;
+        continue;
+      }
+      const src = (token.attrs.src ?? "").trim();
+      if (src === "" || /^about:blank\b/i.test(src)) {
+        bad++;
+        continue;
+      }
+      let target: URL;
+      try {
+        target = new URL(src, url);
+      } catch {
+        bad++;
+        continue;
+      }
+      // A data: document gets an opaque origin even with allow-same-origin,
+      // so it cannot reach this page; blob:, javascript: and vbscript: run in
+      // the origin that made them.
+      if (target.protocol === "data:") continue;
+      if (
+        target.protocol === "blob:" ||
+        target.protocol === "javascript:" ||
+        target.protocol === "vbscript:" ||
+        target.origin === pageOrigin
+      ) {
+        bad++;
+      }
+    }
+    if (bad > 0)
+      return `Found ${pluralize(bad, "sandboxed iframe")} allowing both scripts and same-origin on a document that shares this page's origin.`;
     return null;
   },
 
@@ -2672,7 +2910,6 @@ const READS_CODE = new Set([
   "clipboard-access",
   "webcam-microphone-access",
   "reflected-input",
-  "open-redirect",
   "sw-insecure",
   "weak-crypto",
   "ssrf-vectors",

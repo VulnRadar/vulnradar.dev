@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 import { parsePagination } from "@/lib/api/pagination";
 import { requirePermission, logAction } from "@/lib/auth/authorization";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
@@ -31,7 +32,7 @@ async function requireContentModerator() {
  * instrumentation.ts comment for why that flag is a separate concept from
  * scan_history.is_public (the host_reputation feed, "hosts" above).
  */
-export async function GET(request: NextRequest) {
+export const GET = withErrorHandling(async (request: NextRequest) => {
   try {
     const user = await requireContentModerator();
     if (!user) {
@@ -103,9 +104,9 @@ export async function GET(request: NextRequest) {
       { status: 500 },
     );
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandling(async (request: NextRequest) => {
   try {
     const user = await requireContentModerator();
     if (!user) {
@@ -113,7 +114,9 @@ export async function POST(request: NextRequest) {
     }
 
     const ip = await getClientIp();
-    const body = await request.json();
+    const parsed = await readJsonObject(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const { action } = body;
 
     switch (action) {
@@ -218,4 +221,4 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
-}
+});

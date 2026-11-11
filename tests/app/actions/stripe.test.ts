@@ -1238,3 +1238,124 @@ describe("confirmBrowserbaseCreditPurchase", () => {
     expect(result.minutes).toBe(0);
   });
 });
+
+// A plan switch prorates against the card already on file, a new subscription
+// or a credit purchase can be paid from what the customer's Stripe customer
+// already holds (a saved card, a credit balance, a coupon), and the billing
+// portal can cancel, change the card or download every invoice: none of it is
+// for a staff member who opened the account to reproduce a bug. Each refuses
+// with the impersonation guard's sentence, thrown because a server action has
+// no response to return it in, and before Stripe or the database is touched.
+describe("during an impersonation", () => {
+  const IMPERSONATED = { userId: 7, impersonatedBy: 2 };
+  const switchable = {
+    email: "user@example.com",
+    name: "User",
+    stripe_customer_id: "cus_1",
+    stripe_subscription_id: "sub_existing",
+    subscription_status: "active",
+  };
+
+  function expectNothingTouched() {
+    expect(mockGetStripe).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockCustomersCreate).not.toHaveBeenCalled();
+    expect(mockSubscriptionsCreate).not.toHaveBeenCalled();
+    expect(mockSubscriptionsUpdate).not.toHaveBeenCalled();
+    expect(mockPaymentIntentsCreate).not.toHaveBeenCalled();
+  }
+
+  beforeEach(() => {
+    mockGetStripe.mockClear();
+  });
+
+  it("refuses to start a new subscription for the customer", async () => {
+    mockGetSession.mockResolvedValue(IMPERSONATED);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ ...switchable, stripe_subscription_id: null }],
+    });
+    mockSubscriptionsCreate.mockResolvedValue({
+      id: "sub_new",
+      status: "active",
+      latest_invoice: null,
+    });
+
+    await expect(createSubscription("core_supporter_monthly")).rejects.toThrow(
+      /impersonation session.*admin/i,
+    );
+    expectNothingTouched();
+  });
+
+  it("refuses the staff floor plan change too, which never reaches Stripe", async () => {
+    mockGetSession.mockResolvedValue({ ...IMPERSONATED, role: "moderator" });
+
+    await expect(createSubscription("pro_supporter_monthly")).rejects.toThrow(
+      /impersonation session.*admin/i,
+    );
+    expectNothingTouched();
+  });
+
+  it.each([
+    [
+      "createAiCreditPaymentIntent",
+      () => createAiCreditPaymentIntent("ai_credits_1m"),
+    ],
+    [
+      "createGithubCreditPaymentIntent",
+      () => createGithubCreditPaymentIntent("github_credits_1m"),
+    ],
+    [
+      "createBrowserbaseCreditPaymentIntent",
+      () => createBrowserbaseCreditPaymentIntent("browserbase_credits_30m"),
+    ],
+  ])("%s refuses to start a payment on the customer", async (_name, start) => {
+    mockGetSession.mockResolvedValue(IMPERSONATED);
+    mockPaymentIntentsCreate.mockResolvedValue({
+      id: "pi_1",
+      client_secret: "pi_1_secret",
+    });
+
+    await expect(start()).rejects.toThrow(/impersonation session.*admin/i);
+    expectNothingTouched();
+  });
+
+  it("refuses to switch the customer's live subscription to another price", async () => {
+    mockGetSession.mockResolvedValue(IMPERSONATED);
+    mockQuery.mockResolvedValueOnce({ rows: [switchable] });
+    mockSubscriptionsRetrieve.mockResolvedValue({
+      id: "sub_existing",
+      status: "active",
+      items: { data: [{ id: "si_existing" }] },
+    });
+
+    await expect(createSubscription("elite_supporter_monthly")).rejects.toThrow(
+      /impersonation session.*admin/i,
+    );
+    expect(mockSubscriptionsUpdate).not.toHaveBeenCalled();
+    expect(mockSubscriptionsCreate).not.toHaveBeenCalled();
+  });
+
+  it("refuses to open the customer's billing portal", async () => {
+    mockGetSession.mockResolvedValue(IMPERSONATED);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ stripe_customer_id: "cus_1" }],
+    });
+
+    await expect(createBillingPortalSession()).rejects.toThrow(
+      /impersonation session.*admin/i,
+    );
+    expect(mockBillingPortalSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it("still opens the portal for the account holder", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ stripe_customer_id: "cus_1" }],
+    });
+    mockBillingPortalSessionsCreate.mockResolvedValue({
+      url: "https://billing.stripe.test/s",
+    });
+    await expect(createBillingPortalSession()).resolves.toEqual({
+      url: "https://billing.stripe.test/s",
+    });
+  });
+});

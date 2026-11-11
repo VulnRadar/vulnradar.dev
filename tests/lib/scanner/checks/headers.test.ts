@@ -1748,16 +1748,69 @@ const fixtures: DetectorFixtures = {
 
   "sri-missing": [
     {
-      description: "external script without integrity attribute fires",
+      description:
+        "another site's script without integrity attribute fires and names the URL",
       url: "https://example.com/",
-      body: '<html><body><script src="https://cdn.example.com/lib.js"></script></body></html>',
+      body: '<html><body><script src="https://cdn.other-site.net/lib.js"></script></body></html>',
       expect: "fire",
-      evidenceIncludes: "external script",
+      evidenceIncludes: "https://cdn.other-site.net/lib.js",
     },
     {
       description: "external script with integrity attribute — no fire",
       url: "https://example.com/",
-      body: '<html><body><script src="https://cdn.example.com/lib.js" integrity="sha384-abc"></script></body></html>',
+      body: '<html><body><script src="https://cdn.other-site.net/lib.js" integrity="sha384-abc"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "a pinned library CDN script without integrity still fires",
+      url: "https://example.com/",
+      body: '<html><body><script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script></body></html>',
+      expect: "fire",
+      evidenceIncludes: "lodash@4.17.21",
+    },
+    {
+      description:
+        "the page's own assets written as absolute URLs are not someone else's (default port included)",
+      url: "https://example.com/",
+      body: '<html><body><script src="https://example.com:443/lib/javascript.php/1/require.min.js"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "a script on the www host of the page's own site",
+      url: "https://example.com/",
+      body: '<html><body><script src="https://www.example.com/a.js"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "a first-party cdn subdomain of the page's own site",
+      url: "https://example.com/",
+      body: '<html><body><script src="https://cdn.example.com/lib.js"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "a protocol-relative URL on the page's own host",
+      url: "https://example.com/",
+      body: '<html><body><script src="//example.com/a.js"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "a protocol-relative URL on another site is seen, not skipped",
+      url: "https://example.com/",
+      body: '<html><body><script src="//cdn.other-site.net/a.js"></script></body></html>',
+      expect: "fire",
+      evidenceIncludes: "https://cdn.other-site.net/a.js",
+    },
+    {
+      description: "Google Maps is mutable by design, exempt",
+      url: "https://example.com/",
+      body: '<html><body><script src="https://maps.googleapis.com/maps/api/js?key=k"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "data-src is a lazy-load attribute, not the script's src",
+      url: "https://example.com/",
+      body: '<html><body><script data-src="https://cdn.other-site.net/a.js"></script></body></html>',
       expect: "skip",
     },
     {
@@ -1840,11 +1893,44 @@ const fixtures: DetectorFixtures = {
 
   "sri-stylesheet-missing": [
     {
-      description: "external stylesheet without integrity attribute fires",
+      description:
+        "another site's stylesheet without integrity attribute fires and names the URL",
+      url: "https://example.com/",
+      body: '<html><head><link rel="stylesheet" href="https://cdn.other-site.net/style.css"></head></html>',
+      expect: "fire",
+      evidenceIncludes: "https://cdn.other-site.net/style.css",
+    },
+    {
+      description: "stylesheet with an integrity attribute",
+      url: "https://example.com/",
+      body: '<html><head><link rel="stylesheet" href="https://cdn.other-site.net/style.css" integrity="sha384-abc"></head></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "the page's own stylesheet as an absolute URL with a default port (Moodle)",
+      url: "https://example.com/",
+      body: '<html><head><link rel="stylesheet" href="https://example.com:443/theme/styles.php/boost/1/all"></head></html>',
+      expect: "skip",
+    },
+    {
+      description: "a first-party cdn subdomain's stylesheet",
       url: "https://example.com/",
       body: '<html><head><link rel="stylesheet" href="https://cdn.example.com/style.css"></head></html>',
+      expect: "skip",
+    },
+    {
+      description: "rel list that includes stylesheet, in either order",
+      url: "https://example.com/",
+      body: '<html><head><link href="https://cdn.other-site.net/a.css" rel="alternate stylesheet"></head></html>',
       expect: "fire",
-      evidenceIncludes: "stylesheet",
+      evidenceIncludes: "a.css",
+    },
+    {
+      description: "a preload link is not a stylesheet",
+      url: "https://example.com/",
+      body: '<html><head><link rel="preload" as="style" href="https://cdn.other-site.net/a.css"></head></html>',
+      expect: "skip",
     },
     {
       description:
@@ -1928,6 +2014,38 @@ const fixtures: DetectorFixtures = {
       url: "https://example.com/login",
       body: '<html><body><form><input name="user" autocomplete="username"><input type="password" name="pass"></form></body></html>',
       expect: "skip",
+    },
+    {
+      // The app's own login: React emits autoComplete="email" on name="email".
+      description: "login form: email input with autocomplete=email",
+      url: "https://example.com/login",
+      body: '<html><body><form><input name="email" type="email" autoComplete="email"><input type="password" name="pass"></form></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "login form: autocomplete with a webauthn token",
+      url: "https://example.com/login",
+      body: '<html><body><form><input name="username" autocomplete="username webauthn"><input type="password" name="pass"></form></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "login form: only a bare webauthn token after a section",
+      url: "https://example.com/login",
+      body: '<html><body><form><input name="username" autocomplete="section-login webauthn"><input type="password" name="pass"></form></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "login form: autocomplete=off on the identifier",
+      url: "https://example.com/login",
+      body: '<html><body><form><input name="user" autocomplete="off"><input type="password" name="pass"></form></body></html>',
+      expect: "fire",
+    },
+    {
+      description:
+        "login form: data-autocomplete does not stand in for autocomplete",
+      url: "https://example.com/login",
+      body: '<html><body><form><input name="user" data-autocomplete="username"><input type="password" name="pass"></form></body></html>',
+      expect: "fire",
     },
     {
       description:
@@ -2088,12 +2206,27 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
+  // Retired (D1): the id is an inert stub until the retirement pass removes
+  // it, and page-anchor-target-blank-no-noopener is the one anchor check.
   "target-blank-no-noopener": [
     {
-      description: "target=_blank without rel=noopener",
+      description: "same-origin target=_blank without rel no longer reports",
       url: "https://example.com/",
       body: '<html><body><a href="https://example.com/" target="_blank">x</a></body></html>',
-      expect: "fire",
+      expect: "skip",
+    },
+    {
+      description: "cross-origin plain target=_blank no longer reports",
+      url: "https://example.com/",
+      body: '<html><body><a href="https://other.example/x" target="_blank">x</a></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "rel=opener, the case the page check owns, is not reported here",
+      url: "https://example.com/",
+      body: '<html><body><a href="https://other.example/x" target="_blank" rel="opener">x</a></body></html>',
+      expect: "skip",
     },
     {
       description: "target=_blank with rel=noopener",
@@ -2329,18 +2462,35 @@ runDetectorTests(detectors, fixtures);
 
 describe("count wording", () => {
   const url = "https://example.com/";
-  const blank = (n: number) =>
-    '<a href="https://example.org/" target="_blank">x</a>'.repeat(n);
   const frame = (n: number) =>
     '<iframe src="https://widget.chat-example.com/embed"></iframe>'.repeat(n);
 
-  it("agrees with one link and with several", () => {
+  it("keeps the retired target-blank check silent whatever the page holds", () => {
     const run = detectors["target-blank-no-noopener"];
-    expect(run(url, new Headers(), blank(1))).toContain(
-      '1 target="_blank" link lacks rel=',
+    const links = '<a href="https://example.org/" target="_blank">x</a>'.repeat(
+      3,
     );
-    expect(run(url, new Headers(), blank(2))).toContain(
-      '2 target="_blank" links lack rel=',
+    expect(run(url, new Headers(), links)).toBeNull();
+    expect(run(url, new Headers(), "")).toBeNull();
+  });
+
+  it("names how many resources lack integrity and lists the first three", () => {
+    const run = detectors["sri-missing"];
+    const scripts = [1, 2, 3, 4]
+      .map((i) => `<script src="https://cdn.other-site.net/${i}.js"></script>`)
+      .join("");
+    const evidence = run(url, new Headers(), scripts) ?? "";
+    expect(evidence).toContain("4 external scripts without integrity");
+    expect(evidence).toContain("https://cdn.other-site.net/3.js");
+    expect(evidence).not.toContain("https://cdn.other-site.net/4.js");
+    expect(evidence).toContain("and 1 more");
+  });
+
+  it("counts a script repeated in the page once", () => {
+    const run = detectors["sri-missing"];
+    const tag = '<script src="https://cdn.other-site.net/a.js"></script>';
+    expect(run(url, new Headers(), tag + tag)).toContain(
+      "1 external script without integrity",
     );
   });
 

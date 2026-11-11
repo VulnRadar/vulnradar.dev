@@ -28,7 +28,10 @@ vi.mock("@/lib/api/api-keys", () => ({
 const mockCheckRateLimit = vi.fn();
 vi.mock("@/lib/rate-limiting/rate-limit", () => ({
   checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
-  RATE_LIMITS: { api: { maxAttempts: 100, windowSeconds: 3600 } },
+  RATE_LIMITS: {
+    api: { limit: "api", maxAttempts: 100, windowSeconds: 3600 },
+    reputation: { limit: "reputation", maxAttempts: 600, windowSeconds: 3600 },
+  },
 }));
 
 const { GET } = await import("@/app/api/v3/scan/reputation/route");
@@ -79,6 +82,17 @@ describe("GET /api/v3/scan/reputation", () => {
       getRequest("example.com", { authorization: "Bearer good-key" }),
     );
     expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("TERMS_ACCEPTANCE_REQUIRED");
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("403s a key without scan:read", async () => {
+    mockValidateApiKey.mockResolvedValue({ userId: 7, scopes: ["scan:write"] });
+    const res = await GET(
+      getRequest("example.com", { authorization: "Bearer write-only" }),
+    );
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("SCOPE_MISSING");
   });
 
   it("authenticates via a valid API key", async () => {
@@ -100,16 +114,69 @@ describe("GET /api/v3/scan/reputation", () => {
     });
     const res = await GET(getRequest("example.com"));
     expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("120");
+    expect((await res.json()).code).toBe("RATE_LIMITED");
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("400s when host is missing", async () => {
+  // The extension looks up every site its user visits, so this route has its
+  // own, much higher, named limit rather than the general API cap.
+  it("counts against the reputation limit, not the general API one", async () => {
+    await GET(getRequest("example.com"));
+    expect(mockCheckRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "scan-reputation:7",
+        limit: "reputation",
+      }),
+    );
+  });
+
+  // Validated before the limiter: a tab on an IP address or a browser page
+  // must not spend the caller's window.
+  it("400s when host is missing, without spending the rate limit", async () => {
     const res = await GET(getRequest());
     expect(res.status).toBe(400);
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
   });
 
-  it("400s for a raw-IP host (host_reputation only tracks domains)", async () => {
+  it("400s for a raw-IP host (host_reputation only tracks domains), without spending the rate limit", async () => {
     const res = await GET(getRequest("192.168.1.1"));
     expect(res.status).toBe(400);
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("answers an exact page match by origin and path, with the public id and without the stored query", async () => {
+    const publicId = "fedcba9876543210fedcba9876543210";
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 77,
+          public_id: publicId,
+          origin_path: "https://example.com/account",
+          findings: [{ severity: "high", title: "Missing HSTS" }],
+          scanned_at: "2026-02-01T00:00:00.000Z",
+        },
+      ],
+      rowCount: 1,
+    });
+    const url = "https://example.com/account";
+    const res = await GET(
+      new NextRequest(
+        `http://localhost/api/v3/scan/reputation?host=example.com&url=${encodeURIComponent(url)}`,
+      ),
+    );
+    const body = await res.json();
+    expect(body).toMatchObject({
+      known: true,
+      matchType: "exact",
+      scanId: 77,
+      scanPublicId: publicId,
+      scannedUrl: "https://example.com/account",
+    });
+    const [, params] = mockQuery.mock.calls[0];
+    expect(params).toEqual([
+      ["https://example.com/account", "https://example.com/account/"],
+    ]);
   });
 
   it("normalizes the host the same way storage does before looking it up", async () => {
@@ -130,6 +197,7 @@ describe("GET /api/v3/scan/reputation", () => {
       severityCounts: null,
       lastScannedAt: null,
       scanId: null,
+      scanPublicId: null,
       matchType: null,
       scannedUrl: null,
     });
@@ -143,6 +211,7 @@ describe("GET /api/v3/scan/reputation", () => {
           severity_counts: { critical: 1, high: 2, medium: 0, low: 3, info: 5 },
           last_scanned_at: "2026-01-01T00:00:00.000Z",
           source_scan_id: 42,
+          source_scan_public_id: "0123456789abcdef0123456789abcdef",
           scanned_url: "https://bad-site.com/some/page",
           findings: [
             { severity: "critical", title: "SQL Injection" },
@@ -163,6 +232,7 @@ describe("GET /api/v3/scan/reputation", () => {
       severityCounts: { critical: 1, high: 2, medium: 0, low: 3, info: 5 },
       lastScannedAt: "2026-01-01T00:00:00.000Z",
       scanId: 42,
+      scanPublicId: "0123456789abcdef0123456789abcdef",
       matchType: "host",
       // Never the row's real scanned_url on a host-level fallback match --
       // that would leak an unrelated user's scanned URL (and its query
@@ -208,6 +278,7 @@ describe("GET /api/v3/scan/reputation", () => {
     const body = await res.json();
     expect(body.known).toBe(true);
     expect(body.scanId).toBeNull();
+    expect(body.scanPublicId).toBeNull();
   });
 
   it("500s and does not leak the raw error when the query throws", async () => {

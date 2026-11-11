@@ -21,7 +21,11 @@ import {
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import pool from "@/lib/database/db";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { Validate } from "@/lib/api/api-utils";
+import {
+  readJsonObject,
+  Validate,
+  withErrorHandling,
+} from "@/lib/api/api-utils";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import {
   AUTH_SESSION_COOKIE_NAME,
@@ -57,7 +61,10 @@ async function confirmCurrentPassword(
       {
         error: `Too many attempts. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
       },
-      { status: 429 },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfterSeconds) },
+      },
     );
   }
 
@@ -71,7 +78,7 @@ async function confirmCurrentPassword(
   return null;
 }
 
-export async function PATCH(request: NextRequest) {
+export const PATCH = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) {
     return NextResponse.json(
@@ -91,14 +98,18 @@ export async function PATCH(request: NextRequest) {
       {
         error: `Too many update attempts. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
       },
-      { status: 429 },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfterSeconds) },
+      },
     );
   }
 
-  try {
-    const body = await request.json();
-    const { name, email, currentPassword, newPassword, avatarUrl } = body;
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { name, email, currentPassword, newPassword, avatarUrl } = parsed.data;
 
+  try {
     // Changing the email redirects every future password reset, which is
     // account takeover in one step: the admin panel says so in as many words
     // and puts it behind a password prompt. Through an impersonation session
@@ -132,6 +143,13 @@ export async function PATCH(request: NextRequest) {
     // reach a write.
     const wantsEmailChange = typeof email === "string" && email.trim() !== "";
     const wantsPasswordChange = Boolean(newPassword);
+    if (wantsPasswordChange && typeof newPassword !== "string") {
+      return NextResponse.json(
+        { error: "The new password must be text." },
+        { status: 400 },
+      );
+    }
+    const nextPassword = typeof newPassword === "string" ? newPassword : "";
     if (wantsEmailChange || wantsPasswordChange) {
       const refused = await confirmCurrentPassword(
         session.userId,
@@ -377,7 +395,7 @@ export async function PATCH(request: NextRequest) {
       // Advisory strength gate first (common/low-entropy passwords), matching
       // signup and reset-password -- the profile change was the one path that
       // let a user rotate to "Password1!".
-      const pwAnalysis = analyzePassword(newPassword);
+      const pwAnalysis = analyzePassword(nextPassword);
       if (!meetsMinimumPasswordScore(pwAnalysis.score)) {
         return NextResponse.json(
           {
@@ -394,7 +412,7 @@ export async function PATCH(request: NextRequest) {
       // case, digit, symbol, not built from the account's own email/name).
       const minLength = await getSetting("PASSWORD_MIN_LENGTH");
       const pwRequirements = checkPasswordRequirements(
-        newPassword,
+        nextPassword,
         { email: currentEmail, name: currentName },
         minLength,
       );
@@ -407,7 +425,7 @@ export async function PATCH(request: NextRequest) {
         );
       }
 
-      const newHash = await hashPassword(newPassword);
+      const newHash = await hashPassword(nextPassword);
       await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [
         newHash,
         session.userId,
@@ -560,4 +578,4 @@ export async function PATCH(request: NextRequest) {
       { status: 500 },
     );
   }
-}
+});

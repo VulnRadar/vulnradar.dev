@@ -5,6 +5,7 @@
     "title": "Potential Open Redirect Parameters",
     "category": "content",
     "severity": "medium",
+    "documentationOnly": true,
     "description": "The page contains URL parameters or JavaScript patterns commonly associated with open redirect vulnerabilities.",
     "evidence": "Found redirect-related patterns in page source.",
     "riskImpact": "Open redirects can be used in phishing attacks by making malicious URLs appear to originate from your trusted domain.",

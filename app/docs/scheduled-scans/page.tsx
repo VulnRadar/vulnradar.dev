@@ -144,6 +144,11 @@ const deleteEndpoint: Endpoint = {
     "Deleting a schedule sends the Scheduled Scans notification email if you have it enabled.",
   ],
   errors: [
+    {
+      code: 400,
+      description:
+        "The body is not a JSON object, or id is missing or not a whole number",
+    },
     { code: 401, description: "No session cookie" },
     {
       code: 403,

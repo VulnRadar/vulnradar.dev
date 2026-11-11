@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { parseBearer } from "@/lib/api/bearer";
-import { validateApiKey } from "@/lib/api/api-keys";
-import {
-  hasApiKeyScope,
-  apiKeyScopeErrorMessage,
-  API_KEY_SCOPES,
-} from "@/lib/api/api-key-scopes";
+import { authenticateApiKey } from "@/lib/api/api-key-auth";
+import { API_KEY_SCOPES } from "@/lib/api/api-key-scopes";
+import { withErrorHandling } from "@/lib/api/api-utils";
+import { burstLimitedResponse } from "@/lib/api/rate-limit-response";
+import { versioned } from "@/lib/api/v4/wrap";
 import {
   checkRateLimit as checkGlobalRL,
   RATE_LIMITS,
@@ -60,63 +59,48 @@ export interface ScanReputationResponse {
   lastScannedAt: string | null;
   scanId: number | null;
   /**
+   * The same scan's opaque id, which is what a scan URL takes. Null when
+   * known is false, and when the scan behind a host-level row has since been
+   * deleted (source_scan_id is then null too).
+   */
+  scanPublicId: string | null;
+  /**
    * "exact" when this reflects a scan of the precise page the caller asked
-   * about (via the `url` query param); "host" when it's the host-level
-   * fallback -- a scan of a DIFFERENT page on the same host, since a scan
-   * of one page shouldn't be shown as the reputation of every unrelated
-   * page on a host like github.com. null when known is false.
+   * about (via the `url` query param, compared by origin and path); "host"
+   * when it's the host-level fallback -- a scan of a DIFFERENT page on the
+   * same host, since a scan of one page shouldn't be shown as the reputation
+   * of every unrelated page on a host like github.com. null when known is
+   * false.
    */
   matchType: "exact" | "host" | null;
   /**
-   * The exact URL that was actually scanned to produce this result.
-   * Only ever set for an "exact" match, where it just echoes back the
-   * `url` the caller already supplied. Always null for a "host" fallback
-   * match or when known is false -- a host-level match is someone ELSE's
-   * scan of an unrelated page on this host, and returning that URL
-   * verbatim (including its query string) to a caller who only knows the
+   * The page that was actually scanned to produce this result, as origin and
+   * path. Only ever set for an "exact" match, where it is the page the caller
+   * asked about; the stored query string is never included, since the match
+   * ignores it and it belongs to whoever ran that scan. Always null for a
+   * "host" fallback match or when known is false -- a host-level match is
+   * someone ELSE's scan of an unrelated page on this host, and returning that
+   * URL verbatim (including its query string) to a caller who only knows the
    * hostname would leak whatever that URL contained, e.g. a token in a
    * password-reset or magic-login link (AUDIT-009#reputation-01).
    */
   scannedUrl: string | null;
 }
 
-export async function GET(request: NextRequest) {
+async function handler(request: NextRequest) {
   try {
     // Auth: check API key first (Bearer token), then fall back to session
     // cookie. Same dual-auth pattern as POST /api/v3/scan.
-    const bearerToken = parseBearer(request.headers.get("authorization"));
-    let authedUserId: number | null = null;
+    let authedUserId: number;
 
-    if (bearerToken !== null) {
-      const keyData = await validateApiKey(bearerToken);
-
-      if (!keyData) {
-        return NextResponse.json(
-          { error: "Invalid or revoked API key." },
-          { status: 401 },
-        );
-      }
-
-      if (keyData.needsTermsAcceptance) {
-        return NextResponse.json(
-          {
-            error:
-              "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
-          },
-          { status: 403 },
-        );
-      }
-
+    if (parseBearer(request.headers.get("authorization")) !== null) {
       // scoping: this is a read (host reputation lookup), so it requires
       // scan:read.
-      if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_READ)) {
-        return NextResponse.json(
-          { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_READ) },
-          { status: 403 },
-        );
-      }
-
-      authedUserId = keyData.userId;
+      const key = await authenticateApiKey(request, {
+        scope: API_KEY_SCOPES.SCAN_READ,
+      });
+      if (!key.ok) return key.response;
+      authedUserId = key.auth.userId;
     } else {
       const session = await getSession();
       if (!session) {
@@ -131,21 +115,9 @@ export async function GET(request: NextRequest) {
       authedUserId = session.userId;
     }
 
-    // Rate limit: a lightweight lookup, not a scan trigger, so it uses the
-    // general API cap rather than the heavier scan-trigger cap.
-    const rl = await checkGlobalRL({
-      key: `scan-reputation:${authedUserId}`,
-      ...RATE_LIMITS.api,
-    });
-    if (!rl.allowed) {
-      return NextResponse.json(
-        {
-          error: `Rate limit reached. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
-        },
-        { status: 429 },
-      );
-    }
-
+    // Validated before the limiter, so a malformed lookup costs the caller
+    // nothing: the extension asks once per site visited and must not spend
+    // its window on a tab whose host is an IP or a browser page.
     const rawHost = request.nextUrl.searchParams.get("host");
     if (!rawHost || !rawHost.trim()) {
       return NextResponse.json(
@@ -159,6 +131,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { error: "Invalid host parameter." },
         { status: 400 },
+      );
+    }
+
+    // Its own named limit (RATE_LIMIT_REPUTATION_*), not the general API
+    // cap: the extension looks up every site its user visits, so the right
+    // ceiling is far above what a scripted client needs elsewhere.
+    const rl = await checkGlobalRL({
+      key: `scan-reputation:${authedUserId}`,
+      ...RATE_LIMITS.reputation,
+    });
+    if (!rl.allowed) {
+      return burstLimitedResponse(
+        rl,
+        `Rate limit reached. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
       );
     }
 
@@ -181,6 +167,7 @@ export async function GET(request: NextRequest) {
           severityCounts: exact.severityCounts,
           lastScannedAt: exact.lastScannedAt,
           scanId: exact.scanId,
+          scanPublicId: exact.scanPublicId,
           matchType: "exact",
           scannedUrl: exact.url,
         };
@@ -193,12 +180,14 @@ export async function GET(request: NextRequest) {
       severity_counts: SeverityCounts;
       last_scanned_at: string | Date;
       source_scan_id: number | null;
-      scanned_url: string | null;
+      source_scan_public_id: string | null;
       findings: unknown;
     }>(
-      `SELECT danger_score, severity_counts, last_scanned_at, source_scan_id, scanned_url, findings
-       FROM host_reputation
-       WHERE host = $1`,
+      `SELECT hr.danger_score, hr.severity_counts, hr.last_scanned_at, hr.source_scan_id,
+              sh.public_id AS source_scan_public_id, hr.findings
+       FROM host_reputation hr
+       LEFT JOIN scan_history sh ON sh.id = hr.source_scan_id
+       WHERE hr.host = $1`,
       [host],
     );
 
@@ -212,6 +201,7 @@ export async function GET(request: NextRequest) {
         severityCounts: null,
         lastScannedAt: null,
         scanId: null,
+        scanPublicId: null,
         matchType: null,
         scannedUrl: null,
       };
@@ -236,15 +226,16 @@ export async function GET(request: NextRequest) {
       // source_scan_id is nulled automatically (ON DELETE SET NULL) if the
       // underlying scan_history row was deleted, so this is already exact.
       scanId: row.source_scan_id,
+      scanPublicId: row.source_scan_public_id ?? null,
       matchType: "host",
-      // Deliberately NOT row.scanned_url here (AUDIT-009#reputation-01).
+      // Deliberately NOT the scan's URL here (AUDIT-009#reputation-01).
       // A host-level match is someone ELSE's scan of a DIFFERENT page on
       // this host -- the caller never supplied that URL, so returning it
       // verbatim (including its query string) to any signed-in caller who
       // only knows the hostname would leak whatever that URL contained,
       // e.g. a password-reset or magic-login link with a token in the
-      // query string. scannedUrl only round-trips the URL the caller
-      // already gave us themselves, in the "exact" branch above.
+      // query string. scannedUrl is only set in the "exact" branch above,
+      // for the page the caller named themselves.
       scannedUrl: null,
     };
     return NextResponse.json(body);
@@ -261,3 +252,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = versioned("scan.reputation", withErrorHandling(handler));

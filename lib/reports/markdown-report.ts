@@ -1,6 +1,7 @@
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types";
 import { severityCounts } from "./severity-counts";
 import { mdText, mdInlineCode, mdFenced } from "./md-escape";
+import { formatReportDateTime } from "./format-instant";
 import { APP_NAME, APP_URL, SEVERITY_ORDER } from "@/lib/config/constants";
 import {
   getSafetyRating,
@@ -125,18 +126,7 @@ export function generateMarkdownReport(result: ScanResult): string {
   const findings = result.findings ?? [];
   const lines: string[] = [`# Security report for ${mdText(result.url)}`, ""];
 
-  const scannedAt = result.scannedAt ? new Date(result.scannedAt) : null;
-  const scannedLabel =
-    scannedAt && !Number.isNaN(scannedAt.getTime())
-      ? scannedAt.toLocaleString("en-US", {
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : "Unknown";
-  lines.push(`Scanned: ${scannedLabel}`);
+  lines.push(`Scanned: ${formatReportDateTime(result.scannedAt)}`);
 
   if (result.dangerScore !== undefined) {
     lines.push(`Risk score: ${result.dangerScore}/10`);

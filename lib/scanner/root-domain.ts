@@ -29,6 +29,13 @@ const DOUBLE_LABEL_TLDS = [
   "co.th",
 ];
 
+/**
+ * `com.sg`, `co.id`, `org.tr`: a public second level that the table above does
+ * not list, so extractRootDomain returns it as if it were someone's domain.
+ * Dropped by wave 8 when tldts replaces this file's table.
+ */
+const COUNTRY_SECOND_LEVEL = /^(?:ac|co|com|edu|gov|ne|net|or|org)\.[a-z]{2}$/;
+
 export function extractRootDomain(hostname: string): string {
   const stripped = hostname.replace(/^www\./, "");
   const parts = stripped.split(".");
@@ -39,4 +46,16 @@ export function extractRootDomain(hostname: string): string {
     return parts.slice(-2).join(".");
   }
   return stripped;
+}
+
+/**
+ * extractRootDomain, corrected for a country second level it does not list:
+ * `example.com.sg` is a registrable domain, `com.sg` is not. Use this wherever
+ * the answer decides what DNS zone or site a name belongs to.
+ */
+export function registrableDomain(hostname: string): string {
+  const root = extractRootDomain(hostname);
+  return COUNTRY_SECOND_LEVEL.test(root)
+    ? hostname.split(".").slice(-3).join(".")
+    : root;
 }

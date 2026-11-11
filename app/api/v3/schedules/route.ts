@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { parseRowId } from "@/lib/teams/parse-id";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
@@ -47,7 +49,7 @@ function clampInt(
   return Number.isInteger(n) && n >= min && n <= max ? n : fallback;
 }
 
-export async function GET() {
+export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -67,9 +69,9 @@ export async function GET() {
   // total, no truncation flag, no pagination, without breaking every caller.
   // app/profile/page.tsx already reads either shape.
   return NextResponse.json({ schedules: result.rows });
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -84,14 +86,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const body = await request.json();
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
   const {
     url,
     frequency,
     preferredHourUtc,
     preferredDayOfWeek,
     preferredDayOfMonth,
-  } = body ?? {};
+  } = parsed.data;
   if (!url || typeof url !== "string") {
     return NextResponse.json({ error: "URL is required" }, { status: 400 });
   }
@@ -253,7 +256,7 @@ export async function POST(request: NextRequest) {
   );
 
   return NextResponse.json(updateRes.rows[0], { status: 201 });
-}
+});
 
 /** Pause/resume a schedule, and/or assign or clear the team it's shared
  *  with. `active` alone is scoped to whatever the caller's access level
@@ -264,7 +267,7 @@ export async function POST(request: NextRequest) {
  *  worker (scheduled-scans-worker.ts) flips `active` to false itself when a
  *  target starts failing validateScanTarget -- until now the only way for
  *  the owner to recover from that was delete + recreate. */
-export async function PATCH(request: NextRequest) {
+export const PATCH = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -272,14 +275,22 @@ export async function PATCH(request: NextRequest) {
       { status: 401 },
     );
 
-  const body = await request.json();
-  const { id, active, teamId } = body ?? {};
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { id: rawId, active, teamId: rawTeamId } = parsed.data;
 
-  if (typeof id !== "number" && typeof id !== "string") {
+  if (rawId === undefined || rawId === null) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
+  const id = parseRowId(rawId);
+  if (id === null) {
+    return NextResponse.json(
+      { error: "Invalid schedule id." },
+      { status: 400 },
+    );
+  }
   const hasActive = active !== undefined;
-  const hasTeamId = teamId !== undefined;
+  const hasTeamId = rawTeamId !== undefined;
   if (!hasActive && !hasTeamId) {
     return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
   }
@@ -289,11 +300,15 @@ export async function PATCH(request: NextRequest) {
       { status: 400 },
     );
   }
-  if (hasTeamId && teamId !== null && typeof teamId !== "number") {
+  if (hasTeamId && rawTeamId !== null && typeof rawTeamId !== "number") {
     return NextResponse.json(
       { error: "teamId must be a number or null" },
       { status: 400 },
     );
+  }
+  const teamId = rawTeamId === null ? null : parseRowId(rawTeamId);
+  if (hasTeamId && rawTeamId !== null && teamId === null) {
+    return NextResponse.json({ error: "Invalid team id." }, { status: 400 });
   }
 
   const currentRes = await pool.query<{
@@ -374,7 +389,7 @@ export async function PATCH(request: NextRequest) {
   if (hasActive && active === true && schedule.active === false) {
     setClauses.push(`next_run_at = $${values.length + 1}`);
     values.push(
-      computeNextRunAt(Number(id), {
+      computeNextRunAt(id, {
         frequency: schedule.frequency as ScheduleFrequency,
         preferredHourUtc: schedule.preferred_hour_utc,
         preferredDayOfWeek: schedule.preferred_day_of_week,
@@ -395,9 +410,9 @@ export async function PATCH(request: NextRequest) {
   );
 
   return NextResponse.json(result.rows[0]);
-}
+});
 
-export async function DELETE(request: NextRequest) {
+export const DELETE = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -405,7 +420,19 @@ export async function DELETE(request: NextRequest) {
       { status: 401 },
     );
 
-  const { id } = await request.json();
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { id: rawId } = parsed.data;
+  if (rawId === undefined || rawId === null) {
+    return NextResponse.json({ error: "id is required" }, { status: 400 });
+  }
+  const id = parseRowId(rawId);
+  if (id === null) {
+    return NextResponse.json(
+      { error: "Invalid schedule id." },
+      { status: 400 },
+    );
+  }
 
   // Get schedule details before deleting for the email, and for the
   // team-access check below.
@@ -459,4 +486,4 @@ export async function DELETE(request: NextRequest) {
   }
 
   return NextResponse.json({ success: true });
-}
+});

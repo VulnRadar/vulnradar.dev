@@ -45,9 +45,15 @@ let totpCounterUpdateCalls: unknown[][] = [];
 let deviceTrustInsertCalls: unknown[][] = [];
 let emailCodeDeleteCalls: number[] = [];
 
+/** Transaction statements and hash checks, in the order the route ran them. */
+const events: string[] = [];
+/** What the locked re-read answers, when a test needs it to differ. */
+let lockedBackupCodes: string | null | undefined;
+
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
   queries.push({ sql: s, params });
+  if (/^(BEGIN|COMMIT|ROLLBACK)$/.test(s)) events.push(s);
 
   if (s.startsWith("DELETE FROM rate_limits")) return { rows: [] };
   if (s.startsWith("INSERT INTO rate_limits")) {
@@ -60,7 +66,11 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     return { rows: [{ count: String(next) }] };
   }
   if (s.includes("SELECT backup_codes FROM users WHERE id = $1 FOR UPDATE")) {
-    return { rows: userRow ? [{ backup_codes: userRow.backup_codes }] : [] };
+    const locked =
+      lockedBackupCodes === undefined
+        ? userRow?.backup_codes
+        : lockedBackupCodes;
+    return { rows: userRow ? [{ backup_codes: locked }] : [] };
   }
   if (
     s.includes("totp_secret, totp_enabled, backup_codes, two_factor_method")
@@ -138,6 +148,25 @@ vi.mock("@/lib/email/email", async (importOriginal) => {
   return { ...actual, sendEmail: (params: unknown) => mockSendEmail(params) };
 });
 
+// The real comparison, logged, so a test can see where it ran relative to
+// the transaction.
+vi.mock("@/lib/auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth")>();
+  return {
+    ...actual,
+    verifyPassword: async (
+      ...args: Parameters<typeof actual.verifyPassword>
+    ) => {
+      events.push("verify:start");
+      try {
+        return await actual.verifyPassword(...args);
+      } finally {
+        events.push("verify:end");
+      }
+    },
+  };
+});
+
 const { hashPassword } = await import("@/lib/auth/password-hash");
 const { generateSecret } = await import("@/lib/auth/totp");
 const { encryptApiKey } = await import("@/lib/auth/crypto");
@@ -206,10 +235,38 @@ beforeEach(async () => {
   totpCounterUpdateCalls = [];
   deviceTrustInsertCalls = [];
   emailCodeDeleteCalls = [];
+  events.length = 0;
+  lockedBackupCodes = undefined;
   invalidateSettingsCache();
 });
 
 describe("POST /api/v3/auth/2fa/verify", () => {
+  it.each([null, [], "123456", 7])(
+    "answers a body that is not a JSON object (%j) with a 400, not a 500",
+    async (body) => {
+      const res = await POST(
+        verifyRequest(body, { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) }),
+      );
+      expect(res.status).toBe(400);
+      expect(queries).toEqual([]);
+    },
+  );
+
+  it.each([
+    { code: 123456 },
+    { backupCode: 12345678 },
+    { backupCode: ["ABCD-1234"] },
+  ])(
+    "answers a code that is not text (%j) with a 400, not a 500",
+    async (body) => {
+      const res = await POST(
+        verifyRequest(body, { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) }),
+      );
+      expect(res.status).toBe(400);
+      expect(queries).toEqual([]);
+    },
+  );
+
   it("rejects a request with neither a code nor a backup code", async () => {
     const res = await POST(
       verifyRequest(
@@ -371,6 +428,57 @@ describe("POST /api/v3/auth/2fa/verify", () => {
       expect(sessionInsertCalls).toHaveLength(0);
     }, 15_000);
 
+    // perf-server-6: each comparison is a 128 MiB scrypt, and running them
+    // under FOR UPDATE held the row lock and a pooled connection for all of
+    // them. The lock is only for the re-read and the splice.
+    it("compares every code before the transaction opens, never inside it", async () => {
+      const res = await POST(
+        verifyRequest(
+          { backupCode: BACKUP_CODES_PLAIN[1] },
+          { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
+        ),
+      );
+
+      expect(res.status).toBe(200);
+      const begin = events.indexOf("BEGIN");
+      const commit = events.indexOf("COMMIT");
+      expect(begin).toBeGreaterThan(-1);
+      expect(commit).toBeGreaterThan(begin);
+      const locked = events.slice(begin, commit);
+      expect(locked).not.toContain("verify:start");
+      expect(locked).not.toContain("verify:end");
+      expect(events.filter((e) => e === "verify:start")).toHaveLength(3);
+    }, 15_000);
+
+    it("opens no transaction for a code that matches nothing", async () => {
+      const res = await POST(
+        verifyRequest(
+          { backupCode: "ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ" },
+          { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
+        ),
+      );
+      expect(res.status).toBe(400);
+      expect(events).not.toContain("BEGIN");
+    }, 15_000);
+
+    it("refuses a code another request consumed between the comparison and the lock", async () => {
+      lockedBackupCodes = JSON.stringify([
+        backupCodeHashes[1],
+        backupCodeHashes[2],
+      ]);
+      const res = await POST(
+        verifyRequest(
+          { backupCode: BACKUP_CODES_PLAIN[0] },
+          { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
+        ),
+      );
+      expect(res.status).toBe(400);
+      expect(backupCodesUpdateCalls).toHaveLength(0);
+      expect(sessionInsertCalls).toHaveLength(0);
+      expect(events).toContain("ROLLBACK");
+      expect(events).not.toContain("COMMIT");
+    }, 15_000);
+
     it("accepts a backup code typed with different casing and separators", async () => {
       const loose = BACKUP_CODES_PLAIN[1].toLowerCase().replace(/-/g, " ");
       const res = await POST(
@@ -450,6 +558,7 @@ describe("POST /api/v3/auth/2fa/verify", () => {
     );
 
     expect(res.status).toBe(429);
+    expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
     expect(sessionInsertCalls).toHaveLength(0);
   });
 

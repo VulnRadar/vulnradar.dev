@@ -38,11 +38,11 @@ function generateBackupCodes(count = 8): string[] {
   return codes;
 }
 
-// GET: Generate a new secret and return the URI for QR code
-export const GET = withErrorHandling(async () => {
-  const session = await getSession();
-  if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
-
+/**
+ * Generates a new secret, stores its ciphertext and answers with the secret
+ * and the otpauth URI for the QR code.
+ */
+async function startEnrolment(session: { userId: number; email: string }) {
   // Refuse to overwrite a secret if 2FA is already active.
   // A session cookie holder (e.g. shared browser) must disable 2FA first
   // before re-enrolling — otherwise they could silently brick the account.
@@ -76,10 +76,28 @@ export const GET = withErrorHandling(async () => {
   // Return the plaintext secret to the user (so they can scan the QR)
   // but persist only the ciphertext.
   return ApiResponse.success({ secret, uri });
+}
+
+// GET: the original way to start enrolment. It writes a secret, which a GET
+// should not: the CSRF origin check skips GET, so any page could reset a
+// half-finished enrolment from an <img> tag. POST { action: "start" } is the
+// replacement; this stays until the internal alias deletion so a client
+// cached from before keeps working.
+export const GET = withErrorHandling(async () => {
+  const session = await getSession();
+  if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
+  // The same write as POST { action: "start" }, so the same refusal.
+  const refused = refuseWhileImpersonating(
+    session,
+    "Enabling two-factor authentication",
+  );
+  if (refused) return refused;
+  return startEnrolment(session);
 });
 
-// POST: Verify the code and enable 2FA (requires password confirmation to prevent
-// session-hijack-based silent 2FA enrollment)
+// POST { action: "start" }: start enrolment, answering what GET does.
+// POST { code, currentPassword }: verify the code and enable 2FA (requires
+// password confirmation to prevent session-hijack-based silent 2FA enrollment)
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
@@ -91,6 +109,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     "Enabling two-factor authentication",
   );
   if (refused) return refused;
+
+  const parsed = await parseBody<{
+    action?: unknown;
+    code: string;
+    currentPassword: string;
+  }>(request);
+  if (!parsed.success) return ApiResponse.badRequest(parsed.error);
+  const { action, code, currentPassword } = parsed.data ?? {};
+
+  // Starting checks no password, so it must not spend the attempts below.
+  if (action === "start") return startEnrolment(session);
+  if (action !== undefined) {
+    return ApiResponse.badRequest('action must be "start" or left out.');
+  }
 
   // auth: rate-limit password verification so a stolen session cookie
   // cannot be used to brute-force the account password through this
@@ -107,12 +139,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       rl.retryAfterSeconds,
     );
   }
-
-  const parsed = await parseBody<{ code: string; currentPassword: string }>(
-    request,
-  );
-  if (!parsed.success) return ApiResponse.badRequest(parsed.error);
-  const { code, currentPassword } = parsed.data;
 
   // auth: require password re-entry before enabling 2FA. An attacker with
   // only a session cookie cannot silently enroll their own TOTP device.

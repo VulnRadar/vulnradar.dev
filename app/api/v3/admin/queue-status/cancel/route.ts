@@ -2,25 +2,13 @@ import { NextResponse } from "next/server";
 import { logAction, requireAdmin } from "@/lib/auth/authorization";
 import { getClientIp } from "@/lib/api/request-utils";
 import { withErrorHandling } from "@/lib/api/api-utils";
+import { parseRowId } from "@/lib/teams/parse-id";
 import { logError } from "@/lib/logging/log";
 import { recordScanFailure, requestCancel } from "@/lib/scanner/scan-jobs";
 import { SCAN_ADMIN_CANCELLED_MESSAGE } from "@/lib/scanner/failure-messages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/** scan_history.id is an int4; anything past it cannot be a real row. */
-const MAX_SCAN_ID = 2_147_483_647;
-
-function parseScanId(value: unknown): number | null {
-  const n =
-    typeof value === "number"
-      ? value
-      : typeof value === "string" && /^\d{1,10}$/.test(value)
-        ? Number(value)
-        : NaN;
-  return Number.isSafeInteger(n) && n >= 1 && n <= MAX_SCAN_ID ? n : null;
-}
 
 /**
  * POST /api/v3/admin/queue-status/cancel   { scanId }
@@ -63,7 +51,7 @@ export const POST = withErrorHandling(async (request: Request) => {
       { status: 400 },
     );
   }
-  const scanId = parseScanId((body as { scanId?: unknown } | null)?.scanId);
+  const scanId = parseRowId((body as { scanId?: unknown } | null)?.scanId);
   if (scanId === null) {
     return NextResponse.json(
       { error: "scanId must be a whole number." },

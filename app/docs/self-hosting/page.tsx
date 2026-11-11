@@ -1941,7 +1941,7 @@ UPDATE users
             "Strong API_KEY_ENCRYPTION_KEY (32 random bytes, base16)",
             "Strong POSTGRES_PASSWORD",
             "SMTP credentials use an app-specific password",
-            "Stripe uses restricted keys (only required permissions)",
+            "Stripe uses restricted keys (only required permissions, including Disputes write)",
             "Discord OAuth redirect URI is HTTPS",
             "Backups automated daily with off-host retention",
             "CONFIG_BILLING_ENABLED = false if you do not need paid tiers",

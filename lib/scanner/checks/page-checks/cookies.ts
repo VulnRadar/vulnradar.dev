@@ -60,14 +60,14 @@ export const cookieChecks: PageCheck[] = [
     id: "page-cookie-missing-httponly",
     title: "Session-like cookie missing the HttpOnly attribute",
     category: "cookies",
-    severity: "high",
+    severity: "medium",
     method: "cookie-attribute",
     description:
       "A cookie whose name suggests it carries a session or auth token is set without HttpOnly.",
     riskImpact:
       "Without HttpOnly, any script running on the page (including one injected via XSS) can read the cookie's value with document.cookie and exfiltrate it.",
     explanation:
-      "HttpOnly hides a cookie from JavaScript's document.cookie API entirely. It is checked only for names that look session-related (session, sid, auth, token, jwt, and similar) to avoid flagging cookies that are deliberately client-readable, like a theme preference.",
+      "HttpOnly hides a cookie from JavaScript's document.cookie API entirely. It is checked only for names that look session-related (session, sid, auth, token, jwt, and similar) to avoid flagging cookies that are deliberately client-readable, like a theme preference or the CSRF token Laravel and Django hand to the page's own script.",
     fixSteps: [
       "Add the HttpOnly attribute to session and authentication cookies.",
     ],

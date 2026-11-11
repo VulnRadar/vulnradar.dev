@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { parseRowId } from "@/lib/teams/parse-id";
 import { randomBytes } from "node:crypto";
 import { isIP } from "node:net";
 import { getSession } from "@/lib/auth";
@@ -128,7 +130,7 @@ function testFailure(err: unknown): { status: number; error: string } {
   }
 }
 
-export async function GET() {
+export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -186,9 +188,9 @@ export async function GET() {
   // same note on GET /api/v3/schedules: a bare array cannot carry a count or
   // a truncation flag later without breaking its callers.
   return NextResponse.json({ webhooks });
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -203,7 +205,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { url, name, type: userType } = await request.json();
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { url, name, type: userType } = parsed.data;
   if (!url || typeof url !== "string") {
     return NextResponse.json(
       { error: "Webhook URL is required" },
@@ -261,7 +265,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const webhookName = name || "Default";
+  const webhookName = typeof name === "string" && name ? name : "Default";
 
   // Generated here (not left to the column's migration-backfill DEFAULT)
   // so every webhook created through this route gets a fresh secret from
@@ -329,10 +333,10 @@ export async function POST(request: NextRequest) {
   );
 
   return NextResponse.json({ ...result.rows[0], secret }, { status: 201 });
-}
+});
 
 // Test a webhook by sending a test payload
-export async function PATCH(request: NextRequest) {
+export const PATCH = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -353,12 +357,18 @@ export async function PATCH(request: NextRequest) {
   });
   if (!userLimit.allowed) return testRateLimited(userLimit);
 
-  const { id } = await request.json();
-  if (!id) {
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { id: rawId } = parsed.data;
+  if (!rawId) {
     return NextResponse.json(
       { error: "Webhook ID is required" },
       { status: 400 },
     );
+  }
+  const id = parseRowId(rawId);
+  if (id === null) {
+    return NextResponse.json({ error: "Invalid webhook id" }, { status: 400 });
   }
 
   // Get webhook details
@@ -513,9 +523,9 @@ export async function PATCH(request: NextRequest) {
     const { status, error } = testFailure(err);
     return NextResponse.json({ success: false, error }, { status });
   }
-}
+});
 
-export async function DELETE(request: NextRequest) {
+export const DELETE = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -523,7 +533,19 @@ export async function DELETE(request: NextRequest) {
       { status: 401 },
     );
 
-  const { id } = await request.json();
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { id: rawId } = parsed.data;
+  if (!rawId) {
+    return NextResponse.json(
+      { error: "Webhook ID is required" },
+      { status: 400 },
+    );
+  }
+  const id = parseRowId(rawId);
+  if (id === null) {
+    return NextResponse.json({ error: "Invalid webhook id" }, { status: 400 });
+  }
 
   // Get webhook details before deleting for the email
   const webhookResult = await pool.query(
@@ -577,4 +599,4 @@ export async function DELETE(request: NextRequest) {
   }
 
   return NextResponse.json({ success: true });
-}
+});

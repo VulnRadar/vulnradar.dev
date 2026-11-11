@@ -48,6 +48,10 @@ describe("parseScanId", () => {
     expect(parseScanId(456)).toBe("456");
   });
 
+  it("accepts the largest id INT4 holds", () => {
+    expect(parseScanId("2147483647")).toBe("2147483647");
+  });
+
   it.each([
     null,
     undefined,
@@ -67,6 +71,12 @@ describe("parseScanId", () => {
     "1.5",
     "1e3",
     "12345678901",
+    // The server answers 404 for these, so the page refuses them first.
+    "007",
+    "0",
+    "2147483648",
+    "9999999999",
+    2147483648,
     PUBLIC_ID.toUpperCase(),
     `${PUBLIC_ID}0`,
     PUBLIC_ID.slice(1),

@@ -282,6 +282,9 @@ export function ProfileBillingTab({
    * is better than the blank line this headline used to be.
    */
   const planLabel = getPlanById(billingInfo.plan)?.name ?? billingInfo.plan;
+  const currentPlanScans =
+    billingInfo.limits[billingInfo.plan as keyof typeof billingInfo.limits] ||
+    billingInfo.limits.free;
 
   return (
     <div className="flex flex-col gap-8">
@@ -336,10 +339,9 @@ export function ProfileBillingTab({
                   {/* A number and our own unit. "25 scans/day" should
                           wrap, never clip to "25 scans/d...". */}
                   <p className="text-sm text-muted-foreground">
-                    {billingInfo.limits[
-                      billingInfo.plan as keyof typeof billingInfo.limits
-                    ] || billingInfo.limits.free}{" "}
-                    scans/day
+                    {currentPlanScans === -1
+                      ? "Unlimited scans"
+                      : `${currentPlanScans} scans/day`}
                   </p>
                 </div>
               </div>
@@ -856,7 +858,10 @@ export function ProfileBillingTab({
               )}
 
             {/* Plan Comparison, priced straight from the plan catalog so
-                    this can never drift from what checkout actually charges. */}
+                    this can never drift from what checkout actually charges.
+                    The scans per day come from GET /billing's live limits,
+                    not the catalog, whose numbers are the shipped defaults
+                    an admin may since have changed. */}
             {billingInfo.plan === "free" && (
               <div className="flex flex-col gap-3 pt-4 border-t border-border">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -882,7 +887,9 @@ export function ProfileBillingTab({
                         {paidPlan.name}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {paidPlan.limits.dailyScans} scans/day
+                        {billingInfo.limits[paidPlan.id] === -1
+                          ? "Unlimited scans"
+                          : `${billingInfo.limits[paidPlan.id]} scans/day`}
                       </p>
                       <p className="text-sm font-semibold text-primary mt-1">
                         ${(paidPlan.priceInCents / 100).toFixed(0)}/mo

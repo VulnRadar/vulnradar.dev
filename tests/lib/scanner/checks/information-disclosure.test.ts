@@ -217,7 +217,67 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
+  "rails-version-exposure": [
+    {
+      description: "a Rails _<app>_session key fires",
+      cookies: ["_myapp_session=abc; path=/; HttpOnly"],
+      expect: "fire",
+      evidenceIncludes: "_myapp_session",
+    },
+    {
+      description: "regression: Laravel's laravel_session is not Rails",
+      cookies: ["laravel_session=abc"],
+      expect: "skip",
+    },
+    {
+      description: "regression: CodeIgniter's ci_session is not Rails",
+      cookies: ["ci_session=abc"],
+      expect: "skip",
+    },
+    {
+      description:
+        "regression: a Laravel app-named session cookie is not Rails",
+      cookies: ["oreintiotapp_session=abc", "XSRF-TOKEN=x"],
+      expect: "skip",
+    },
+  ],
+
   "laravel-session-cookie-exposes": [
+    {
+      description: "laravel_session with no Secure fires",
+      cookies: ["laravel_session=abc; path=/"],
+      expect: "fire",
+      evidenceIncludes: "Secure",
+    },
+    {
+      description: "regression: CodeIgniter's ci_session is never Laravel",
+      cookies: ["ci_session=abc; path=/"],
+      expect: "skip",
+    },
+    {
+      description:
+        "regression: an app-named *_session next to the Laravel XSRF-TOKEN is Laravel's",
+      cookies: [
+        "XSRF-TOKEN=x; secure; samesite=lax",
+        "oreintiotapp_session=abc; secure; samesite=lax",
+      ],
+      expect: "fire",
+      evidenceIncludes: "HttpOnly",
+    },
+    {
+      description: "an app-named *_session with no XSRF-TOKEN is not claimed",
+      cookies: ["oreintiotapp_session=abc; path=/"],
+      expect: "skip",
+    },
+    {
+      description:
+        "regression: the word secure in the Domain is not the Secure flag",
+      cookies: [
+        "laravel_session=abc; Domain=secure.example.com; HttpOnly; SameSite=Lax",
+      ],
+      expect: "fire",
+      evidenceIncludes: "Secure",
+    },
     {
       description: "laravel_session cookie with no security attributes at all",
       cookies: ["laravel_session=abc"],

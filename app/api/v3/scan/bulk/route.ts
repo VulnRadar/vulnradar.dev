@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
+import {
+  burstLimitedResponse,
+  concurrentScanLimitResponse,
+  rateLimitedResponse,
+  type ApiKeyRateLimitState,
+} from "@/lib/api/rate-limit-response";
 import type { PoolClient } from "pg";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
@@ -10,16 +15,13 @@ import {
   getRateLimitHeaders,
 } from "@/lib/rate-limiting/daily-limits";
 import { parseBearer } from "@/lib/api/bearer";
+import { authenticateApiKey } from "@/lib/api/api-key-auth";
 import {
-  validateApiKey,
   checkRateLimit as checkApiKeyRateLimit,
   peekRateLimit as peekApiKeyRateLimit,
 } from "@/lib/api/api-keys";
-import {
-  hasApiKeyScope,
-  apiKeyScopeErrorMessage,
-  API_KEY_SCOPES,
-} from "@/lib/api/api-key-scopes";
+import { API_KEY_SCOPES } from "@/lib/api/api-key-scopes";
+import { versioned } from "@/lib/api/v4/wrap";
 import { reserveConcurrentScanBatch } from "@/lib/rate-limiting/concurrent-scans";
 import {
   checkTargetScanLimit,
@@ -37,6 +39,7 @@ import { getPlannedAsyncBranches } from "@/lib/scanner/async-checks";
 import {
   isRawIpv4,
   getProtocolType,
+  normalizeUrl,
   SUPPORTED_PROTOCOLS,
 } from "@/lib/scanner/execute-scan";
 import {
@@ -50,7 +53,7 @@ import {
 } from "@/lib/scanner/failure-messages";
 import { DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
 import { logError } from "@/lib/logging/log";
-import { withErrorHandling } from "@/lib/api/api-utils";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
@@ -58,8 +61,32 @@ import { scanningPausedResponse } from "@/lib/admin/service-state";
 
 /** One entry in the batch response: either a queued scan or a refusal. */
 type BulkResultEntry =
-  | { url: string; success: true; scanId: number; status: "queued" }
+  | {
+      url: string;
+      success: true;
+      scanId: number;
+      publicId: string;
+      status: "queued";
+    }
   | { url: string; success: false; error: string; details?: string };
+
+/**
+ * The 429 for a spent daily scan quota. rateLimitedResponse supplies the five
+ * X-RateLimit-* headers, Retry-After and the quota numbers in the body;
+ * `statusCode` is added back because it is the key the dashboard and v3
+ * clients branch on to offer an upgrade, and v3 bodies only gain keys.
+ */
+async function dailyLimitResponse(
+  quota: ApiKeyRateLimitState,
+): Promise<NextResponse> {
+  const base = rateLimitedResponse(quota, DAILY_LIMIT_MESSAGE, {
+    code: "DAILY_LIMIT",
+  });
+  return NextResponse.json(
+    { ...(await base.json()), statusCode: "DAILY_LIMIT" },
+    { status: base.status, headers: base.headers },
+  );
+}
 
 /**
  * SSRF and access-rule gates for one URL in the batch. Runs BEFORE the URL is
@@ -116,7 +143,7 @@ async function validateBulkTarget(
   return null;
 }
 
-export const POST = withErrorHandling(async (request: NextRequest) => {
+async function createBulkScan(request: NextRequest): Promise<NextResponse> {
   // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it) before the
   // feature flag: "scanning is paused" is the more accurate answer when both
   // apply, and a bulk submission is N scans, not one.
@@ -131,40 +158,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }
 
   // Auth: check API key first (Bearer token), then fall back to session cookie
-  const bearerToken = parseBearer(request.headers.get("authorization"));
   let apiKeyId: number | null = null;
   let apiKeyDailyLimit: number | null = null;
   let isApiKeyAuth = false;
   let authedUserId: number | null = null;
 
-  if (bearerToken !== null) {
-    const keyData = await validateApiKey(bearerToken);
-
-    if (!keyData) {
-      return NextResponse.json(
-        { error: "Invalid or revoked API key." },
-        { status: 401 },
-      );
-    }
-
-    // Check if user needs to accept updated terms
-    if (keyData.needsTermsAcceptance) {
-      return NextResponse.json(
-        {
-          error:
-            "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
-        },
-        { status: 403 },
-      );
-    }
-
-    // scoping: triggering scans requires scan:write.
-    if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
-      return NextResponse.json(
-        { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE) },
-        { status: 403 },
-      );
-    }
+  if (parseBearer(request.headers.get("authorization")) !== null) {
+    // Validity, the Terms gate and scan:write, in the one shared order.
+    const keyAuth = await authenticateApiKey(request, {
+      scope: API_KEY_SCOPES.SCAN_WRITE,
+    });
+    if (!keyAuth.ok) return keyAuth.response;
+    const keyData = keyAuth.auth;
 
     // Early-rejection check: if the key is already exhausted, bail now
     // without consuming a slot. This is a READ-ONLY peek (peekApiKeyRateLimit)
@@ -198,23 +203,29 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       );
     }
     authedUserId = session.userId;
-
-    const rl = await checkRateLimit({
-      key: `bulkscan:${session.userId}`,
-      ...RATE_LIMITS.bulkScan,
-    });
-    if (!rl.allowed) {
-      return NextResponse.json(
-        {
-          error: `Bulk scan rate limit reached. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
-          statusCode: "BULK_RATE_LIMIT",
-        },
-        { status: 429 },
-      );
-    }
   }
 
-  const { urls, isPublic, teamId, teamIds } = await request.json();
+  // The burst limiter, for both kinds of caller and before the body is read.
+  // It used to apply to sessions only, so a key could submit batch after
+  // batch with nothing between them but its daily budget, and it ran after
+  // nothing that cost anything only by accident of order: every rejected URL
+  // further down still costs a DNS resolution in the SSRF guard. Keyed on the
+  // account, so a key and the dashboard share one budget.
+  const burst = await checkRateLimit({
+    key: `bulkscan:${authedUserId}`,
+    ...RATE_LIMITS.bulkScan,
+  });
+  if (!burst.allowed) {
+    return burstLimitedResponse(
+      burst,
+      `Bulk scan rate limit reached. Try again in ${Math.ceil(burst.retryAfterSeconds / 60)} minute(s).`,
+      { statusCode: "BULK_RATE_LIMIT", code: "BULK_RATE_LIMIT" },
+    );
+  }
+
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { urls, isPublic, teamId, teamIds } = parsed.data;
 
   if (!Array.isArray(urls) || urls.length === 0) {
     return NextResponse.json(
@@ -296,7 +307,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const validUrls: string[] = [];
   for (const u of urls) {
     try {
-      const parsed = new URL(u);
+      // normalizeUrl first, as POST /scan does: a bare "example.com" is a
+      // URL the scan form accepts, and new URL() alone refused it here, so
+      // the same entry that scans one at a time was dropped from a batch.
+      const parsed = new URL(normalizeUrl(u));
       if (!SUPPORTED_PROTOCOLS.includes(parsed.protocol)) continue;
       // Store the normalized href so downstream logic and safeFetch see a canonical URL
       validUrls.push(parsed.href);
@@ -326,10 +340,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // this one has an upgrade to offer. The dashboard used to tell them apart
     // by matching the error text, which is exactly the kind of coupling that
     // breaks the next time the copy is edited.
-    return NextResponse.json(
-      { error: DAILY_LIMIT_MESSAGE, statusCode: "DAILY_LIMIT" },
-      { status: 429, headers: getRateLimitHeaders(quotaCheck) },
-    );
+    return dailyLimitResponse(quotaCheck);
   }
 
   // How many URLs can we actually run given remaining quota?
@@ -428,7 +439,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (admissible.length === 0) {
     return NextResponse.json(
-      buildResponseBody(validUrls.length, results, skippedUrls),
+      buildResponseBody(urls.length, validUrls.length, results, skippedUrls),
     );
   }
 
@@ -513,11 +524,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (!reservation.ok) {
     // Same body shape POST /api/v3/scan returns for the same condition, so an
-    // API client keying on statusCode handles both identically.
-    return NextResponse.json(
-      { error: reservation.check.message, statusCode: "CONCURRENT_SCAN_LIMIT" },
-      { status: 429 },
-    );
+    // API client keying on statusCode handles both identically, now with the
+    // Retry-After every other 429 on this route sends.
+    return concurrentScanLimitResponse(reservation.check.message);
   }
 
   // Every row of the batch carries the primary team from its INSERT; this
@@ -547,6 +556,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   for (let i = 0; i < admissible.length; i++) {
     const target = admissible[i];
     const scanId = reservation.scanIds[i];
+    const publicId = reservation.publicIds[i];
 
     const dailyQuota = await incrementDailyCountCapped(
       authedUserId!,
@@ -604,7 +614,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       isRawIpTarget: target.isRawIpTarget,
       categoriesTotal: target.categoriesTotal,
     });
-    results.push({ url: target.url, success: true, scanId, status: "queued" });
+    results.push({
+      url: target.url,
+      success: true,
+      scanId,
+      publicId,
+      status: "queued",
+    });
   }
 
   // Kick off the real work detached from this request's lifecycle, exactly as
@@ -630,6 +646,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }
 
   const responseData = buildResponseBody(
+    urls.length,
     validUrls.length,
     results,
     skippedUrls,
@@ -653,7 +670,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   return NextResponse.json(responseData, {
     headers: getRateLimitHeaders(finalQuota),
   });
-});
+}
+
+export const POST = versioned(
+  "scan.createBulk",
+  withErrorHandling(createBulkScan),
+);
 
 /**
  * The batch response. `queued` replaces the old `successful` count: the
@@ -664,8 +686,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
  * `skippedUrls` are the URLs sliced off the front of the batch because the
  * account's remaining daily quota could not cover the whole submission. They
  * are appended last so they always sort after the URLs that were admitted.
+ *
+ * `total` counts the entries that parsed as a supported URL, which is what it
+ * always counted; `submitted` is every entry the caller sent, so a client can
+ * see how many were dropped as unparseable without diffing the lists.
  */
 function buildResponseBody(
+  submitted: number,
   total: number,
   results: BulkResultEntry[],
   skippedUrls: string[],
@@ -679,6 +706,7 @@ function buildResponseBody(
     })),
   ];
   return {
+    submitted,
     total,
     queued: allResults.filter((r) => r.success).length,
     failed: allResults.filter((r) => !r.success).length,

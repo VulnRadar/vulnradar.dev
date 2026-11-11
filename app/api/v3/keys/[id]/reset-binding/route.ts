@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 import { resetApiKeyBinding } from "@/lib/api/api-keys";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import pool from "@/lib/database/db";
@@ -28,6 +29,13 @@ export async function POST(
       { status: 401 },
     );
   }
+  // Clearing the binding lets the key's next caller, from anywhere, pin it
+  // to a new address: a security control the customer set, removed.
+  const refused = refuseWhileImpersonating(
+    session,
+    "Resetting an API key's IP binding",
+  );
+  if (refused) return refused;
 
   const { id } = await params;
   const keyId = parseInt(id, 10);

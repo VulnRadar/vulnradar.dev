@@ -1,27 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
+import {
+  burstLimitedResponse,
+  concurrentScanLimitResponse,
+  rateLimitedResponse,
+} from "@/lib/api/rate-limit-response";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { parseBearer } from "@/lib/api/bearer";
-import {
-  validateApiKey,
-  checkRateLimit as checkApiKeyRateLimit,
-} from "@/lib/api/api-keys";
-import {
-  hasApiKeyScope,
-  apiKeyScopeErrorMessage,
-  API_KEY_SCOPES,
-} from "@/lib/api/api-key-scopes";
+import { checkRateLimit as checkApiKeyRateLimit } from "@/lib/api/api-keys";
+import { authenticateApiKey, type ApiKeyAuth } from "@/lib/api/api-key-auth";
+import { API_KEY_SCOPES } from "@/lib/api/api-key-scopes";
+import { buildQuotaBlock } from "@/lib/api/quota";
+import { versioned } from "@/lib/api/v4/wrap";
 import { executeCrawlScan } from "@/lib/scanner/execute-crawl-scan";
 import { finalizeScanFailureQuietly } from "@/lib/scanner/scan-jobs";
-import { withErrorHandling } from "@/lib/api/api-utils";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { DAILY_LIMIT_MESSAGE } from "@/lib/scanner/failure-messages";
 import { logError } from "@/lib/logging/log";
 import { DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
-import {
-  canMakeRequest,
-  getRateLimitHeaders,
-} from "@/lib/rate-limiting/daily-limits";
+import { canMakeRequest } from "@/lib/rate-limiting/daily-limits";
 import { getUserPlanLimits } from "@/lib/billing/plan-limits";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import {
@@ -58,7 +56,7 @@ import { scanningPausedResponse } from "@/lib/admin/service-state";
 // the detached crawl below inherits it, and every error row the job writes is
 // tied to the request that started it. An unexpected throw here also becomes
 // a JSON 500 rather than Next's bare one.
-export const POST = withErrorHandling(async (request: NextRequest) => {
+const createCrawlScan = withErrorHandling(async (request: NextRequest) => {
   // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). A crawl is the
   // most expensive thing this app can be asked to start, so it is the last
   // path that should be left uncovered by the pause.
@@ -77,34 +75,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   let apiKeyRateLimit: Awaited<ReturnType<typeof checkApiKeyRateLimit>> | null =
     null;
 
+  let keyData: ApiKeyAuth | null = null;
+
+  // A Bearer header decides the path, and a session cookie never rescues a bad
+  // key: the key branch answers for itself or returns.
   if (bearerToken !== null) {
-    const keyData = await validateApiKey(bearerToken);
-
-    if (!keyData) {
-      return NextResponse.json(
-        { error: "Invalid or revoked API key." },
-        { status: 401 },
-      );
-    }
-
-    // Check if user needs to accept updated terms
-    if (keyData.needsTermsAcceptance) {
-      return NextResponse.json(
-        {
-          error:
-            "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
-        },
-        { status: 403 },
-      );
-    }
-
-    // scoping: triggering a crawl scan requires scan:write.
-    if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
-      return NextResponse.json(
-        { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE) },
-        { status: 403 },
-      );
-    }
+    // Key, Terms acceptance and scan:write, in that order, in one place.
+    const keyAuth = await authenticateApiKey(request, {
+      scope: API_KEY_SCOPES.SCAN_WRITE,
+    });
+    if (!keyAuth.ok) return keyAuth.response;
+    keyData = keyAuth.auth;
 
     // Check API key rate limit (the ONE atomic count+insert for this crawl;
     // reused for the success headers below, never re-called).
@@ -139,11 +120,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       ...RATE_LIMITS.scan,
     });
     if (!rl.allowed) {
-      return NextResponse.json(
-        {
-          error: "Crawl rate limit reached. Please wait before scanning again.",
-        },
-        { status: 429 },
+      return burstLimitedResponse(
+        rl,
+        "Crawl rate limit reached. Please wait before scanning again.",
       );
     }
   }
@@ -166,19 +145,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // first page twice) and capped pages one lower than the plan allowed.
   const dailyQuota = await canMakeRequest(authedUserId);
   if (!dailyQuota.allowed) {
-    return NextResponse.json(
-      {
-        error:
-          "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
-        limit: dailyQuota.limit,
-        used: dailyQuota.used,
-        remaining: 0,
-        resets_at: dailyQuota.resetsAt,
-      },
-      {
-        status: 429,
-        headers: getRateLimitHeaders(dailyQuota),
-      },
+    return rateLimitedResponse(
+      { ...dailyQuota, remaining: 0 },
+      DAILY_LIMIT_MESSAGE,
+      { code: "DAILY_LIMIT" },
     );
   }
 
@@ -187,15 +157,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // row counts as one slot, same as a single-URL scan.
   const concurrency = await checkConcurrentScanLimit(authedUserId);
   if (!concurrency.allowed) {
-    return NextResponse.json(
-      { error: concurrency.message, statusCode: "CONCURRENT_SCAN_LIMIT" },
-      { status: 429 },
-    );
+    return concurrentScanLimitResponse(concurrency.message);
   }
 
-  const body = await request.json();
-  const url: string = body.url;
-  const selectedUrls: string[] | undefined = body.urls;
+  // After the auth and quota gates on purpose: a caller with no valid
+  // credentials is told so before anything is said about their body.
+  const parsedBody = await readJsonObject(request);
+  if (!parsedBody.ok) return parsedBody.response;
+  const body = parsedBody.data;
+  const url = body.url;
+  const selectedUrls = body.urls as string[] | undefined;
   const scannerSelection = parseScannerSelection(body.scanners);
   if (!scannerSelection.ok) {
     return NextResponse.json(
@@ -483,6 +454,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // scan/route.ts, the "categories total" for this row starts at 0 and is
   // filled in once the page count is known — see executeCrawlScan.
   let scanHistoryId: number;
+  let scanPublicId: string;
+  let reservedScanId: number | null = null;
   try {
     // Reserve the concurrency slot and insert the tracker row in one locked
     // transaction so parallel crawls can't race past the earlier
@@ -510,12 +483,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       },
     );
     if (!reservation.ok) {
-      return NextResponse.json(
-        { error: reservation.check.message },
-        { status: 429 },
-      );
+      return concurrentScanLimitResponse(reservation.check.message);
     }
     scanHistoryId = reservation.scanId;
+    scanPublicId = reservation.publicId;
+    reservedScanId = reservation.scanId;
     // The INSERT above carries the primary team; this writes the rest of the
     // set into scan_history_teams and is a no-op below two teams.
     await attachNewScanTeams(scanHistoryId, teamAssignment.teamIds);
@@ -525,6 +497,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       source: isApiKeyAuth ? "api" : "web",
       url: normalizedMainUrl,
     });
+    // A throw after the reservation leaves a 'pending' tracker row that
+    // nothing will ever run, holding one of the account's concurrent slots
+    // until the stale-scan sweep gets to it.
+    if (reservedScanId !== null) {
+      await finalizeScanFailureQuietly(
+        reservedScanId,
+        "The crawl could not be started.",
+        "internal",
+      );
+    }
     return NextResponse.json(
       { error: "Failed to start the crawl scan. Please try again." },
       { status: 500 },
@@ -580,22 +562,38 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
+  // The crawl is already running, so a failure to read the quota must not
+  // turn into an error response for a request that succeeded.
+  let quota: Awaited<ReturnType<typeof buildQuotaBlock>> | undefined;
+  try {
+    quota = await buildQuotaBlock(authedUserId, keyData);
+  } catch (err) {
+    logError("scan", "could not read the quota for the response", err, {
+      userId: authedUserId,
+    });
+  }
+  const created = {
+    scanId: scanHistoryId,
+    publicId: scanPublicId,
+    status: "running",
+    quota,
+  };
+
   // Add rate limit headers from the SAME api_usage slot the gate consumed at
   // the top of this request. The slot was already counted+inserted there, so we
   // must not call checkApiKeyRateLimit again (that would insert a second usage
   // row and charge the crawl twice). apiKeyRateLimit is always set on this path.
   if (isApiKeyAuth && apiKeyId && apiKeyRateLimit) {
-    return NextResponse.json(
-      { scanId: scanHistoryId, status: "running" },
-      {
-        headers: {
-          "X-RateLimit-Limit": String(apiKeyRateLimit.limit),
-          "X-RateLimit-Remaining": String(apiKeyRateLimit.remaining),
-          "X-RateLimit-Reset": apiKeyRateLimit.resetsAt,
-        },
+    return NextResponse.json(created, {
+      headers: {
+        "X-RateLimit-Limit": String(apiKeyRateLimit.limit),
+        "X-RateLimit-Remaining": String(apiKeyRateLimit.remaining),
+        "X-RateLimit-Reset": apiKeyRateLimit.resetsAt,
       },
-    );
+    });
   }
 
-  return NextResponse.json({ scanId: scanHistoryId, status: "running" });
+  return NextResponse.json(created);
 });
+
+export const POST = versioned("scan.createCrawl", createCrawlScan);

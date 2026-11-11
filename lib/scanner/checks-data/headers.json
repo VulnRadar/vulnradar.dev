@@ -3472,6 +3472,7 @@
     "title": "Reverse Tabnabbing: target=_blank without rel=noopener",
     "category": "headers",
     "severity": "low",
+    "documentationOnly": true,
     "description": "A link uses target=\"_blank\" without rel=\"noopener\". Plain target=\"_blank\" has implied noopener since Chrome 88, Firefox 79 and Safari 12.1, so on those browsers the opened page gets no window.opener. The link stays exposed only on older browsers, or when rel=\"opener\" or a named target opts back in.",
     "evidence": "${count} target=\"_blank\" link(s) lack rel=\"noopener\" (reverse tabnabbing).",
     "riskImpact": "On a browser older than those versions, the opened page can use window.opener to send this tab to a phishing page. Current browsers give it no opener unless the link asks for one.",

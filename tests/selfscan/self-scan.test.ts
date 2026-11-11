@@ -30,7 +30,7 @@ import { runSyncChecks } from "@/lib/scanner/engine";
 import { checkIdOf } from "@/lib/scanner/dedupe";
 import { safeReadBody } from "@/lib/scanner/read-bounded-body";
 import { PUBLIC_ROUTES } from "@/lib/seo/routes";
-import { APP_NAME } from "@/lib/config/constants";
+import { SCANNER_UA } from "@/lib/scanner/user-agent";
 
 const BASE = process.env.VULNRADAR_SELF_SCAN_URL?.replace(/\/+$/, "");
 const REPORT = process.env.VULNRADAR_SELF_SCAN_REPORT;
@@ -78,7 +78,7 @@ async function scanRoute(path: string): Promise<RouteResult> {
     const res = await fetch(url, {
       redirect: "follow",
       headers: {
-        "User-Agent": `${APP_NAME}/1.0 (Security Scanner)`,
+        "User-Agent": SCANNER_UA,
         ...(BEHIND_TLS ? { "X-Forwarded-Proto": "https" } : {}),
       },
       signal: AbortSignal.timeout(30_000),

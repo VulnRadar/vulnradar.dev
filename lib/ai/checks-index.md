@@ -420,7 +420,7 @@ remediation documentation in the docs.
 ### dns (29)
 - [medium  ] `dns-caa-record-missing` [header] - CAA Record Missing
 - [high    ] `dns-ns-record-count` [header] - Less Than 2 Authoritative Nameservers
-- [medium  ] `dns-mx-record-missing` [header] - MX Record Missing
+- [low     ] `dns-mx-record-missing` [header] - MX Record Missing
 - [low     ] `dns-mx-backup-record` [header] - No Backup MX Server
 - [medium  ] `dns-ds-record-missing` [header] - DNSSEC DS Record Missing
 - [low     ] `dns-soa-refresh-high` [header] - SOA Refresh Interval Too High
@@ -434,7 +434,7 @@ remediation documentation in the docs.
 - [low     ] `dns-caa-wildcard-only-restriction` [header] - CAA Record Restricts Wildcard Certificates Only
 - [info    ] `dns-soa-serial-stale` [header] - SOA Serial Looks Stale (Date-Based Convention)
 - [info    ] `dns-ns-single-provider-concentration` [header] - All Nameservers Concentrated at a Single Provider
-- [low     ] `dns-wildcard-record-present` [header] - Wildcard DNS Record Detected
+- [info    ] `dns-wildcard-record-present` [header] - Wildcard DNS Record Detected
 - [info    ] `dns-null-mx-recommended` [header] - Null MX Recommended for Non-Mail Domain
 - [medium  ] `dns-dnssec-algorithm-weak` [network-probe] - DNSSEC signed with a deprecated algorithm
 - [medium  ] `dns-dnssec-key-size-weak` [network-probe] - DNSSEC RSA key below 2048 bits
@@ -862,10 +862,10 @@ remediation documentation in the docs.
 - Total checks: **804**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - medium: 221
+  - medium: 220
   - high: 192
   - low: 188
-  - info: 103
+  - info: 104
   - critical: 100
 - By type:
   - body-pattern: 465

@@ -1,6 +1,10 @@
-import { it, expect, beforeAll } from "vitest";
+import { it, expect, beforeAll, describe } from "vitest";
 import pool from "@/lib/database/db";
-import { buildHistoryFilter } from "@/lib/history/list-filter";
+import {
+  buildHistoryCountsQuery,
+  buildHistoryFilter,
+} from "@/lib/history/list-filter";
+import { parsePaging } from "@/lib/history/paging";
 import { describeIntegration, createUser, unique } from "./_db";
 
 /**
@@ -191,6 +195,128 @@ describeIntegration("GET /api/v3/history search, in SQL", () => {
 
   it("keeps the GitHub exclusion in front of the filter", async () => {
     expect(await search(fx.ownerId, { q: "github.example.test" })).toEqual([]);
+  });
+
+  describe("total and matched, from one statement", () => {
+    async function counts(
+      userId: number,
+      opts: {
+        q?: string | null;
+        tag?: string | null;
+        retentionDays?: number;
+      } = {},
+    ) {
+      const { sql, params } = buildHistoryCountsQuery(
+        buildHistoryFilter({
+          userId,
+          retentionDays: opts.retentionDays ?? -1,
+          q: opts.q ?? null,
+          tag: opts.tag ?? null,
+        }),
+      );
+      const { rows } = await pool.query<{ total: number; matched: number }>(
+        sql,
+        params,
+      );
+      return rows[0];
+    }
+
+    it("counts the same for both when nothing is filtered", async () => {
+      // Seven URL scans: the GitHub one is excluded, the 400 day old one is not.
+      expect(await counts(fx.ownerId)).toEqual({ total: 7, matched: 7 });
+    });
+
+    it("leaves total at the account total and narrows only matched", async () => {
+      expect(await counts(fx.ownerId, { q: "shop" })).toEqual({
+        total: 7,
+        matched: 2,
+      });
+      expect(await counts(fx.ownerId, { tag: fx.tag })).toEqual({
+        total: 7,
+        matched: 2,
+      });
+      expect(await counts(fx.ownerId, { q: "shop", tag: fx.tag })).toEqual({
+        total: 7,
+        matched: 1,
+      });
+    });
+
+    it("reports zero matched for a search that matches nothing, with the total intact", async () => {
+      expect(await counts(fx.ownerId, { q: unique("nope") })).toEqual({
+        total: 7,
+        matched: 0,
+      });
+    });
+
+    it("applies the retention window to both numbers", async () => {
+      expect(await counts(fx.ownerId, { retentionDays: 30 })).toEqual({
+        total: 6,
+        matched: 6,
+      });
+      expect(
+        await counts(fx.ownerId, { q: "old.example.test", retentionDays: 30 }),
+      ).toEqual({ total: 6, matched: 0 });
+    });
+
+    it("never counts another account's scans", async () => {
+      expect(await counts(fx.intruderId)).toEqual({ total: 2, matched: 2 });
+      expect(await counts(fx.intruderId, { q: "shop" })).toEqual({
+        total: 2,
+        matched: 1,
+      });
+    });
+  });
+
+  describe("paging a list in a stable order", () => {
+    async function page(userId: number, query: string, maxRows = 100) {
+      const { limit, offset } = parsePaging(
+        new URLSearchParams(query),
+        maxRows,
+      );
+      const { where, params } = buildHistoryFilter({
+        userId,
+        retentionDays: -1,
+        q: null,
+        tag: null,
+      });
+      const { rows } = await pool.query<{ id: number }>(
+        `SELECT sh.id FROM scan_history sh WHERE ${where}
+          ORDER BY sh.scanned_at DESC, sh.id DESC
+          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset],
+      );
+      return rows.map((r) => r.id);
+    }
+
+    it("takes an offset past what a bigint holds without a database error", async () => {
+      for (const huge of [
+        "1e21",
+        "9223372036854775808",
+        "99999999999999999999",
+      ]) {
+        expect(await page(fx.ownerId, `offset=${huge}`), huge).toEqual([]);
+      }
+    });
+
+    it("breaks a scanned_at tie by id, so two pages never repeat or skip a row", async () => {
+      const tied = await createUser();
+      const stamp = "2026-03-01T12:00:00Z";
+      const ids: number[] = [];
+      for (let i = 0; i < 5; i += 1) {
+        const { rows } = await pool.query<{ id: number }>(
+          `INSERT INTO scan_history (user_id, url, status, started_at, scanned_at, scan_type)
+           VALUES ($1, $2, 'completed', $3, $3, 'web') RETURNING id`,
+          [tied.id, `https://tie-${i}.example.test/`, stamp],
+        );
+        ids.push(rows[0].id);
+      }
+
+      const first = await page(tied.id, "limit=2&offset=0");
+      const second = await page(tied.id, "limit=2&offset=2");
+      const third = await page(tied.id, "limit=2&offset=4");
+
+      expect([...first, ...second, ...third]).toEqual([...ids].reverse());
+    });
   });
 });
 

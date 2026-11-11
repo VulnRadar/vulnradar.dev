@@ -5,21 +5,13 @@ import {
   noPageChecks,
   runSyncChecksYielding,
 } from "@/lib/scanner/engine";
-import {
-  BOT_CHALLENGE_INCOMPLETE,
-  detectBotChallenge,
-} from "@/lib/scanner/bot-challenge";
-import {
-  runAsyncChecksDetailed,
-  getPlannedAsyncBranches,
-  type AsyncCheckResult,
-} from "@/lib/scanner/async-checks";
+import { BOT_CHALLENGE_INCOMPLETE } from "@/lib/scanner/bot-challenge";
+import { detectUnusablePage } from "@/lib/scanner/response-classifier";
+import { SCANNER_UA } from "@/lib/scanner/user-agent";
+import { startAsyncPhase } from "@/lib/scanner/async-phase";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
-import {
-  APP_NAME,
-  SEVERITY_LEVELS,
-  SEVERITY_PRIORITY,
-} from "@/lib/config/constants";
+import { SEVERITY_PRIORITY } from "@/lib/config/constants";
+import { summarizeFindings } from "@/lib/scanner/severity-summary";
 import { getSettings } from "@/lib/config/runtime-config";
 import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
@@ -31,55 +23,16 @@ import {
   readSubdomains,
 } from "@/lib/scanner/subdomain-auto";
 import { scanningPausedResponse } from "@/lib/admin/service-state";
+import { safeReadBody } from "@/lib/scanner/read-bounded-body";
+import { readJsonObject } from "@/lib/api/api-utils";
+import { burstLimitedResponse } from "@/lib/api/rate-limit-response";
+import { versioned } from "@/lib/api/v4/wrap";
+import {
+  checkDemoTargetScanLimit,
+  demoTargetScanLimitMessage,
+} from "@/lib/rate-limiting/target-limits";
 
-function _isValidUrl(input: string): boolean {
-  try {
-    const url = new URL(input);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-async function safeReadBody(
-  response: Response,
-  maxBytes: number,
-): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) return "";
-  const decoder = new TextDecoder("utf-8", { fatal: false });
-  const chunks: string[] = [];
-  let totalBytes = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      totalBytes += value.byteLength;
-      if (totalBytes > maxBytes) {
-        const overshoot = totalBytes - maxBytes;
-        const trimmed = value.slice(0, value.byteLength - overshoot);
-        if (trimmed.byteLength > 0)
-          chunks.push(decoder.decode(trimmed, { stream: false }));
-        break;
-      }
-      chunks.push(decoder.decode(value, { stream: true }));
-    }
-  } catch {
-    /* return what we have */
-  } finally {
-    try {
-      reader.cancel();
-    } catch {
-      /* ignore */
-    }
-  }
-  return chunks.join("");
-}
-
-/** Distinguishes "the async phase timed out" from "it returned no findings". */
-const TIMED_OUT = Symbol("async-checks-timed-out");
-
-export async function POST(request: NextRequest) {
+async function createDemoScan(request: NextRequest): Promise<NextResponse> {
   try {
     // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). This route is
     // unauthenticated and IP-limited only, so it is the highest-volume way
@@ -125,19 +78,21 @@ export async function POST(request: NextRequest) {
     });
 
     if (!rateCheck.allowed) {
+      // Retry-After is the wait the message rounds into hours. It was not
+      // sent at all, so a client could only read the sentence.
       const hours = Math.ceil(rateCheck.retryAfterSeconds / 3600);
-      return NextResponse.json(
-        {
-          error: `Demo limit reached (${DEMO_SCAN_LIMIT} scans per ${DEMO_WINDOW_HOURS} hours). Try again in ~${hours} hour${hours !== 1 ? "s" : ""}, or create a free account for unlimited scans.`,
-          remaining: 0,
-          limit: DEMO_SCAN_LIMIT,
-        },
-        { status: 429 },
+      return burstLimitedResponse(
+        rateCheck,
+        `Demo limit reached (${DEMO_SCAN_LIMIT} scans per ${DEMO_WINDOW_HOURS} hours). Try again in ~${hours} hour${hours !== 1 ? "s" : ""}, or create a free account for unlimited scans.`,
+        { remaining: 0, limit: DEMO_SCAN_LIMIT },
       );
     }
 
-    const body = await request.json();
-    const { url } = body;
+    // A malformed body is the caller's mistake and answers 400. It used to
+    // throw inside request.json() and land in the catch below as a 500.
+    const parsedBody = await readJsonObject(request);
+    if (!parsedBody.ok) return parsedBody.response;
+    const { url } = parsedBody.data;
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
@@ -171,6 +126,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Anonymous scans of one site, in a bucket of their own (see
+    // checkDemoTargetScanLimit). The per-IP limit above bounds one visitor;
+    // this bounds what visitors together can aim at one domain, which the
+    // per-IP key cannot see.
+    const targetLimit = await checkDemoTargetScanLimit(urlObj.href);
+    if (!targetLimit.allowed) {
+      return burstLimitedResponse(
+        targetLimit,
+        demoTargetScanLimitMessage(targetLimit.rootDomain),
+        { statusCode: "TARGET_RATE_LIMIT", code: "TARGET_RATE_LIMIT" },
+      );
+    }
+
     const startTime = Date.now();
 
     let response: Response;
@@ -183,9 +151,7 @@ export async function POST(request: NextRequest) {
         urlObj.href,
         {
           method: "GET",
-          headers: {
-            "User-Agent": `${APP_NAME}/1.0 (Security Scanner - Demo)`,
-          },
+          headers: { "User-Agent": SCANNER_UA },
           redirect: "follow",
           signal: AbortSignal.timeout(fetchTimeoutMs),
         },
@@ -200,7 +166,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const responseBody = await safeReadBody(response, MAX_BODY_SIZE);
+    // The shared bounded reader, with the fetch's own deadline: the copy this
+    // route carried had a byte cap and no time bound, so a target that sent
+    // headers and then one byte every thirty seconds held an anonymous
+    // request open for as long as it liked.
+    const responseBody = await safeReadBody(
+      response,
+      MAX_BODY_SIZE,
+      fetchTimeoutMs,
+    );
     const headers = response.headers;
 
     // Capture response headers as a plain object for evidence. Redacted the
@@ -216,15 +190,16 @@ export async function POST(request: NextRequest) {
     });
     const reportedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
 
-    // A bot challenge in place of the page (lib/scanner/bot-challenge.ts):
-    // nothing read from it describes the site, so the page checks are skipped
-    // and the page is named as not checked, as in every other scan path.
-    const botChallenge = detectBotChallenge(
+    // A bot challenge, a WAF's refusal or a 5xx in place of the page
+    // (lib/scanner/response-classifier.ts): nothing read from it describes
+    // the site, so the page checks are skipped and the page is named as not
+    // checked, as in every other scan path.
+    const pageBlocked = detectUnusablePage(
       response.status,
       headers,
       responseBody,
     );
-    const asyncScope = botChallenge ? "network" : "all";
+    const asyncScope = pageBlocked ? "network" : "all";
 
     // Capped at the SAME resolved setting the body was READ with, rather
     // than at a second hardcoded literal. This used to re-cap at 1,000,000
@@ -245,7 +220,7 @@ export async function POST(request: NextRequest) {
     // page the redirect landed on, and deduplication: a visitor trying the
     // product saw a different, noisier verdict than the one an account gets
     // for the same URL.
-    const syncResult = botChallenge
+    const syncResult = pageBlocked
       ? noPageChecks()
       : await runSyncChecksYielding(
           url,
@@ -268,75 +243,20 @@ export async function POST(request: NextRequest) {
       cacheOnly: true,
     }).catch(() => {});
 
-    let asyncFindings: Vulnerability[] = [];
-    // What the report has to admit it did not manage to run.
-    //
-    // The race below resolves [] when the timeout wins, and the catch
-    // swallows a thrown branch the same way, so an async phase that never
-    // produced an answer was indistinguishable from one that ran and found
-    // nothing. The demo then reported DNS, TLS, reputation and the exposed
-    // -file probes as clean, to an anonymous visitor whose entire impression
-    // of the scanner is this one result. It is also the slowest phase, so
-    // the moment it gets cut short is exactly the moment it is claimed clear.
-    //
-    // Same fix as lib/scanner/execute-scan.ts, which had this and was
-    // corrected; the demo is the sibling that was left behind. Seeded with
-    // every branch that was planned, then emptied when the checks actually
-    // return.
-    let incomplete: string[] = getPlannedAsyncBranches(
+    // What the report has to admit it did not manage to run. The phase
+    // reports every planned branch as not completed when its ceiling wins or
+    // it fails, so an async layer that never answered is not shown to an
+    // anonymous visitor as DNS, TLS and the exposed-file probes all clean. It
+    // also aborts the losing side, so the live-fetch battery does not keep
+    // running against the caller's chosen target once nobody is waiting.
+    const asyncResult = await startAsyncPhase({
       url,
-      undefined,
-      asyncScope,
-    );
-    // abuse: the race used to abandon the losing side. When the timeout won,
-    // runAsyncChecks kept executing its whole live-fetch battery (the exposed
-    // -file probes, GraphQL, bucket listing, header probes) against an
-    // anonymous caller's chosen target with nothing left holding a reference
-    // to it and nothing accounting for it; and when the checks won, the
-    // timer was never cleared, so it survived its full window. Both sides are
-    // now cleaned up, the way lib/scanner/execute-scan.ts already does it.
-    const asyncAbort = new AbortController();
-    let asyncTimeoutHandle: NodeJS.Timeout | undefined;
-    try {
-      // Detailed, not the plain variant: its own docstring says to use this
-      // one "from a route that surfaces scan completeness to the user", which
-      // is exactly what the demo does, and it reports which individual
-      // branches timed out rather than only whether the phase as a whole did.
-      const asyncPromise = runAsyncChecksDetailed(
-        url,
-        undefined,
-        undefined,
-        asyncAbort.signal,
-        asyncScope,
-      );
-      // A sentinel rather than [], because "the checks ran and found nothing"
-      // and "the checks never finished" are the two answers this race has to
-      // tell apart, and both used to arrive as an empty array.
-      const timeoutPromise = new Promise<typeof TIMED_OUT>((resolve) => {
-        asyncTimeoutHandle = setTimeout(
-          () => resolve(TIMED_OUT),
-          asyncChecksTimeoutMs,
-        );
-      });
-      const raced: AsyncCheckResult | typeof TIMED_OUT = await Promise.race([
-        asyncPromise,
-        timeoutPromise,
-      ]);
-      if (raced !== TIMED_OUT) {
-        asyncFindings = raced.findings;
-        // The phase finished, so the only thing still unrun is whatever it
-        // reports for itself.
-        incomplete = raced.incomplete;
-      }
-      // Whichever side won, stop the other one. A rejection from the
-      // abandoned branch must not surface as an unhandled rejection.
-      void asyncPromise.catch(() => {});
-    } catch {
-      // Non-fatal
-    } finally {
-      if (asyncTimeoutHandle) clearTimeout(asyncTimeoutHandle);
-      asyncAbort.abort();
-    }
+      scanners: undefined,
+      scope: asyncScope,
+      checksTimeoutMs: asyncChecksTimeoutMs,
+    });
+    const asyncFindings: Vulnerability[] = asyncResult.findings;
+    const incomplete: string[] = [...asyncResult.incomplete];
 
     // Let discovery finish (bounded by its own internal timeout) and read the
     // cached snapshot it recorded, if any.
@@ -349,7 +269,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (syncResult.checksErrored > 0) incomplete.push(PAGE_CHECKS_INCOMPLETE);
-    if (botChallenge) incomplete.push(BOT_CHALLENGE_INCOMPLETE);
+    if (pageBlocked) incomplete.push(BOT_CHALLENGE_INCOMPLETE);
 
     const findings = dedupeScanFindings([...syncFindings, ...asyncFindings]);
     findings.sort(
@@ -357,16 +277,7 @@ export async function POST(request: NextRequest) {
     );
 
     const duration = Date.now() - startTime;
-    const summary = {
-      critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL)
-        .length,
-      high: findings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH).length,
-      medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
-        .length,
-      low: findings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
-      info: findings.filter((f) => f.severity === SEVERITY_LEVELS.INFO).length,
-      total: findings.length,
-    };
+    const summary = summarizeFindings(findings);
 
     const result: ScanResult = {
       url,
@@ -393,3 +304,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = versioned("demoScan.create", createDemoScan);

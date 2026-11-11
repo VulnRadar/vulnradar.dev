@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { parseIdParam } from "@/lib/api/path-id";
+import { parseRowId } from "@/lib/teams/parse-id";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
@@ -25,61 +28,66 @@ import { getAssignableTeamIds } from "@/lib/auth/team-resource-access";
  * read-only variant of this action, so a non-owner learns nothing about
  * whether the id exists.
  */
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const session = await getSession();
-  if (!session)
-    return NextResponse.json(
-      { error: ERROR_MESSAGES.UNAUTHORIZED },
-      { status: 401 },
-    );
-
-  const { id: idParam } = await params;
-  const id = Number(idParam);
-  if (!Number.isInteger(id)) {
-    return NextResponse.json({ error: "Invalid domain id" }, { status: 400 });
-  }
-
-  const body = (await request.json().catch(() => ({}))) as {
-    teamId?: unknown;
-  };
-  if (!("teamId" in body)) {
-    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
-  }
-  const { teamId } = body;
-  if (teamId !== null && !Number.isInteger(teamId)) {
-    return NextResponse.json(
-      { error: "teamId must be a number or null" },
-      { status: 400 },
-    );
-  }
-
-  if (teamId !== null) {
-    // getAssignableTeamIds returns only the teams this caller may write
-    // into, so a member of a team they can merely read cannot push a domain
-    // into it, and a team they do not belong to at all is simply absent.
-    const assignable = await getAssignableTeamIds(session.userId);
-    if (!assignable.includes(teamId as number)) {
+export const PATCH = withErrorHandling(
+  async (
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> },
+  ) => {
+    const session = await getSession();
+    if (!session)
       return NextResponse.json(
-        { error: "You cannot assign this domain to that team." },
+        { error: ERROR_MESSAGES.UNAUTHORIZED },
+        { status: 401 },
+      );
+
+    const { id: idParam } = await params;
+    const id = parseIdParam(idParam);
+    if (id === null) {
+      return NextResponse.json({ error: "Invalid domain id" }, { status: 400 });
+    }
+
+    const parsed = await readJsonObject(request, { allowEmpty: true });
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
+    if (!("teamId" in body)) {
+      return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+    }
+    const { teamId } = body;
+    if (
+      teamId !== null &&
+      (typeof teamId !== "number" || parseRowId(teamId) === null)
+    ) {
+      return NextResponse.json(
+        { error: "teamId must be a number or null" },
         { status: 400 },
       );
     }
-  }
 
-  const result = await pool.query(
-    `UPDATE domains SET team_id = $1
+    if (teamId !== null) {
+      // getAssignableTeamIds returns only the teams this caller may write
+      // into, so a member of a team they can merely read cannot push a domain
+      // into it, and a team they do not belong to at all is simply absent.
+      const assignable = await getAssignableTeamIds(session.userId);
+      if (!assignable.includes(teamId as number)) {
+        return NextResponse.json(
+          { error: "You cannot assign this domain to that team." },
+          { status: 400 },
+        );
+      }
+    }
+
+    const result = await pool.query(
+      `UPDATE domains SET team_id = $1
       WHERE id = $2 AND user_id = $3
       RETURNING id, domain, user_id, team_id, status, verification_method, created_at,
                 verified_at, last_checked_at, last_check_error`,
-    [teamId, id, session.userId],
-  );
+      [teamId, id, session.userId],
+    );
 
-  if (result.rows.length === 0) {
-    return NextResponse.json({ error: "Domain not found" }, { status: 404 });
-  }
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: "Domain not found" }, { status: 404 });
+    }
 
-  return NextResponse.json(result.rows[0]);
-}
+    return NextResponse.json(result.rows[0]);
+  },
+);

@@ -835,6 +835,34 @@ describe("POST /api/v3/webhooks: secret", () => {
   });
 });
 
+describe("POST /api/v3/webhooks: name", () => {
+  // `name || "Default"` kept any truthy value, so an object or a number went
+  // into the text column as whatever node-postgres serialised it to.
+  for (const name of [{ label: "Prod" }, 5, ["Prod"]]) {
+    it(`stores "Default" for the name ${JSON.stringify(name)}`, async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+
+      const res = await POST(
+        postRequest({ url: "https://example.com/hook", name }),
+      );
+
+      expect(res.status).toBe(201);
+      expect(mockQuery.mock.calls[1][0]).toContain("INSERT INTO webhooks");
+      expect(mockQuery.mock.calls[1][1][2]).toBe("Default");
+    });
+  }
+
+  it("keeps a name that is a string", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+
+    await POST(postRequest({ url: "https://example.com/hook", name: "Prod" }));
+
+    expect(mockQuery.mock.calls[1][1][2]).toBe("Prod");
+  });
+});
+
 describe("POST /api/v3/webhooks: plan-tier limit", () => {
   it("carries the cap into the INSERT, so a lost race cannot exceed it", async () => {
     // Count-then-insert is check-then-act: two requests that both read the

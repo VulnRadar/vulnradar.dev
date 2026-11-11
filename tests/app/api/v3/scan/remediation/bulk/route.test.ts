@@ -50,6 +50,36 @@ describe("POST /api/v3/scan/remediation/bulk", () => {
     expect(res.status).toBe(401);
   });
 
+  it.each([
+    ["malformed JSON", "{not json"],
+    ["a JSON null", "null"],
+    ["a JSON array", "[]"],
+    ["an empty body", ""],
+  ])("answers 400 for %s and writes nothing", async (_label, body) => {
+    const res = await POST(
+      new NextRequest("http://localhost/api/v3/scan/remediation/bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("INVALID_REQUEST");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a body past the size cap with 413 before parsing it", async () => {
+    const res = await POST(
+      postRequest({
+        items: ITEMS,
+        status: "fixed",
+        assignee: "x".repeat(2 * 1024 * 1024),
+      }),
+    );
+    expect(res.status).toBe(413);
+    expect(calls).toHaveLength(0);
+  });
+
   it("rejects an empty item list", async () => {
     const res = await POST(postRequest({ items: [], status: "fixed" }));
     expect(res.status).toBe(400);

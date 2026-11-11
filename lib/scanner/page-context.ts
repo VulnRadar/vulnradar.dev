@@ -18,6 +18,7 @@ import {
   type Token,
 } from "./html/tokenizer";
 import { getSetCookies, isAuthoredInlineScript } from "./_helpers";
+import { isSessionLikeName } from "./cookie-names";
 
 export interface ScriptRef {
   /** `src` attribute exactly as written, or null for an inline script. */
@@ -197,8 +198,6 @@ export interface PageContext {
 }
 
 const CSRF_NAME = /csrf|xsrf|_token|authenticity_token|nonce|__requestverif/i;
-const SESSION_NAME =
-  /^(?:.*[-_.])?(?:sess|session|sid|sessid|jsessionid|phpsessid|asp\.net_sessionid|auth|token|jwt|access_token|refresh_token|remember|login)/i;
 
 function resolveUrl(raw: string, base: string): string | null {
   if (!raw) return null;
@@ -332,7 +331,7 @@ export function parseSetCookie(raw: string): CookieInfo {
     maxAge,
     expires,
     prefix,
-    sessionLike: SESSION_NAME.test(name),
+    sessionLike: isSessionLikeName(name),
     raw,
     redacted: redactSetCookie(raw),
   };

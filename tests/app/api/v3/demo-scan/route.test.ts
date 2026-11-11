@@ -59,6 +59,8 @@ vi.mock("@/lib/scanner/access-rules", () => ({
 // safeFetch response above.
 
 const { POST } = await import("@/app/api/v3/demo-scan/route");
+const { userAgentOf } = await import("@/tests/lib/scanner/_user-agent-of");
+const { SCANNER_UA } = await import("@/lib/scanner/user-agent");
 
 /**
  * A hostname that never resolves. runAsyncChecks() is the real
@@ -86,8 +88,12 @@ function postRequest(body: unknown): NextRequest {
  */
 let settingsRows: Array<{ key: string; value: string }> = [];
 
+/** The rate_limits counters of the current test, by key. */
+let rateLimitCounts = new Map<string, number>();
+
 function installRateLimitQueryMock() {
   const counts = new Map<string, number>();
+  rateLimitCounts = counts;
   mockQuery.mockImplementation(async (sql: string, params: unknown[] = []) => {
     if (sql.includes("DELETE FROM rate_limits")) {
       return { rows: [] };
@@ -170,6 +176,25 @@ describe("POST /api/v3/demo-scan - request validation", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toMatch(/URL is required/);
+  });
+
+  it("answers a malformed body with 400, not a 500", async () => {
+    const res = await POST(
+      new NextRequest("http://localhost/api/v3/demo-scan", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{not json",
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Invalid request body.");
+  });
+
+  it("answers a body that is not an object with 400", async () => {
+    const res = await POST(postRequest(null));
+
+    expect(res.status).toBe(400);
   });
 
   it("rejects an unparseable URL", async () => {
@@ -294,6 +319,75 @@ describe("POST /api/v3/demo-scan - success shape", () => {
   }, 20000);
 });
 
+describe("POST /api/v3/demo-scan - a page the site refused the scanner", () => {
+  it("does not grade a load balancer's 403 as the site, and says the page was not checked", async () => {
+    mockSafeFetch.mockImplementation(
+      async () =>
+        new Response("<html><title>403 Forbidden</title></html>", {
+          status: 403,
+          headers: { "content-type": "text/html", server: "awselb/2.0" },
+        }),
+    );
+
+    const res = await POST(postRequest({ url: DEAD_HOST }));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+
+    expect(json.incomplete).toContain("bot-challenge");
+    // The refusal's own missing headers are not reported as the site's.
+    const ids = (json.findings as { id: string }[]).map(
+      (f) => f.id.split("--")[0],
+    );
+    for (const pageCheck of ["hsts-missing", "csp-missing", "xcto-missing"]) {
+      expect(ids).not.toContain(pageCheck);
+    }
+  }, 20000);
+
+  it("fetches the page with the scanner's compatible User-Agent", async () => {
+    await POST(postRequest({ url: DEAD_HOST }));
+
+    expect(userAgentOf(mockSafeFetch.mock.calls[0][1] as RequestInit)).toBe(
+      SCANNER_UA,
+    );
+  }, 20000);
+});
+
+describe("POST /api/v3/demo-scan - per-target limit", () => {
+  it("counts demo scans of a site in their own bucket, keyed on its registrable domain", async () => {
+    // A subdomain of the dead host, so the async checks reach nothing real.
+    await POST(postRequest({ url: DEAD_HOST.replace("://", "://www.") }));
+
+    const domain = new URL(DEAD_HOST).hostname;
+    expect(rateLimitCounts.get(`scantarget-demo:${domain}`)).toBe(1);
+    // Not a share of the bucket signed-in scans of the site count against.
+    expect(rateLimitCounts.has(`scantarget:${domain}`)).toBe(false);
+  }, 20000);
+
+  it("refuses a site that has had its share of demo scans this hour, before fetching it", async () => {
+    // Every client gets its own per-IP budget, so only the target bucket
+    // can be what refuses the last request.
+    let refused: Response | null = null;
+    for (let i = 0; i < 40 && !refused; i++) {
+      mockGetClientIp.mockResolvedValue(`198.51.100.${i + 1}`);
+      const res = await POST(postRequest({ url: DEAD_HOST }));
+      if (res.status === 429) refused = res;
+    }
+
+    expect(refused).not.toBeNull();
+    expect(Number(refused!.headers.get("Retry-After"))).toBeGreaterThan(0);
+    const json = await refused!.json();
+    expect(json.code).toBe("TARGET_RATE_LIMIT");
+    expect(json.statusCode).toBe("TARGET_RATE_LIMIT");
+    expect(json.error).toContain(
+      `${new URL(DEAD_HOST).hostname} has had too many demo scans`,
+    );
+    const fetchesBefore = mockSafeFetch.mock.calls.length;
+    mockGetClientIp.mockResolvedValue("198.51.100.200");
+    await POST(postRequest({ url: DEAD_HOST }));
+    expect(mockSafeFetch.mock.calls.length).toBe(fetchesBefore);
+  }, 60000);
+});
+
 describe("POST /api/v3/demo-scan - IP rate limiting (real checkRateLimit against a mocked pool)", () => {
   it(`allows exactly CONFIG_DEMO_SCAN_LIMIT (${DEMO_SCAN_LIMIT}) scans for one client and rejects the ${DEMO_SCAN_LIMIT + 1}th with 429`, async () => {
     mockGetClientIp.mockResolvedValue("203.0.113.50");
@@ -318,6 +412,8 @@ describe("POST /api/v3/demo-scan - IP rate limiting (real checkRateLimit against
     expect(blockedJson.error).toMatch(
       new RegExp(`${DEMO_SCAN_LIMIT} scans per 12 hours`),
     );
+    // And the same wait in a header a client can act on.
+    expect(Number(blocked.headers.get("Retry-After"))).toBeGreaterThan(0);
   }, 60000);
 
   it("gives two different clients independent rate-limit budgets: exhausting one does not affect the other", async () => {

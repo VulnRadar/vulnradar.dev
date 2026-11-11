@@ -31,10 +31,15 @@ import { NextResponse } from "next/server";
  * linking staff's own identity would outlast the impersonation session and
  * nothing would attribute it to them afterwards.
  *
- * tests/lib/auth/impersonation-guard.test.ts enumerates the routes that write
- * these columns and fails when one appears that neither calls this nor is
- * listed as a deliberate exception, because the failure mode is the next such
- * route rather than these four.
+ * API keys and the customer's money follow the same rule. A key is a
+ * credential with no session behind it, so one minted here outlives the
+ * impersonation; an immediate cancel, a price switch or the billing portal
+ * spends or forfeits what the customer paid for.
+ *
+ * tests/lib/auth/impersonation-guard.test.ts enumerates the routes and server
+ * actions that write these and fails when one appears that neither calls this
+ * nor is listed as a deliberate exception, because the failure mode is the
+ * next such route rather than these four.
  */
 export function refuseWhileImpersonating(
   /** Structural rather than a named session type: getSession()'s return type
@@ -44,10 +49,22 @@ export function refuseWhileImpersonating(
 ): NextResponse | null {
   if (!session?.impersonatedBy) return null;
   return NextResponse.json(
-    {
-      error: `You are signed in as this user from the admin panel. ${action} is not available through an impersonation session. Stop impersonating and use the admin action for it, which asks for your password and is recorded.`,
-      impersonationBlocked: true,
-    },
+    { error: refusal(action), impersonationBlocked: true },
     { status: 403 },
   );
+}
+
+/**
+ * The same refusal for a "use server" action, which has no response to return
+ * and reports failure by throwing.
+ */
+export function throwIfImpersonating(
+  session: { impersonatedBy?: number } | null,
+  action: string,
+): void {
+  if (session?.impersonatedBy) throw new Error(refusal(action));
+}
+
+function refusal(action: string): string {
+  return `You are signed in as this user from the admin panel. ${action} is not available through an impersonation session. Stop impersonating and use the admin action for it, which asks for your password and is recorded.`;
 }

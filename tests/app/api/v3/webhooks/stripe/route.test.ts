@@ -26,16 +26,53 @@ import { NextRequest } from "next/server";
 import Stripe from "stripe";
 
 const mockQuery = vi.fn();
+// A dispute's credit reversal runs in a transaction on one checked-out client.
+const mockClientQuery = vi.fn();
+const mockClientRelease = vi.fn();
 vi.mock("@/lib/database/db", () => ({
-  default: { query: (...args: unknown[]) => mockQuery(...args) },
+  default: {
+    query: (...args: unknown[]) => mockQuery(...args),
+    connect: async () => ({
+      query: (...args: unknown[]) => mockClientQuery(...args),
+      release: () => mockClientRelease(),
+    }),
+  },
 }));
 
+// The route reads the plan through lib/billing/stripe-catalog, which carries
+// Next's `server-only` marker. Under plain Node that package throws on load.
+vi.mock("server-only", () => ({}));
+
 const mockSubRetrieve = vi.fn();
+const mockSubCancel = vi.fn();
 const mockCustomerRetrieve = vi.fn();
 const mockProductRetrieve = vi.fn();
+const mockPaymentIntentRetrieve = vi.fn();
+const mockChargeRetrieve = vi.fn();
+const mockDisputeUpdate = vi.fn();
 const mockGetStripe = vi.fn();
 vi.mock("@/lib/billing/stripe", () => ({
   getStripe: () => mockGetStripe(),
+}));
+
+/**
+ * What stripe.subscriptions.retrieve answers, keyed by subscription id.
+ *
+ * The subscription and invoice handlers re-read the live subscription rather
+ * than trusting the event's snapshot, because Stripe does not deliver in order.
+ * signedRequest() records each subscription event's own object here, and an
+ * invoice's subscription as plainly active, unless the test already put
+ * something there: a test about a snapshot that has gone stale sets the live
+ * answer first.
+ */
+const liveSubscriptions = new Map<string, Record<string, unknown>>();
+
+// Billing emails are asserted on directly. The templates stay real, so a
+// test still sees exactly what would have been sent.
+const mockSendEmail = vi.fn();
+vi.mock("@/lib/email/email", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/email/email")>()),
+  sendEmail: (...args: unknown[]) => mockSendEmail(...args),
 }));
 
 // The three credit-reversal calls behind charge.refunded and
@@ -46,11 +83,23 @@ vi.mock("@/lib/billing/stripe", () => ({
 // stays real so the payment_intent.succeeded tests above keep exercising the
 // crediting path through the mocked pool (AUDIT-013#cov-11).
 const mockReverseAiCreditPurchase = vi.fn();
-vi.mock("@/lib/billing/ai-usage", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/billing/ai-usage")>()),
-  reverseAiCreditPurchase: (...args: unknown[]) =>
-    mockReverseAiCreditPurchase(...args),
-}));
+// creditAiCreditPurchase still runs for real against the mocked pool; the spy
+// is only there so a test can say it was never reached.
+const mockCreditAiCreditPurchase = vi.fn();
+let realCreditAiCreditPurchase: (typeof import("@/lib/billing/ai-usage"))["creditAiCreditPurchase"];
+vi.mock("@/lib/billing/ai-usage", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/billing/ai-usage")>();
+  realCreditAiCreditPurchase = actual.creditAiCreditPurchase;
+  return {
+    ...actual,
+    reverseAiCreditPurchase: (...args: unknown[]) =>
+      mockReverseAiCreditPurchase(...args),
+    creditAiCreditPurchase: (
+      ...args: Parameters<typeof actual.creditAiCreditPurchase>
+    ) => mockCreditAiCreditPurchase(...args),
+  };
+});
 
 const mockReverseGithubCreditPurchase = vi.fn();
 vi.mock("@/lib/billing/github-review-usage", async (importOriginal) => ({
@@ -98,7 +147,36 @@ afterAll(() => {
   }
 });
 
+function recordLiveSubscription(payload: string): void {
+  let event: {
+    type?: string;
+    data?: { object?: Record<string, unknown> };
+  };
+  try {
+    event = JSON.parse(payload);
+  } catch {
+    return;
+  }
+  const object = event.data?.object;
+  if (!object || typeof event.type !== "string") return;
+  if (event.type.startsWith("customer.subscription.")) {
+    const id = object.id;
+    if (typeof id === "string" && !liveSubscriptions.has(id)) {
+      liveSubscriptions.set(id, object);
+    }
+  } else if (event.type.startsWith("invoice.")) {
+    const parent = object.parent as {
+      subscription_details?: { subscription?: unknown };
+    } | null;
+    const id = parent?.subscription_details?.subscription;
+    if (typeof id === "string" && !liveSubscriptions.has(id)) {
+      liveSubscriptions.set(id, { id, status: "active", metadata: {} });
+    }
+  }
+}
+
 function signedRequest(payload: string, secret = WEBHOOK_SECRET): NextRequest {
+  recordLiveSubscription(payload);
   const header = realWebhooks.generateTestHeaderString({ payload, secret });
   return new NextRequest("http://localhost/api/v3/webhooks/stripe", {
     method: "POST",
@@ -121,9 +199,12 @@ function unsignedRequest(
 function fakeStripe() {
   return {
     webhooks: realWebhooks,
-    subscriptions: { retrieve: mockSubRetrieve },
+    subscriptions: { retrieve: mockSubRetrieve, cancel: mockSubCancel },
     customers: { retrieve: mockCustomerRetrieve },
     products: { retrieve: mockProductRetrieve },
+    paymentIntents: { retrieve: mockPaymentIntentRetrieve },
+    charges: { retrieve: mockChargeRetrieve },
+    disputes: { update: mockDisputeUpdate },
   };
 }
 
@@ -141,16 +222,52 @@ function resourceMissing(message: string) {
 
 beforeEach(() => {
   mockQuery.mockReset();
+  liveSubscriptions.clear();
   mockSubRetrieve.mockReset();
+  mockSubRetrieve.mockImplementation(async (id: string) => {
+    const live = liveSubscriptions.get(id);
+    if (!live) throw resourceMissing(`No such subscription: '${id}'`);
+    return live;
+  });
+  mockSubCancel.mockReset();
+  mockSubCancel.mockImplementation(async (id: string) => ({
+    id,
+    status: "canceled",
+  }));
   mockCustomerRetrieve.mockReset();
   mockProductRetrieve.mockReset();
   mockProductRetrieve.mockResolvedValue({ metadata: {} });
+  mockPaymentIntentRetrieve.mockReset();
+  mockPaymentIntentRetrieve.mockImplementation(async (id: string) => ({
+    id,
+    metadata: {},
+  }));
+  mockChargeRetrieve.mockReset();
+  mockChargeRetrieve.mockImplementation(async (id: string) => ({
+    id,
+    amount: 0,
+    amount_refunded: 0,
+    refunded: false,
+    disputed: false,
+  }));
+  mockDisputeUpdate.mockReset();
+  mockDisputeUpdate.mockImplementation(async (id: string) => ({ id }));
+  mockSendEmail.mockReset();
+  mockSendEmail.mockResolvedValue(undefined);
   mockGetStripe.mockReset();
   mockGetStripe.mockReturnValue(fakeStripe());
   mockSendAdminAlert.mockReset();
   mockSendAdminAlert.mockResolvedValue({ delivered: false, reason: "test" });
   mockReverseAiCreditPurchase.mockReset();
   mockReverseAiCreditPurchase.mockResolvedValue({ reversed: false });
+  mockCreditAiCreditPurchase.mockReset();
+  mockCreditAiCreditPurchase.mockImplementation(
+    (...args: Parameters<typeof realCreditAiCreditPurchase>) =>
+      realCreditAiCreditPurchase(...args),
+  );
+  mockClientQuery.mockReset();
+  mockClientQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+  mockClientRelease.mockReset();
   mockReverseGithubCreditPurchase.mockReset();
   mockReverseGithubCreditPurchase.mockResolvedValue({ reversed: false });
   mockReverseBrowserbaseCreditPurchase.mockReset();
@@ -358,7 +475,7 @@ describe("POST /api/v3/webhooks/stripe: checkout.session.completed", () => {
       ),
     );
     expect(res.status).toBe(200);
-    expect(mockSubRetrieve).toHaveBeenCalledWith("sub_9");
+    expect(mockSubRetrieve).toHaveBeenCalledWith("sub_9", expect.anything());
     expect(mockQuery).toHaveBeenCalledTimes(3); // idempotency + email UPDATE + account lookup, no badge queries
 
     const [sql, params] = mockQuery.mock.calls[1];
@@ -685,19 +802,20 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
     expect(mockQuery).toHaveBeenCalledTimes(4);
   });
 
-  it("BUG: when metadata is absent, the items[].price.product fallback compares Stripe's real product id against internal plan-name prefixes and silently resolves to 'free'", async () => {
-    // getPlanFromProductId (lib/billing/products.ts) only recognizes ids that
-    // literally start with "core_supporter" / "pro_supporter" /
-    // "elite_supporter" -- the internal catalog id format used in
-    // subscription.metadata.productId (set by our own checkout/create-session
-    // route). A raw Stripe product id like "prod_XXXXXXXXXXXX" never matches
-    // that prefix check, so this fallback can never actually recover the
-    // paid plan; it always resolves to "free" instead. See
-    // app/api/v3/webhooks/stripe/route.ts customer.subscription.created
-    // handler's second fallback branch (items?.data?.[0]?.price?.product).
+  it("recovers the plan from the Stripe product's vulnradar_id when the subscription carries no metadata", async () => {
+    // Products are stamped with metadata.vulnradar_id by getOrCreateStripePriceId
+    // (lib/billing/stripe-catalog.ts). The lookup used to read
+    // metadata.productId, a key no product has carried since the catalog was
+    // reused, so this fallback always answered "free" for a paying customer.
     withIdempotency("evt_sub_created_2");
-    mockProductRetrieve.mockResolvedValue({ metadata: {} });
+    mockProductRetrieve.mockResolvedValue({
+      id: "prod_REAL_STRIPE_ID",
+      metadata: { vulnradar_id: "elite_supporter_monthly" },
+    });
     mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 55 }] }); // UPDATE by stripe_customer_id
+    mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // badge INSERT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // recipient lookup
 
     const res = await POST(
       signedRequest(
@@ -717,11 +835,81 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
       ),
     );
     expect(res.status).toBe(200);
-    // Only the customer-id UPDATE ran; no badge grant because plan
-    // resolved (incorrectly) to "free".
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(mockProductRetrieve).toHaveBeenCalledWith("prod_REAL_STRIPE_ID");
     const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("WHERE stripe_customer_id = $4");
+    expect(params[0]).toBe("elite_supporter");
+    const [badgeInsertSql] = mockQuery.mock.calls[3];
+    expect(badgeInsertSql).toContain("user_badges");
+  });
+
+  it("takes the plan from the billed price over subscription metadata that a plan change left behind", async () => {
+    // A plan change made in Stripe (the dashboard, the billing portal) swaps
+    // the price and leaves the metadata stamped at checkout untouched. The
+    // price is what the customer is charged for, so it decides.
+    withIdempotency("evt_sub_created_price_first");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // UPDATE by userId
+    mockQuery.mockResolvedValueOnce(badgeRow);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // recipient lookup
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_sub_created_price_first",
+          type: "customer.subscription.created",
+          data: {
+            object: {
+              id: "sub_pf",
+              customer: "cus_pf",
+              status: "active",
+              metadata: { userId: "42", planId: "core_supporter" },
+              items: {
+                data: [
+                  {
+                    price: {
+                      product: "prod_pf",
+                      metadata: { vulnradar_id: "pro_supporter_monthly" },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    const [, params] = mockQuery.mock.calls[1];
+    expect(params[0]).toBe("pro_supporter");
+  });
+
+  it("still resolves to free when neither the price, the product nor the metadata names a plan", async () => {
+    withIdempotency("evt_sub_created_unknown");
+    mockProductRetrieve.mockResolvedValue({ id: "prod_x", metadata: {} });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 55 }] }); // UPDATE by stripe_customer_id
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_sub_created_unknown",
+          type: "customer.subscription.created",
+          data: {
+            object: {
+              id: "sub_x",
+              customer: "cus_x",
+              status: "active",
+              metadata: {},
+              items: { data: [{ price: { product: "prod_x" } }] },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    // No badge grant: nothing named a paid plan.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    const [, params] = mockQuery.mock.calls[1];
     expect(params[0]).toBe("free");
   });
 
@@ -1070,6 +1258,195 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
     // no-op UPDATE ran -- no badge SELECT/INSERT/DELETE, and no change email
     // (the UPDATE matched nothing).
     expect(mockQuery).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("POST /api/v3/webhooks/stripe: customer.subscription.updated reads the live subscription", () => {
+  function updatedEvent(id: string, object: Record<string, unknown>) {
+    return signedRequest(
+      JSON.stringify({
+        id,
+        type: "customer.subscription.updated",
+        data: { object },
+      }),
+    );
+  }
+
+  const eliteSnapshot = {
+    id: "sub_late",
+    customer: "cus_late",
+    status: "active",
+    metadata: { productId: "elite_supporter_monthly" },
+  };
+
+  it("keeps a cancelled account on free when an older active snapshot arrives after the cancellation", async () => {
+    // Stripe does not order its deliveries. The row was cancelled (free,
+    // canceled, no subscription id), so the ownership guard lets any
+    // subscription claim it, and an `updated` snapshot taken while the
+    // subscription was still active wrote Elite straight back. The live
+    // subscription says canceled, and that is what gets written.
+    liveSubscriptions.set("sub_late", { ...eliteSnapshot, status: "canceled" });
+    withIdempotency("evt_up_stale_active");
+    // The row is { plan: free, status: canceled, subscription id: null }. The
+    // write is the cancellation's own, which leaves it exactly that.
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // the write
+    mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // badge DELETE
+
+    const res = await POST(updatedEvent("evt_up_stale_active", eliteSnapshot));
+
+    expect(res.status).toBe(200);
+    expect(mockSubRetrieve).toHaveBeenCalledWith(
+      "sub_late",
+      expect.objectContaining({
+        expand: expect.arrayContaining(["items.data.price.product"]),
+      }),
+    );
+    for (const [, params] of mockQuery.mock.calls) {
+      expect(params ?? []).not.toContain("elite_supporter");
+    }
+    const writes = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).startsWith("UPDATE users"),
+    );
+    expect(writes).toHaveLength(1);
+    expect(writes[0][0]).toContain("subscription_status = 'canceled'");
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("writes free when the live subscription has expired unpaid, whatever the snapshot said", async () => {
+    liveSubscriptions.set("sub_late", {
+      ...eliteSnapshot,
+      status: "incomplete_expired",
+    });
+    withIdempotency("evt_up_stale_expired");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // pre-read
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // UPDATE
+    mockQuery.mockResolvedValueOnce(badgeRow);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await POST(updatedEvent("evt_up_stale_expired", eliteSnapshot));
+
+    expect(res.status).toBe(200);
+    const [, params] = mockQuery.mock.calls[2];
+    expect(params.slice(0, 2)).toEqual(["free", "incomplete_expired"]);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("treats a subscription Stripe no longer has as ended", async () => {
+    mockSubRetrieve.mockRejectedValue(
+      resourceMissing("No such subscription: 'sub_late'"),
+    );
+    withIdempotency("evt_up_gone");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // pre-read
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // the write
+
+    const res = await POST(updatedEvent("evt_up_gone", eliteSnapshot));
+
+    expect(res.status).toBe(200);
+    for (const [, params] of mockQuery.mock.calls) {
+      expect(params ?? []).not.toContain("elite_supporter");
+    }
+  });
+
+  it("answers 500 so Stripe redelivers when the live read cannot reach Stripe", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockSubRetrieve.mockRejectedValue(
+      Object.assign(new Error("Request timed out"), { statusCode: 500 }),
+    );
+    withIdempotency("evt_up_unreachable");
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    const res = await POST(updatedEvent("evt_up_unreachable", eliteSnapshot));
+
+    expect(res.status).toBe(500);
+    const writes = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).startsWith("UPDATE users"),
+    );
+    expect(writes).toHaveLength(0);
+    errorSpy.mockRestore();
+  });
+
+  it("takes the plan from the live billed price over stale subscription metadata", async () => {
+    liveSubscriptions.set("sub_late", {
+      ...eliteSnapshot,
+      metadata: { productId: "core_supporter_monthly" },
+      items: {
+        data: [
+          {
+            price: {
+              id: "price_elite",
+              product: {
+                id: "prod_elite",
+                object: "product",
+                metadata: { vulnradar_id: "elite_supporter_monthly" },
+              },
+            },
+          },
+        ],
+      },
+    });
+    withIdempotency("evt_up_price_first");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // pre-read
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // UPDATE
+
+    const res = await POST(
+      updatedEvent("evt_up_price_first", {
+        ...eliteSnapshot,
+        metadata: { productId: "core_supporter_monthly" },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const [, params] = mockQuery.mock.calls[2];
+    expect(params[0]).toBe("elite_supporter");
+    // The product came back expanded on the live read: no second lookup.
+    expect(mockProductRetrieve).not.toHaveBeenCalled();
+  });
+
+  it("recovers the plan from the expanded product when the subscription carries no metadata at all", async () => {
+    liveSubscriptions.set("sub_bare", {
+      id: "sub_bare",
+      customer: "cus_bare",
+      status: "active",
+      metadata: {},
+      items: {
+        data: [
+          {
+            price: {
+              id: "price_pro",
+              product: {
+                id: "prod_pro",
+                object: "product",
+                metadata: { vulnradar_id: "pro_supporter_yearly" },
+              },
+              recurring: { interval: "year" },
+            },
+          },
+        ],
+      },
+    });
+    withIdempotency("evt_up_bare");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // pre-read
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // UPDATE
+
+    const res = await POST(
+      updatedEvent("evt_up_bare", {
+        id: "sub_bare",
+        customer: "cus_bare",
+        status: "active",
+        metadata: {},
+        items: { data: [{ price: { product: "prod_pro" } }] },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const [, params] = mockQuery.mock.calls[2];
+    expect(params.slice(0, 4)).toEqual([
+      "pro_supporter",
+      "active",
+      "cus_bare",
+      "year",
+    ]);
   });
 });
 
@@ -1431,6 +1808,367 @@ describe("POST /api/v3/webhooks/stripe: invoice events", () => {
   });
 });
 
+describe("POST /api/v3/webhooks/stripe: invoice events read the live subscription", () => {
+  it("invoice.payment_succeeded does not mark active a subscription that has since been cancelled", async () => {
+    // A late receipt for the last paid cycle of a subscription that is now
+    // over. The row is already free with no subscription id, which the
+    // ownership guard lets any subscription write to, so it was stamped
+    // "active" again.
+    liveSubscriptions.set("sub_over", {
+      id: "sub_over",
+      status: "canceled",
+      metadata: {},
+    });
+    withIdempotency("evt_inv_paid_late");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT billing_history
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // recipient lookup
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_inv_paid_late",
+          type: "invoice.payment_succeeded",
+          data: {
+            object: {
+              id: "in_late",
+              customer: "cus_over",
+              parent: { subscription_details: { subscription: "sub_over" } },
+              amount_paid: 500,
+              currency: "usd",
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockSubRetrieve).toHaveBeenCalledWith("sub_over", expect.anything());
+    const statusWrites = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("subscription_status = 'active'"),
+    );
+    expect(statusWrites).toHaveLength(0);
+    const [historySql] = mockQuery.mock.calls[1];
+    expect(historySql).toContain("billing_history");
+  });
+
+  it("invoice.payment_failed neither duns nor emails for a subscription that has already ended", async () => {
+    liveSubscriptions.set("sub_over", {
+      id: "sub_over",
+      status: "canceled",
+      metadata: {},
+    });
+    withIdempotency("evt_inv_failed_late");
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_inv_failed_late",
+          type: "invoice.payment_failed",
+          data: {
+            object: {
+              id: "in_late_fail",
+              customer: "cus_over",
+              parent: { subscription_details: { subscription: "sub_over" } },
+              attempt_count: 1,
+              billing_reason: "subscription_cycle",
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockSubCancel).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v3/webhooks/stripe: invoice.payment_failed, two strikes", () => {
+  // Stripe retries a failed renewal on the owner's schedule. The first failure
+  // keeps the plan and warns; the second cancels the subscription, and the
+  // customer.subscription.deleted that follows moves the account to free.
+  // Before this the account kept its paid plan for as long as Stripe kept
+  // reporting past_due.
+  function failedRenewal(
+    id: string,
+    attempt: number,
+    over: Record<string, unknown> = {},
+  ) {
+    return signedRequest(
+      JSON.stringify({
+        id,
+        type: "invoice.payment_failed",
+        data: {
+          object: {
+            id: `in_${id}`,
+            customer: "cus_dun",
+            parent: { subscription_details: { subscription: "sub_dun" } },
+            billing_reason: "subscription_cycle",
+            attempt_count: attempt,
+            amount_due: 1000,
+            currency: "usd",
+            next_payment_attempt: 1_763_200_000,
+            ...over,
+          },
+        },
+      }),
+    );
+  }
+
+  const recipient = {
+    rows: [{ email: "payer@example.com", plan: "pro_supporter" }],
+  };
+
+  // What Stripe reports for a renewal that is still failing.
+  beforeEach(() => {
+    liveSubscriptions.set("sub_dun", {
+      id: "sub_dun",
+      status: "past_due",
+      metadata: {},
+    });
+  });
+
+  function sentSubjects() {
+    return mockSendEmail.mock.calls.map(
+      ([msg]) => (msg as { subject: string }).subject,
+    );
+  }
+
+  it("on the first failure marks past_due, sends the retry notice and cancels nothing", async () => {
+    withIdempotency("evt_dun_1");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] }); // past_due
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    const res = await POST(failedRenewal("evt_dun_1", 1));
+
+    expect(res.status).toBe(200);
+    expect(mockSubCancel).not.toHaveBeenCalled();
+    expect(String(mockQuery.mock.calls[1][0])).toContain(
+      "subscription_status = 'past_due'",
+    );
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(sentSubjects()[0]).toContain("couldn't process your payment");
+    const { text } = mockSendEmail.mock.calls[0][0] as { text: string };
+    expect(text).toMatch(/retry/i);
+  });
+
+  it("on the second failure cancels the subscription once and sends the cancellation notice", async () => {
+    withIdempotency("evt_dun_2");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] }); // past_due
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "user", has_gift: false }],
+    }); // exemptions
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    const res = await POST(failedRenewal("evt_dun_2", 2));
+
+    expect(res.status).toBe(200);
+    expect(mockSubCancel).toHaveBeenCalledTimes(1);
+    const [cancelId, cancelParams, cancelOptions] = mockSubCancel.mock.calls[0];
+    expect(cancelId).toBe("sub_dun");
+    // No credit for the unpaid period, and no final invoice for it either.
+    expect(cancelParams).toMatchObject({ prorate: false, invoice_now: false });
+    expect(cancelParams.cancellation_details.comment).toBeTruthy();
+    expect(cancelOptions).toMatchObject({
+      idempotencyKey: expect.stringContaining("sub_dun"),
+    });
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(sentSubjects()[0]).toMatch(/cancel/i);
+    const { to } = mockSendEmail.mock.calls[0][0] as { to: string };
+    expect(to).toBe("payer@example.com");
+  });
+
+  it("cancels on a later attempt too, if the second one somehow got through", async () => {
+    withIdempotency("evt_dun_3");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "user", has_gift: false }],
+    });
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    await POST(failedRenewal("evt_dun_3", 3));
+
+    expect(mockSubCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a gifted account's subscription alone", async () => {
+    withIdempotency("evt_dun_gift");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "user", has_gift: true }],
+    });
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    const res = await POST(failedRenewal("evt_dun_gift", 2));
+
+    expect(res.status).toBe(200);
+    expect(mockSubCancel).not.toHaveBeenCalled();
+    expect(sentSubjects()[0]).toContain("couldn't process your payment");
+  });
+
+  it("leaves a staff account's subscription alone", async () => {
+    withIdempotency("evt_dun_staff");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "support", has_gift: false }],
+    });
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    await POST(failedRenewal("evt_dun_staff", 2));
+
+    expect(mockSubCancel).not.toHaveBeenCalled();
+  });
+
+  it("never cancels over a one-off invoice", async () => {
+    withIdempotency("evt_dun_oneoff");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await POST(
+      failedRenewal("evt_dun_oneoff", 2, {
+        parent: null,
+        billing_reason: "manual",
+      }),
+    );
+
+    expect(mockSubCancel).not.toHaveBeenCalled();
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    logSpy.mockRestore();
+  });
+
+  it("never cancels over an invoice that is not a renewal, such as a mid-cycle plan change", async () => {
+    withIdempotency("evt_dun_update");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] });
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    await POST(
+      failedRenewal("evt_dun_update", 2, {
+        billing_reason: "subscription_update",
+      }),
+    );
+
+    expect(mockSubCancel).not.toHaveBeenCalled();
+  });
+
+  it("does not cancel or dun a renewal for a subscription the account is no longer on", async () => {
+    withIdempotency("evt_dun_other");
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // past_due guard refused
+
+    await POST(failedRenewal("evt_dun_other", 2));
+
+    expect(mockSubCancel).not.toHaveBeenCalled();
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("cancels once across a redelivery of the same event", async () => {
+    withIdempotency("evt_dun_redeliver");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "user", has_gift: false }],
+    });
+    mockQuery.mockResolvedValueOnce(recipient);
+    await POST(failedRenewal("evt_dun_redeliver", 2));
+
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // marker already there
+    const replay = await POST(failedRenewal("evt_dun_redeliver", 2));
+
+    expect(await replay.json()).toEqual({ received: true, replay: true });
+    expect(mockSubCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not cancel over a second strike delivered after the renewal was paid", async () => {
+    // Stripe does not deliver in order. The card was fixed and the retry
+    // went through, so Stripe has the subscription active again, and then
+    // the earlier attempt-2 failure arrives.
+    liveSubscriptions.set("sub_dun", {
+      id: "sub_dun",
+      status: "active",
+      metadata: {},
+    });
+    withIdempotency("evt_dun_late");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] });
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    const res = await POST(failedRenewal("evt_dun_late", 2));
+
+    expect(res.status).toBe(200);
+    expect(mockSubCancel).not.toHaveBeenCalled();
+    expect(sentSubjects().some((s) => /canceled/i.test(s))).toBe(false);
+  });
+
+  it("does nothing more once the subscription is already cancelled in Stripe", async () => {
+    // A retry of the second strike after the first attempt had already
+    // cancelled (the marker was rolled back on a later failure), or a third
+    // attempt racing the cancellation.
+    liveSubscriptions.set("sub_dun", {
+      id: "sub_dun",
+      status: "canceled",
+      metadata: {},
+    });
+    withIdempotency("evt_dun_after_cancel");
+
+    await POST(failedRenewal("evt_dun_after_cancel", 2));
+
+    expect(mockSubCancel).not.toHaveBeenCalled();
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("answers 500 so Stripe redelivers when the cancellation cannot reach Stripe", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    withIdempotency("evt_dun_cancel_down");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ role: "user", has_gift: false }],
+    });
+    mockQuery.mockResolvedValue({ rows: [] }); // idempotency rollback
+    mockSubCancel.mockRejectedValue(
+      Object.assign(new Error("Request timed out"), { statusCode: 500 }),
+    );
+
+    const res = await POST(failedRenewal("evt_dun_cancel_down", 2));
+
+    expect(res.status).toBe(500);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("customer.subscription.deleted does not send a second cancellation email for a two-strike cancel", async () => {
+    // The two-strike handler already told the customer why and how to come
+    // back. The generic "your subscription was canceled" on top of it would
+    // be a second message about the same thing, and a misleading one: it
+    // says access lasts to the end of the period.
+    withIdempotency("evt_deleted_two_strike");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 5 }] }); // UPDATE
+    mockQuery.mockResolvedValueOnce(badgeRow);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce(recipient);
+
+    const sent = mockSendEmail.mock.calls.length;
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_deleted_two_strike",
+          type: "customer.subscription.deleted",
+          data: {
+            object: {
+              id: "sub_dun",
+              customer: "cus_dun",
+              metadata: { planId: "pro_supporter" },
+              cancellation_details: {
+                reason: "cancellation_requested",
+                comment: "Renewal payment failed twice",
+              },
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockSendEmail.mock.calls.length).toBe(sent);
+  });
+});
+
 describe("POST /api/v3/webhooks/stripe: charge.refunded", () => {
   function refundEvent(id: string, charge: Record<string, unknown>) {
     return signedRequest(
@@ -1515,6 +2253,235 @@ describe("POST /api/v3/webhooks/stripe: charge.refunded", () => {
   });
 });
 
+describe("POST /api/v3/webhooks/stripe: a refund that lands before the credit", () => {
+  it("records the refunded purchase so a credit arriving afterwards is refused", async () => {
+    // Refund first, credit second. With no ledger row to reverse, the refund
+    // did nothing, and the credit that followed went through: the customer
+    // had their money back and kept the tokens.
+    withIdempotency("evt_refund_first");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockPaymentIntentRetrieve.mockResolvedValue({
+      id: "pi_refund_first",
+      metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ payment_intent_id: "pi_refund_first" }],
+      rowCount: 1,
+    }); // the reversed-purchase record
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_refund_first",
+          type: "charge.refunded",
+          data: {
+            object: {
+              id: "ch_rf",
+              refunded: true,
+              amount: 500,
+              amount_refunded: 500,
+              currency: "usd",
+              payment_intent: "pi_refund_first",
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockPaymentIntentRetrieve).toHaveBeenCalledWith("pi_refund_first");
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain("INSERT INTO ai_credit_purchases");
+    expect(sql).toContain("refunded_at");
+    expect(sql).toContain("ON CONFLICT (payment_intent_id) DO NOTHING");
+    expect(params).toEqual(["pi_refund_first", 42, 1_000_000]);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it("does not record anything for a refund of a subscription invoice", async () => {
+    withIdempotency("evt_refund_sub");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_refund_sub",
+          type: "charge.refunded",
+          data: {
+            object: {
+              id: "ch_sub",
+              refunded: true,
+              amount: 500,
+              amount_refunded: 500,
+              currency: "usd",
+              payment_intent: "pi_sub_invoice",
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    logSpy.mockRestore();
+  });
+
+  it("payment_intent.succeeded never credits a purchase whose charge has already been refunded", async () => {
+    withIdempotency("evt_pi_after_refund");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockChargeRetrieve.mockResolvedValue({
+      id: "ch_refunded",
+      amount: 500,
+      amount_refunded: 500,
+      refunded: true,
+      disputed: false,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // reversed-purchase record (refund already wrote it)
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_pi_after_refund",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              id: "pi_after_refund",
+              amount: 1000,
+              amount_received: 1000,
+              currency: "usd",
+              latest_charge: "ch_refunded",
+              metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockChargeRetrieve).toHaveBeenCalledWith("ch_refunded");
+    expect(mockCreditAiCreditPurchase).not.toHaveBeenCalled();
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain("INSERT INTO ai_credit_purchases");
+    expect(params).toEqual(["pi_after_refund", 42, 1_000_000]);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it("treats a charge refunded down to nothing as refunded even before the flag catches up", async () => {
+    withIdempotency("evt_pi_amount_refunded");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_pi_amount_refunded",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              id: "pi_amount_refunded",
+              amount: 1000,
+              amount_received: 1000,
+              currency: "usd",
+              latest_charge: {
+                id: "ch_inline",
+                object: "charge",
+                amount: 500,
+                amount_refunded: 500,
+                refunded: false,
+                disputed: false,
+              },
+              metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(mockChargeRetrieve).not.toHaveBeenCalled();
+    expect(mockCreditAiCreditPurchase).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it("payment_intent.succeeded never credits a purchase whose charge is under dispute", async () => {
+    withIdempotency("evt_pi_disputed");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockChargeRetrieve.mockResolvedValue({
+      id: "ch_disputed",
+      amount: 500,
+      amount_refunded: 0,
+      refunded: false,
+      disputed: true,
+    });
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_pi_disputed",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              id: "pi_disputed_credit",
+              amount: 1000,
+              amount_received: 1000,
+              currency: "usd",
+              latest_charge: "ch_disputed",
+              metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockCreditAiCreditPurchase).not.toHaveBeenCalled();
+    // The dispute handler owns the record for a disputed purchase.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    errSpy.mockRestore();
+  });
+
+  it("still credits when the latest charge is clean", async () => {
+    withIdempotency("evt_pi_clean");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockChargeRetrieve.mockResolvedValue({
+      id: "ch_clean",
+      amount: 500,
+      amount_refunded: 0,
+      refunded: false,
+      disputed: false,
+    });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // credit CTE
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // receipt recipient
+
+    await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_pi_clean",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              id: "pi_clean",
+              amount: 1000,
+              amount_received: 1000,
+              currency: "usd",
+              latest_charge: "ch_clean",
+              metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(mockCreditAiCreditPurchase).toHaveBeenCalledWith(
+      "pi_clean",
+      42,
+      1_000_000,
+    );
+    logSpy.mockRestore();
+  });
+});
+
 describe("POST /api/v3/webhooks/stripe: charge.dispute.created", () => {
   function disputeEvent(id: string, dispute: Record<string, unknown>) {
     return signedRequest(
@@ -1526,7 +2493,14 @@ describe("POST /api/v3/webhooks/stripe: charge.dispute.created", () => {
     );
   }
 
-  it("claws back all three credit ledgers for a string payment_intent", async () => {
+  /** The ledger reversals the transaction ran, by table. */
+  function ledgerClaims() {
+    return mockClientQuery.mock.calls.filter(([sql]) =>
+      /UPDATE \w+_credit_purchases SET refunded_at = NOW\(\)/.test(String(sql)),
+    );
+  }
+
+  it("claws back all three credit ledgers for a string payment_intent, inside one transaction", async () => {
     withIdempotency("evt_dispute_1");
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -1542,11 +2516,239 @@ describe("POST /api/v3/webhooks/stripe: charge.dispute.created", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(mockReverseAiCreditPurchase).toHaveBeenCalledWith("pi_disputed");
-    expect(mockReverseGithubCreditPurchase).toHaveBeenCalledWith("pi_disputed");
-    expect(mockReverseBrowserbaseCreditPurchase).toHaveBeenCalledWith(
-      "pi_disputed",
+    const claims = ledgerClaims();
+    expect(
+      claims.map(([sql]) => String(sql).match(/UPDATE (\w+)/)?.[1]),
+    ).toEqual([
+      "ai_credit_purchases",
+      "github_credit_purchases",
+      "browserbase_credit_purchases",
+    ]);
+    for (const [, params] of claims) expect(params).toEqual(["pi_disputed"]);
+    const statements = mockClientQuery.mock.calls.map(([sql]) => String(sql));
+    expect(statements[0]).toBe("BEGIN");
+    expect(statements[statements.length - 1]).toBe("COMMIT");
+    expect(mockClientRelease).toHaveBeenCalledTimes(1);
+    errSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  it("records on the dispute how much it actually took, so a win can give back exactly that", async () => {
+    // Bought 1,000,000 tokens and had spent all but 200,000 when the dispute
+    // opened. The reversal can only take the 200,000 that are left. A win
+    // that restored the full purchase would hand back 800,000 tokens that
+    // were already used: buy, spend, dispute, lose the dispute, keep both.
+    withIdempotency("evt_dispute_partial");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (/UPDATE ai_credit_purchases SET refunded_at = NOW\(\)/.test(sql)) {
+        return { rows: [{ user_id: 42, amount: "1000000" }], rowCount: 1 };
+      }
+      if (/FOR UPDATE/.test(sql)) {
+        return { rows: [{ balance: "200000" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await POST(
+      disputeEvent("evt_dispute_partial", {
+        id: "dp_partial",
+        reason: "fraudulent",
+        amount: 500,
+        currency: "usd",
+        payment_intent: "pi_partial",
+      }),
     );
+
+    expect(res.status).toBe(200);
+    const debit = mockClientQuery.mock.calls.find(([sql]) =>
+      /UPDATE users SET ai_credit_balance = ai_credit_balance - \$1/.test(
+        String(sql),
+      ),
+    );
+    expect(debit?.[1]).toEqual([200000, 42]);
+    expect(mockDisputeUpdate).toHaveBeenCalledWith("dp_partial", {
+      metadata: {
+        vulnradar_reversal_recorded: "1",
+        vulnradar_restorable_ai: "200000",
+      },
+      // Stripe's default is to submit the evidence with any update, and a
+      // submission is final: a metadata write must never be one.
+      submit: false,
+    });
+    // The Stripe write happens before COMMIT: if it fails, the reversal rolls
+    // back with it and the redelivery starts from the same balance.
+    const commitOrder =
+      mockClientQuery.mock.invocationCallOrder[
+        mockClientQuery.mock.calls.findIndex(([sql]) => sql === "COMMIT")
+      ];
+    expect(mockDisputeUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+      commitOrder,
+    );
+    errSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  it("rolls the reversal back when the dispute cannot be annotated, so the redelivery can redo it", async () => {
+    withIdempotency("evt_dispute_annotate_fail");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (/UPDATE ai_credit_purchases SET refunded_at = NOW\(\)/.test(sql)) {
+        return { rows: [{ user_id: 42, amount: "1000000" }], rowCount: 1 };
+      }
+      if (/FOR UPDATE/.test(sql)) {
+        return { rows: [{ balance: "1000000" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    mockDisputeUpdate.mockRejectedValue(
+      Object.assign(new Error("Request timed out"), { statusCode: 500 }),
+    );
+    mockQuery.mockResolvedValue({ rows: [] }); // idempotency rollback
+
+    const res = await POST(
+      disputeEvent("evt_dispute_annotate_fail", {
+        id: "dp_fail",
+        reason: "fraudulent",
+        amount: 500,
+        currency: "usd",
+        payment_intent: "pi_fail",
+      }),
+    );
+
+    expect(res.status).toBe(500);
+    const statements = mockClientQuery.mock.calls.map(([sql]) => String(sql));
+    expect(statements).toContain("ROLLBACK");
+    expect(statements).not.toContain("COMMIT");
+    errSpy.mockRestore();
+  });
+
+  it("keeps the reversal when Stripe refuses the record outright, and tells an admin what a win owes", async () => {
+    // A restricted key without dispute write access gets a 403 on every
+    // redelivery. Rolling back on that left the credit unreversed for good.
+    withIdempotency("evt_dispute_refused");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (/UPDATE ai_credit_purchases SET refunded_at = NOW\(\)/.test(sql)) {
+        return { rows: [{ user_id: 42, amount: "1000000" }], rowCount: 1 };
+      }
+      if (/FOR UPDATE/.test(sql)) {
+        return { rows: [{ balance: "300000" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    mockDisputeUpdate.mockRejectedValue(
+      Object.assign(
+        new Error("The provided key does not have the required permissions"),
+        { type: "StripePermissionError", statusCode: 403 },
+      ),
+    );
+
+    const res = await POST(
+      disputeEvent("evt_dispute_refused", {
+        id: "dp_refused",
+        reason: "fraudulent",
+        amount: 500,
+        currency: "usd",
+        payment_intent: "pi_refused",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const statements = mockClientQuery.mock.calls.map(([sql]) => String(sql));
+    expect(statements).toContain("COMMIT");
+    expect(statements).not.toContain("ROLLBACK");
+    expect(mockSendAdminAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "stripe_dispute_reversal_unrecorded",
+        context: expect.objectContaining({
+          disputeId: "dp_refused",
+          restorable: "ai:300000",
+        }),
+      }),
+    );
+    errSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  it("still rolls back on a rate limit, which a redelivery gets past", async () => {
+    withIdempotency("evt_dispute_rate_limited");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (/UPDATE ai_credit_purchases SET refunded_at = NOW\(\)/.test(sql)) {
+        return { rows: [{ user_id: 42, amount: "1000000" }], rowCount: 1 };
+      }
+      if (/FOR UPDATE/.test(sql)) {
+        return { rows: [{ balance: "1000000" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    mockDisputeUpdate.mockRejectedValue(
+      Object.assign(new Error("Too many requests"), { statusCode: 429 }),
+    );
+    mockQuery.mockResolvedValue({ rows: [] }); // idempotency rollback
+
+    const res = await POST(
+      disputeEvent("evt_dispute_rate_limited", {
+        id: "dp_rate",
+        reason: "fraudulent",
+        amount: 500,
+        currency: "usd",
+        payment_intent: "pi_rate",
+      }),
+    );
+
+    expect(res.status).toBe(500);
+    const statements = mockClientQuery.mock.calls.map(([sql]) => String(sql));
+    expect(statements).toContain("ROLLBACK");
+    expect(mockSendAdminAlert).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: "stripe_dispute_reversal_unrecorded" }),
+    );
+    errSpy.mockRestore();
+  });
+
+  it("records a dispute on a purchase that was never credited, so the credit cannot land afterwards and a win grants it", async () => {
+    withIdempotency("evt_dispute_uncredited");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockPaymentIntentRetrieve.mockResolvedValue({
+      id: "pi_uncredited",
+      metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
+    });
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (/INSERT INTO ai_credit_purchases/.test(sql)) {
+        return { rows: [{ payment_intent_id: "pi_uncredited" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await POST(
+      disputeEvent("evt_dispute_uncredited", {
+        id: "dp_uncredited",
+        reason: "fraudulent",
+        amount: 500,
+        currency: "usd",
+        payment_intent: "pi_uncredited",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const tombstone = mockClientQuery.mock.calls.find(([sql]) =>
+      /INSERT INTO ai_credit_purchases/.test(String(sql)),
+    );
+    expect(String(tombstone?.[0])).toContain("refunded_at");
+    expect(tombstone?.[1]).toEqual(["pi_uncredited", 42, 1_000_000]);
+    expect(mockDisputeUpdate).toHaveBeenCalledWith("dp_uncredited", {
+      metadata: {
+        vulnradar_reversal_recorded: "1",
+        vulnradar_restorable_ai: "1000000",
+      },
+      submit: false,
+    });
+    // Nothing came off a balance, so nobody is told credits were removed.
+    expect(mockSendEmail).not.toHaveBeenCalled();
     errSpy.mockRestore();
     logSpy.mockRestore();
   });
@@ -1566,9 +2768,7 @@ describe("POST /api/v3/webhooks/stripe: charge.dispute.created", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(mockReverseAiCreditPurchase).toHaveBeenCalledWith(
-      "pi_dispute_expanded",
-    );
+    expect(ledgerClaims()[0][1]).toEqual(["pi_dispute_expanded"]);
     errSpy.mockRestore();
   });
 
@@ -1587,9 +2787,134 @@ describe("POST /api/v3/webhooks/stripe: charge.dispute.created", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(mockReverseAiCreditPurchase).not.toHaveBeenCalled();
+    expect(mockClientQuery).not.toHaveBeenCalled();
     expect(errSpy).toHaveBeenCalled();
     errSpy.mockRestore();
+  });
+});
+
+describe("POST /api/v3/webhooks/stripe: charge.dispute.closed", () => {
+  function closedEvent(id: string, dispute: Record<string, unknown>) {
+    return signedRequest(
+      JSON.stringify({
+        id,
+        type: "charge.dispute.closed",
+        data: { object: dispute },
+      }),
+    );
+  }
+
+  function restores() {
+    return mockQuery.mock.calls.filter(([sql]) =>
+      /SET refunded_at = NULL/.test(String(sql)),
+    );
+  }
+
+  it("gives back exactly what the dispute took when the dispute is won", async () => {
+    withIdempotency("evt_dispute_won");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 42 }], rowCount: 1 });
+
+    const res = await POST(
+      closedEvent("evt_dispute_won", {
+        id: "dp_won",
+        status: "won",
+        payment_intent: "pi_won",
+        metadata: { vulnradar_restorable_ai: "200000" },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const [restore] = restores();
+    expect(String(restore[0])).toContain("ai_credit_purchases");
+    expect(String(restore[0])).toContain(
+      "ai_credit_balance = ai_credit_balance + $2",
+    );
+    expect(restore[1]).toEqual(["pi_won", 200000]);
+    expect(restores()).toHaveLength(1);
+    logSpy.mockRestore();
+  });
+
+  it("restores the same way when an inquiry closes without becoming a chargeback", async () => {
+    withIdempotency("evt_inquiry_closed");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 42 }], rowCount: 1 });
+
+    await POST(
+      closedEvent("evt_inquiry_closed", {
+        id: "dp_inq",
+        status: "warning_closed",
+        payment_intent: "pi_inq",
+        metadata: { vulnradar_restorable_browserbase: "1800" },
+      }),
+    );
+
+    const [restore] = restores();
+    expect(String(restore[0])).toContain("browserbase_credit_purchases");
+    expect(restore[1]).toEqual(["pi_inq", 1800]);
+    logSpy.mockRestore();
+  });
+
+  it("restores nothing when the dispute is lost", async () => {
+    withIdempotency("evt_dispute_lost");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(
+      closedEvent("evt_dispute_lost", {
+        id: "dp_lost",
+        status: "lost",
+        payment_intent: "pi_lost",
+        metadata: { vulnradar_restorable_ai: "200000" },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    logSpy.mockRestore();
+  });
+
+  it("flags a won dispute whose reversal predates the record, instead of guessing an amount", async () => {
+    withIdempotency("evt_dispute_won_legacy");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockResolvedValueOnce({ rows: [{ kind: "ai" }], rowCount: 1 }); // reversed ledgers for the intent
+
+    const res = await POST(
+      closedEvent("evt_dispute_won_legacy", {
+        id: "dp_legacy",
+        status: "won",
+        payment_intent: "pi_legacy",
+        metadata: {},
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(restores()).toHaveLength(0);
+    expect(mockSendAdminAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "stripe_dispute_won_unrestored" }),
+    );
+    errSpy.mockRestore();
+  });
+
+  it("restores nothing and raises nothing for a won dispute on a purchase a refund had already reversed", async () => {
+    // Refunded, then disputed anyway. The dispute recorded that it took
+    // nothing; without that record the win asked an admin to restore credit
+    // the customer already had the money back for.
+    withIdempotency("evt_dispute_won_after_refund");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(
+      closedEvent("evt_dispute_won_after_refund", {
+        id: "dp_after_refund",
+        status: "won",
+        payment_intent: "pi_after_refund",
+        metadata: { vulnradar_reversal_recorded: "1" },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(restores()).toHaveLength(0);
+    expect(mockSendAdminAlert).not.toHaveBeenCalled();
+    logSpy.mockRestore();
   });
 });
 

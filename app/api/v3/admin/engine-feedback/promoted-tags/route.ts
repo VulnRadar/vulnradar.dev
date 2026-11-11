@@ -3,6 +3,7 @@ import { logAction, requirePermission } from "@/lib/auth/authorization";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { getClientIp } from "@/lib/api/request-utils";
+import { parseIdParam } from "@/lib/api/path-id";
 import { logError } from "@/lib/logging/log";
 import {
   deletePromotedRule,
@@ -11,9 +12,6 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/** promoted_auto_tag_rules.id is a SERIAL: anything past this is not a rule, and would be a Postgres error rather than a 404. */
-const MAX_RULE_ID = 2_147_483_647;
 
 /**
  * GET/DELETE /api/v3/admin/engine-feedback/promoted-tags
@@ -52,9 +50,8 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   );
   if (!admin) return ApiResponse.forbidden("Admin access required.");
 
-  const raw = new URL(request.url).searchParams.get("id");
-  const id = raw !== null && /^\d{1,10}$/.test(raw) ? Number(raw) : NaN;
-  if (!Number.isInteger(id) || id <= 0 || id > MAX_RULE_ID) {
+  const id = parseIdParam(new URL(request.url).searchParams.get("id"));
+  if (id === null) {
     return ApiResponse.badRequest("A valid rule id is required.");
   }
 

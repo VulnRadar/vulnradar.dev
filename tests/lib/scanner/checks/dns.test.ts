@@ -40,6 +40,7 @@ import {
   checkCaaIodef,
   checkVerificationTokenSprawl,
   usesSyntheticDenial,
+  spfAuthorizes,
 } from "@/lib/scanner/checks/dns";
 
 const dnsMock = vi.mocked(dns);
@@ -157,6 +158,28 @@ describe("checkNsProviderConcentration", () => {
   });
 });
 
+describe("spfAuthorizes", () => {
+  it.each([
+    "v=spf1 -all",
+    "v=spf1 ~all",
+    "v=spf1 ?all",
+    "V=SPF1  -ALL",
+    "v=spf1",
+  ])("says %s authorizes no sender", (record) => {
+    expect(spfAuthorizes(record)).toBe(false);
+  });
+
+  it.each([
+    "v=spf1 include:_spf.google.com ~all",
+    "v=spf1 ip4:203.0.113.0/24 -all",
+    "v=spf1 a mx -all",
+    "v=spf1 +all",
+    "v=spf1 all",
+  ])("says %s authorizes a sender", (record) => {
+    expect(spfAuthorizes(record)).toBe(true);
+  });
+});
+
 describe("checkWildcardDns", () => {
   it("fires when the random probe subdomain resolves", async () => {
     dnsMock.resolve4.mockResolvedValue(["203.0.113.5"]);
@@ -165,8 +188,45 @@ describe("checkWildcardDns", () => {
       "https://example.com",
     );
     expect(findings).toHaveLength(1);
-    expect(findings[0].severity).toBe("low");
+    // A wildcard is often deliberate (Vercel wildcard domains, multi-tenant
+    // apps), and the finding says so itself: a prompt to confirm, not a flaw.
+    expect(findings[0].severity).toBe("info");
     expect(findings[0].title).toMatch(/Wildcard/i);
+  });
+
+  it("probes the registrable domain, not the www host it was handed", async () => {
+    // A wildcard does not match through an existing node, so a probe under
+    // www. would miss a zone wildcard on *.example.com.
+    dnsMock.resolve4.mockImplementation(async (name: string) => {
+      if (/^[0-9a-f]{16}\.example\.com$/.test(name)) return ["203.0.113.7"];
+      throw dnsError("ENOTFOUND");
+    });
+    const findings = await checkWildcardDns(
+      "www.example.com",
+      "https://www.example.com",
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0].evidence).toContain("*.example.com");
+    expect(findings[0].evidence).not.toContain("www.example.com");
+    for (const [name] of dnsMock.resolve4.mock.calls) {
+      expect(name).toMatch(/^[0-9a-f]{16}\.example\.com$/);
+    }
+  });
+
+  it("does not report a platform's own wildcard as the owner's", async () => {
+    dnsMock.resolve4.mockResolvedValue(["203.0.113.5"]);
+    const findings = await checkWildcardDns(
+      "app.vercel.app",
+      "https://app.vercel.app",
+    );
+    expect(findings).toEqual([]);
+    expect(dnsMock.resolve4).not.toHaveBeenCalled();
+  });
+
+  it("still scans the platform operator's own zone", async () => {
+    dnsMock.resolve4.mockResolvedValue(["203.0.113.5"]);
+    const findings = await checkWildcardDns("vercel.app", "https://vercel.app");
+    expect(findings).toHaveLength(1);
   });
 
   it("does not fire for a normal domain with no wildcard record", async () => {
@@ -258,14 +318,63 @@ describe("checkNullMxRecommended", () => {
     expect(findings).toEqual([]);
   });
 
-  it("does not fire when MX is absent but SPF exists (checkMX's job instead)", async () => {
+  it("does not fire when MX is absent but SPF authorizes a sender (checkMX's job instead)", async () => {
     dnsMock.resolveMx.mockRejectedValue(dnsError("ENOTFOUND"));
-    dnsMock.resolveTxt.mockResolvedValue([["v=spf1 -all"]]);
+    dnsMock.resolveTxt.mockResolvedValue([
+      ["v=spf1 include:_spf.google.com ~all"],
+    ]);
     const findings = await checkNullMxRecommended(
       "example.com",
       "https://example.com",
     );
     expect(findings).toEqual([]);
+  });
+
+  it("still recommends it when the only SPF is a bare -all (vercel.app shape)", async () => {
+    // "v=spf1 -all" is what a domain publishes because it sends no mail. It is
+    // the SPF half of the null-MX pair, not evidence of a mail setup.
+    dnsMock.resolveMx.mockRejectedValue(dnsError("ENODATA"));
+    dnsMock.resolveTxt.mockResolvedValue([["v=spf1 -all"]]);
+    const findings = await checkNullMxRecommended(
+      "vercel.app",
+      "https://vercel.app",
+    );
+    expect(findings).toHaveLength(1);
+  });
+
+  it("speaks only for the apex: a subdomain is left to the apex's scan", async () => {
+    dnsMock.resolveMx.mockRejectedValue(dnsError("ENODATA"));
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ENODATA"));
+    const findings = await checkNullMxRecommended(
+      "app.example.com",
+      "https://app.example.com",
+    );
+    expect(findings).toEqual([]);
+    expect(dnsMock.resolveMx).not.toHaveBeenCalled();
+  });
+
+  it("treats www as the apex and asks about the apex's names", async () => {
+    dnsMock.resolveMx.mockRejectedValue(dnsError("ENODATA"));
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ENODATA"));
+    const findings = await checkNullMxRecommended(
+      "www.example.com",
+      "https://www.example.com",
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0].evidence).toContain("example.com");
+    expect(findings[0].evidence).not.toContain("www.");
+    expect(dnsMock.resolveMx).toHaveBeenCalledWith("example.com");
+  });
+
+  it("is not applicable on a hosting platform's subdomain", async () => {
+    dnsMock.resolveMx.mockRejectedValue(dnsError("ENODATA"));
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ENODATA"));
+    const findings = await checkNullMxRecommended(
+      "civilian-operations.vercel.app",
+      "https://civilian-operations.vercel.app",
+    );
+    expect(findings).toEqual([]);
+    expect(dnsMock.resolveMx).not.toHaveBeenCalled();
   });
 
   it("does not fire when the MX lookup fails for a transient reason", async () => {

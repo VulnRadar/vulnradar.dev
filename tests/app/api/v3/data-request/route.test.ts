@@ -36,6 +36,19 @@ vi.mock("@/lib/notifications/notifications", () => ({
 const { GET, POST } = await import("@/app/api/v3/data-request/route");
 
 const SESSION = { userId: 42 };
+const FIXTURE_FINGERPRINT =
+  "5f1c0a9e7b3d42e8a6c1f0b9d8e7a6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9";
+const DEVICE_TRUST_ROW = {
+  id: 1,
+  user_id: 42,
+  device_fingerprint: FIXTURE_FINGERPRINT,
+  device_name: "Laptop",
+  ip_address: "203.0.113.1",
+  user_agent: "vitest",
+  last_used_at: "2026-01-02T00:00:00.000Z",
+  created_at: "2026-01-01T00:00:00.000Z",
+  expires_at: "2026-02-01T00:00:00.000Z",
+};
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -102,6 +115,20 @@ function routeQueries({
     if (/FROM security_alerts/.test(sql)) {
       return { rows: securityAlertsRows };
     }
+    if (/FROM device_trust/.test(sql)) {
+      // Answers with only the columns the statement names, the way Postgres
+      // would, so what the export holds follows from the route's projection.
+      const projection = sql.slice(0, sql.indexOf("FROM device_trust"));
+      return {
+        rows: [
+          Object.fromEntries(
+            Object.entries(DEVICE_TRUST_ROW).filter(([column]) =>
+              new RegExp(`\\b${column}\\b`).test(projection),
+            ),
+          ),
+        ],
+      };
+    }
     if (/FROM users WHERE id = \$1/.test(sql)) {
       return {
         rows: hasUserRow ? [{ id: 42, email: "user@example.com" }] : [],
@@ -158,6 +185,71 @@ describe("GET /api/v3/data-request", () => {
     const json = await res.json();
 
     expect(json.canDownloadNew).toBe(true);
+  });
+
+  // device_trust.device_fingerprint is the raw value of the "remember this
+  // device" cookie: whoever holds it skips the second factor on that account.
+  // Exports written before it was dropped from the projection still carry it
+  // in data_requests.data, so the stored copy is scrubbed on the way out and
+  // written back without it.
+  it("serves a stored export without the device trust tokens, and scrubs the stored copy", async () => {
+    const stored = {
+      exportedAt: "2026-01-01T00:00:00.000Z",
+      account: { id: 42 },
+      deviceTrust: [
+        {
+          id: 1,
+          device_fingerprint: FIXTURE_FINGERPRINT,
+          device_name: "Laptop",
+        },
+        { id: 2, device_fingerprint: `${FIXTURE_FINGERPRINT}2` },
+      ],
+    };
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          data: JSON.stringify(stored, null, 2),
+          downloaded_at: new Date(Date.now() - 1000).toISOString(),
+        },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(typeof json.data).toBe("string");
+    expect(json.data).not.toContain(FIXTURE_FINGERPRINT);
+    const served = JSON.parse(json.data);
+    expect(served.deviceTrust).toEqual([
+      { id: 1, device_name: "Laptop" },
+      { id: 2 },
+    ]);
+    expect(served.account).toEqual({ id: 42 });
+
+    const writeBack = mockQuery.mock.calls.find((c) =>
+      /UPDATE data_requests SET data/.test(String(c[0])),
+    );
+    expect(writeBack).toBeDefined();
+    expect(writeBack![1][0]).toBe(42);
+    expect(String(writeBack![1][1])).not.toContain(FIXTURE_FINGERPRINT);
+    // Only over the copy that was read, so an export saved in between (which
+    // holds no token) is not replaced with this older one.
+    expect(String(writeBack![0])).toMatch(/AND data = \$3/);
+    expect(writeBack![1][2]).toBe(JSON.stringify(stored, null, 2));
+  });
+
+  it("leaves a stored export with no device trust tokens untouched", async () => {
+    const data = JSON.stringify({ deviceTrust: [{ id: 1 }] }, null, 2);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ data, downloaded_at: new Date().toISOString() }],
+    });
+
+    const json = await (await GET()).json();
+
+    expect(json.data).toBe(data);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
   it("fails open to the 'no data yet' shape on a database error", async () => {
@@ -251,6 +343,31 @@ describe("POST /api/v3/data-request", () => {
       const params = call[1] as unknown[];
       expect(params[0]).toBe(42);
     }
+  });
+
+  it("never writes a device trust token into the export or its stored copy", async () => {
+    routeQueries({ priorDownloadAt: null });
+
+    const res = await POST(postRequest());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.data.deviceTrust).toEqual([
+      {
+        id: 1,
+        device_name: "Laptop",
+        ip_address: "203.0.113.1",
+        user_agent: "vitest",
+        last_used_at: "2026-01-02T00:00:00.000Z",
+        created_at: "2026-01-01T00:00:00.000Z",
+        expires_at: "2026-02-01T00:00:00.000Z",
+      },
+    ]);
+    expect(JSON.stringify(json)).not.toContain(FIXTURE_FINGERPRINT);
+    const stored = mockQuery.mock.calls.find((c) =>
+      /UPDATE data_requests SET data/.test(String(c[0])),
+    );
+    expect(String(stored![1][1])).not.toContain(FIXTURE_FINGERPRINT);
   });
 
   it("folds case on the two address-keyed reads and needs a verified address for both", async () => {

@@ -3,6 +3,8 @@ import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { getClientIp } from "@/lib/api/request-utils";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { parseRowId } from "@/lib/teams/parse-id";
 import { parsePagination } from "@/lib/api/pagination";
 import {
   requirePermission,
@@ -12,7 +14,7 @@ import {
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 
 // List all teams with stats
-export async function GET(request: Request) {
+export const GET = withErrorHandling(async (request: Request) => {
   // VIEW_ALL_TEAMS is an admin-only grant (moderators don't hold it), so use
   // the granular permission rather than a coarse moderator-tier floor, which
   // over-granted the cross-tenant team list to moderators. (The
@@ -41,8 +43,8 @@ export async function GET(request: Request) {
   // (view_user_detail) and the exports.
   // Count total teams
   const countQuery = search
-    ? `SELECT COUNT(*) FROM teams WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'`
-    : `SELECT COUNT(*) FROM teams`;
+    ? `SELECT COUNT(*)::int AS count FROM teams WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'`
+    : `SELECT COUNT(*)::int AS count FROM teams`;
   const countParams = search ? [`%${searchEscaped}%`] : [];
 
   // Fetch teams with owner info and member count
@@ -56,7 +58,7 @@ export async function GET(request: Request) {
       u.email as owner_email,
       u.name as owner_name,
       u.avatar_url as owner_avatar_url,
-      (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.id) as member_count
+      (SELECT COUNT(*)::int FROM team_members tm WHERE tm.team_id = t.id) as member_count
     FROM teams t
     LEFT JOIN users u ON u.id = t.owner_id
     ${search ? "WHERE LOWER(t.name) LIKE LOWER($1) ESCAPE '\\'" : ""}
@@ -72,10 +74,10 @@ export async function GET(request: Request) {
   // load for nothing. The two are independent. Every other admin list route
   // already pairs them this way.
   const [countRes, teamsRes] = await Promise.all([
-    pool.query<{ count: string }>(countQuery, countParams),
+    pool.query<{ count: number }>(countQuery, countParams),
     pool.query(teamsQuery, teamsParams),
   ]);
-  const total = parseInt(countRes.rows[0].count, 10);
+  const total = countRes.rows[0].count;
   const totalPages = Math.ceil(total / limit);
 
   // Named `total`, like every other paginated admin list (content,
@@ -89,10 +91,10 @@ export async function GET(request: Request) {
     totalPages,
     total,
   });
-}
+});
 
 // Update team (admin override)
-export async function PATCH(request: Request) {
+export const PATCH = withErrorHandling(async (request: Request) => {
   // Renaming any team is an admin-only capability (MANAGE_ANY_TEAM), not a
   // moderator one -- match the permission model rather than the coarse floor.
   const admin = await requirePermission(STAFF_PERMISSIONS.MANAGE_ANY_TEAM);
@@ -102,8 +104,11 @@ export async function PATCH(request: Request) {
       { status: 403 },
     );
 
-  const { teamId, name } = await request.json();
-  if (!teamId)
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { name } = parsed.data;
+  const teamId = parseRowId(parsed.data.teamId);
+  if (teamId === null)
     return NextResponse.json({ error: "teamId required" }, { status: 400 });
   const maxTeamNameLength = await getSetting("MAX_TEAM_NAME_LENGTH");
   if (
@@ -146,10 +151,10 @@ export async function PATCH(request: Request) {
   );
 
   return NextResponse.json({ success: true, name: name.trim() });
-}
+});
 
 // Delete team (admin override)
-export async function DELETE(request: Request) {
+export const DELETE = withErrorHandling(async (request: Request) => {
   // Only full admins (or the super admin) can delete teams -- requireAdmin
   // enforces that stricter hierarchy floor.
   const admin = await requireAdmin();
@@ -159,14 +164,16 @@ export async function DELETE(request: Request) {
       { status: 403 },
     );
 
-  const { teamId } = await request.json();
-  if (!teamId)
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const teamId = parseRowId(parsed.data.teamId);
+  if (teamId === null)
     return NextResponse.json({ error: "teamId required" }, { status: 400 });
 
   // Get team data for audit
   const teamRes = await pool.query(
     `SELECT t.name, t.owner_id, u.email as owner_email,
-      (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.id) as member_count
+      (SELECT COUNT(*)::int FROM team_members tm WHERE tm.team_id = t.id) as member_count
      FROM teams t
      LEFT JOIN users u ON u.id = t.owner_id
      WHERE t.id = $1`,
@@ -214,4 +221,4 @@ export async function DELETE(request: Request) {
   );
 
   return NextResponse.json({ success: true });
-}
+});

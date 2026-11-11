@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withErrorHandling } from "@/lib/api/api-utils";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
@@ -11,7 +12,7 @@ import { teamsDisabledResponse } from "@/lib/teams/feature-gate";
  * Read-only and self-scoped: it only ever returns people already on a team
  * with the caller.
  */
-export async function GET() {
+export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -34,4 +35,4 @@ export async function GET() {
   );
 
   return NextResponse.json({ teammates: res.rows });
-}
+});

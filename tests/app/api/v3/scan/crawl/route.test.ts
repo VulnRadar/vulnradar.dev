@@ -40,16 +40,26 @@ vi.mock("@/lib/auth", async (importOriginal) => {
   return { ...actual, getSession: () => mockGetSession() };
 });
 
+const mockBurstLimit = vi.fn();
 vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/lib/rate-limiting/rate-limit")>();
   return {
     ...actual,
-    checkRateLimit: vi.fn(async () => ({
-      allowed: true,
-      remaining: 9,
-      retryAfterSeconds: 0,
-    })),
+    checkRateLimit: (...args: unknown[]) => mockBurstLimit(...args),
+  };
+});
+
+// attachNewScanTeams swallows its own failures today; the handle lets a test
+// make it throw anyway, which is the case the route must survive without
+// leaving a pending tracker row behind.
+const mockAttachNewScanTeams = vi.fn();
+vi.mock("@/lib/teams/scan-teams", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/teams/scan-teams")>();
+  return {
+    ...actual,
+    attachNewScanTeams: (...args: unknown[]) => mockAttachNewScanTeams(...args),
   };
 });
 
@@ -83,7 +93,7 @@ const mockReserveConcurrentScanSlot = vi.fn(
     const scanId = await insertRow({
       query: (...a: unknown[]) => mockQuery(...a),
     });
-    return { ok: true as const, scanId };
+    return { ok: true as const, scanId, publicId: `public-${scanId}` };
   },
 );
 vi.mock("@/lib/rate-limiting/concurrent-scans", () => ({
@@ -123,15 +133,13 @@ vi.mock("@/lib/scanner/execute-crawl-scan", async (importOriginal) => {
 });
 
 const mockValidateApiKey = vi.fn();
+const mockCheckApiKeyRateLimit = vi.fn();
+const mockPeekRateLimit = vi.fn();
 vi.mock("@/lib/api/api-keys", () => ({
+  UNLIMITED_API_KEY_DAILY_LIMIT: 999999,
   validateApiKey: (...args: unknown[]) => mockValidateApiKey(...args),
-  checkRateLimit: vi.fn(async () => ({
-    allowed: true,
-    limit: 50,
-    used: 1,
-    remaining: 49,
-    resetsAt: new Date().toISOString(),
-  })),
+  checkRateLimit: (...args: unknown[]) => mockCheckApiKeyRateLimit(...args),
+  peekRateLimit: (...args: unknown[]) => mockPeekRateLimit(...args),
   recordUsage: vi.fn(async () => undefined),
 }));
 
@@ -153,16 +161,40 @@ vi.mock("@/lib/auth/authorization", async (importOriginal) => {
 
 const { POST } = await import("@/app/api/v3/scan/crawl/route");
 
-function postRequest(body: unknown) {
+function postRequest(body: unknown, headers: Record<string, string> = {}) {
   return new NextRequest("http://localhost/api/v3/scan/crawl", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
 }
 
 beforeEach(() => {
   mockQuery.mockReset();
+  mockBurstLimit.mockReset();
+  mockBurstLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 9,
+    retryAfterSeconds: 0,
+  });
+  mockAttachNewScanTeams.mockReset();
+  mockAttachNewScanTeams.mockResolvedValue(undefined);
+  mockCheckApiKeyRateLimit.mockReset();
+  mockCheckApiKeyRateLimit.mockResolvedValue({
+    allowed: true,
+    limit: 50,
+    used: 1,
+    remaining: 49,
+    resetsAt: new Date().toISOString(),
+  });
+  mockPeekRateLimit.mockReset();
+  mockPeekRateLimit.mockResolvedValue({
+    allowed: true,
+    limit: 50,
+    used: 2,
+    remaining: 48,
+    resetsAt: "2030-01-02T03:04:05.000Z",
+  });
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue({ userId: 42 });
   mockExecuteCrawlScan.mockReset();
@@ -182,7 +214,7 @@ beforeEach(() => {
     used: 1,
     limit: 150,
     remaining: 149,
-    resetsAt: new Date().toISOString(),
+    resetsAt: "2030-01-02T00:00:00.000Z",
   });
   mockGetUserPlan.mockReset();
   mockGetUserPlan.mockResolvedValue("free");
@@ -246,7 +278,20 @@ describe("POST /api/v3/scan/crawl", () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json).toEqual({ scanId: 200, status: "running" });
+    expect(json).toEqual({
+      scanId: 200,
+      publicId: "public-200",
+      status: "running",
+      quota: {
+        scans: {
+          limit: 150,
+          used: 1,
+          remaining: 149,
+          resetsAt: "2030-01-02T00:00:00.000Z",
+        },
+        requests: null,
+      },
+    });
     expect(mockExecuteCrawlScan).toHaveBeenCalledTimes(1);
     resolveExecute();
   });
@@ -338,6 +383,7 @@ describe("daily scan quota gate", () => {
     expect(res.status).toBe(429);
     const json = await res.json();
     expect(json.error).toMatch(/daily scan limit reached/i);
+    expect(json.code).toBe("DAILY_LIMIT");
     expect(mockCheckAndRecordRequest).toHaveBeenCalledWith(42);
     expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
     // Checked before the concurrency gate -- neither DB call for the
@@ -368,6 +414,8 @@ describe("concurrent-scan capacity gate", () => {
     expect(res.status).toBe(429);
     const json = await res.json();
     expect(json.statusCode).toBe("CONCURRENT_SCAN_LIMIT");
+    expect(json.code).toBe("CONCURRENT_SCAN_LIMIT");
+    expect(res.headers.get("Retry-After")).toBe("10");
     expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
   });
 
@@ -784,5 +832,346 @@ describe("POST /api/v3/scan/crawl - error handling and logging", () => {
     } finally {
       errorSpy.mockRestore();
     }
+  });
+});
+
+describe("POST /api/v3/scan/crawl - 429 answers", () => {
+  it("answers the session burst limiter with RATE_LIMITED and Retry-After", async () => {
+    mockBurstLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 23,
+    });
+
+    const res = await POST(postRequest({ url: "https://example.com" }));
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("23");
+    const json = await res.json();
+    expect(json.code).toBe("RATE_LIMITED");
+    expect(json.error).toMatch(/crawl rate limit reached/i);
+    expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+  });
+
+  it("answers an exhausted daily scan quota with DAILY_LIMIT, the quota fields and a Retry-After to the reset", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2030-01-01T23:00:00.000Z"));
+    try {
+      mockCheckAndRecordRequest.mockResolvedValue({
+        allowed: false,
+        used: 150,
+        limit: 150,
+        remaining: 0,
+        resetsAt: "2030-01-02T00:00:00.000Z",
+      });
+
+      const res = await POST(postRequest({ url: "https://example.com" }));
+
+      expect(res.status).toBe(429);
+      expect(res.headers.get("Retry-After")).toBe("3600");
+      expect(res.headers.get("X-RateLimit-Policy")).toBe("daily");
+      expect(await res.json()).toEqual({
+        error:
+          "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
+        limit: 150,
+        used: 150,
+        remaining: 0,
+        resets_at: "2030-01-02T00:00:00.000Z",
+        code: "DAILY_LIMIT",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the key's own budget separate: its 429 is API_QUOTA_EXCEEDED with a Retry-After", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 9,
+      userId: 42,
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+    });
+    mockCheckApiKeyRateLimit.mockResolvedValue({
+      allowed: false,
+      limit: 50,
+      used: 50,
+      remaining: 0,
+      resetsAt: new Date(Date.now() + 7200_000).toISOString(),
+    });
+
+    const res = await POST(
+      postRequest(
+        { url: "https://example.com" },
+        { authorization: "Bearer vr_live_testkey" },
+      ),
+    );
+
+    expect(res.status).toBe(429);
+    expect((await res.json()).code).toBe("API_QUOTA_EXCEEDED");
+    expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(7000);
+  });
+
+  it("carries CONCURRENT_SCAN_LIMIT in both statusCode and code when the reservation refuses", async () => {
+    mockReserveConcurrentScanSlot.mockResolvedValueOnce({
+      ok: false,
+      check: { allowed: false, current: 1, limit: 1, message: "one at a time" },
+    } as unknown as { ok: true; scanId: number; publicId: string });
+
+    const res = await POST(postRequest({ url: "https://example.com" }));
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("10");
+    expect(await res.json()).toMatchObject({
+      error: "one at a time",
+      statusCode: "CONCURRENT_SCAN_LIMIT",
+      code: "CONCURRENT_SCAN_LIMIT",
+    });
+  });
+});
+
+describe("POST /api/v3/scan/crawl - create response", () => {
+  it("returns the opaque publicId beside scanId, with status 200", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 301 }] });
+
+    const res = await POST(postRequest({ url: "https://example.com" }));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.scanId).toBe(301);
+    expect(json.publicId).toBe("public-301");
+    expect(json.status).toBe("running");
+  });
+
+  it("adds the key's request budget to quota.requests and keeps the single charge", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 9,
+      userId: 42,
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 302 }] });
+
+    const res = await POST(
+      postRequest(
+        { url: "https://example.com" },
+        { authorization: "Bearer vr_live_testkey" },
+      ),
+    );
+
+    const json = await res.json();
+    expect(json.quota.requests).toEqual({
+      limit: 50,
+      used: 2,
+      remaining: 48,
+      resetsAt: "2030-01-02T03:04:05.000Z",
+    });
+    expect(mockPeekRateLimit).toHaveBeenCalledWith(9, 50);
+    expect(mockCheckApiKeyRateLimit).toHaveBeenCalledTimes(1);
+    expect(res.headers.get("X-RateLimit-Remaining")).toBe("49");
+  });
+
+  it("still answers 200 with the crawl when the quota cannot be read", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 303 }] });
+    mockCheckAndRecordRequest
+      .mockResolvedValueOnce({
+        allowed: true,
+        used: 1,
+        limit: 150,
+        remaining: 149,
+        resetsAt: "2030-01-02T00:00:00.000Z",
+      })
+      .mockRejectedValueOnce(new Error("db down"));
+
+    const res = await POST(postRequest({ url: "https://example.com" }));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.scanId).toBe(303);
+    expect(json.publicId).toBe("public-303");
+    expect(json.quota).toBeUndefined();
+    errSpy.mockRestore();
+  });
+});
+
+describe("POST /api/v3/scan/crawl - request body", () => {
+  const cases: Array<[string, string]> = [
+    ["not JSON", "{nope"],
+    ["null", "null"],
+    ["an array", "[]"],
+    ["a string", '"https://example.com"'],
+    ["empty", ""],
+  ];
+
+  it.each(cases)(
+    "answers 400 INVALID_REQUEST for a body that is %s",
+    async (_label, raw) => {
+      const res = await POST(
+        new NextRequest("http://localhost/api/v3/scan/crawl", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: raw,
+        }),
+      );
+
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.code).toBe("INVALID_REQUEST");
+      expect(json.error).toBe("Invalid request body.");
+      expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+      expect(mockQuery).not.toHaveBeenCalled();
+    },
+  );
+
+  it("tells a caller with no credentials so before saying anything about the body", async () => {
+    mockGetSession.mockResolvedValue(null);
+
+    const res = await POST(
+      new NextRequest("http://localhost/api/v3/scan/crawl", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{nope",
+      }),
+    );
+
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("POST /api/v3/scan/crawl - key authentication", () => {
+  it("reads a lowercase bearer scheme as a key, not as a missing one", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 9,
+      userId: 42,
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 305 }] });
+
+    const res = await POST(
+      postRequest(
+        { url: "https://example.com" },
+        { authorization: "bearer vr_live_testkey" },
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockValidateApiKey).toHaveBeenCalledWith("vr_live_testkey");
+    expect(mockGetSession).not.toHaveBeenCalled();
+  });
+
+  it("refuses an account behind on the Terms with 403 TERMS_ACCEPTANCE_REQUIRED", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 9,
+      userId: 42,
+      dailyLimit: 50,
+      needsTermsAcceptance: true,
+    });
+
+    const res = await POST(
+      postRequest(
+        { url: "https://example.com" },
+        { authorization: "Bearer vr_live_testkey" },
+      ),
+    );
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("TERMS_ACCEPTANCE_REQUIRED");
+    expect(mockCheckApiKeyRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("refuses a key without scan:write with SCOPE_MISSING before charging it", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 9,
+      userId: 42,
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+      scopes: ["scan:read"],
+    });
+
+    const res = await POST(
+      postRequest(
+        { url: "https://example.com" },
+        { authorization: "Bearer vr_live_testkey" },
+      ),
+    );
+
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.code).toBe("SCOPE_MISSING");
+    expect(json.error).toContain("scan:write");
+    expect(mockCheckApiKeyRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("never falls back to the session cookie when the key is bad", async () => {
+    mockValidateApiKey.mockResolvedValue(null);
+
+    const res = await POST(
+      postRequest(
+        { url: "https://example.com" },
+        { authorization: "Bearer vr_live_nope" },
+      ),
+    );
+
+    expect(res.status).toBe(401);
+    expect((await res.json()).error).toBe("Invalid or revoked API key.");
+    expect(mockGetSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v3/scan/crawl - a failure after the slot was reserved", () => {
+  async function failedWrite() {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("status = 'failed'"),
+    );
+  }
+
+  it("marks the tracker row failed when attaching the teams throws", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockAttachNewScanTeams.mockRejectedValueOnce(new Error("teams down"));
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 401 }] });
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 1 });
+
+    const res = await POST(postRequest({ url: "https://example.com" }));
+
+    expect(res.status).toBe(500);
+    expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+    const write = await failedWrite();
+    expect(write?.[1]).toEqual([
+      "The crawl could not be started.",
+      401,
+      "internal",
+    ]);
+    errSpy.mockRestore();
+  });
+
+  it("writes no failure when the tracker row was never inserted", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockRejectedValueOnce(new Error("db down"));
+
+    const res = await POST(postRequest({ url: "https://example.com" }));
+
+    expect(res.status).toBe(500);
+    expect(await failedWrite()).toBeUndefined();
+    errSpy.mockRestore();
   });
 });

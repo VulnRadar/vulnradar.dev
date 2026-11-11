@@ -3,19 +3,15 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { parseBearer } from "@/lib/api/bearer";
-import { validateApiKey } from "@/lib/api/api-keys";
-import {
-  hasApiKeyScope,
-  apiKeyScopeErrorMessage,
-  API_KEY_SCOPES,
-  type ApiKeyScope,
-} from "@/lib/api/api-key-scopes";
+import { authenticateApiKey } from "@/lib/api/api-key-auth";
+import { API_KEY_SCOPES, type ApiKeyScope } from "@/lib/api/api-key-scopes";
+import { versioned } from "@/lib/api/v4/wrap";
 import { requestCancel, finalizeScanFailure } from "@/lib/scanner/scan-jobs";
 import { isFailureKind } from "@/lib/scanner/failure-kinds";
 import { SCAN_CANCELLED_MESSAGE } from "@/lib/scanner/failure-messages";
 import { publicScanErrorMessage } from "@/lib/api/scan-error-message";
-import { scanNumericId } from "@/lib/history/resolve-scan";
-import { withErrorHandling } from "@/lib/api/api-utils";
+import { parseScanRef, type ScanRef } from "@/lib/history/scan-ref";
+import { ApiResponse } from "@/lib/api/api-utils";
 import type { ScanJobStatus, Vulnerability } from "@/lib/scanner/types";
 import { attachOwnerFindingState } from "@/lib/scanner/remediation-store";
 
@@ -41,8 +37,11 @@ interface ScanHistoryRow {
 
 /**
  * Shared auth for both handlers below: API key (Bearer token) first, then
- * session cookie. Matches the check `app/api/v3/scan/route.ts` and
- * `app/api/v3/history/[id]/route.ts` already use.
+ * session cookie. The key half is authenticateApiKey, the gate every key route
+ * uses (bad key, Terms of Service not accepted, missing scope), so this route
+ * cannot drift from the others; the session half is the dashboard. A header
+ * with a Bearer scheme is always a key call, so a bad key never falls through
+ * to a cookie that happens to be on the request.
  *
  * Deliberately does NOT run the API key through checkRateLimit: that
  * function both checks AND atomically consumes a unit of the daily quota
@@ -55,78 +54,49 @@ interface ScanHistoryRow {
  * scan finishes. Checking in on a scan you already started should never
  * be blocked by the daily cap either way -- the scan keeps running
  * server-side regardless of whether the client can currently afford to
- * ask about it.
+ * ask about it. Cancelling is the same: it hands work back instead of asking
+ * for more, so DELETE is not charged either.
+ *
+ * `scope` is what the method needs of a key; a session is the account owner
+ * and is not scope-limited.
  */
-async function authenticate(request: NextRequest): Promise<
-  | {
-      ok: true;
-      userId: number;
-      apiKeyId: number | null;
-      // null for session auth (the account owner, unscoped); a concrete
-      // array for API-key auth, checked by each handler against the scope
-      // its own method needs.
-      keyScopes: ApiKeyScope[] | null;
-    }
-  | { ok: false; response: NextResponse }
+async function authenticate(
+  request: NextRequest,
+  scope: ApiKeyScope,
+): Promise<
+  { ok: true; userId: number } | { ok: false; response: NextResponse }
 > {
-  const bearerToken = parseBearer(request.headers.get("authorization"));
-
-  if (bearerToken !== null) {
-    const keyData = await validateApiKey(bearerToken);
-    if (!keyData) {
-      return {
-        ok: false,
-        response: NextResponse.json(
-          { error: "Invalid or revoked API key." },
-          { status: 401 },
-        ),
-      };
-    }
-    if (keyData.needsTermsAcceptance) {
-      return {
-        ok: false,
-        response: NextResponse.json(
-          {
-            error:
-              "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
-          },
-          { status: 403 },
-        ),
-      };
-    }
-    return {
-      ok: true,
-      userId: keyData.userId,
-      apiKeyId: keyData.keyId,
-      keyScopes: keyData.scopes,
-    };
+  if (parseBearer(request.headers.get("authorization")) !== null) {
+    const result = await authenticateApiKey(request, { scope });
+    return result.ok
+      ? { ok: true, userId: result.auth.userId }
+      : { ok: false, response: result.response };
   }
 
   const session = await getSession();
   if (!session) {
     return {
       ok: false,
-      response: NextResponse.json(
-        { error: ERROR_MESSAGES.UNAUTHORIZED },
-        { status: 401 },
-      ),
+      response: ApiResponse.fail({
+        code: "UNAUTHENTICATED",
+        message: ERROR_MESSAGES.UNAUTHORIZED,
+        status: 401,
+        // A key is as good a credential here as the cookie, so say so.
+        bearerChallenge: true,
+        request,
+      }),
     };
   }
-  return { ok: true, userId: session.userId, apiKeyId: null, keyScopes: null };
+  return { ok: true, userId: session.userId };
 }
 
-/** 403 (with a message naming the missing scope) if this is API-key auth
- * and the key lacks `required`; null (proceed) otherwise. */
-function scopeCheck(
-  keyScopes: ApiKeyScope[] | null,
-  required: ApiKeyScope,
-): NextResponse | null {
-  if (keyScopes === null) return null; // session auth: not scope-limited
-  if (hasApiKeyScope(keyScopes, required)) return null;
-  return NextResponse.json(
-    { error: apiKeyScopeErrorMessage(required) },
-    { status: 403 },
-  );
+function scanNotFound(request: NextRequest): NextResponse {
+  return ApiResponse.fail({
+    code: "SCAN_NOT_FOUND",
+    message: "Scan not found",
+    status: 404,
+    request,
+  });
 }
 
 /**
@@ -153,12 +123,13 @@ function scopeCheck(
  * or the opaque public_id GET /history lists. The raw path segment used to go
  * straight into `id = $1`, so the opaque one (and any other non-integer, or an
  * integer past int4) made Postgres throw 22P02 and the route answer 500 for a
- * scan that simply is not there. scanNumericId is the same rule every History
- * subroute uses: an all-digits in-range value also matches the primary key,
- * anything else can only match public_id, and a miss is a 404.
+ * scan that simply is not there. parseScanRef is the rule every route that
+ * takes a scan id shares: a value that is neither a 32 character public id nor
+ * a plain in-range integer cannot name a scan, so the caller answers 404 before
+ * a query runs, and a numeric one also matches the primary key.
  */
 async function getOwnedScan(
-  id: string,
+  ref: ScanRef,
   userId: number,
 ): Promise<ScanHistoryRow | null> {
   const result = await pool.query<ScanHistoryRow>(
@@ -170,7 +141,7 @@ async function getOwnedScan(
      WHERE (public_id = $1 OR ($2::bigint IS NOT NULL AND id = $2))
        AND user_id = $3
      LIMIT 1`,
-    [id, scanNumericId(id), userId],
+    [ref.raw, ref.numericId, userId],
   );
   return result.rows[0] ?? null;
 }
@@ -190,23 +161,25 @@ function elapsedMsFor(row: ScanHistoryRow): number {
   return Math.max(0, Date.now() - new Date(row.started_at).getTime());
 }
 
-export const GET = withErrorHandling(
+export const GET = versioned(
+  "scan.status",
   async (
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> },
   ) => {
-    const auth = await authenticate(request);
+    const auth = await authenticate(request, API_KEY_SCOPES.SCAN_READ);
     if (!auth.ok) return auth.response;
-    const scopeError = scopeCheck(auth.keyScopes, API_KEY_SCOPES.SCAN_READ);
-    if (scopeError) return scopeError;
 
     const { id } = await params;
-    const row = await getOwnedScan(id, auth.userId);
-    if (!row) {
-      return NextResponse.json({ error: "Scan not found" }, { status: 404 });
-    }
+    const ref = parseScanRef(id);
+    const row = ref ? await getOwnedScan(ref, auth.userId) : null;
+    if (!row) return scanNotFound(request);
 
     const responseBody: Record<string, unknown> = {
+      // The opaque id, beside the numeric scanHistoryId a finished result
+      // still carries: a client polling by either spelling learns the one it
+      // should keep.
+      publicId: row.public_id,
       status: row.status,
       currentCategory: row.current_category,
       categoriesCompleted: row.categories_completed,
@@ -292,10 +265,17 @@ export const GET = withErrorHandling(
       // button. publicScanErrorMessage passes through the reasons the pipeline
       // writes deliberately, answers from the failure kind where the row has
       // one, and collapses everything else to a fixed sentence.
-      responseBody.error = publicScanErrorMessage(
+      //
+      // The sentence is sent twice: `error` is what v3 clients read, and
+      // `errorMessage` is the key the failed-scan contract names, so a client
+      // can read one field on every status and stop treating `error` as a
+      // marker of an HTTP failure.
+      const failureMessage = publicScanErrorMessage(
         row.error_message,
         row.failure_kind,
       );
+      responseBody.error = failureMessage;
+      responseBody.errorMessage = failureMessage;
       // Why it failed, for a client that wants to tell a cancel or a refused
       // quota from a scanner fault. Absent for a row with no recorded kind, so a
       // consumer has to cope with that anyway.
@@ -308,31 +288,29 @@ export const GET = withErrorHandling(
   },
 );
 
-export const DELETE = withErrorHandling(
+export const DELETE = versioned(
+  "scan.cancel",
   async (
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> },
   ) => {
-    const auth = await authenticate(request);
-    if (!auth.ok) return auth.response;
     // scoping: cancelling a running scan is scan-execution control, not a
     // read and not a destructive delete of stored history -- scan:write.
-    const scopeError = scopeCheck(auth.keyScopes, API_KEY_SCOPES.SCAN_WRITE);
-    if (scopeError) return scopeError;
+    const auth = await authenticate(request, API_KEY_SCOPES.SCAN_WRITE);
+    if (!auth.ok) return auth.response;
 
     const { id } = await params;
-    const row = await getOwnedScan(id, auth.userId);
-    if (!row) {
-      return NextResponse.json({ error: "Scan not found" }, { status: 404 });
-    }
+    const ref = parseScanRef(id);
+    const row = ref ? await getOwnedScan(ref, auth.userId) : null;
+    if (!row) return scanNotFound(request);
 
     if (row.status !== "pending" && row.status !== "running") {
-      return NextResponse.json(
-        {
-          error: "This scan has already finished; there is nothing to cancel.",
-        },
-        { status: 409 },
-      );
+      return ApiResponse.fail({
+        code: "SCAN_NOT_CANCELLABLE",
+        message: "This scan has already finished; there is nothing to cancel.",
+        status: 409,
+        request,
+      });
     }
 
     // requestCancel flags the in-memory registry so the background job's
@@ -349,12 +327,19 @@ export const DELETE = withErrorHandling(
     );
 
     if (!applied) {
-      return NextResponse.json(
-        { error: "This scan finished just before it could be cancelled." },
-        { status: 409 },
-      );
+      return ApiResponse.fail({
+        code: "SCAN_NOT_CANCELLABLE",
+        message: "This scan finished just before it could be cancelled.",
+        status: 409,
+        request,
+      });
     }
 
-    return NextResponse.json({ status: "failed", cancelled: true });
+    return NextResponse.json({
+      publicId: row.public_id,
+      status: "failed",
+      cancelled: true,
+      failureKind: "cancelled",
+    });
   },
 );

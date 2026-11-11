@@ -107,7 +107,11 @@ describe("POST /api/v3/scan/tags: rate limiting", () => {
     expect(res.status).toBe(429);
     const json = await res.json();
     expect(json.error).toContain("Too many tag changes");
-    expect(json.error).toContain("2 minute(s)");
+    expect(json.error).toContain("2 minutes");
+    expect(json.code).toBe("RATE_LIMITED");
+    // The wait travels in the header as well as the sentence, so a client does
+    // not have to parse prose to back off.
+    expect(res.headers.get("Retry-After")).toBe("120");
     expect(mockQuery).not.toHaveBeenCalled();
 
     expect(mockCheckRateLimit).toHaveBeenCalledWith(
@@ -122,6 +126,48 @@ describe("POST /api/v3/scan/tags", () => {
     const res = await POST(postRequest({ scanId: 1, tag: "prod" }));
     expect(res.status).toBe(401);
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["malformed JSON", "{not json"],
+    ["a JSON array", "[1,2]"],
+    ["a JSON null", "null"],
+    ["a JSON string", JSON.stringify("prod")],
+    ["an empty body", ""],
+  ])(
+    "answers 400, not 500, for %s, and runs no query",
+    async (_label, body) => {
+      const res = await POST(
+        new NextRequest("http://localhost/api/v3/scan/tags", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body,
+        }),
+      );
+
+      expect(res.status).toBe(400);
+      expect((await res.json()).code).toBe("INVALID_REQUEST");
+      expect(mockQuery).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not read the body of a request that was rate limited", async () => {
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 30,
+    });
+
+    const res = await POST(
+      new NextRequest("http://localhost/api/v3/scan/tags", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{not json",
+      }),
+    );
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("30");
   });
 
   it("rejects a missing scanId", async () => {
@@ -165,6 +211,31 @@ describe("POST /api/v3/scan/tags", () => {
     // the fallback.
     expect(params).toEqual(["999", 999, 42]);
   });
+
+  it("resolves the public id History lists to the numeric key every tag row uses", async () => {
+    const publicId = "ab".repeat(16);
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ id: 5, url: "https://example.com/" }] })
+      .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ tag: "prod", source: "user" }] });
+
+    const res = await POST(postRequest({ scanId: publicId, tag: "prod" }));
+
+    expect(res.status).toBe(200);
+    expect(mockQuery.mock.calls[0][1]).toEqual([publicId, null, 42]);
+    expect(mockQuery.mock.calls[2][1][0]).toBe(5);
+  });
+
+  it.each(["not-a-scan", "12abc", "0", "-4", "1.5", [1], { id: 1 }])(
+    "answers 404 and runs no query for a scanId that cannot name a scan: %j",
+    async (scanId) => {
+      const res = await POST(postRequest({ scanId, tag: "prod" }));
+
+      expect(res.status).toBe(404);
+      expect(mockQuery).not.toHaveBeenCalled();
+    },
+  );
 
   it("normalizes the tag (trim, lowercase, 30-char cap), inserts it with source='user', and returns tag+source objects", async () => {
     mockQuery

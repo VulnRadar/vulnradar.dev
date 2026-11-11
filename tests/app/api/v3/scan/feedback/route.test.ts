@@ -89,6 +89,10 @@ describe("POST /api/v3/scan/feedback", () => {
     ["notes too long", { notes: "x".repeat(1001) }],
     ["non-integer scanHistoryId", { scanHistoryId: 1.5 }],
     ["non-positive scanHistoryId", { scanHistoryId: 0 }],
+    ["scanHistoryId past int4", { scanHistoryId: 99999999999 }],
+    ["scanHistoryId that is no kind of id", { scanHistoryId: "not-a-scan" }],
+    ["upper case public id", { scanHistoryId: "A".repeat(32) }],
+    ["object scanHistoryId", { scanHistoryId: { id: 1 } }],
   ])("rejects payload with %s (400, no DB call)", async (_label, override) => {
     const res = await POST(postRequest(validPayload(override)));
     expect(res.status).toBe(400);
@@ -111,10 +115,8 @@ describe("POST /api/v3/scan/feedback", () => {
     expect(json.feedback.verdict).toBe("confirmed");
 
     const [ownerSql, ownerParams] = mockQuery.mock.calls[0];
-    expect(ownerSql).toContain(
-      "FROM scan_history WHERE id = $1 AND user_id = $2",
-    );
-    expect(ownerParams).toEqual([123, 42]);
+    expect(ownerSql).toContain("AND user_id = $3");
+    expect(ownerParams).toEqual(["123", 123, 42]);
 
     const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("INSERT INTO scan_finding_feedback");
@@ -188,6 +190,56 @@ describe("POST /api/v3/scan/feedback", () => {
     expect(params[5]).toBeNull();
   });
 
+  it("takes the public id History lists, and stores and recomputes by the numeric key", async () => {
+    const publicId = "f".repeat(32);
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [{ id: 123, url: "https://example.com/" }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ id: 1, verdict: "confirmed", created_at: "2026-01-01" }],
+      });
+
+    const res = await POST(
+      postRequest(validPayload({ scanHistoryId: publicId })),
+    );
+
+    expect(res.status).toBe(200);
+    const [ownerSql, ownerParams] = mockQuery.mock.calls[0];
+    expect(ownerSql).toContain("public_id = $1");
+    expect(ownerSql).toContain("AND user_id = $3");
+    expect(ownerParams).toEqual([publicId, null, 42]);
+    expect(mockQuery.mock.calls[1][1][1]).toBe(123);
+    expect(mockRecomputeScanScore).toHaveBeenCalledWith(123, 42);
+  });
+
+  it("takes the numeric id as a string too", async () => {
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [{ id: 123, url: "https://example.com/" }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ id: 1, verdict: "confirmed", created_at: "2026-01-01" }],
+      });
+
+    const res = await POST(postRequest(validPayload({ scanHistoryId: "123" })));
+
+    expect(res.status).toBe(200);
+    expect(mockQuery.mock.calls[0][1]).toEqual(["123", 123, 42]);
+  });
+
+  it("404s a public id that is not the caller's, and writes nothing", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await POST(
+      postRequest(validPayload({ scanHistoryId: "e".repeat(32) })),
+    );
+
+    expect(res.status).toBe(404);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockRecomputeScanScore).not.toHaveBeenCalled();
+  });
+
   it("404s and never inserts when scanHistoryId does not belong to the session user (AUDIT-010#security-02)", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] }); // ownership check: no match
 
@@ -198,8 +250,8 @@ describe("POST /api/v3/scan/feedback", () => {
     expect(res.status).toBe(404);
     expect(mockQuery).toHaveBeenCalledTimes(1);
     const [sql, params] = mockQuery.mock.calls[0];
-    expect(sql).toContain("FROM scan_history WHERE id = $1 AND user_id = $2");
-    expect(params).toEqual([999999, 42]);
+    expect(sql).toContain("AND user_id = $3");
+    expect(params).toEqual(["999999", 999999, 42]);
     expect(mockRecomputeScanScore).not.toHaveBeenCalled();
   });
 

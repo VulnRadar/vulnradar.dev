@@ -26,6 +26,7 @@ import {
 } from "@/lib/billing/subscription-status";
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import { getSession } from "@/lib/auth/auth";
+import { throwIfImpersonating } from "@/lib/auth/impersonation-guard";
 import { isStaffRole } from "@/lib/auth/permissions-client";
 import { planMeetsMinimum, planRank } from "@/lib/billing/plan-limits";
 import { syncPreStaffPlanForManualPlanChange } from "@/lib/billing/staff-plan";
@@ -49,6 +50,13 @@ export async function createSubscription(
   if (!sessionUser) {
     throw new Error("User must be logged in to subscribe");
   }
+  // Every path below spends the customer's money or moves their plan. A
+  // switch prorates against the card on file with nothing to confirm, and a
+  // new subscription goes active on its own when a credit balance, a coupon
+  // or a zero amount covers the invoice (otherwise it leaves an incomplete
+  // subscription and an open invoice on their Stripe customer). The staff
+  // floor path rewrites users.plan directly.
+  throwIfImpersonating(sessionUser, "Changing the account's plan");
   const userId = sessionUser.userId;
 
   const product = PRODUCTS.find((p) => p.id === productId);
@@ -448,6 +456,9 @@ export async function createAiCreditPaymentIntent(
   if (!sessionUser) {
     throw new Error("User must be logged in to buy AI credits");
   }
+  // A PaymentIntent on the customer's Stripe customer can be paid with a
+  // payment method saved there, so starting one is spending their money.
+  throwIfImpersonating(sessionUser, "Buying AI credits");
   const userId = sessionUser.userId;
 
   const tier = getAiCreditTier(tierId);
@@ -632,6 +643,9 @@ export async function createBillingPortalSession(): Promise<{ url: string }> {
   if (!sessionUser) {
     throw new Error("User must be logged in to manage billing");
   }
+  // The portal cancels, switches plans, replaces the card and lists every
+  // invoice, all outside anything this app records.
+  throwIfImpersonating(sessionUser, "Opening the billing portal");
 
   const stripe = getStripe();
   if (!stripe) {
@@ -675,6 +689,8 @@ export async function createGithubCreditPaymentIntent(
   if (!sessionUser) {
     throw new Error("User must be logged in to buy GitHub review credits");
   }
+  // Same rule as createAiCreditPaymentIntent.
+  throwIfImpersonating(sessionUser, "Buying GitHub review credits");
   const userId = sessionUser.userId;
 
   const tier = getGithubCreditTier(tierId);
@@ -834,6 +850,8 @@ export async function createBrowserbaseCreditPaymentIntent(
   if (!sessionUser) {
     throw new Error("User must be logged in to buy Browserbase minutes");
   }
+  // Same rule as createAiCreditPaymentIntent.
+  throwIfImpersonating(sessionUser, "Buying Browserbase minutes");
   const userId = sessionUser.userId;
 
   const tier = getBrowserbaseCreditTier(tierId);

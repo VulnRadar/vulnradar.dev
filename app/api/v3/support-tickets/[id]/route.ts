@@ -4,7 +4,7 @@ import { getUserLocale } from "@/lib/i18n/translate";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
 import { logAction } from "@/lib/auth/authorization";
-import { withErrorHandling } from "@/lib/api/api-utils";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 import { getClientIp } from "@/lib/api/request-utils";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { logError } from "@/lib/logging/log";
@@ -242,15 +242,9 @@ export const POST = withErrorHandling(
       );
     }
 
-    let body: { message?: unknown };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { error: "Invalid request body." },
-        { status: 400 },
-      );
-    }
+    const parsed = await readJsonObject(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const message = typeof body.message === "string" ? body.message.trim() : "";
     if (!message) {
       return NextResponse.json(
@@ -280,7 +274,10 @@ export const POST = withErrorHandling(
             rl.retryAfterSeconds / 60,
           )} minute(s) and try again.`,
         },
-        { status: 429 },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rl.retryAfterSeconds) },
+        },
       );
     }
 
@@ -424,15 +421,9 @@ export const PATCH = withErrorHandling(
     // Two independent changes share this route: the status, which the owner
     // and staff both set, and the assignee, which only staff do. A body may
     // carry either or both.
-    let body: { status?: unknown; assign?: unknown };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { error: "Invalid request body." },
-        { status: 400 },
-      );
-    }
+    const parsed = await readJsonObject(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const wantsAssign = body.assign !== undefined;
     const wantsStatus = body.status !== undefined || !wantsAssign;
     const status = body.status as TicketStatus;
@@ -541,7 +532,10 @@ export const PATCH = withErrorHandling(
               rl.retryAfterSeconds / 60,
             )} minute(s) and try again.`,
           },
-          { status: 429 },
+          {
+            status: 429,
+            headers: { "Retry-After": String(rl.retryAfterSeconds) },
+          },
         );
       }
     }

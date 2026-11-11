@@ -101,6 +101,15 @@ export default function GithubScanningPage() {
             the AI review does not.
           </li>
           <li>
+            If AI is switched off in your settings, the AI review is not
+            started, reserved or charged, and no file is sent to a model. A paid
+            plan still gets the pattern scan, with{" "}
+            <InlineCode>aiReviewDisabled: true</InlineCode> in the response. On
+            the free plan the repo scan is its AI review, so it gets{" "}
+            <InlineCode>403</InlineCode> before any GitHub API call, with
+            nothing claimed.
+          </li>
+          <li>
             The repo&apos;s default branch and visibility are resolved, then its
             recursive file tree is fetched (a <InlineCode>ref</InlineCode> you
             pass overrides the default branch).
@@ -545,6 +554,7 @@ export default function GithubScanningPage() {
   "filesSkippedByCaps": false,
   "aiTokensUsed": 41200,
   "aiReviewSkipped": false,
+  "aiReviewDisabled": false,
   "aiReviewStoppedAtBudget": false,
   "aiReviewStoppedAtRunCap": false,
   "aiReviewCoverage": {
@@ -558,6 +568,7 @@ export default function GithubScanningPage() {
               "ref is optional; it defaults to the repo's default branch and accepts a branch, tag, or commit SHA",
               "The scan is saved to history as private (is_public = false)",
               "aiReviewSkipped is true when no AI endpoint could be resolved",
+              "aiReviewDisabled is true when AI is switched off in your settings; no file was sent to a model and nothing was charged",
               "aiReviewStoppedAtBudget or aiReviewStoppedAtRunCap is true when the AI review stopped before every file; aiReviewCoverage says how many it covered, and the pattern scan always covers all of them",
               "aiReviewCoverage.filesSkippedOverRunCap lists files over the per-run ceiling on their own, skipped while the review carried on; batchesFailed counts batches whose call failed",
               "aiReviewAllowanceMessage explains why the AI review did not run when your allowance could not cover even the first batch",
@@ -572,7 +583,7 @@ export default function GithubScanningPage() {
               {
                 code: 403,
                 description:
-                  "The free plan's trial is used and the GitHub review credits left do not cover one AI batch, or, on the free plan, no file in the repo fits one AI batch under the per-run ceiling",
+                  "The free plan's trial is used and the GitHub review credits left do not cover one AI batch, or, on the free plan, no file in the repo fits one AI batch under the per-run ceiling, or AI is switched off on the free plan",
               },
               { code: 429, description: "Too many requests" },
             ]}

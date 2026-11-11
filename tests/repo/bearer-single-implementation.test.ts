@@ -76,9 +76,10 @@ describe("Authorization: Bearer parsing", () => {
         );
       if (!imported || !/\bparseBearer\(/.test(code)) offenders.push(file);
     }
-    // Sixteen route files read the header today; fewer would mean the scan
-    // stopped seeing them rather than that someone removed Bearer auth.
-    expect(readers).toBeGreaterThanOrEqual(16);
+    // Routes move onto authenticateApiKey, which reads the header for them, so
+    // the count only ever falls. Zero would mean the scan stopped seeing files
+    // rather than that every route moved.
+    expect(readers).toBeGreaterThan(0);
     expect(offenders).toEqual([]);
   });
 

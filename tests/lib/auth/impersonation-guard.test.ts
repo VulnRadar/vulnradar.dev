@@ -19,7 +19,10 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const API_ROOT = join(process.cwd(), "app/api/v3");
+const ACTIONS_ROOT = join(process.cwd(), "app/actions");
 const GUARD = "refuseWhileImpersonating";
+/** A server action has no response to return, so it throws the same refusal. */
+const ACTION_GUARD = "throwIfImpersonating";
 
 /**
  * Writes that change who the account holder is, or end the account. Reads are
@@ -38,9 +41,61 @@ const GUARD = "refuseWhileImpersonating";
  *
  * saveGithubConnection stores a repo grant and revokes the token it replaces at
  * GitHub, which is what DELETE /account/github refuses.
+ *
+ * An API key is a credential with no session behind it, so minting one through
+ * an impersonation outlives the impersonation, and revoking, rotating or
+ * unbinding one breaks the customer's integrations. The four lib/api/api-keys
+ * writers are matched by their call.
+ *
+ * A Stripe subscription create, update or cancel, a PaymentIntent, and a
+ * billing portal session, move the customer's money: an immediate cancel
+ * forfeits a paid period, a price switch prorates against the card on file, a
+ * new subscription or a PaymentIntent can be paid from what the Stripe
+ * customer already holds, and the portal can do any of it. A file that calls
+ * one is held to the same rule; reactivate is the listed exception below.
  */
-const CREDENTIAL_WRITE =
-  /(?:password_hash|totp_secret|backup_codes|totp_enabled|two_factor_method)\s*(?<![=!<>])=(?!=)|SET email|deleteUserAccountData|\bSET\b(?:(?!\bWHERE\b)[^`"])*?\b(?:google_id|github_id|discord_id)\s*=(?!=)|(?:INSERT INTO|UPDATE|DELETE FROM)\s+discord_connections\b|\bsaveGithubConnection\b/;
+const MONEY_MOVE =
+  /\bsubscriptions\.(?:create|update|cancel)\s*\(|\bpaymentIntents\.create\s*\(|\bbillingPortal\.sessions\.create\s*\(/;
+const CREDENTIAL_WRITE = new RegExp(
+  /(?:password_hash|totp_secret|backup_codes|totp_enabled|two_factor_method)\s*(?<![=!<>])=(?!=)|SET email|deleteUserAccountData|\bSET\b(?:(?!\bWHERE\b)[^`"])*?\b(?:google_id|github_id|discord_id)\s*=(?!=)|(?:INSERT INTO|UPDATE|DELETE FROM)\s+discord_connections\b|\bsaveGithubConnection\b|\b(?:generateApiKey|rotateApiKey|revokeApiKey|resetApiKeyBinding)\s*\(/
+    .source +
+    "|" +
+    MONEY_MOVE.source,
+);
+
+/**
+ * Server actions in app/actions/stripe.ts that call Stripe and still do not
+ * need the guard, each with the reason.
+ */
+const ACTIONS_NO_GUARD_NEEDED = new Map<string, string>([
+  [
+    "confirmSubscription",
+    "only retrieves a subscription the customer already paid for and copies its status onto their own row, the same as the webhook",
+  ],
+  [
+    "confirmAiCreditPurchase",
+    "only retrieves a PaymentIntent the customer already paid and credits it once, the same as the webhook",
+  ],
+  [
+    "confirmGithubCreditPurchase",
+    "only retrieves a PaymentIntent the customer already paid and credits it once, the same as the webhook",
+  ],
+  [
+    "confirmBrowserbaseCreditPurchase",
+    "only retrieves a PaymentIntent the customer already paid and credits it once, the same as the webhook",
+  ],
+]);
+
+/** Each exported async function in a server action file, by name. */
+function exportedActions(source: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const starts = [...source.matchAll(/export async function (\w+)\s*\(/g)];
+  for (const [i, m] of starts.entries()) {
+    const end = i + 1 < starts.length ? starts[i + 1].index : source.length;
+    out.set(m[1], source.slice(m.index, end));
+  }
+  return out;
+}
 
 /**
  * Comments are stripped before testing. A guard that reads raw source finds
@@ -76,6 +131,14 @@ const NO_GUARD_NEEDED = new Map<string, string>([
   [
     "auth/2fa/verify/route.ts",
     "runs at the two-factor prompt, before the session is issued",
+  ],
+  [
+    "billing/subscription/reactivate/route.ts",
+    "undoes a pending cancellation the customer can make again themselves, starts no new charge and changes no price, so refusing it would only stop staff from reversing a period-end cancel they made while reproducing a bug",
+  ],
+  [
+    "webhooks/stripe/route.ts",
+    "authenticated by Stripe's signature, never by a session, so no impersonation session can reach it; it cancels a subscription only after a second failed renewal Stripe itself reported",
   ],
 ]);
 
@@ -121,6 +184,124 @@ describe("impersonation cannot rewrite the account it is impersonating", () => {
         "the route to NO_GUARD_NEEDED in this file with the reason: " +
         unguarded.join(", "),
     ).toEqual([]);
+  });
+
+  it("guards every server action that writes one", () => {
+    // app/actions is the other way in: a "use server" export is a POST
+    // endpoint with the caller's session, and nothing under app/api sees it.
+    const actions = readdirSync(ACTIONS_ROOT).filter((f) => f.endsWith(".ts"));
+    expect(actions).toContain("stripe.ts");
+    const unguarded = actions.filter((file) => {
+      const source = readFileSync(join(ACTIONS_ROOT, file), "utf8");
+      return (
+        CREDENTIAL_WRITE.test(code(source)) && !source.includes(ACTION_GUARD)
+      );
+    });
+    expect(
+      unguarded,
+      `These server actions write a credential or move money and do not call ${ACTION_GUARD}(): ` +
+        unguarded.join(", "),
+    ).toEqual([]);
+  });
+
+  it("guards each key writer and each money-moving Stripe call at its own route", () => {
+    // A file-level match is satisfied by one guard anywhere in it, so the
+    // files where only one branch moves money are checked at that branch.
+    for (const rel of [
+      "keys/route.ts",
+      "keys/[id]/rotate/route.ts",
+      "keys/[id]/revoke/route.ts",
+      "keys/[id]/reset-binding/route.ts",
+      "billing/route.ts",
+      "billing/subscription/cancel/route.ts",
+    ]) {
+      expect(readFileSync(join(API_ROOT, rel), "utf8"), rel).toContain(GUARD);
+    }
+    const billing = code(
+      readFileSync(join(API_ROOT, "billing/route.ts"), "utf8"),
+    );
+    const immediate = billing.slice(billing.indexOf('"cancel_immediately"'));
+    expect(
+      immediate.slice(0, immediate.indexOf("subscriptions.cancel(")),
+    ).toContain(GUARD);
+  });
+
+  it("refuses each Stripe server action that moves money before Stripe or the database is touched", () => {
+    const actions = exportedActions(
+      code(readFileSync(join(ACTIONS_ROOT, "stripe.ts"), "utf8")),
+    );
+    // The ones that exist today, so a rename cannot make this pass by
+    // matching nothing.
+    const moving = [...actions].filter(([, body]) => MONEY_MOVE.test(body));
+    expect(moving.map(([name]) => name).sort()).toEqual([
+      "createAiCreditPaymentIntent",
+      "createBillingPortalSession",
+      "createBrowserbaseCreditPaymentIntent",
+      "createGithubCreditPaymentIntent",
+      "createSubscription",
+    ]);
+    for (const [name, body] of moving) {
+      const guard = body.indexOf(`${ACTION_GUARD}(`);
+      expect(guard, `${name} never calls ${ACTION_GUARD}()`).toBeGreaterThan(
+        -1,
+      );
+      // At the top: a guard after the first read or the first Stripe call
+      // leaves a path (the staff floor plan change, a customer created on
+      // the account) that runs before it.
+      for (const first of ["getStripe(", "pool.query(", "stripe."]) {
+        const at = body.indexOf(first);
+        if (at < 0) continue;
+        expect(guard, `${name}: ${ACTION_GUARD}() after ${first}`).toBeLessThan(
+          at,
+        );
+      }
+    }
+  });
+
+  it("lets only the read-only Stripe server actions skip the guard", () => {
+    const actions = exportedActions(
+      code(readFileSync(join(ACTIONS_ROOT, "stripe.ts"), "utf8")),
+    );
+    const unguarded = [...actions]
+      .filter(([, body]) => /getStripe\(/.test(body))
+      .filter(([, body]) => !body.includes(ACTION_GUARD))
+      .map(([name]) => name);
+    expect(unguarded.sort()).toEqual(
+      [...ACTIONS_NO_GUARD_NEEDED.keys()].sort(),
+    );
+    for (const name of ACTIONS_NO_GUARD_NEEDED.keys()) {
+      // An exception is only true while the action calls nothing but
+      // retrieve on Stripe.
+      const calls = [
+        ...actions.get(name)!.matchAll(/\bstripe!?\.(\w+(?:\.\w+)*)\(/g),
+      ].map((m) => m[1]);
+      expect(calls.length, name).toBeGreaterThan(0);
+      for (const call of calls) expect(call, name).toMatch(/\.retrieve$/);
+    }
+  });
+
+  it("counts minting a key or moving a subscription as a credential write", () => {
+    for (const write of [
+      "const key = await generateApiKey(session.userId, name)",
+      "await rotateApiKey(keyId, session.userId, limit)",
+      "await revokeApiKey(keyId, session.userId)",
+      "await resetApiKeyBinding(keyId, session.userId)",
+      "await stripe.subscriptions.cancel(subscriptionId)",
+      "await stripe.subscriptions.update(id, { cancel_at: now })",
+      "await stripe.billingPortal.sessions.create({ customer })",
+      "await stripe.subscriptions.create({ customer: customerId })",
+      "await stripe.paymentIntents.create({ amount, customer })",
+    ]) {
+      expect(CREDENTIAL_WRITE.test(write), write).toBe(true);
+    }
+    for (const read of [
+      "const keys = await getUserApiKeys(session.userId)",
+      "await stripe.subscriptions.retrieve(id)",
+      "await stripe.subscriptions.list({ customer })",
+      "await stripe.paymentIntents.retrieve(paymentIntentId)",
+    ]) {
+      expect(CREDENTIAL_WRITE.test(read), read).toBe(false);
+    }
   });
 
   it("counts writing a sign-in provider as a credential write, and looking one up as not", () => {
@@ -186,6 +367,25 @@ describe("impersonation cannot rewrite the account it is impersonating", () => {
       return !CREDENTIAL_WRITE.test(code(source));
     });
     expect(stale).toEqual([]);
+  });
+
+  it("throws the same sentence for a server action", async () => {
+    const { refuseWhileImpersonating, throwIfImpersonating } =
+      await import("@/lib/auth/impersonation-guard");
+    expect(() =>
+      throwIfImpersonating(null, "Opening the billing portal"),
+    ).not.toThrow();
+    expect(() =>
+      throwIfImpersonating({}, "Opening the billing portal"),
+    ).not.toThrow();
+    const refused = refuseWhileImpersonating(
+      { impersonatedBy: 7 },
+      "Opening the billing portal",
+    );
+    const { error } = await refused!.json();
+    expect(() =>
+      throwIfImpersonating({ impersonatedBy: 7 }, "Opening the billing portal"),
+    ).toThrow(error);
   });
 
   it("refuses only an impersonation session, and says what to do instead", async () => {

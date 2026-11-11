@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
+import {
+  burstLimitedResponse,
+  concurrentScanLimitResponse,
+  rateLimitedResponse,
+} from "@/lib/api/rate-limit-response";
 import { getPlannedSyncCategories } from "@/lib/scanner/engine";
 import { getPlannedAsyncBranches } from "@/lib/scanner/async-checks";
 import {
@@ -12,12 +16,11 @@ import {
 } from "@/lib/scanner/execute-scan";
 import { getSession } from "@/lib/auth";
 import { parseBearer } from "@/lib/api/bearer";
-import { validateApiKey, checkRateLimit } from "@/lib/api/api-keys";
-import {
-  hasApiKeyScope,
-  apiKeyScopeErrorMessage,
-  API_KEY_SCOPES,
-} from "@/lib/api/api-key-scopes";
+import { checkRateLimit } from "@/lib/api/api-keys";
+import { authenticateApiKey, type ApiKeyAuth } from "@/lib/api/api-key-auth";
+import { API_KEY_SCOPES } from "@/lib/api/api-key-scopes";
+import { buildQuotaBlock } from "@/lib/api/quota";
+import { versioned } from "@/lib/api/v4/wrap";
 import {
   checkRateLimit as checkGlobalRL,
   RATE_LIMITS,
@@ -25,12 +28,12 @@ import {
 import {
   canMakeRequest,
   incrementDailyCountCapped,
-  getRateLimitHeaders,
 } from "@/lib/rate-limiting/daily-limits";
 import type { Category } from "@/lib/scanner/types";
 import { DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
 import { logError } from "@/lib/logging/log";
-import { withErrorHandling } from "@/lib/api/api-utils";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { DAILY_LIMIT_MESSAGE } from "@/lib/scanner/failure-messages";
 import { getSetting } from "@/lib/config/runtime-config";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { finalizeScanFailureQuietly } from "@/lib/scanner/scan-jobs";
@@ -53,7 +56,7 @@ import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { rateLimitedEmail } from "@/lib/email/email";
 import { scanningPausedResponse } from "@/lib/admin/service-state";
 
-export const POST = withErrorHandling(async (request: NextRequest) => {
+const createScan = withErrorHandling(async (request: NextRequest) => {
   try {
     // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). First thing in
     // the handler, ahead of auth, rate limiting and quota: a scan that is
@@ -73,36 +76,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // would insert a SECOND usage row and charge every scan twice.
     let apiKeyRateLimit: Awaited<ReturnType<typeof checkRateLimit>> | null =
       null;
-    let keyData: Awaited<ReturnType<typeof validateApiKey>> | null = null;
+    let keyData: ApiKeyAuth | null = null;
 
+    // A Bearer header decides the path, and a session cookie never rescues a
+    // bad key: the key branch answers for itself or returns.
     if (bearerToken !== null) {
-      keyData = await validateApiKey(bearerToken);
-
-      if (!keyData) {
-        return NextResponse.json(
-          { error: "Invalid or revoked API key." },
-          { status: 401 },
-        );
-      }
-
-      // Check if user needs to accept updated terms
-      if (keyData.needsTermsAcceptance) {
-        return NextResponse.json(
-          {
-            error:
-              "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
-          },
-          { status: 403 },
-        );
-      }
-
-      // scoping: triggering a scan requires scan:write.
-      if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
-        return NextResponse.json(
-          { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE) },
-          { status: 403 },
-        );
-      }
+      // Key, Terms acceptance and scan:write, in that order, in one place.
+      const keyAuth = await authenticateApiKey(request, {
+        scope: API_KEY_SCOPES.SCAN_WRITE,
+      });
+      if (!keyAuth.ok) return keyAuth.response;
+      keyData = keyAuth.auth;
 
       // Check rate limit (this is the ONE atomic count+insert for this
       // request; reused for the success headers below, never re-called).
@@ -159,11 +143,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         ...RATE_LIMITS.scan,
       });
       if (!rl.allowed) {
-        return NextResponse.json(
-          {
-            error: `Scan rate limit reached. Please wait before scanning again.`,
-          },
-          { status: 429 },
+        return burstLimitedResponse(
+          rl,
+          "Scan rate limit reached. Please wait before scanning again.",
         );
       }
     }
@@ -193,19 +175,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // invalid/SSRF-blocked URL, an unverified domain) with no refund path.
     const dailyQuota = await canMakeRequest(authedUserId);
     if (!dailyQuota.allowed) {
-      return NextResponse.json(
-        {
-          error:
-            "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
-          limit: dailyQuota.limit,
-          used: dailyQuota.used,
-          remaining: 0,
-          resets_at: dailyQuota.resetsAt,
-        },
-        {
-          status: 429,
-          headers: getRateLimitHeaders(dailyQuota),
-        },
+      return rateLimitedResponse(
+        { ...dailyQuota, remaining: 0 },
+        DAILY_LIMIT_MESSAGE,
+        { code: "DAILY_LIMIT" },
       );
     }
 
@@ -218,7 +191,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // round trips in front of the request purely to fail slightly earlier for
     // the rare caller who is already at capacity.
 
-    const body = await request.json();
+    // After the auth and quota gates on purpose: a caller with no valid
+    // credentials is told so before anything is said about their body.
+    const parsedBody = await readJsonObject(request);
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.data;
     const { url, scanners, isPublic } = body;
     // Opt-in page screenshot (see ExecuteScanParams.captureScreenshot). Only
     // ever true when the caller explicitly asked for it; a screenshot spins
@@ -422,6 +399,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // to the request (unlike before, when the row was best-effort because
     // the client already had the full result in hand either way).
     let scanHistoryId: number;
+    let scanPublicId: string;
+    let reservedScanId: number | null = null;
     try {
       // Reserve the concurrency slot and insert the row in one locked
       // transaction so parallel requests can't race past the earlier
@@ -453,15 +432,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         // Same body the removed pre-check returned, so an API client keying
         // on statusCode sees no change now that the reservation is the only
         // concurrency gate.
-        return NextResponse.json(
-          {
-            error: reservation.check.message,
-            statusCode: "CONCURRENT_SCAN_LIMIT",
-          },
-          { status: 429 },
-        );
+        return concurrentScanLimitResponse(reservation.check.message);
       }
       scanHistoryId = reservation.scanId;
+      scanPublicId = reservation.publicId;
+      reservedScanId = reservation.scanId;
       // The INSERT above carries the primary team; this writes the rest of
       // the set into scan_history_teams and is a no-op below two teams.
       await attachNewScanTeams(scanHistoryId, teamAssignment.teamIds);
@@ -475,6 +450,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       logError("scan", "failed to create the scan_history row", err, {
         userId: authedUserId,
       });
+      // A throw after the reservation leaves a 'pending' row that nothing will
+      // ever run, and a pending row holds one of the account's concurrent
+      // slots until the stale-scan sweep gets to it.
+      if (reservedScanId !== null) {
+        await finalizeScanFailureQuietly(
+          reservedScanId,
+          "The scan could not be started.",
+          "internal",
+        );
+      }
       return NextResponse.json(
         { error: "Failed to start the scan. Please try again." },
         { status: 500 },
@@ -514,25 +499,39 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       await finalizeScanFailureQuietly(scanHistoryId, message);
     });
 
+    // The scan is already running, so a failure to read the quota must not
+    // turn into an error response for a request that succeeded.
+    let quota: Awaited<ReturnType<typeof buildQuotaBlock>> | undefined;
+    try {
+      quota = await buildQuotaBlock(authedUserId, keyData);
+    } catch (err) {
+      logError("scan", "could not read the quota for the response", err, {
+        userId: authedUserId,
+      });
+    }
+    const created = {
+      scanId: scanHistoryId,
+      publicId: scanPublicId,
+      status: "running",
+      quota,
+    };
+
     // Add rate limit headers from the SAME quota row the gate consumed at the
     // top of this request -- the slot was already counted+inserted there, so we
     // must not call checkRateLimit again (that would insert a second usage row
     // and charge the scan twice). apiKeyRateLimit is always set on this path
     // because the gate ran before we got here.
     if (isApiKeyAuth && apiKeyId && apiKeyRateLimit) {
-      return NextResponse.json(
-        { scanId: scanHistoryId, status: "running" },
-        {
-          headers: {
-            "X-RateLimit-Limit": String(apiKeyRateLimit.limit),
-            "X-RateLimit-Remaining": String(apiKeyRateLimit.remaining),
-            "X-RateLimit-Reset": apiKeyRateLimit.resetsAt,
-          },
+      return NextResponse.json(created, {
+        headers: {
+          "X-RateLimit-Limit": String(apiKeyRateLimit.limit),
+          "X-RateLimit-Remaining": String(apiKeyRateLimit.remaining),
+          "X-RateLimit-Reset": apiKeyRateLimit.resetsAt,
         },
-      );
+      });
     }
 
-    return NextResponse.json({ scanId: scanHistoryId, status: "running" });
+    return NextResponse.json(created);
   } catch (error) {
     logError("scan", "scan request failed", error);
     return NextResponse.json(
@@ -541,3 +540,5 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 });
+
+export const POST = versioned("scan.create", createScan);

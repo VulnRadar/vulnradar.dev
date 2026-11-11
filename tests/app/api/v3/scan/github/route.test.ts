@@ -934,6 +934,7 @@ describe("POST /api/v3/scan/github - coverage is stored with the scan (owner dec
       filesScanned: json.filesScanned,
       filesSkippedByCaps: json.filesSkippedByCaps,
       aiReviewSkipped: json.aiReviewSkipped,
+      aiReviewDisabled: false,
       aiReviewStoppedAtBudget: json.aiReviewStoppedAtBudget,
       aiReviewStoppedAtRunCap: json.aiReviewStoppedAtRunCap,
       aiReviewCoverage: json.aiReviewCoverage,
@@ -960,5 +961,122 @@ describe("POST /api/v3/scan/github - coverage is stored with the scan (owner dec
 
     const [, params] = insertCall();
     expect(String(params.at(-1))).not.toMatch(/1,234/);
+  });
+});
+
+// The account's own "AI disabled" switch, which /scan/verify and the AI
+// summary already honour. The AI review is what sends repository source to a
+// model, so it is the part refused; the pattern scan is local and still runs.
+describe("POST /api/v3/scan/github - AI switched off in the account's settings", () => {
+  function aiDisabledFor(value: unknown) {
+    mockQuery.mockImplementation(async (sql: string) =>
+      String(sql).includes("user_ai_configs")
+        ? { rows: [{ ai_disabled: value }] }
+        : { rows: [{ id: 99 }] },
+    );
+  }
+
+  function insertedMeta() {
+    const call = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(call).toBeDefined();
+    return JSON.parse(String((call as [string, unknown[]])[1].at(-1)));
+  }
+
+  it("runs the pattern scan on a paid plan and never starts, reserves or charges the AI review", async () => {
+    aiDisabledFor(true);
+    mockRunPatternSecretsScan.mockReturnValue([
+      {
+        id: "secret-1",
+        title: "Hardcoded secret",
+        severity: "high",
+        category: "secrets",
+      },
+    ]);
+
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+    expect(res.status).toBe(200);
+    expect(mockRunPatternSecretsScan).toHaveBeenCalledTimes(1);
+    expect(mockRunGithubAiReview).not.toHaveBeenCalled();
+    expect(mockReserveGithubReviewTokens).not.toHaveBeenCalled();
+    expect(mockSettleGithubReviewTokens).not.toHaveBeenCalled();
+    const json = await res.json();
+    expect(json.aiReviewDisabled).toBe(true);
+    expect(json.aiTokensUsed).toBe(0);
+    expect(json.aiReviewAllowanceMessage).toBeNull();
+    expect(json.aiReviewSkipped).toBe(false);
+    expect(json.aiReviewStoppedAtBudget).toBe(false);
+    expect(json.aiReviewCoverage).toMatchObject({
+      filesReviewed: 0,
+      filesTotal: 1,
+    });
+    expect(json.findings.map((f: { id: string }) => f.id)).toEqual([
+      "secret-1",
+    ]);
+    // A scan reopened from history says the same.
+    expect(insertedMeta().aiReviewDisabled).toBe(true);
+  });
+
+  it("does not let a spent allowance message stand in for the reason", async () => {
+    aiDisabledFor(true);
+    mockCheckGithubReviewQuota.mockResolvedValue({
+      allowed: false,
+      usingOwnAi: false,
+      usedTokens: 200_000,
+      limitTokens: 200_000,
+      message: "Your GitHub review allowance is used up.",
+    });
+
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).aiReviewAllowanceMessage).toBeNull();
+  });
+
+  // On the free plan the repo scan is paid for as its AI review. A
+  // pattern-only scan there would be free on every request (owner decision
+  // D22), so the request is refused, before GitHub is asked for anything and
+  // with the trial left unclaimed.
+  it("refuses on the free plan, before calling GitHub, with nothing claimed", async () => {
+    aiDisabledFor(true);
+    mockCheckGithubReviewQuota.mockResolvedValue({
+      allowed: true,
+      usingOwnAi: false,
+      usedTokens: 0,
+      limitTokens: 0,
+      isFreeTrial: true,
+    });
+
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toContain("AI is disabled");
+    expect(mockGetRepoInfo).not.toHaveBeenCalled();
+    expect(mockListRepoTree).not.toHaveBeenCalled();
+    expect(mockReserveGithubReviewTokens).not.toHaveBeenCalled();
+    expect(mockRunPatternSecretsScan).not.toHaveBeenCalled();
+  });
+
+  it.each([false, null])(
+    "reviews as usual when ai_disabled is %s",
+    async (value) => {
+      aiDisabledFor(value);
+      const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+      expect(res.status).toBe(200);
+      expect(mockRunGithubAiReview).toHaveBeenCalledTimes(1);
+      expect((await res.json()).aiReviewDisabled).toBe(false);
+    },
+  );
+
+  it("treats a failure reading the AI settings as AI on, as /scan/verify does", async () => {
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("user_ai_configs")) throw new Error("no table");
+      return { rows: [{ id: 99 }] };
+    });
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+    expect(res.status).toBe(200);
+    expect(mockRunGithubAiReview).toHaveBeenCalledTimes(1);
   });
 });

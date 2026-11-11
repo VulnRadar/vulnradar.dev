@@ -2606,9 +2606,13 @@ export function paymentFailedEmail(input: {
   const safePlan = escapeHtml(input.planName);
   const amount = formatMoney(input.amountCents, input.currency);
   const updateUrl = `${APP_URL}/profile?tab=billing`;
+  // The second failed attempt cancels the subscription (the Stripe webhook's
+  // two-strike rule), so this says so plainly instead of "repeated failures".
+  const consequence =
+    "If the retry fails too, the subscription is canceled and the account moves to the free plan.";
   const retryLine = input.nextAttempt
-    ? `We'll try the card again on ${escapeHtml(input.nextAttempt)}. Update it before then to avoid losing access.`
-    : "We'll retry the card automatically over the next few days. Update it to avoid losing access.";
+    ? `We'll retry the card on ${escapeHtml(input.nextAttempt)}. ${consequence}`
+    : `We'll retry the card automatically in the next few days. ${consequence}`;
 
   const rows: EmailDetailRow[] = [
     { label: "Plan", value: safePlan },
@@ -2620,17 +2624,47 @@ export function paymentFailedEmail(input: {
 
   return {
     template: "paymentFailed",
-    preheader: `${amount} for ${input.planName} was declined. Update the card to keep access.`,
+    preheader: `${amount} for ${input.planName} was declined. We'll retry it, so update the card before then.`,
     subject: `${APP_NAME} couldn't process your payment`,
-    text: `We couldn't charge your card ${amount} for your ${input.planName} subscription.\n${
+    text: `We couldn't charge your card ${amount} for your ${input.planName} subscription. Your plan stays active while we retry.\n${
       input.nextAttempt ? `\nNext retry: ${input.nextAttempt}\n` : ""
-    }\nUpdate your payment method: ${updateUrl}\n\nYour plan stays active for now, but repeated failures will drop the account to free.`,
+    }\nUpdate your payment method: ${updateUrl}\n\nIf the retry fails too, the subscription is canceled and the account moves to the free plan.`,
     html: `
       ${emailHeading("Your payment didn't go through")}
       ${emailLead(`We couldn't charge your card ${amount} for your ${safePlan} subscription.`)}
       ${emailDetailPanel(rows)}
       ${emailNote(retryLine, "warn")}
       ${emailButton(updateUrl, "Update payment method")}
+    `,
+  };
+}
+
+// The second strike: the renewal failed on its retry too, so the webhook
+// canceled the subscription. Transactional, like the failure notice before it.
+export function planCancelledEmail(input: {
+  planName: string;
+  amountCents: number;
+  currency: string;
+}) {
+  const safePlan = escapeHtml(input.planName);
+  const amount = formatMoney(input.amountCents, input.currency);
+  const pricingUrl = `${APP_URL}${ROUTES.PRICING}`;
+
+  return {
+    template: "planCancelled",
+    preheader: `The ${amount} renewal failed twice. The account is on the free plan now.`,
+    subject: `Your ${input.planName} subscription was canceled`,
+    text: `We couldn't charge your card ${amount} for your ${input.planName} subscription. The payment failed twice, so the subscription is canceled. The account is on the free plan now, and the card won't be charged again.\n\nTo get the plan back, subscribe again: ${pricingUrl}`,
+    html: `
+      ${emailHeading("Your subscription was canceled")}
+      ${emailLead(`We couldn't charge your card ${amount} for your ${safePlan} subscription. The payment failed twice, so the subscription is canceled.`)}
+      ${emailDetailPanel([
+        { label: "Plan", value: safePlan },
+        { label: "Amount due", value: amount, accent: "bad" },
+        { label: "Status", value: "Canceled", accent: "bad" },
+      ])}
+      ${emailNote("The account is on the free plan now, and the card won't be charged again.", "warn")}
+      ${emailButton(pricingUrl, "Subscribe again")}
     `,
   };
 }

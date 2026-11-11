@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-import { listApiRouteFiles, routeFile } from "../_helpers/api-routes";
+import { listApiRouteFiles } from "../_helpers/api-routes";
 
 /**
  * A route that authenticates with an API key also refuses an account behind on
@@ -10,18 +10,10 @@ import { listApiRouteFiles, routeFile } from "../_helpers/api-routes";
  * route either calls authenticateApiKey, which cannot forget, or calls
  * validateApiKey and reads needsTermsAcceptance itself.
  *
- * The baseline is the four routes that lacked the gate when this was written.
- * It is keyed by route (the directory under app/api/v3 before the move, so the
- * move needs no edit here), and a route only ever leaves it.
+ * There is no baseline: the four routes that lacked the gate when this was
+ * written all go through authenticateApiKey now, so a route that goes back to
+ * validateApiKey without the check fails here instead of hiding in a list.
  */
-const BASELINE = new Set(
-  [
-    "history/[id]/summary",
-    "scan/discover/progress/[requestId]",
-    "scan/verify-batch",
-    "scan/verify",
-  ].map(routeFile),
-);
 
 function parse(text: string): ts.SourceFile {
   return ts.createSourceFile(
@@ -80,21 +72,27 @@ describe("API key routes check the Terms", () => {
     ).toBe(false);
   });
 
-  it("finds no new route that skips the gate", () => {
+  it("finds no route that skips the gate", () => {
     const offenders = listApiRouteFiles()
       .filter((route) => {
         const text = readFileSync(route.abs, "utf8");
         return text.includes("validateApiKey") && usesKeyWithoutTermsGate(text);
       })
-      .map((route) => route.file)
-      .filter((file) => !BASELINE.has(file));
+      .map((route) => route.file);
     expect(offenders).toEqual([]);
   }, 60_000);
 
   it("is reading real route files", () => {
-    const callers = listApiRouteFiles().filter((route) =>
-      readFileSync(route.abs, "utf8").includes("needsTermsAcceptance"),
-    );
+    // Routes on authenticateApiKey get the Terms check from it and never name
+    // needsTermsAcceptance themselves, so either spelling proves the walk
+    // reached real key-authenticated routes.
+    const callers = listApiRouteFiles().filter((route) => {
+      const text = readFileSync(route.abs, "utf8");
+      return (
+        text.includes("needsTermsAcceptance") ||
+        /\bauthenticateApiKey\s*\(/.test(text)
+      );
+    });
     expect(listApiRouteFiles().length).toBeGreaterThan(100);
     expect(callers.length).toBeGreaterThan(0);
   });

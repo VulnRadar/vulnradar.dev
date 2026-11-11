@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { parseRowId } from "@/lib/teams/parse-id";
 import { createHash } from "node:crypto";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
@@ -43,7 +45,7 @@ async function notifyInviter(opts: {
   });
 }
 
-export async function POST(request: Request) {
+export const POST = withErrorHandling(async (request: Request) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -54,12 +56,23 @@ export async function POST(request: Request) {
   const gate = await teamsDisabledResponse();
   if (gate) return gate;
 
-  const { token, inviteId } = await request.json();
-  if (!token && !inviteId)
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const { token: rawToken, inviteId: rawInviteId } = parsed.data;
+  if (!rawToken && !rawInviteId)
     return NextResponse.json(
       { error: "Invite token or inviteId required." },
       { status: 400 },
     );
+  const token = typeof rawToken === "string" && rawToken ? rawToken : null;
+  if (rawToken && token === null)
+    return NextResponse.json(
+      { error: "Invalid invite token." },
+      { status: 400 },
+    );
+  const inviteId = token ? null : parseRowId(rawInviteId);
+  if (!token && inviteId === null)
+    return NextResponse.json({ error: "Invalid invite id." }, { status: 400 });
 
   // rate-limit: sending invites was capped, accepting them was not
   // (AUDIT-002#secrets-02). The token path needs 256 bits guessed correctly
@@ -230,4 +243,4 @@ export async function POST(request: Request) {
     message: `You joined ${invite.team_name}!`,
     teamId: invite.team_id,
   });
-}
+});

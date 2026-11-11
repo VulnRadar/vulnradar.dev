@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 import {
   rotateApiKey,
   getUserApiKeys,
@@ -19,6 +20,10 @@ export async function POST(
       { status: 401 },
     );
   }
+  // Rotation hands back a fresh secret for the customer's integration and
+  // breaks the one they deployed.
+  const refused = refuseWhileImpersonating(session, "Rotating an API key");
+  if (refused) return refused;
 
   const { id } = await params;
   const keyId = parseInt(id, 10);

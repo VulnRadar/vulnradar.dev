@@ -21,8 +21,13 @@ function Popover({
   open,
   defaultOpen,
   onOpenChange,
+  closeOnScroll = true,
   ...props
-}: React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Root>) {
+}: React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Root> & {
+  /** Close when the page scrolls. On by default; a hint held open by keyboard
+   *  focus turns it off, because focusing a control scrolls it into view. */
+  closeOnScroll?: boolean;
+}) {
   const isControlled = open !== undefined;
   const [internalOpen, setInternalOpen] = React.useState(defaultOpen ?? false);
   const actualOpen = isControlled ? open : internalOpen;
@@ -36,7 +41,7 @@ function Popover({
   );
 
   const close = React.useCallback(() => setOpen(false), [setOpen]);
-  useCloseOnScroll(actualOpen, close);
+  useCloseOnScroll(actualOpen && closeOnScroll, close);
 
   return (
     <PopoverPrimitive.Root

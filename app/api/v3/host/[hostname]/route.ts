@@ -62,7 +62,6 @@ export interface HostReportData {
   dnsRecords?: ScanResult["dnsRecords"];
   portScan?: ScanResult["portScan"];
   subdomains?: ScanResult["subdomains"];
-  screenshot?: ScanResult["screenshot"];
   /**
    * The same rule-computed tags (lib/tags/auto-tags.ts) a scan owner sees
    * on their own scan, computed from this same findings snapshot at

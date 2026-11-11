@@ -140,6 +140,13 @@ export const PATCH = withErrorHandling(async (request: Request) => {
   if (!session) {
     return ApiResponse.unauthorized();
   }
+  // Same rule as the Discord sync: the linked identity is the account
+  // holder's, and so is copying it onto their profile.
+  const refused = refuseWhileImpersonating(
+    session,
+    "Syncing the profile from GitHub",
+  );
+  if (refused) return refused;
 
   const parsed = await parseBody<{
     syncAvatar?: unknown;

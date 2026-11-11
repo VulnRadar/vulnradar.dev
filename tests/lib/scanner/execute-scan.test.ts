@@ -116,6 +116,9 @@ vi.mock("@/lib/scanner/cve-enrichment", () => ({
 
 const { executeScan, normalizeUrl } =
   await import("@/lib/scanner/execute-scan");
+const { REFUSED_RESPONSES } = await import("./refused-page-fixtures");
+const { userAgentOf } = await import("./_user-agent-of");
+const { SCANNER_UA } = await import("@/lib/scanner/user-agent");
 const { requestCancel, clearCancel } = await import("@/lib/scanner/scan-jobs");
 
 /** Route every pool.query call by statement shape so tests stay short. */
@@ -289,6 +292,119 @@ describe("executeScan", () => {
     const resultMeta = JSON.parse(params[6] as string);
     expect(resultMeta.incomplete).toContain("bot-challenge");
     expect(resultMeta.engineConfidence).toBeLessThan(100);
+  });
+
+  describe("a page the site refused the scanner", () => {
+    const recorded = (name: string) => {
+      const found = REFUSED_RESPONSES.find((r) => r.name === name);
+      if (!found) throw new Error(`no recorded response named ${name}`);
+      return found;
+    };
+
+    it.each([
+      ["a load balancer's 403", recorded("alb-403")],
+      ["a proof-of-work 503 interstitial", recorded("pow-503-plain")],
+      [
+        "a 301 safeFetch stopped following at its hop cap",
+        {
+          status: 301,
+          headers: new Headers({
+            location: "https://example.com/next",
+            server: "nginx",
+          }),
+          body: "",
+        },
+      ],
+    ])(
+      "%s runs no page checks, marks the page not checked and records what answered",
+      async (_label, response) => {
+        mockSafeFetch.mockResolvedValue(
+          new Response(response.body, {
+            status: response.status,
+            headers: response.headers,
+          }),
+        );
+        mockRunAsyncChecksDetailed.mockResolvedValue({
+          findings: [],
+          incomplete: [],
+        });
+
+        await executeScan(baseParams({ scanId: 11 }));
+
+        expect(mockRunSyncChecks).not.toHaveBeenCalled();
+        expect(mockRunAsyncChecksDetailed.mock.calls[0][4]).toBe("network");
+        const completedCall = mockQuery.mock.calls.find(([sql]) =>
+          (sql as string).includes("status = 'completed'"),
+        );
+        const params = completedCall![1] as unknown[];
+        expect(JSON.parse(params[0] as string)).toEqual([]);
+        expect(params[1]).toBe(0);
+        const resultMeta = JSON.parse(params[6] as string);
+        expect(resultMeta.checksRun).toBe(0);
+        expect(resultMeta.incomplete).toContain("bot-challenge");
+        expect(resultMeta.pageBlocked).toEqual({
+          status: response.status,
+          server: response.headers.get("server"),
+        });
+      },
+    );
+
+    it("still grades a 404 the site served, and records no block", async () => {
+      mockSafeFetch.mockResolvedValue(
+        new Response("<html><title>Not found</title></html>", {
+          status: 404,
+          headers: { "content-type": "text/html" },
+        }),
+      );
+      mockRunSyncChecks.mockResolvedValue({
+        findings: [],
+        checksRun: 3,
+        checksSkipped: 0,
+        checksErrored: 0,
+        erroredChecks: [],
+        deduped: 0,
+      });
+      mockRunAsyncChecksDetailed.mockResolvedValue({
+        findings: [],
+        incomplete: [],
+      });
+
+      await executeScan(baseParams({ scanId: 12 }));
+
+      expect(mockRunSyncChecks).toHaveBeenCalled();
+      const completedCall = mockQuery.mock.calls.find(([sql]) =>
+        (sql as string).includes("status = 'completed'"),
+      );
+      const resultMeta = JSON.parse(
+        (completedCall![1] as unknown[])[6] as string,
+      );
+      expect(resultMeta.pageBlocked).toBeUndefined();
+      expect(resultMeta.incomplete ?? []).not.toContain("bot-challenge");
+    });
+
+    it("fetches the page with the scanner's compatible User-Agent", async () => {
+      mockSafeFetch.mockResolvedValue(
+        new Response("<html></html>", { status: 200 }),
+      );
+      mockRunSyncChecks.mockResolvedValue({
+        findings: [],
+        checksRun: 1,
+        checksSkipped: 0,
+        checksErrored: 0,
+        erroredChecks: [],
+        deduped: 0,
+      });
+      mockRunAsyncChecksDetailed.mockResolvedValue({
+        findings: [],
+        incomplete: [],
+      });
+
+      await executeScan(baseParams({ scanId: 13 }));
+
+      expect(userAgentOf(mockSafeFetch.mock.calls[0][1] as RequestInit)).toBe(
+        SCANNER_UA,
+      );
+    });
   });
 
   it("merges an async finding into the page check that reported the same issue", async () => {

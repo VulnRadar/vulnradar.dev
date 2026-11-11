@@ -3,11 +3,17 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { z } from "zod";
 import { recomputeScanScore } from "@/lib/scanner/recompute-scan-score";
+import { findOwnedScan, parseScanRef } from "@/lib/history/scan-ref";
 
 const FeedbackSchema = z.object({
   findingId: z.string().min(1).max(200),
   findingUrl: z.string().url().max(2048),
-  scanHistoryId: z.number().int().positive().optional(),
+  // The scan the verdict came from, spelled either way a client holds it: the
+  // 32 character public id History lists, or the legacy numeric id.
+  scanHistoryId: z
+    .union([z.number(), z.string().max(64)])
+    .refine((id) => parseScanRef(id) !== null, "Not a scan id")
+    .optional(),
   verdict: z.enum(["false_positive", "confirmed", "not_applicable"]),
   notes: z.string().max(1000).optional(),
 });
@@ -33,7 +39,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { findingId, findingUrl, scanHistoryId, verdict, notes } = result.data;
+  const { findingId, findingUrl, verdict, notes } = result.data;
+  const scanRef =
+    result.data.scanHistoryId === undefined
+      ? null
+      : parseScanRef(result.data.scanHistoryId);
 
   try {
     // scanHistoryId only ever exists to (a) record which scan a piece of
@@ -44,14 +54,13 @@ export async function POST(req: NextRequest) {
     // this, any authenticated user could attach feedback to (and force a
     // recompute cascade against) any scan in the system just by guessing
     // its small sequential id (AUDIT-010#security-02).
-    if (scanHistoryId) {
-      const owned = await pool.query(
-        `SELECT id FROM scan_history WHERE id = $1 AND user_id = $2`,
-        [scanHistoryId, session.userId],
-      );
-      if (owned.rows.length === 0) {
+    let scanHistoryId: number | null = null;
+    if (scanRef) {
+      const owned = await findOwnedScan(scanRef, session.userId);
+      if (!owned) {
         return NextResponse.json({ error: "Scan not found" }, { status: 404 });
       }
+      scanHistoryId = owned.id;
     }
 
     const row = await pool.query(
@@ -63,7 +72,7 @@ export async function POST(req: NextRequest) {
        RETURNING id, verdict, created_at`,
       [
         session.userId,
-        scanHistoryId ?? null,
+        scanHistoryId,
         findingId,
         findingUrl,
         verdict,

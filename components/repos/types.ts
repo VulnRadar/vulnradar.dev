@@ -36,6 +36,9 @@ export interface GithubScanOutcome {
   filesSkippedByCaps: number;
   aiTokensUsed: number;
   aiReviewSkipped: boolean;
+  /** AI is switched off in the account's settings, so no file was sent to a
+   *  model. False from a server that predates the field. */
+  aiReviewDisabled: boolean;
   /** The account's AI review allowance ran out before every file, or before
    *  the first one. */
   aiReviewStoppedAtBudget: boolean;

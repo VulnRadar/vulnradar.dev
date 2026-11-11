@@ -95,7 +95,8 @@ Then, depending on what you touched:
 
 - **Docs pages, changelog data, check definitions, or legal pages:** run
   `npm run build:knowledge` and **commit the regenerated files under
-  `lib/ai/` and `lib/config/check-stats.generated.ts`**. CI regenerates them
+  `lib/ai/`, `lib/config/check-stats.generated.ts` and
+  `lib/seo/check-page-ids.generated.ts`**. CI regenerates them
   and fails on `git diff --exit-code`, so a PR that edits any of those sources
   without committing the regenerated output goes red on a step whose error
   message does not explain itself. This is the single most common surprise

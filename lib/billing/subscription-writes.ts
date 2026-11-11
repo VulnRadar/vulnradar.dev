@@ -4,6 +4,7 @@ import {
   LIVE_SUBSCRIPTION_STATUSES,
 } from "@/lib/billing/subscription-status";
 import {
+  staffPlanFloor,
   staffPlanFloorCase,
   STAFF_PLAN_FLOOR_ROLES,
 } from "@/lib/billing/staff-plan";
@@ -243,4 +244,36 @@ export async function markSubscriptionPastDue(params: {
     [params.customerId, params.subscriptionId, ACTIVE_SUBSCRIPTION_STATUSES],
   );
   return { userId: result.rows[0]?.id ?? null };
+}
+
+/**
+ * Why a second failed renewal must NOT cancel this account's subscription.
+ *
+ * The two-strike rule exists to stop a paid plan outliving its payments, and
+ * neither of these has that problem: a staff role carries its own plan floor
+ * (lib/billing/staff-plan.ts) and an active gift its own plan, granted on
+ * purpose and independent of whatever the card is doing. Cancelling a
+ * subscription underneath either is a decision for a person, not for a
+ * webhook.
+ */
+export async function readDunningExemption(
+  userId: number,
+): Promise<{ staffFloor: boolean; gifted: boolean }> {
+  const result = await pool.query<{ role: string | null; has_gift: boolean }>(
+    `SELECT u.role,
+            EXISTS (
+              SELECT 1 FROM gifted_subscriptions gs
+               WHERE gs.user_id = u.id
+                 AND gs.revoked_at IS NULL
+                 AND gs.expires_at > NOW()
+            ) AS has_gift
+       FROM users u
+      WHERE u.id = $1`,
+    [userId],
+  );
+  const row = result.rows[0];
+  return {
+    staffFloor: staffPlanFloor(row?.role) !== "free",
+    gifted: !!row?.has_gift,
+  };
 }

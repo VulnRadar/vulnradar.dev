@@ -436,12 +436,8 @@ export default function TroubleshootingPage() {
           ]}
           data={[
             {
-              request: "Page fetch: URL, crawl and bulk scans",
-              agent: `${SCANNER_UA_PRODUCT} (Security Scanner)`,
-            },
-            {
               request:
-                "The checks after it: TLS, robots.txt, exposed files, CORS and methods",
+                "Page fetch of a URL, crawl, bulk or demo scan, and the checks after it: TLS, robots.txt, exposed files, CORS and methods",
               agent: SCANNER_UA,
             },
             {
@@ -455,10 +451,6 @@ export default function TroubleshootingPage() {
             {
               request: "Active probes",
               agent: SCANNER_UA_ACTIVE_PROBE,
-            },
-            {
-              request: "Demo scan",
-              agent: `${SCANNER_UA_PRODUCT} (Security Scanner - Demo)`,
             },
           ]}
         />

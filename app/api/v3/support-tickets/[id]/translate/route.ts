@@ -13,7 +13,8 @@ import {
 import { getUserLocale } from "@/lib/i18n/translate";
 import { isLocale } from "@/lib/i18n/config";
 import { parseTicketId } from "@/lib/support/ticket-id";
-import { withErrorHandling } from "@/lib/api/api-utils";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { parseRowId } from "@/lib/teams/parse-id";
 
 /**
  * POST /api/v3/support-tickets/[id]/translate
@@ -46,17 +47,11 @@ export const POST = withErrorHandling(
       );
     }
 
-    let body: { messageId?: unknown; locale?: unknown };
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { error: "Invalid request body." },
-        { status: 400 },
-      );
-    }
-    const messageId = Number(body.messageId);
-    if (!Number.isInteger(messageId) || messageId <= 0) {
+    const parsed = await readJsonObject(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
+    const messageId = parseRowId(body.messageId);
+    if (messageId === null) {
       return NextResponse.json(
         { error: "Invalid message id." },
         { status: 400 },
@@ -118,7 +113,10 @@ export const POST = withErrorHandling(
               rl.retryAfterSeconds / 60,
             )} minute(s).`,
           },
-          { status: 429 },
+          {
+            status: 429,
+            headers: { "Retry-After": String(rl.retryAfterSeconds) },
+          },
         );
       }
     }

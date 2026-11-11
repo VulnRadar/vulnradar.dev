@@ -23,6 +23,7 @@ import {
   planLimitMessage,
 } from "@/lib/billing/plan-limits";
 import { ALL_API_KEY_SCOPES, type ApiKeyScope } from "@/lib/api/api-key-scopes";
+import { refuseWhileImpersonating } from "@/lib/auth/impersonation-guard";
 
 export const GET = withErrorHandling(async () => {
   const session = await getSession();
@@ -39,6 +40,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (!session) {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
   }
+  // A key keeps working after the impersonation that minted it has ended,
+  // with nothing tying it to the staff member who did.
+  const refused = refuseWhileImpersonating(session, "Creating an API key");
+  if (refused) return refused;
 
   if (!(await getSetting("FEATURE_API_KEYS"))) {
     return ApiResponse.forbidden("API keys are disabled on this deployment.");

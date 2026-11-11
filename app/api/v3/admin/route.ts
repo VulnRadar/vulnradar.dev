@@ -395,16 +395,16 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   if (section === "stats") {
     const statsResult = await pool.query(`
       SELECT
-        (SELECT COUNT(*) FROM users) as total_users,
-        (SELECT COUNT(*) FROM scan_history) as total_scans,
-        (SELECT COUNT(*) FROM api_keys WHERE revoked_at IS NULL) as active_api_keys,
-        (SELECT COUNT(*) FROM scheduled_scans WHERE active = true) as active_schedules,
-        (SELECT COUNT(*) FROM webhooks WHERE active = true) as active_webhooks,
-        (SELECT COUNT(*) FROM users WHERE totp_enabled = true) as users_with_2fa,
-        (SELECT COUNT(*) FROM scan_history WHERE scanned_at > NOW() - INTERVAL '24 hours') as scans_24h,
-        (SELECT COUNT(*) FROM users WHERE created_at > NOW() - INTERVAL '7 days') as new_users_7d,
-        (SELECT COUNT(*) FROM users WHERE disabled_at IS NOT NULL) as disabled_users,
-        (SELECT COUNT(*) FROM scan_history WHERE share_token IS NOT NULL) as shared_scans
+        (SELECT COUNT(*)::int FROM users) as total_users,
+        (SELECT COUNT(*)::int FROM scan_history) as total_scans,
+        (SELECT COUNT(*)::int FROM api_keys WHERE revoked_at IS NULL) as active_api_keys,
+        (SELECT COUNT(*)::int FROM scheduled_scans WHERE active = true) as active_schedules,
+        (SELECT COUNT(*)::int FROM webhooks WHERE active = true) as active_webhooks,
+        (SELECT COUNT(*)::int FROM users WHERE totp_enabled = true) as users_with_2fa,
+        (SELECT COUNT(*)::int FROM scan_history WHERE scanned_at > NOW() - INTERVAL '24 hours') as scans_24h,
+        (SELECT COUNT(*)::int FROM users WHERE created_at > NOW() - INTERVAL '7 days') as new_users_7d,
+        (SELECT COUNT(*)::int FROM users WHERE disabled_at IS NOT NULL) as disabled_users,
+        (SELECT COUNT(*)::int FROM scan_history WHERE share_token IS NOT NULL) as shared_scans
     `);
     return NextResponse.json({ stats: statsResult.rows[0] });
   }

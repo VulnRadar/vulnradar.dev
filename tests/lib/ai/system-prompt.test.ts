@@ -120,11 +120,16 @@ describe("assistant identity", () => {
 });
 
 describe("buildSystemPrompt: v4 knowledge and answering rules", () => {
-  it("names only check ids that exist in the registry", async () => {
+  it("names only check ids that a scan can emit", async () => {
     const { COMMON_CHECK_IDS } = await import("@/lib/ai/system-prompt");
     const { getCheckDef } = await import("@/lib/scanner/registry");
+    const { getAsyncCheckDef } =
+      await import("@/lib/scanner/async-check-catalog");
     for (const id of COMMON_CHECK_IDS)
-      expect(getCheckDef(id), `${id} is not a real check`).toBeDefined();
+      expect(
+        getCheckDef(id) ?? getAsyncCheckDef(id),
+        `${id} is not a real check`,
+      ).toBeDefined();
     const prompt = buildSystemPrompt({ name: "Alice" });
     for (const invented of [
       "env-file-exposed",
@@ -132,8 +137,28 @@ describe("buildSystemPrompt: v4 knowledge and answering rules", () => {
       "spf-missing",
       "tls-old-protocol",
       "x-frame-options-missing",
+      // Write-ups in the catalogue that no scan reports under that id.
+      "spf-record",
+      "dmarc-record",
+      "tls-certificate-expiry",
     ])
-      expect(prompt).not.toContain(invented);
+      // As a whole token: "async-missing-spf-record" contains "spf-record".
+      expect(prompt).not.toMatch(
+        new RegExp(String.raw`(?<![\w-])${invented}(?![\w-])`),
+      );
+  });
+
+  it("lists the email and certificate ids with the severity the scan gives them", () => {
+    const prompt = buildSystemPrompt({ name: "Alice" });
+    expect(prompt).toContain(
+      "- async-missing-spf-record (medium): Missing SPF Record",
+    );
+    expect(prompt).toContain(
+      "- async-missing-dmarc-record (medium): Missing DMARC Record",
+    );
+    expect(prompt).toContain(
+      "- async-expired-tls-certificate (critical): Expired TLS Certificate",
+    );
   });
 
   it("describes the tools only when the model has them", () => {

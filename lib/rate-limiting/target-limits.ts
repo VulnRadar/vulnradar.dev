@@ -61,8 +61,35 @@ export interface TargetScanLimitResult {
  * it runs on the same request, so a malformed target is refused there with a
  * useful message rather than here with a rate-limit one.
  */
-export async function checkTargetScanLimit(
+export function checkTargetScanLimit(
   url: string,
+): Promise<TargetScanLimitResult> {
+  return countTargetScan(url, "scantarget", TARGET_SCANS_PER_HOUR);
+}
+
+/**
+ * Anonymous demo scans of one registrable domain per hour.
+ *
+ * Its own bucket rather than a share of the one above. The demo needs no
+ * account, so an IP rotating through its per-IP allowance could otherwise
+ * aim the landing page's scanner at one site well past what any signed-in
+ * caller may, and sharing the bucket would let that same traffic use up the
+ * allowance of the accounts scanning that site. Kept far smaller than the
+ * shared bucket because nobody runs a hundred demo scans of their own site:
+ * a visitor trying the product scans a handful of URLs.
+ */
+const DEMO_TARGET_SCANS_PER_HOUR = 15;
+
+export function checkDemoTargetScanLimit(
+  url: string,
+): Promise<TargetScanLimitResult> {
+  return countTargetScan(url, "scantarget-demo", DEMO_TARGET_SCANS_PER_HOUR);
+}
+
+async function countTargetScan(
+  url: string,
+  keyPrefix: string,
+  maxAttempts: number,
 ): Promise<TargetScanLimitResult> {
   let rootDomain: string;
   try {
@@ -75,8 +102,8 @@ export async function checkTargetScanLimit(
   }
 
   const result = await checkRateLimit({
-    key: `scantarget:${rootDomain}`,
-    maxAttempts: TARGET_SCANS_PER_HOUR,
+    key: `${keyPrefix}:${rootDomain}`,
+    maxAttempts,
     windowSeconds: TARGET_WINDOW_SECONDS,
   });
 
@@ -90,4 +117,9 @@ export async function checkTargetScanLimit(
 /** The message a rejected caller sees. Shared so every entry point agrees. */
 export function targetScanLimitMessage(rootDomain: string): string {
   return `This target has been scanned too many times in the last hour. ${rootDomain} is temporarily rate limited to protect it from scan volume. Verify ownership of the domain on the Attack surface page (/attack-surface) to scan it without this limit, or try again later.`;
+}
+
+/** The demo's refusal: there is no account to verify a domain with. */
+export function demoTargetScanLimitMessage(rootDomain: string): string {
+  return `${rootDomain} has had too many demo scans in the last hour. Try again later, or create a free account to scan it.`;
 }

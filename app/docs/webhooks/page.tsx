@@ -494,6 +494,11 @@ export default function WebhooksPage() {
               "An id that does not exist returns 404, the same answer as a webhook you have no access to, so a caller cannot tell the two apart.",
             ]}
             errors={[
+              {
+                code: 400,
+                description:
+                  "The body is not a JSON object, or id is missing or not a whole number",
+              },
               { code: 401, description: "Unauthorized" },
               {
                 code: 403,

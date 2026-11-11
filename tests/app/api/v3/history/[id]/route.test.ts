@@ -29,6 +29,7 @@ const mockValidateApiKey = vi.fn();
 const mockCheckApiKeyRateLimit = vi.fn();
 const mockRecordUsage = vi.fn();
 vi.mock("@/lib/api/api-keys", () => ({
+  UNLIMITED_API_KEY_DAILY_LIMIT: 999999,
   validateApiKey: (...args: unknown[]) => mockValidateApiKey(...args),
   checkRateLimit: (...args: unknown[]) => mockCheckApiKeyRateLimit(...args),
   recordUsage: (...args: unknown[]) => mockRecordUsage(...args),
@@ -933,5 +934,129 @@ describe("DELETE /api/v3/history/[id]", () => {
     );
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe("the public id, the error envelope and the key budget", () => {
+  const PUBLIC_ID = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
+
+  it("reports the public id beside the numeric id on an owner's read", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [scanRow({ user_id: 7, public_id: PUBLIC_ID })],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const json = await (await GET(getRequest(), params(PUBLIC_ID))).json();
+
+    expect(json.id).toBe(55);
+    expect(json.publicId).toBe(PUBLIC_ID);
+  });
+
+  it("reports it on a team member's read too", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [scanRow({ user_id: 9, public_id: PUBLIC_ID })],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockGetScanTeamIds.mockResolvedValue([4]);
+
+    const json = await (await GET(getRequest(), params())).json();
+
+    expect(json.publicId).toBe(PUBLIC_ID);
+  });
+
+  it("answers a missing scan with the registry code, not a bare message", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await GET(getRequest(), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(json.error).toBe("Scan not found");
+    expect(json.code).toBe("SCAN_NOT_FOUND");
+  });
+
+  it("answers an anonymous call with UNAUTHENTICATED", async () => {
+    mockGetSession.mockResolvedValue(null);
+
+    const json = await (await GET(getRequest(), params())).json();
+
+    expect(json.code).toBe("UNAUTHENTICATED");
+  });
+
+  it("puts the key's remaining budget on a key-authenticated read", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 3,
+      userId: 7,
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [scanRow({ user_id: 7 })] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await GET(
+      getRequest({ authorization: "Bearer vr_live_testkey" }),
+      params(),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-RateLimit-Limit")).toBe("50");
+    expect(res.headers.get("X-RateLimit-Remaining")).toBe("49");
+  });
+
+  it("answers a spent key budget with Retry-After", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 3,
+      userId: 7,
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+    });
+    mockCheckApiKeyRateLimit.mockResolvedValue({
+      allowed: false,
+      limit: 50,
+      used: 50,
+      remaining: 0,
+      resetsAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+
+    const res = await PATCH(
+      patchRequest({ notes: "x" }, { authorization: "Bearer vr_live_testkey" }),
+      params(),
+    );
+
+    expect(res.status).toBe(429);
+    expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
+  });
+
+  it("refuses a PATCH body that is not a JSON object with a 400, not a 500", async () => {
+    for (const body of ["null", "[1]", '"text"', "{not json", ""]) {
+      const res = await PATCH(
+        new NextRequest("http://localhost/api/v3/history/55", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body,
+        }),
+        params(),
+      );
+      const json = await res.json();
+
+      expect(res.status, `body ${JSON.stringify(body)}`).toBe(400);
+      expect(json.code, `body ${JSON.stringify(body)}`).toBe("INVALID_REQUEST");
+    }
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("says what a DELETE did, and keeps the key it always returned", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 55, user_id: 7, team_id: null }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] });
+
+    const json = await (await DELETE(deleteRequest(), params())).json();
+
+    expect(json).toEqual({
+      success: true,
+      message: "Resource deleted successfully",
+    });
   });
 });

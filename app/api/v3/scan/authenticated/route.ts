@@ -1,17 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
+import {
+  burstLimitedResponse,
+  concurrentScanLimitResponse,
+  rateLimitedResponse,
+  type ApiKeyRateLimitState,
+} from "@/lib/api/rate-limit-response";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { parseBearer } from "@/lib/api/bearer";
+import { authenticateApiKey } from "@/lib/api/api-key-auth";
+import { checkRateLimit as checkApiKeyRateLimit } from "@/lib/api/api-keys";
+import { API_KEY_SCOPES } from "@/lib/api/api-key-scopes";
+import { versioned } from "@/lib/api/v4/wrap";
+import { currentRequestId } from "@/lib/database/request-context";
 import {
-  validateApiKey,
-  checkRateLimit as checkApiKeyRateLimit,
-} from "@/lib/api/api-keys";
-import {
-  hasApiKeyScope,
-  apiKeyScopeErrorMessage,
-  API_KEY_SCOPES,
-} from "@/lib/api/api-key-scopes";
+  checkTargetScanLimit,
+  targetScanLimitMessage,
+} from "@/lib/rate-limiting/target-limits";
 import {
   checkRateLimit as checkGlobalRateLimit,
   RATE_LIMITS,
@@ -29,12 +34,11 @@ import {
 } from "@/lib/teams/scan-teams";
 import pool from "@/lib/database/db";
 import {
-  APP_NAME,
   DEFAULT_SCAN_NOTE,
   ERROR_MESSAGES,
-  SEVERITY_LEVELS,
   SEVERITY_PRIORITY,
 } from "@/lib/config/constants";
+import { summarizeFindings } from "@/lib/scanner/severity-summary";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import type { Category, Vulnerability } from "@/lib/scanner/types";
 import {
@@ -47,15 +51,10 @@ import {
   noPageChecks,
   runSyncChecksYielding,
 } from "@/lib/scanner/engine";
-import {
-  BOT_CHALLENGE_INCOMPLETE,
-  detectBotChallenge,
-} from "@/lib/scanner/bot-challenge";
-import {
-  getPlannedAsyncBranches,
-  runAsyncChecksDetailed,
-  type AsyncCheckResult,
-} from "@/lib/scanner/async-checks";
+import { BOT_CHALLENGE_INCOMPLETE } from "@/lib/scanner/bot-challenge";
+import { detectUnusablePage } from "@/lib/scanner/response-classifier";
+import { SCANNER_UA_AUTHENTICATED } from "@/lib/scanner/user-agent";
+import { startAsyncPhase } from "@/lib/scanner/async-phase";
 import { normalizeUrl } from "@/lib/scanner/execute-scan";
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
@@ -120,6 +119,34 @@ import { notifyScanComplete } from "@/lib/webhooks/scan-notifications";
  * page. It intentionally does not crawl.
  */
 
+const DAILY_LIMIT_MESSAGE =
+  "Daily scan limit reached. Upgrade your plan or wait until midnight UTC.";
+
+/**
+ * The 429 for a spent daily scan quota. This answered with
+ * ApiResponse.tooManyRequests, which sends neither Retry-After nor any
+ * X-RateLimit-* header and no quota numbers, while every sibling scan route
+ * answered the same quota with all of them. rateLimitedResponse supplies
+ * those; `status` and `requestId` are added back because the old body carried
+ * them. `code` moves from RATE_LIMITED to DAILY_LIMIT, the code bulk sends
+ * for the same quota, so a client can tell it from the per-session limiter.
+ */
+async function dailyLimitResponse(
+  quota: ApiKeyRateLimitState,
+): Promise<NextResponse> {
+  const base = rateLimitedResponse(quota, DAILY_LIMIT_MESSAGE, {
+    code: "DAILY_LIMIT",
+  });
+  return NextResponse.json(
+    {
+      ...(await base.json()),
+      status: 429,
+      requestId: currentRequestId() ?? undefined,
+    },
+    { status: base.status, headers: base.headers },
+  );
+}
+
 /**
  * The request schema depends on three admin-configurable settings
  * (SCAN_AUTH_MAX_SECRET_LENGTH, SCAN_AUTH_MAX_COOKIES, MAX_URL_LENGTH), so it
@@ -162,7 +189,9 @@ function buildRequestSchema(opts: {
   });
 }
 
-export const POST = withErrorHandling(async (request: NextRequest) => {
+async function createAuthenticatedScan(
+  request: NextRequest,
+): Promise<NextResponse> {
   // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). This route runs
   // its whole pipeline inline and never calls into lib/scanner/execute-scan.ts,
   // so a gate placed in the executor would miss it entirely: it needs its own.
@@ -176,7 +205,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  const bearerToken = parseBearer(request.headers.get("authorization"));
   let authedUserId: number | null = null;
   let isApiKeyAuth = false;
   // Set in the session branch when the read-only daily-quota gate passes; the
@@ -186,21 +214,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   let chargeDailyQuota = false;
   let dailyQuotaLimit = -1;
 
-  if (bearerToken !== null) {
-    const keyData = await validateApiKey(bearerToken);
-    if (!keyData)
-      return ApiResponse.unauthorized("Invalid or revoked API key.");
-    if (keyData.needsTermsAcceptance) {
-      return ApiResponse.forbidden(
-        "Please accept our updated Terms of Service before using the API.",
-      );
-    }
-    // scoping: triggering an authenticated scan requires scan:write.
-    if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
-      return ApiResponse.forbidden(
-        apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE),
-      );
-    }
+  if (parseBearer(request.headers.get("authorization")) !== null) {
+    // Validity, the Terms gate and scan:write, in the one shared order.
+    const keyAuth = await authenticateApiKey(request, {
+      scope: API_KEY_SCOPES.SCAN_WRITE,
+    });
+    if (!keyAuth.ok) return keyAuth.response;
+    const keyData = keyAuth.auth;
     const keyRate = await checkApiKeyRateLimit(
       keyData.keyId,
       keyData.dailyLimit,
@@ -222,11 +242,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // cap. Read-only gate here; charged after the session is established below,
     // matching POST /api/v3/scan.
     const dailyQuota = await canMakeRequest(authedUserId);
-    if (!dailyQuota.allowed) {
-      return ApiResponse.tooManyRequests(
-        "Daily scan limit reached. Upgrade your plan or wait until midnight UTC.",
-      );
-    }
+    if (!dailyQuota.allowed) return dailyLimitResponse(dailyQuota);
     chargeDailyQuota = true;
     dailyQuotaLimit = dailyQuota.limit;
   } else {
@@ -241,15 +257,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     if (!rl.allowed) {
       return ApiResponse.tooManyRequests(
         "Scan rate limit reached. Please wait before scanning again.",
+        Math.max(1, Math.ceil(rl.retryAfterSeconds)),
       );
     }
 
     const dailyQuota = await canMakeRequest(session.userId);
-    if (!dailyQuota.allowed) {
-      return ApiResponse.tooManyRequests(
-        "Daily scan limit reached. Upgrade your plan or wait until midnight UTC.",
-      );
-    }
+    if (!dailyQuota.allowed) return dailyLimitResponse(dailyQuota);
     chargeDailyQuota = true;
     dailyQuotaLimit = dailyQuota.limit;
   }
@@ -385,10 +398,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   //    submitting credentials to a login form for validation.
   const submitsCredentials = auth.method === "form";
   const wantsActiveProbing = requestsActiveProbing(scanners);
-  if (
-    (wantsActiveProbing || submitsCredentials) &&
-    !(await isUrlOwnedByUser(url, authedUserId))
-  ) {
+  // Asked at most once per request: both the gate below and the per-target
+  // exemption after it want the same answer.
+  let ownsTarget: boolean | undefined;
+  const ownsUrl = async () =>
+    (ownsTarget ??= await isUrlOwnedByUser(url, authedUserId));
+  if ((wantsActiveProbing || submitsCredentials) && !(await ownsUrl())) {
     return NextResponse.json(
       {
         error: wantsActiveProbing
@@ -397,6 +412,22 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         statusCode: "DOMAIN_NOT_VERIFIED",
       },
       { status: 403 },
+    );
+  }
+
+  // Per-target volume, shared across every account, the same bucket POST
+  // /scan, /scan/crawl and bulk count against. This route never consulted
+  // it, so an authenticated scan (a login and a full scan of the page behind
+  // it) was the one way to keep hitting a third-party site past the limit
+  // the others enforce. Checked before the slot and the login, so a refused
+  // target costs neither. A verified owner of the domain is exempt.
+  // ref: AUDIT-012#abuse-05
+  const targetLimit = await checkTargetScanLimit(url);
+  if (!targetLimit.allowed && !(await ownsUrl())) {
+    return burstLimitedResponse(
+      targetLimit,
+      targetScanLimitMessage(targetLimit.rootDomain),
+      { statusCode: "TARGET_RATE_LIMIT", code: "TARGET_RATE_LIMIT" },
     );
   }
 
@@ -436,15 +467,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     let responseBody = "";
     let headers: Headers;
     let finalScanUrl = url;
-    let botChallenge: string | null = null;
+    let pageBlocked: { status: number; server: string | null } | null = null;
     try {
       const response = await safeFetch(
         url,
         {
           method: "GET",
-          headers: {
-            "User-Agent": `${APP_NAME}/1.0 (Security Scanner; Authenticated)`,
-          },
+          headers: { "User-Agent": SCANNER_UA_AUTHENTICATED },
           redirect: "follow",
           signal: AbortSignal.timeout(fetchTimeoutMs),
         },
@@ -461,9 +490,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       );
       headers = response.headers;
       // The login got through, and the page behind it can still be a bot
-      // challenge (lib/scanner/bot-challenge.ts). Graded as the signed-in
-      // page, it would be reported as the site's own headers and markup.
-      botChallenge = detectBotChallenge(response.status, headers, responseBody);
+      // challenge, a WAF's refusal or a 5xx (lib/scanner/response-classifier
+      // .ts). Graded as the signed-in page, it would be reported as the
+      // site's own headers and markup.
+      if (detectUnusablePage(response.status, headers, responseBody)) {
+        pageBlocked = {
+          status: response.status,
+          server: headers.get("server"),
+        };
+      }
       // safeFetch restricts any redirect it follows to the same host (see its
       // own comment), so this is never a different site -- only a different
       // path/query on the one that was requested. Recorded separately from
@@ -512,7 +547,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // paid by everyone else sharing the process, which the paragraph directly
     // above that one spells out. This handler is already async - there is an
     // await eleven lines up - so the await is free.
-    const syncResult = botChallenge
+    const syncResult = pageBlocked
       ? noPageChecks()
       : await runSyncChecksYielding(
           url,
@@ -524,53 +559,22 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         );
     const syncFindings: Vulnerability[] = syncResult.findings;
 
-    // runAsyncChecksDetailed, not runAsyncChecks: an authenticated scan is
-    // rendered through the same components as every other scan, so it needs
-    // the same completeness bookkeeping. The bookkeeping-free variant threw
-    // the `incomplete` list away and this route's own outer race resolved to
-    // a bare [] on the ceiling, so an authenticated scan whose DNS, TLS and
-    // live-fetch branches all ran out of time returned summary.total = 0
-    // with nothing marking it short, and the dashboard drew it as "Zero
-    // findings on this host. Every enabled check ran and none of them
-    // fired." That is the one thing a scanner must never say about a run it
-    // could not finish, and it is the same defect the single-page and crawl
-    // executors already fixed (lib/scanner/execute-scan.ts,
-    // lib/scanner/execute-crawl-scan.ts).
-    const asyncScope = botChallenge ? "network" : "all";
-    const plannedBranches = getPlannedAsyncBranches(
-      url,
-      scanners ?? null,
-      asyncScope,
-    );
-    let asyncFindings: Vulnerability[] = [];
-    let asyncIncomplete: string[] = [];
-    let asyncTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const asyncResult = await Promise.race<AsyncCheckResult>([
-        runAsyncChecksDetailed(
-          url,
-          scanners ?? null,
-          undefined,
-          undefined,
-          asyncScope,
-        ),
-        new Promise<AsyncCheckResult>((resolve) => {
-          asyncTimeoutHandle = setTimeout(
-            () => resolve({ findings: [], incomplete: plannedBranches }),
-            asyncChecksTimeoutMs,
-          );
-        }),
-      ]);
-      asyncFindings = asyncResult.findings;
-      asyncIncomplete = asyncResult.incomplete;
-    } catch {
-      // runAsyncChecksDetailed absorbs per-branch failures, so this is only
-      // reachable on something it cannot absorb. Either way the async layer
-      // contributed nothing, which is exactly what incomplete records.
-      asyncIncomplete = plannedBranches;
-    } finally {
-      if (asyncTimeoutHandle) clearTimeout(asyncTimeoutHandle);
-    }
+    // The detailed variant behind the phase, not runAsyncChecks: an
+    // authenticated scan is rendered through the same components as every
+    // other scan, so it needs the same completeness bookkeeping. When the
+    // phase's ceiling wins, every planned branch is listed as not completed,
+    // so a run whose DNS, TLS and live-fetch branches all ran out of time is
+    // never drawn as "Zero findings on this host. Every enabled check ran and
+    // none of them fired." That is the one thing a scanner must never say
+    // about a run it could not finish.
+    const asyncScope = pageBlocked ? "network" : "all";
+    const { findings: asyncFindings, incomplete: asyncIncomplete } =
+      await startAsyncPhase({
+        url,
+        scanners: scanners ?? null,
+        scope: asyncScope,
+        checksTimeoutMs: asyncChecksTimeoutMs,
+      });
 
     const findings = dedupeScanFindings([
       ...syncFindings,
@@ -579,16 +583,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
     );
 
-    const summary = {
-      critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL)
-        .length,
-      high: findings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH).length,
-      medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
-        .length,
-      low: findings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
-      info: findings.filter((f) => f.severity === SEVERITY_LEVELS.INFO).length,
-      total: findings.length,
-    };
+    const summary = summarizeFindings(findings);
 
     const duration = Date.now() - startTime;
     const capturedHeaders: Record<string, string> = {};
@@ -614,7 +609,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       ...asyncIncomplete,
       ...(session.lost ? ["authenticated-session"] : []),
       ...(syncResult.checksErrored > 0 ? [PAGE_CHECKS_INCOMPLETE] : []),
-      ...(botChallenge ? [BOT_CHALLENGE_INCOMPLETE] : []),
+      ...(pageBlocked ? [BOT_CHALLENGE_INCOMPLETE] : []),
     ];
 
     // Headline signals, same as a normal scan (getDangerScore/getEngineConfidence
@@ -637,9 +632,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       dangerScore,
       engineConfidence,
       ...(incomplete.length > 0 ? { incomplete } : {}),
+      // What answered in place of the signed-in page, as the single-page
+      // executor records it.
+      ...(pageBlocked ? { pageBlocked } : {}),
     };
 
     let scanHistoryId: number | null = null;
+    let scanPublicId: string | null = null;
     /** Set when the one INSERT this route performs did not land. */
     let persistError: string | null = null;
     try {
@@ -650,7 +649,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
            (user_id, url, summary, findings, findings_count, duration, scanned_at,
             source, response_headers, notes, authenticated, is_public, result_meta, team_id)
          VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9, true, $10, $11, $12)
-         RETURNING id`,
+         RETURNING id, public_id`,
         [
           authedUserId,
           finalScanUrl,
@@ -667,6 +666,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         ],
       );
       scanHistoryId = insertResult.rows[0]?.id ?? null;
+      scanPublicId = insertResult.rows[0]?.public_id ?? null;
       // The INSERT above carries the primary team; this writes the rest of
       // the set into scan_history_teams and is a no-op below two teams.
       if (scanHistoryId !== null) {
@@ -764,6 +764,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
     return ApiResponse.success({
       scanHistoryId,
+      // The opaque id the scan's URLs and the v4 API use. scanHistoryId stays
+      // for v3 clients.
+      scanPublicId,
       // Explicit rather than inferred from a null id: a caller reading this
       // response can tell "saved" from "ran, but nothing was written and no
       // notification will follow", which used to be indistinguishable.
@@ -787,11 +790,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     });
   });
   if (!slotted.ok) {
-    // Same body shape POST /api/v3/scan returns for the same condition.
-    return NextResponse.json(
-      { error: slotted.check.message, statusCode: "CONCURRENT_SCAN_LIMIT" },
-      { status: 429 },
-    );
+    // Same body shape POST /api/v3/scan returns for the same condition, now
+    // with Retry-After.
+    return concurrentScanLimitResponse(slotted.check.message);
   }
   return slotted.value;
-});
+}
+
+export const POST = versioned(
+  "scan.createAuthenticated",
+  withErrorHandling(createAuthenticatedScan),
+);

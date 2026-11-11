@@ -23,6 +23,8 @@
 
 import { isIP } from "net";
 import pool from "@/lib/database/db";
+import { URL_ORIGIN_PATH_SQL } from "@/lib/database/sql-fragments";
+import { RATING_FINDINGS_SQL } from "./rating-findings-sql";
 import {
   getDangerScore,
   getSafetyRating,
@@ -208,29 +210,43 @@ export async function upsertHostReputation(
   }
 }
 
-/** Strip the fragment (client-side only, never sent to or seen by the
- *  server) and prepend https:// if missing, matching how
- *  lib/scanner/execute-scan.ts's normalizeUrl treats a bare host before it
- *  ever reaches scan_history.url. Deliberately does NOT touch query
- *  strings, trailing slashes, or path casing -- this is a best-effort exact
- *  match, not a canonicalizer, and a mismatch on those just means the
- *  caller falls back to the host-level result instead of failing. */
-function normalizeUrlForExactMatch(input: string): string | null {
+/**
+ * The two spellings of a page's origin and path that a stored scan can carry:
+ * with and without a trailing slash. The query string and fragment are cut
+ * off, because the browser extension asks about a page by origin and path
+ * alone (they are where session tokens and personal data live), so a scan
+ * stored as https://example.com/page?utm=1 has to answer a lookup for
+ * https://example.com/page. A bare host gets https:// first, as
+ * lib/scanner/execute-scan.ts's normalizeUrl does before a URL is stored.
+ *
+ * Null for anything that is not an http or https address, which no scan has.
+ */
+export function originPathVariants(input: string): [string, string] | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
-  const withScheme = /^[a-z]+:\/\//i.test(trimmed)
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
     ? trimmed
     : `https://${trimmed}`;
+  let url: URL;
   try {
-    const url = new URL(withScheme);
-    url.hash = "";
-    return url.toString();
+    url = new URL(withScheme);
   } catch {
     return null;
   }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  const asked = url.origin + url.pathname;
+  const other = asked.endsWith("/") ? asked.slice(0, -1) : `${asked}/`;
+  return [asked, other];
 }
 
 export interface ExactUrlReputationResult {
+  /**
+   * The scanned page's origin and path, as the scan stored them, never with
+   * the stored query string. Matching ignores the query, so the scan found
+   * can carry one the caller never sent, and it is someone else's URL: a
+   * token in it must not travel to whoever asks about the page
+   * (AUDIT-009#reputation-01).
+   */
   url: string;
   dangerScore: number;
   /**
@@ -248,6 +264,8 @@ export interface ExactUrlReputationResult {
   severityCounts: SeverityCounts;
   lastScannedAt: string;
   scanId: number;
+  /** The same scan's opaque id, the one every scan URL and v4 use. */
+  scanPublicId: string | null;
 }
 
 /**
@@ -259,6 +277,13 @@ export interface ExactUrlReputationResult {
  * GET /api/v3/scan/reputation now tries before falling back to the
  * host-level cache.
  *
+ * "Exact" means the same origin and path (see originPathVariants), compared
+ * through URL_ORIGIN_PATH_SQL so the lookup is the expression
+ * idx_scan_history_public_origin_path is built on. It used to be
+ * `WHERE url = $1`, so a scan stored with a query string never matched the
+ * extension, which stopped sending one, and a trailing slash on either side
+ * was a miss too.
+ *
  * Reads scan_history directly (no new table) since it already has
  * everything needed: url, findings, summary, scanned_at, is_public. Scoped
  * to `is_public = true` for the same reason upsertHostReputation only
@@ -267,26 +292,33 @@ export interface ExactUrlReputationResult {
  * public-safety lookup any visitor to a site can trigger, so a scan its
  * owner explicitly kept private must never be exposed through it, exact-URL
  * match or not.
+ *
+ * Only the four fields the rating reads leave the database
+ * (RATING_FINDINGS_SQL): this runs for every page an extension user opens,
+ * and the stored findings carry tens of KB of descriptions and fixes.
  */
 export async function getExactUrlReputation(
   rawUrl: string,
 ): Promise<ExactUrlReputationResult | null> {
-  const url = normalizeUrlForExactMatch(rawUrl);
-  if (!url) return null;
+  const variants = originPathVariants(rawUrl);
+  if (!variants) return null;
 
   try {
     const result = await pool.query<{
       id: number;
-      url: string;
+      public_id: string | null;
+      origin_path: string;
       findings: unknown;
       scanned_at: string | Date;
     }>(
-      `SELECT id, url, findings, scanned_at
+      `SELECT id, public_id, ${URL_ORIGIN_PATH_SQL} AS origin_path,
+              ${RATING_FINDINGS_SQL} AS findings, scanned_at
        FROM scan_history
-       WHERE url = $1 AND is_public = true AND status = 'completed'
+       WHERE ${URL_ORIGIN_PATH_SQL} = ANY($1::text[])
+         AND is_public = true AND status = 'completed'
        ORDER BY scanned_at DESC
        LIMIT 1`,
-      [url],
+      [variants],
     );
 
     const row = result.rows[0];
@@ -296,9 +328,9 @@ export async function getExactUrlReputation(
       typeof row.findings === "string"
         ? JSON.parse(row.findings)
         : row.findings;
-    const findings: Vulnerability[] = Array.isArray(rawFindings)
-      ? rawFindings
-      : [];
+    const findings = (
+      Array.isArray(rawFindings) ? rawFindings : []
+    ) as Vulnerability[];
 
     // Counted from the findings, not read from scan_history.summary: the
     // summary is the scan owner's private view, with the findings they marked
@@ -306,7 +338,7 @@ export async function getExactUrlReputation(
     // a public lookup, so it reports what the scan recorded, from the same
     // array the verdict and danger score come from.
     return {
-      url: row.url,
+      url: row.origin_path,
       dangerScore: getDangerScore(findings),
       verdict: getSafetyRating(findings),
       severityCounts: countSeverities(findings),
@@ -315,6 +347,7 @@ export async function getExactUrlReputation(
           ? row.scanned_at.toISOString()
           : new Date(row.scanned_at).toISOString(),
       scanId: row.id,
+      scanPublicId: row.public_id ?? null,
     };
   } catch (err) {
     console.error(

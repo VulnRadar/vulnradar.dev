@@ -15,7 +15,12 @@ import {
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 import { plural, pluralize } from "@/lib/ui/plural";
-import { SRI_EXEMPT_HOSTS } from "./client-side";
+import { startTagAttributes } from "../html/tokenizer";
+import {
+  classifySubresource,
+  integrityGapEvidence,
+  needsIntegrity,
+} from "./_subresource";
 import { STATIC_ASSET_URL_RE } from "./configuration";
 import { cspHasDirective, cspRestrictsContent } from "./_csp-shape";
 import {
@@ -35,6 +40,45 @@ function hostnameOf(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Absolute URLs, without repeats, of the resources among `tags` that someone
+ * else serves and that carry no integrity hash. Vendors that change the file
+ * on purpose are skipped by the classifier, and a protocol-relative URL
+ * resolves against the page instead of going unseen.
+ */
+function resourcesLackingIntegrity(
+  tags: string[],
+  attribute: "src" | "href",
+  pageUrl: string,
+): string[] {
+  const found = new Set<string>();
+  for (const tag of tags) {
+    const attrs = startTagAttributes(tag);
+    const ref = attrs[attribute];
+    if (!ref || attrs.integrity?.trim()) continue;
+    if (!needsIntegrity(classifySubresource(ref, pageUrl))) continue;
+    try {
+      found.add(new URL(ref, pageUrl).href);
+    } catch {
+      // classifySubresource parsed the same pair, so this is unreachable.
+    }
+  }
+  return [...found];
+}
+
+/**
+ * Whether a login identifier input tells the browser what it is. Any
+ * deliberate token counts (`username`, `email`, a trailing `webauthn`): the
+ * check is for an input that says nothing, or says `off`, which password
+ * managers ignore on login fields anyway.
+ */
+function declaresIdentifierAutocomplete(inputTag: string): boolean {
+  const value = startTagAttributes(inputTag).autocomplete;
+  if (value === undefined) return false;
+  const tokens = value.toLowerCase().split(/\s+/).filter(Boolean);
+  return tokens.length > 0 && !tokens.includes("off");
 }
 
 /**
@@ -756,47 +800,27 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── SRI ──────────────────────────────────────────────────────────────────
 
-  "sri-missing": (_url, _headers, body) => {
-    const externalScripts = tagsWith(
-      body,
-      "script",
-      /src=["']https?:\/\/[^"']+["']/i,
+  "sri-missing": (url, _headers, body) => {
+    const urls = resourcesLackingIntegrity(
+      tagsWith(body, "script", /[\s/]src\s*=/i),
+      "src",
+      url,
     );
-    const noSRI = externalScripts.filter((t) => {
-      if (t.toLowerCase().includes("integrity=")) return false;
-      // Analytics/payment/CAPTCHA vendors serve these scripts mutable and
-      // unversioned by design -- an integrity hash would break the next
-      // time the vendor deploys, so their own docs tell you not to add one.
-      const src = t.match(/src=["'](https?:\/\/[^"']+)["']/i)?.[1];
-      const host = src ? hostnameOf(src) : null;
-      return !host || !SRI_EXEMPT_HOSTS.has(host);
-    });
-    if (noSRI.length === 0) return null;
-    const samples = noSRI.slice(0, 3).map((t) => {
-      const srcMatch = t.match(/src=["'](https?:\/\/[^"']+)["']/i);
-      return srcMatch ? srcMatch[1] : t.slice(0, 80);
-    });
-    return `Found ${pluralize(noSRI.length, "external script")} without integrity:\n${samples.join("\n")}${noSRI.length > 3 ? `\n...and ${noSRI.length - 3} more` : ""}`;
+    return urls.length > 0
+      ? integrityGapEvidence("external script", urls)
+      : null;
   },
 
-  "sri-stylesheet-missing": (_url, _headers, body) => {
-    const extStyles = tagsWith(
-      body,
-      "link",
-      /rel=["']stylesheet["']/i,
-      /href=["']https?:\/\/[^"']+["']/i,
+  "sri-stylesheet-missing": (url, _headers, body) => {
+    const stylesheets = tagsWith(body, "link", /[\s/]href\s*=/i).filter((t) =>
+      (startTagAttributes(t).rel ?? "")
+        .toLowerCase()
+        .split(/\s+/)
+        .includes("stylesheet"),
     );
-    const noSRI = extStyles.filter((t) => {
-      if (t.toLowerCase().includes("integrity=")) return false;
-      // Google Fonts (and similar UA-negotiated stylesheet CDNs) serve
-      // different CSS per requesting browser, so there is no single stable
-      // hash to pin -- SRI is fundamentally incompatible, not just omitted.
-      const href = t.match(/href=["'](https?:\/\/[^"']+)["']/i)?.[1];
-      const host = href ? hostnameOf(href) : null;
-      return !host || !SRI_EXEMPT_HOSTS.has(host);
-    });
-    return noSRI.length > 0
-      ? `Found ${pluralize(noSRI.length, "external stylesheet")} without integrity attribute.`
+    const urls = resourcesLackingIntegrity(stylesheets, "href", url);
+    return urls.length > 0
+      ? integrityGapEvidence("external stylesheet", urls)
       : null;
   },
 
@@ -1288,7 +1312,7 @@ export const detectors: Record<string, DetectFn> = {
         "input",
         /(?:name|id)\s*=\s*["']?(?:username|user|login|email)/i,
       )[0];
-      if (userInput && !/autocomplete\s*=\s*["']?username/i.test(userInput)) {
+      if (userInput && !declaresIdentifierAutocomplete(userInput)) {
         return 'Login input found without autocomplete="username".';
       }
     }
@@ -1369,20 +1393,12 @@ export const detectors: Record<string, DetectFn> = {
     }
     return null;
   },
-  "target-blank-no-noopener": (_url, _headers, body) => {
-    if (!body) return null;
-    const links = tagsWith(body, "a", /target=["']?_blank["']?/i);
-    // noreferrer implies noopener (severs window.opener too, plus omits the
-    // Referer header) -- a link with rel="noreferrer" and no literal
-    // "noopener" token is not vulnerable, so it must not be flagged.
-    const noNoopener = links.filter(
-      (t) => !/\brel\s*=\s*["']?[^"']*\b(noopener|noreferrer)\b/i.test(t),
-    );
-    if (noNoopener.length > 0) {
-      return `${pluralize(noNoopener.length, 'target="_blank" link')} ${plural(noNoopener.length, "lacks", "lack")} rel="noopener"/"noreferrer" (reverse tabnabbing).`;
-    }
-    return null;
-  },
+  // Retired (D1). A plain target="_blank" is already safe in every current
+  // browser, so page-anchor-target-blank-no-noopener (rel="opener", named
+  // targets) is the one anchor check. This id stays registered and silent
+  // until the retirement pass removes it together with its redirect.
+  "target-blank-no-noopener": () => null,
+
   // ── COOP coverage ────────────────────────────────────────────────────────
 
   "coop-unsafe-none": (_url, headers) => {

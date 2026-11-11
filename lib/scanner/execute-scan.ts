@@ -15,14 +15,12 @@ import {
   noPageChecks,
   runSyncChecksYielding,
 } from "./engine";
-import {
-  runAsyncChecksDetailed,
-  getPlannedAsyncBranches,
-  type AsyncCheckResult,
-} from "./async-checks";
+import { startAsyncPhase } from "./async-phase";
 import { classifyRedirect } from "./scan-target-classify";
 import { parsedFormOf } from "./canonical-url";
 import { BOT_CHALLENGE_INCOMPLETE, detectBotChallenge } from "./bot-challenge";
+import { detectUnusablePage } from "./response-classifier";
+import { SCANNER_UA } from "./user-agent";
 import { readSslGrade } from "./ssl-grade";
 import { readThreatIntel } from "./reputation-lookup";
 import { readDnsRecords } from "./dns-records";
@@ -48,11 +46,8 @@ import {
   type PageUnreachable,
 } from "./target-failure";
 import type { Category, Vulnerability } from "./types";
-import {
-  APP_NAME,
-  SEVERITY_LEVELS,
-  SEVERITY_PRIORITY,
-} from "@/lib/config/constants";
+import { SEVERITY_PRIORITY } from "@/lib/config/constants";
+import { summarizeFindings } from "./severity-summary";
 import { getSettings } from "@/lib/config/runtime-config";
 import { logError } from "@/lib/logging/log";
 import { runWithScanId } from "@/lib/database/request-context";
@@ -220,13 +215,6 @@ export interface ExecuteScanParams {
 }
 
 /**
- * Extra time the outer async-checks race gets over one branch's own ceiling.
- * The branch timer starts only after its settings read, and the race has to be
- * the thing that loses when the two are close.
- */
-const ASYNC_RACE_MARGIN_MS = 2000;
-
-/**
  * Run the actual scan and persist every stage of it to `scan_history`.
  *
  * Called fire-and-forget from POST /api/v3/scan, detached from that
@@ -387,7 +375,7 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
         // Use safeFetch which validates the URL internally to prevent SSRF
         response = await safeFetch(safeUrl.href, {
           method: "GET",
-          headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
+          headers: { "User-Agent": SCANNER_UA },
           redirect: "follow",
           signal: AbortSignal.timeout(fetchTimeoutMs),
         });
@@ -512,9 +500,7 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
           // Use safeFetch which validates the URL internally to prevent SSRF
           response = await safeFetch(urlObj.href, {
             method: "GET",
-            headers: {
-              "User-Agent": `${APP_NAME}/1.0 (Security Scanner)`,
-            },
+            headers: { "User-Agent": SCANNER_UA },
             redirect: "follow",
             signal: requestSignal(fetchTimeoutMs, cancelSignal),
           });
@@ -577,19 +563,25 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
     });
     const redactedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
 
-    // The site answered with a bot challenge instead of its page
-    // (lib/scanner/bot-challenge.ts). Nothing that reads the response can say
-    // anything about the site, so it is skipped the same way a raw IP skips
-    // it, and the scan names the page as not checked rather than grading
-    // Cloudflare's interstitial. DNS, TLS and reputation still run, and still
-    // describe the real site.
-    const botChallenge =
+    // The site refused the scanner its page: a bot challenge, a load
+    // balancer's 403, a proof-of-work 503, or a redirect safeFetch would not
+    // follow (lib/scanner/response-classifier.ts). Nothing that reads that
+    // response says anything about the site, and grading it reported a WAF's
+    // missing headers as the site's own, so the page checks are skipped the
+    // same way a raw IP skips them and the scan names the page as not
+    // checked. DNS, TLS and reputation still run, and still describe the real
+    // site. A WebSocket target keeps the narrower bot-challenge test: its
+    // endpoint answering a plain GET with a refusal is the endpoint, not a
+    // gate in front of it.
+    const pageBlocked =
       response && !isRawIpTarget
-        ? detectBotChallenge(response.status, headers, responseBody)
+        ? protocolType === "http"
+          ? detectUnusablePage(response.status, headers, responseBody)
+          : detectBotChallenge(response.status, headers, responseBody)
         : null;
     const noPage =
-      isRawIpTarget || botChallenge !== null || pageUnreachable !== null;
-    const asyncScope = botChallenge || pageUnreachable ? "network" : "all";
+      isRawIpTarget || pageBlocked !== null || pageUnreachable !== null;
+    const asyncScope = pageBlocked || pageUnreachable ? "network" : "all";
 
     // Automatic subdomain discovery: kicked off here so it runs concurrently
     // with the rest of the scan. It resolves as soon as the per-domain cache
@@ -606,72 +598,19 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
     autoSubdomainsPromise.catch(() => {});
 
     // Start async checks immediately (DNS, TLS, live-fetch) while running sync
-    // checks. Each branch inside runAsyncChecksDetailed already races its own
-    // 12s ceiling, so this outer 15s race is a safety net rather than the
-    // primary mechanism; when it does fire, incomplete[] below lists every
-    // branch as not completed rather than silently returning no findings.
-    // Every branch this scan actually planned, from the same builder
-    // runAsyncChecksDetailed uses, so the two cannot disagree about what was
-    // supposed to run.
-    const plannedAsyncBranches = getPlannedAsyncBranches(
-      normalizedUrl,
-      selectedScanners,
-      asyncScope,
-    );
-    const asyncPromise = runAsyncChecksDetailed(
-      normalizedUrl,
-      selectedScanners,
+    // checks. Each branch already races its own ceiling, so the phase's outer
+    // ceiling is a safety net; when it does fire, incomplete[] below lists
+    // every planned branch as not completed rather than silently returning no
+    // findings. lib/scanner/async-phase.ts owns the race, the clamp to the
+    // branch ceiling and the cleanup of whichever side lost.
+    const asyncPhase = startAsyncPhase({
+      url: normalizedUrl,
+      scanners: selectedScanners,
+      scope: asyncScope,
       onProgress,
-      cancelSignal,
-      asyncScope,
-    );
-    // Both onProgress and runSyncChecksYielding below can throw
-    // (cancellation), which would abandon asyncPromise before the
-    // Promise.race further down ever attaches a handler to it. A bare
-    // catch here only prevents that from surfacing as an unhandled
-    // rejection; it does not consume the value Promise.race reads later,
-    // since a promise can have more than one handler attached to it.
-    asyncPromise.catch(() => {});
-    let asyncTimedOut = false;
-    // Never shorter than one branch's own ceiling plus a margin. The two are
-    // separate admin settings with no cross-check, and the race below is a
-    // safety net only while it is the LONGER of the two: set below the
-    // branch ceiling it wins while branches are still working, and its
-    // result is an empty finding list with every branch marked not checked,
-    // which throws away the DNS, TLS and reputation findings that had already
-    // finished.
-    const asyncRaceMs = Math.max(
-      asyncChecksTimeoutMs,
-      asyncBranchTimeoutMs + ASYNC_RACE_MARGIN_MS,
-    );
-    // Hold the timer handle so it can be cleared once the race settles. Without
-    // clearing, a scan that wins the race via asyncPromise (async checks
-    // completed) but then spends real time on the port sweep + software/CVE
-    // lookups below still has this 15s timer pending -- it fires late and flips
-    // asyncTimedOut to true on an already-complete scan, understating engine
-    // confidence (94 instead of 97) and leaking the timer/closure.
-    let asyncTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
-    const asyncTimeout = new Promise<AsyncCheckResult>((resolve) => {
-      asyncTimeoutHandle = setTimeout(() => {
-        asyncTimedOut = true;
-        // Every planned branch, not a hardcoded three.
-        //
-        // buildBranches produces six labels: dns, tls, live-fetch,
-        // reputation, osv-libraries and active-probes. Naming only the first
-        // three meant a scan that blew this ceiling told the reader that
-        // active probing, the dependency lookup and the reputation check had
-        // RUN AND FOUND NOTHING. Active probing is the ownership-gated
-        // injection battery and the slowest branch, so it is the one most
-        // likely to be cut off and the one whose false all-clear matters
-        // most. The comment above this promise already claimed the list named
-        // every branch. execute-crawl-scan.ts fixed exactly this and the fix
-        // never reached the main pipeline, which runs almost every scan.
-        resolve({ findings: [], incomplete: plannedAsyncBranches });
-        // The setting that names this exact ceiling. It reached the demo,
-        // bulk and authenticated routes and not the main pipeline, which is
-        // the one that runs almost every scan, so raising it moved three
-        // routes and left the fourth on a literal.
-      }, asyncRaceMs);
+      parentSignal: cancelSignal,
+      checksTimeoutMs: asyncChecksTimeoutMs,
+      branchTimeoutMs: asyncBranchTimeoutMs,
     });
 
     // Run synchronous body/header checks and the parsed-page checks through
@@ -753,23 +692,10 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
         );
     sourceMapPromise.catch(() => {});
 
-    // Await async checks (already running in parallel with sync)
-    // Seeded with every planned branch rather than with an empty list: if the
-    // race rejects, nothing below reassigns this, and an empty incomplete[]
-    // is the same claim as "all of them ran and found nothing".
-    let asyncResult: AsyncCheckResult = {
-      findings: [],
-      incomplete: plannedAsyncBranches,
-    };
-    try {
-      asyncResult = await Promise.race([asyncPromise, asyncTimeout]);
-    } catch {
-      /* non-fatal: asyncResult keeps its seeded not-completed list */
-    } finally {
-      // Race settled: cancel the timeout so it can't fire late and wrongly mark
-      // an already-complete scan as timed out.
-      if (asyncTimeoutHandle) clearTimeout(asyncTimeoutHandle);
-    }
+    // Await async checks (already running in parallel with sync). Only a
+    // cancel rejects, and the job's catch below turns that into a cancelled
+    // scan.
+    const asyncResult = await asyncPhase;
 
     let sourceMapFinding: Vulnerability | null = null;
     let sourceMapTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
@@ -885,16 +811,7 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
     // rather than being threaded through every Vulnerability literal).
     findings = attachCvssScores(findings);
 
-    const summary = {
-      critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL)
-        .length,
-      high: findings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH).length,
-      medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
-        .length,
-      low: findings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
-      info: findings.filter((f) => f.severity === SEVERITY_LEVELS.INFO).length,
-      total: findings.length,
-    };
+    const summary = summarizeFindings(findings);
 
     const dangerScore = getDangerScore(findings);
     // Whole-site A+ to F letter, the vocabulary every free peer grades on.
@@ -906,12 +823,12 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
     const incomplete = [
       ...asyncResult.incomplete,
       ...(syncResult.checksErrored > 0 ? [PAGE_CHECKS_INCOMPLETE] : []),
-      ...(botChallenge ? [BOT_CHALLENGE_INCOMPLETE] : []),
+      ...(pageBlocked ? [BOT_CHALLENGE_INCOMPLETE] : []),
       ...(pageUnreachable ? [PAGE_UNREACHABLE_INCOMPLETE] : []),
     ];
     const engineConfidence = getEngineConfidence(
       findings,
-      asyncTimedOut || incomplete.length > 0,
+      asyncResult.timedOut || incomplete.length > 0,
     );
 
     // SSL/TLS letter grade, computed inside checkTLSCert during the TLS branch
@@ -1025,6 +942,17 @@ async function runScan(params: ExecuteScanParams): Promise<void> {
         // say the page was not checked and why instead of showing a scan that
         // looks complete.
         ...(pageUnreachable ? { pageUnreachable } : {}),
+        // What answered in place of the page, so the report can show the
+        // status and the server that refused the scanner rather than only
+        // that it did.
+        ...(pageBlocked && response
+          ? {
+              pageBlocked: {
+                status: response.status,
+                server: headers.get("server"),
+              },
+            }
+          : {}),
         // If the fetch followed a redirect to a different page (e.g. an
         // auth-gated page bouncing to /login), record what happened so the UI
         // can warn "this scan is of the page it landed on, not the one you

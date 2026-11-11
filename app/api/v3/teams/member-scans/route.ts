@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withErrorHandling } from "@/lib/api/api-utils";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
@@ -10,7 +11,7 @@ import { parseRowId } from "@/lib/teams/parse-id";
 const MEMBER_SCAN_LIMIT = 50;
 
 // Get a team member's scan history
-export async function GET(request: NextRequest) {
+export const GET = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -99,4 +100,4 @@ export async function GET(request: NextRequest) {
     total: Number(totalRes.rows[0]?.total ?? scans.rows.length),
     limit: MEMBER_SCAN_LIMIT,
   });
-}
+});

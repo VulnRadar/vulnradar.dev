@@ -26,6 +26,7 @@ const ROOTS = ["app", "lib"];
 // deciding one. Their callers are what this test checks.
 const FORWARDERS = new Set([
   "lib/scanner/async-checks.ts",
+  "lib/scanner/async-phase.ts",
   "lib/scanner/execute-scan.ts",
   "lib/scanner/execute-crawl-scan.ts",
 ]);
@@ -104,7 +105,7 @@ function engineCalls(): EngineCall[] {
   for (const file of files) {
     const source = readFileSync(file, "utf8");
     for (const m of source.matchAll(
-      /\b(executeScan|executeCrawlScan|runAsyncChecksDetailed|runAsyncChecks)\(/g,
+      /\b(executeScan|executeCrawlScan|startAsyncPhase|runAsyncChecksDetailed|runAsyncChecks)\(/g,
     )) {
       // A declaration or a docstring mention, not a call.
       const before = source.slice(Math.max(0, m.index - 20), m.index);
@@ -114,7 +115,11 @@ function engineCalls(): EngineCall[] {
 
       const args = callArguments(source, m.index + m[1].length);
       const entry = m[1];
-      if (entry === "executeScan" || entry === "executeCrawlScan") {
+      if (
+        entry === "executeScan" ||
+        entry === "executeCrawlScan" ||
+        entry === "startAsyncPhase"
+      ) {
         const object = topLevelParts(args)[0] ?? "";
         calls.push({
           file,

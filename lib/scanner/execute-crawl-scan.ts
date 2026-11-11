@@ -24,6 +24,7 @@ import {
   getPlannedAsyncBranches,
   type AsyncCheckResult,
 } from "./async-checks";
+import { startAsyncPhase } from "./async-phase";
 import { readSslGrade } from "./ssl-grade";
 import { readThreatIntel } from "./reputation-lookup";
 import { readDnsRecords } from "./dns-records";
@@ -41,12 +42,8 @@ import {
   requestSignal,
 } from "./scan-jobs";
 import pool from "@/lib/database/db";
-import {
-  APP_NAME,
-  SEVERITY_LEVELS,
-  SEVERITY_PRIORITY,
-  DEFAULT_SCAN_NOTE,
-} from "@/lib/config/constants";
+import { SEVERITY_PRIORITY, DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
+import { summarizeFindings } from "./severity-summary";
 import { getSettings } from "@/lib/config/runtime-config";
 import { logError } from "@/lib/logging/log";
 import { runWithScanId } from "@/lib/database/request-context";
@@ -63,7 +60,12 @@ import {
   CRAWL_QUOTA_LIMIT_INCOMPLETE,
   CRAWL_TIME_LIMIT_INCOMPLETE,
 } from "./crawl-incomplete";
-import { BOT_CHALLENGE_INCOMPLETE, detectBotChallenge } from "./bot-challenge";
+import { BOT_CHALLENGE_INCOMPLETE } from "./bot-challenge";
+import {
+  classifyPageResponse,
+  detectUnusablePage,
+} from "./response-classifier";
+import { SCANNER_UA } from "./user-agent";
 import { canonicalPageUrl } from "./page-url";
 import type { ScanSessionBinding, ScanAuthReport } from "./auth/types";
 import { redactSensitiveResponseHeaders } from "./response-headers";
@@ -125,19 +127,6 @@ export function crawlSoftDeadlineMs(budgetMs: number): number {
     budgetMs * CRAWL_SOFT_DEADLINE_FLOOR_SHARE,
     budgetMs * CRAWL_SOFT_DEADLINE_SHARE - CRAWL_FINALIZE_MARGIN_MS,
   );
-}
-
-/**
- * How far past the async layer's per-branch timeout the outer race on a page
- * must be. The branch timer starts only after a settings read, so an outer
- * ceiling equal to the branch ceiling can fire first and discard branches that
- * had already finished. The two settings are edited independently, so the
- * order is enforced here rather than hoped for.
- */
-const ASYNC_OUTER_HEADROOM_MS = 2_000;
-
-export function asyncOuterTimeoutMs(outerMs: number, branchMs: number): number {
-  return Math.max(outerMs, branchMs + ASYNC_OUTER_HEADROOM_MS);
 }
 
 /** Why a page was not read, as shown beside it in the crawl result. */
@@ -216,6 +205,8 @@ async function scanSingleUrl(
    * checks sat on a hardcoded 15000 whatever an admin set.
    */
   asyncChecksTimeoutMs: number,
+  /** SCANNER_ASYNC_BRANCH_TIMEOUT_MS, which the outer ceiling must stay above. */
+  asyncBranchTimeoutMs: number,
   scanners?: string[] | null,
   onProgress?: ScanProgressHook,
   cancelSignal?: AbortSignal,
@@ -275,7 +266,7 @@ async function scanSingleUrl(
       urlObj.href,
       {
         method: "GET",
-        headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
+        headers: { "User-Agent": SCANNER_UA },
         redirect: "follow",
         signal: requestSignal(fetchTimeoutMs, cancelSignal),
       },
@@ -311,18 +302,29 @@ async function scanSingleUrl(
   // scanner: redact sensitive headers.
   const redactedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
 
-  // A bot challenge where the page should be (lib/scanner/bot-challenge.ts).
-  // Every check below would grade the challenge as this page, so none run and
-  // the page is reported as not checked, like one that could not be fetched.
-  if (detectBotChallenge(response.status, headers, responseBody)) {
+  // Something other than this page answered (lib/scanner/response-classifier
+  // .ts). Every check below would grade it as the page, so none run and the
+  // page is listed as not read, like one that could not be fetched.
+  //
+  // A bot challenge is a gate on the site, so it keeps marking the page's
+  // checks as not run. A plain refusal of one link (a 403 on an admin path, a
+  // 5xx on one route) is that page's answer, not the site's: it is listed
+  // with its status and adds nothing to `incomplete`, so one refused link
+  // among pages that were read does not mark the whole crawl as short.
+  if (detectUnusablePage(response.status, headers, responseBody)) {
+    const challenged =
+      classifyPageResponse(response.status, headers, responseBody).kind ===
+      "challenge";
     return {
       url,
       findings: [],
-      summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 },
+      summary: summarizeFindings([]),
       duration: Date.now() - startTime,
       responseHeaders: redactedHeaders,
-      incomplete: [BOT_CHALLENGE_INCOMPLETE],
-      unreachable: BOT_CHALLENGE_REASON,
+      incomplete: challenged ? [BOT_CHALLENGE_INCOMPLETE] : [],
+      unreachable: challenged
+        ? BOT_CHALLENGE_REASON
+        : `HTTP ${response.status}`,
     };
   }
 
@@ -371,40 +373,21 @@ async function scanSingleUrl(
   );
   const syncFindings = syncResult.findings;
 
-  // runAsyncChecksDetailed, not runAsyncChecks: the crawl result is rendered
-  // through the same components as a single scan, so it needs the same
-  // completeness bookkeeping. The bookkeeping-free variant was what made a
-  // deep scan structurally unable to say it came back short.
-  let asyncFindings: Vulnerability[] = [];
-  let asyncIncomplete: string[] = [];
-  let asyncTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const asyncResult = await Promise.race<AsyncCheckResult>([
-      runAsyncChecksDetailed(url, scanners, onProgress, cancelSignal, "page"),
-      new Promise<AsyncCheckResult>((resolve) => {
-        // On the ceiling, resolve to "every planned branch did not complete",
-        // never to a bare []. An empty findings array with no marker is
-        // indistinguishable from a page whose DNS, TLS and live-fetch checks
-        // all ran and found nothing, which is how a timed-out deep scan came
-        // back reading as clean. ref: AUDIT-014#state-03
-        asyncTimeoutHandle = setTimeout(
-          () => resolve({ findings: [], incomplete: plannedBranches }),
-          asyncChecksTimeoutMs,
-        );
-      }),
-    ]);
-    asyncFindings = asyncResult.findings;
-    asyncIncomplete = asyncResult.incomplete;
-  } catch {
-    // runAsyncChecksDetailed absorbs per-branch failures, so this is only
-    // reachable on something it cannot absorb. Either way this page's async
-    // layer contributed nothing, which is exactly what incomplete records.
-    asyncIncomplete = plannedBranches;
-  } finally {
-    // Cancel the per-page async timeout once the race settles so it can't stay
-    // pending across the rest of this page's work (and the next page's).
-    if (asyncTimeoutHandle) clearTimeout(asyncTimeoutHandle);
-  }
+  // The detailed variant behind the phase, not runAsyncChecks: the crawl
+  // result is rendered through the same components as a single scan, so it
+  // needs the same completeness bookkeeping. On the ceiling the phase reports
+  // every planned branch as not completed, never a bare [], which is how a
+  // timed-out deep scan came back reading as clean. ref: AUDIT-014#state-03
+  const { findings: asyncFindings, incomplete: asyncIncomplete } =
+    await startAsyncPhase({
+      url,
+      scanners,
+      scope: "page",
+      onProgress,
+      parentSignal: cancelSignal,
+      checksTimeoutMs: asyncChecksTimeoutMs,
+      branchTimeoutMs: asyncBranchTimeoutMs,
+    });
 
   // Worst first. SEVERITY_PRIORITY counts UP with severity, so this comparator
   // subtracts b from a, unlike the local table it replaced (which counted
@@ -413,16 +396,7 @@ async function scanSingleUrl(
     (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
   );
 
-  const summary = {
-    critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL)
-      .length,
-    high: findings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH).length,
-    medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
-      .length,
-    low: findings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
-    info: findings.filter((f) => f.severity === SEVERITY_LEVELS.INFO).length,
-    total: findings.length,
-  };
+  const summary = summarizeFindings(findings);
 
   return {
     url,
@@ -515,11 +489,12 @@ export interface ExecuteCrawlScanParams {
  * before.
  */
 /**
- * Whether the site answers the scanner with a bot challenge instead of its
- * page. A fetch that fails outright is not a challenge: the page scans report
- * that failure themselves.
+ * Whether the site refuses the scanner its main page: a bot challenge, a
+ * refusal status, a 5xx or a redirect safeFetch would not follow. A fetch that
+ * fails outright is not a refusal: the page scans report that failure
+ * themselves.
  */
-async function isBehindBotChallenge(
+async function hostRefusesPage(
   url: string,
   fetchTimeoutMs: number,
   session?: ScanSessionBinding,
@@ -530,7 +505,7 @@ async function isBehindBotChallenge(
       url,
       {
         method: "GET",
-        headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
+        headers: { "User-Agent": SCANNER_UA },
         redirect: "follow",
         signal: requestSignal(fetchTimeoutMs, cancelSignal),
       },
@@ -538,7 +513,7 @@ async function isBehindBotChallenge(
       session,
     );
     const body = await safeReadBody(response, 32_768);
-    return detectBotChallenge(response.status, response.headers, body) !== null;
+    return detectUnusablePage(response.status, response.headers, body) !== null;
   } catch {
     return false;
   }
@@ -579,7 +554,7 @@ async function runCrawlScan(params: ExecuteCrawlScanParams): Promise<void> {
     CRAWL_SCAN_MAX_PAGES: maxPagesCeiling,
     CRAWL_PAGE_FETCH_TIMEOUT_MS: fetchTimeoutMs,
     SCANNER_MAX_RESPONSE_BODY_BYTES: maxBodySize,
-    SCAN_ASYNC_CHECKS_TIMEOUT_MS: configuredAsyncChecksTimeoutMs,
+    SCAN_ASYNC_CHECKS_TIMEOUT_MS: asyncChecksTimeoutMs,
     SCANNER_ASYNC_BRANCH_TIMEOUT_MS: asyncBranchTimeoutMs,
   } = await getSettings([
     "CRAWL_SCAN_TIMEOUT_SECONDS",
@@ -589,10 +564,6 @@ async function runCrawlScan(params: ExecuteCrawlScanParams): Promise<void> {
     "SCAN_ASYNC_CHECKS_TIMEOUT_MS",
     "SCANNER_ASYNC_BRANCH_TIMEOUT_MS",
   ] as const);
-  const asyncChecksTimeoutMs = asyncOuterTimeoutMs(
-    configuredAsyncChecksTimeoutMs,
-    asyncBranchTimeoutMs,
-  );
   // The shipped ceiling (CRAWL_SCAN_MAX_PAGES) is a hard upper bound; the real
   // per-user governor is the plan's page-selection cap. min() of the two so a
   // plan can never exceed the ceiling and the ceiling never overrides a
@@ -743,11 +714,11 @@ async function runCrawlScan(params: ExecuteCrawlScanParams): Promise<void> {
     // origin, so https-ness and the scanners filter are identical for each
     // one), plus the host-level branches that run exactly once.
     // The host-level branches start before any page is scanned, so they
-    // cannot learn from the page scans that the site answers with a bot
-    // challenge. Behind one, robots.txt, security.txt and the exposed-file
-    // probes all come back as the challenge, so one look at the main page
-    // decides whether those branches may use HTTP at all.
-    const hostChallenged = await isBehindBotChallenge(
+    // cannot learn from the page scans that the site refuses the scanner.
+    // Behind a challenge or a WAF's 403, robots.txt, security.txt and the
+    // exposed-file probes all come back as that refusal, so one look at the
+    // main page decides whether those branches may use HTTP at all.
+    const hostChallenged = await hostRefusesPage(
       normalizedMainUrl,
       fetchTimeoutMs,
       session,
@@ -835,6 +806,7 @@ async function runCrawlScan(params: ExecuteCrawlScanParams): Promise<void> {
           maxBodySize,
           fetchTimeoutMs,
           asyncChecksTimeoutMs,
+          asyncBranchTimeoutMs,
           scanners,
           onProgress,
           cancelSignal,
@@ -1034,19 +1006,7 @@ async function runCrawlScan(params: ExecuteCrawlScanParams): Promise<void> {
     allFindings = attachCvssScores(allFindings);
 
     const totalDuration = Date.now() - startTime;
-    const mergedSummary = {
-      critical: allFindings.filter(
-        (f) => f.severity === SEVERITY_LEVELS.CRITICAL,
-      ).length,
-      high: allFindings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH)
-        .length,
-      medium: allFindings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
-        .length,
-      low: allFindings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
-      info: allFindings.filter((f) => f.severity === SEVERITY_LEVELS.INFO)
-        .length,
-      total: allFindings.length,
-    };
+    const mergedSummary = summarizeFindings(allFindings);
 
     // The first page that was actually read supplies the main headers. An
     // unreachable page has none to give.

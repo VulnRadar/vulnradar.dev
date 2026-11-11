@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { burstLimitedResponse } from "@/lib/api/rate-limit-response";
 import {
   scanPorts,
   readPortScan,
@@ -73,9 +74,9 @@ export async function POST(
     ...RATE_LIMITS.scan,
   });
   if (!rl.allowed) {
-    return NextResponse.json(
-      { error: "Rate limit reached. Please wait before refreshing again." },
-      { status: 429 },
+    return burstLimitedResponse(
+      rl,
+      "Rate limit reached. Please wait before refreshing again.",
     );
   }
 

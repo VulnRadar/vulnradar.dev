@@ -72,6 +72,9 @@ const SCAN_EXECUTION_CALLS = [
   // not match "runAsyncChecksDetailed(". Both spellings run the same network
   // work, so both belong here.
   "runAsyncChecksDetailed(",
+  // The bounded async phase every executor and the inline routes start
+  // (lib/scanner/async-phase.ts). It runs runAsyncChecksDetailed underneath.
+  "startAsyncPhase(",
 ];
 
 const ENTRY_POINTS: EntryPoint[] = [

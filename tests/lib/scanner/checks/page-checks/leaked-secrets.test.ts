@@ -117,6 +117,23 @@ const fixtures: PageCheckFixtures = {
       body: `<script>var greetingMessage = "Tg7kP2mZ9qX4wR8vL1nB6yH3jF5dS0c1";</script>`,
       expect: "skip",
     },
+    {
+      description:
+        "ST1: Shopify renders storefrontAccessToken into every storefront on purpose",
+      body: `<script>window.Shopify = { storefrontAccessToken: "c9ab4e72d01f83a65b7c2e94d0a1f386" };</script>`,
+      expect: "skip",
+    },
+    {
+      description: "the same name spelled with separators is the same name",
+      body: `<script>var cfg = { storefront_access_token: "c9ab4e72d01f83a65b7c2e94d0a1f386", publishableKey: "Tg7QkP2mZ9qX4wR8vL1nB6yH3jF5dS0c" };</script>`,
+      expect: "skip",
+    },
+    {
+      description: "ST2: a real apiSecret next to a public name still fires",
+      body: `<script>var cfg = { siteKey: "Tg7QkP2mZ9qX4wR8vL1nB6yH3jF5dS0c", apiSecret: "Xp4RtY8uI2oL6kJ1hG5fD9sA3zC7vB0n" };</script>`,
+      expect: "fire",
+      evidenceIncludes: "apiSecret",
+    },
   ],
 };
 

@@ -4,11 +4,13 @@ import { isMissingStripeResource } from "@/lib/billing/stripe-errors";
 import { invoicePaymentIntentId } from "@/lib/billing/invoice-payment-intent";
 import { invoiceSubscriptionId } from "@/lib/billing/invoice-subscription";
 import { getPlanFromProductId } from "@/lib/billing/products";
+import { resolvePlanFromStripeSubscription } from "@/lib/billing/stripe-catalog";
 import { getPaidPlans, getPlanById, type PlanId } from "@/lib/billing/catalog";
 import {
   sendEmail,
   paymentReceiptEmail,
   paymentFailedEmail,
+  planCancelledEmail,
   creditPurchaseReceiptEmail,
   creditRefundEmail,
   subscriptionChangedEmail,
@@ -25,6 +27,7 @@ import {
   applySubscriptionUpdated,
   markSubscriptionPaid,
   markSubscriptionPastDue,
+  readDunningExemption,
   subscriptionOwnershipSql,
 } from "@/lib/billing/subscription-writes";
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
@@ -44,44 +47,75 @@ import {
   reverseBrowserbaseCreditPurchase,
 } from "@/lib/billing/browserbase-usage";
 import { findAccountForSubscriptionEvent } from "@/lib/billing/subscription-lookup";
+import {
+  claimStripeEvent,
+  releaseStripeEvent,
+} from "@/lib/billing/stripe-event-marker";
+import {
+  creditPurchaseFromMetadata,
+  recordReversedCreditPurchase,
+  restorableFromMetadata,
+  restorableToMetadata,
+  restoreCreditsAfterDispute,
+  reverseCreditsForDispute,
+  reversedCreditKinds,
+  type CreditKind,
+} from "@/lib/billing/credit-reversal-ledger";
 import pool from "@/lib/database/db";
 import Stripe from "stripe";
 import { sendAdminAlert } from "@/lib/admin/alert-webhook";
 import { withErrorHandling } from "@/lib/api/api-utils";
 import { logError } from "@/lib/logging/log";
 
-// getPlanFromProductId() only recognizes our own catalog ids (e.g.
-// "core_supporter_monthly"), never a raw Stripe product id like
-// "prod_abc123". createSubscription() stamps our id into the Stripe
-// product's own metadata at creation time (product_data.metadata.productId
-// in app/actions/stripe.ts), so when all we have is the raw Stripe product
-// id (e.g. after a Billing Portal-initiated plan change didn't carry our
-// subscription metadata forward), look it up there instead of silently
-// falling back to "free".
-async function resolvePlanFromStripeProductId(
+/**
+ * The subscription as Stripe has it now, rather than as the event saw it.
+ *
+ * Stripe promises delivery, not order, so an event's snapshot can be older
+ * than something already applied. A customer.subscription.updated taken while
+ * the subscription was still active, delivered after it was cancelled, used to
+ * write the paid plan back onto a row the cancellation had freed, and the
+ * ownership guard let it, because a cancelled row is bound to nothing. Writing
+ * the live object instead makes the order of delivery irrelevant: whichever
+ * event is processed last writes what is true at that moment.
+ *
+ * The price's product is expanded so the plan can be read from what is billed
+ * without a second request.
+ *
+ * A subscription Stripe genuinely does not have is not billing anyone, so it is
+ * treated as cancelled. Any other failure is thrown: the handler answers 500,
+ * the idempotency marker is rolled back and Stripe redelivers.
+ */
+async function retrieveLiveSubscription(
   stripe: Stripe,
-  rawStripeProductId: string,
-): Promise<PlanId | ""> {
-  if (!rawStripeProductId) return "";
+  subscriptionId: string,
+  snapshot?: Stripe.Subscription,
+): Promise<Stripe.Subscription> {
   try {
-    const product = await stripe.products.retrieve(rawStripeProductId);
-    const ourProductId = product.metadata?.productId || "";
-    return ourProductId ? getPlanFromProductId(ourProductId) : "";
+    return await stripe.subscriptions.retrieve(subscriptionId, {
+      expand: ["items.data.price.product"],
+    });
   } catch (err) {
-    // "" is the answer for a product Stripe genuinely does not have, and it
-    // resolves the caller to the free plan. That is the right outcome for a
-    // deleted product and a catastrophic one for a timeout: an active
-    // subscriber whose metadata happened to be missing would be downgraded
-    // and have their badge revoked because a single API call blipped. Let a
-    // transient failure out so the webhook 500s, the idempotency marker is
-    // rolled back, and Stripe redelivers.
     if (!isMissingStripeResource(err)) throw err;
-    console.error("[Stripe] Failed to resolve plan from product id:", err);
-    return "";
+    return {
+      ...(snapshot ?? { id: subscriptionId, metadata: {} }),
+      status: "canceled",
+    } as Stripe.Subscription;
   }
 }
 
 const PAID_PLAN_IDS: readonly PlanId[] = getPaidPlans().map((p) => p.id);
+
+/**
+ * The failed attempt at a renewal that cancels the subscription (owner
+ * decision T10). Stripe's own retry schedule decides when attempt two comes.
+ */
+const TWO_STRIKE_ATTEMPTS = 2;
+
+/**
+ * Stamped on a subscription the two-strike rule cancelled, so the deleted
+ * event it causes knows the customer has already been told.
+ */
+const TWO_STRIKE_CANCEL_COMMENT = "Renewal payment failed twice";
 
 /**
  * Receipt and clawback notice for a one-time credit purchase.
@@ -151,6 +185,83 @@ async function emailCreditReversals(
     }
   } catch (err) {
     console.error("[Stripe] credit reversal notices failed:", err);
+  }
+}
+
+const CREDIT_LABELS: Record<CreditKind, string> = {
+  ai: "AI analysis tokens",
+  github: "GitHub review tokens",
+  browserbase: "Browserbase minutes",
+};
+
+/** A ledger amount in the unit its receipt names: Browserbase is stored in seconds. */
+function creditQuantity(kind: CreditKind, amount: number): number {
+  return kind === "browserbase" ? Math.round(amount / 60) : amount;
+}
+
+/**
+ * Whether the charge behind a credit purchase has already been refunded or
+ * disputed, read before anything is credited.
+ *
+ * Stripe can deliver payment_intent.succeeded after charge.refunded, and a
+ * credit granted then is never clawed back: the refund ran first and found
+ * nothing to reverse. A charge refunded down to nothing counts even while
+ * `refunded` lags. A partial refund does not, for the same reason
+ * charge.refunded does not reverse one.
+ */
+async function creditChargeState(
+  stripe: Stripe,
+  paymentIntent: Stripe.PaymentIntent,
+): Promise<"refunded" | "disputed" | null> {
+  const latest = paymentIntent.latest_charge;
+  if (!latest) return null;
+  let charge: Stripe.Charge;
+  if (typeof latest === "string") {
+    try {
+      charge = await stripe.charges.retrieve(latest);
+    } catch (err) {
+      if (!isMissingStripeResource(err)) throw err;
+      return null;
+    }
+  } else {
+    charge = latest;
+  }
+  if (charge.disputed) return "disputed";
+  const fullyRefunded =
+    charge.refunded ||
+    (charge.amount > 0 && (charge.amount_refunded ?? 0) >= charge.amount);
+  return fullyRefunded ? "refunded" : null;
+}
+
+/**
+ * A Stripe error a redelivery would get again, because the request itself
+ * was refused (a restricted key without the permission, a parameter Stripe
+ * will not take), as opposed to Stripe being unreachable, rate limiting, or a
+ * write conflict, which a later attempt gets past.
+ */
+function isRefusedStripeRequest(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const status = (err as { statusCode?: unknown }).statusCode;
+  return (
+    typeof status === "number" &&
+    status >= 400 &&
+    status < 500 &&
+    status !== 409 &&
+    status !== 429
+  );
+}
+
+/** The PaymentIntent's credit purchase, if it was one; one request. */
+async function creditPurchaseForPaymentIntent(
+  stripe: Stripe,
+  paymentIntentId: string,
+) {
+  try {
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+    return creditPurchaseFromMetadata(pi.metadata);
+  } catch (err) {
+    if (!isMissingStripeResource(err)) throw err;
+    return null;
   }
 }
 
@@ -353,14 +464,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   // customer.subscription.created event would plan-upgrade the user
   // twice (and re-grant the premium badge, etc.).
   try {
-    const seen = await pool.query<{ event_id: string }>(
-      `INSERT INTO processed_stripe_events (event_id, event_type)
-       VALUES ($1, $2)
-       ON CONFLICT (event_id) DO NOTHING
-       RETURNING event_id`,
-      [event.id, event.type],
-    );
-    if (seen.rowCount === 0) {
+    if (!(await claimStripeEvent(event.id, event.type))) {
       return NextResponse.json({ received: true, replay: true });
     }
   } catch (err) {
@@ -398,26 +502,18 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
 
         // Validate the plan is a valid supporter plan
         if (!plan || !PAID_PLAN_IDS.includes(plan as PlanId)) {
-          // Try to get from subscription metadata
+          // Fall back to what the subscription is billed for. This used to
+          // guess from the price's nickname, which nothing in this app ever
+          // sets.
           if (subscriptionId) {
-            const subscription =
-              await stripe.subscriptions.retrieve(subscriptionId);
-            plan =
-              subscription.metadata?.planId ||
-              subscription.metadata?.productId ||
-              "";
-
-            // Last resort: check product name
-            if (!plan && subscription.items?.data?.[0]) {
-              const productName =
-                subscription.items.data[0].price?.nickname || "";
-              if (productName.toLowerCase().includes("elite"))
-                plan = "elite_supporter";
-              else if (productName.toLowerCase().includes("pro"))
-                plan = "pro_supporter";
-              else if (productName.toLowerCase().includes("core"))
-                plan = "core_supporter";
-            }
+            const subscription = await retrieveLiveSubscription(
+              stripe,
+              subscriptionId,
+            );
+            plan = await resolvePlanFromStripeSubscription(
+              stripe,
+              subscription,
+            );
           }
         }
 
@@ -546,28 +642,15 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
 
-        // Get userId and planId from subscription metadata (set in startCheckoutSession)
         const userId = subscription.metadata?.userId
           ? parseInt(subscription.metadata.userId, 10)
           : null;
-        let plan = subscription.metadata?.planId || "";
-
-        // Fallback: try to get plan from productId
-        if (!plan || !PAID_PLAN_IDS.includes(plan as PlanId)) {
-          const productId = subscription.metadata?.productId || "";
-          plan = getPlanFromProductId(productId);
-        }
-
-        // Fallback: try to extract from price/product
-        if (!plan || plan === "free") {
-          const rawStripeProductId =
-            (subscription.items?.data?.[0]?.price?.product as string) || "";
-          plan =
-            (await resolvePlanFromStripeProductId(
-              stripe,
-              rawStripeProductId,
-            )) || plan;
-        }
+        // The billed price first, the checkout's metadata last: see
+        // resolvePlanFromStripeSubscription.
+        const plan = await resolvePlanFromStripeSubscription(
+          stripe,
+          subscription,
+        );
 
         // This event fires the instant Stripe creates the subscription
         // object, while it's still "incomplete" and nothing has been
@@ -708,23 +791,38 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       }
 
       case "customer.subscription.updated": {
-        const subscription = event.data.object as Stripe.Subscription;
-        const customerId = subscription.customer as string;
+        const snapshot = event.data.object as Stripe.Subscription;
+        const customerId = snapshot.customer as string;
+        const subscription = await retrieveLiveSubscription(
+          stripe,
+          snapshot.id,
+          snapshot,
+        );
 
-        // Get productId from subscription metadata first
-        let productId = subscription.metadata?.productId || "";
-        let plan = getPlanFromProductId(productId);
-
-        // Fallback: try to extract from price/product
-        if (!plan || plan === "free") {
-          const rawStripeProductId =
-            (subscription.items?.data?.[0]?.price?.product as string) || "";
-          plan =
-            (await resolvePlanFromStripeProductId(
-              stripe,
-              rawStripeProductId,
-            )) || plan;
+        // A cancelled subscription is the deleted event's business, and this
+        // gives it the same write: the staff floor rather than a flat "free",
+        // and the subscription id cleared rather than bound to something
+        // that has ended. Both events arrive for one cancellation, in either
+        // order, and the ownership guard keeps either from touching a row
+        // that has moved on to another live subscription.
+        if (subscription.status === "canceled") {
+          const ended = await applySubscriptionDeleted({
+            subscriptionId: subscription.id,
+            customerId,
+          });
+          if (ended.userId) {
+            await revokePremiumBadge(ended.userId);
+            console.log(
+              `[Stripe] Subscription ${subscription.id} is canceled in Stripe; customer ${customerId} is off the paid plan (event ${event.id})`,
+            );
+          }
+          break;
         }
+
+        const plan = await resolvePlanFromStripeSubscription(
+          stripe,
+          subscription,
+        );
 
         // A subscription created with payment_behavior: "default_incomplete"
         // (app/actions/stripe.ts) starts life "incomplete" --
@@ -908,8 +1006,13 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         // Best-effort cancellation notice, only when a user actually matched.
         // The DB row was just reset to free/pro-floor above, so name the plan
         // that was actually canceled from the subscription object's own
-        // metadata, not the post-reset row.
-        if (result.userId) {
+        // metadata, not the post-reset row. A two-strike cancel has already
+        // sent its own notice, which says why; this one would also claim
+        // access lasts to the end of a period nobody paid for.
+        const twoStrike =
+          subscription.cancellation_details?.comment ===
+          TWO_STRIKE_CANCEL_COMMENT;
+        if (result.userId && !twoStrike) {
           try {
             const recipient = await lookupBillingRecipient(customerId);
             if (recipient?.email) {
@@ -946,10 +1049,24 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           // which is the mirror image of the past_due problem below.
           const paidSubscriptionId = invoiceSubscriptionId(invoice);
           if (paidSubscriptionId) {
-            await markSubscriptionPaid({
-              subscriptionId: paidSubscriptionId,
-              customerId,
-            });
+            // A receipt can arrive after the subscription it paid for has
+            // ended, and the row it lands on is then bound to nothing, which
+            // the ownership guard lets any subscription write to. Only clear
+            // dunning when Stripe says the subscription is paying now.
+            const live = await retrieveLiveSubscription(
+              stripe,
+              paidSubscriptionId,
+            );
+            if (live.status === "active" || live.status === "trialing") {
+              await markSubscriptionPaid({
+                subscriptionId: paidSubscriptionId,
+                customerId,
+              });
+            } else {
+              console.log(
+                `[Stripe] Invoice ${invoice.id} paid but subscription ${paidSubscriptionId} is ${live.status}; leaving its status to the subscription events (event ${event.id})`,
+              );
+            }
           }
 
           // Try to record in billing history (optional - don't fail if table doesn't exist)
@@ -1037,38 +1154,103 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         // good. markSubscriptionPastDue reports whether it applied so the
         // dunning email follows the same rule instead of telling somebody
         // with no subscription that their payment failed.
+        //
+        // The live subscription is read for the same reason the updated
+        // handler reads it: a failure delivered after the subscription ended
+        // has nothing left to dun.
         const failedSubscriptionId = invoiceSubscriptionId(invoice);
-        const dunned = failedSubscriptionId
-          ? (
-              await markSubscriptionPastDue({
-                subscriptionId: failedSubscriptionId,
-                customerId,
-              })
-            ).userId !== null
-          : false;
+        const liveFailed = failedSubscriptionId
+          ? await retrieveLiveSubscription(stripe, failedSubscriptionId)
+          : null;
+        const dunnedUserId =
+          failedSubscriptionId &&
+          liveFailed &&
+          isLiveSubscriptionStatus(liveFailed.status)
+            ? (
+                await markSubscriptionPastDue({
+                  subscriptionId: failedSubscriptionId,
+                  customerId,
+                })
+              ).userId
+            : null;
         console.log(
-          dunned
-            ? `[Stripe] Payment failed for customer ${customerId}`
+          dunnedUserId
+            ? `[Stripe] Payment failed for customer ${customerId} (attempt ${invoice.attempt_count})`
             : `[Stripe] Invoice ${invoice.id} failed for customer ${customerId} but it is not a renewal of their current subscription; leaving the account as it is (event ${event.id})`,
         );
 
-        // Best-effort dunning notice (transactional) so the customer can fix
-        // the card before the retries run out and the plan drops.
+        // Two strikes. Past_due alone kept the paid plan for as long as Stripe
+        // kept the subscription past_due, so a card that never paid again
+        // kept the plan. The second failed attempt at a renewal cancels the
+        // subscription, and customer.subscription.deleted moves the account
+        // to free. Only a renewal (a one-off invoice or a mid-cycle plan
+        // change failing is not a lapsed subscription), only the account's
+        // own current one (dunnedUserId), and never under a staff floor or a
+        // gift. A redelivery is stopped by the idempotency marker, and a retry
+        // after the cancel landed reads the subscription as canceled above.
+        // Only while Stripe still has it past_due, too: the attempt count is
+        // the event's, and a second strike delivered late, after the card was
+        // fixed and the renewal paid, would otherwise cancel a subscription
+        // that is paying again.
+        let cancelled = false;
+        if (
+          dunnedUserId &&
+          failedSubscriptionId &&
+          liveFailed?.status === "past_due" &&
+          invoice.billing_reason === "subscription_cycle" &&
+          (invoice.attempt_count ?? 0) >= TWO_STRIKE_ATTEMPTS
+        ) {
+          const exemption = await readDunningExemption(dunnedUserId);
+          if (exemption.staffFloor || exemption.gifted) {
+            console.log(
+              `[Stripe] Renewal failed ${invoice.attempt_count} times for user ${dunnedUserId}; not cancelling over a ${exemption.staffFloor ? "staff plan floor" : "gifted plan"} (event ${event.id})`,
+            );
+          } else {
+            try {
+              await stripe.subscriptions.cancel(
+                failedSubscriptionId,
+                {
+                  prorate: false,
+                  invoice_now: false,
+                  cancellation_details: { comment: TWO_STRIKE_CANCEL_COMMENT },
+                },
+                { idempotencyKey: `two-strike-cancel-${failedSubscriptionId}` },
+              );
+              cancelled = true;
+              console.log(
+                `[Stripe] Renewal failed ${invoice.attempt_count} times; cancelled subscription ${failedSubscriptionId} for user ${dunnedUserId} (event ${event.id})`,
+              );
+            } catch (err) {
+              // Already gone: whatever ended it sends its own deleted event.
+              if (!isMissingStripeResource(err)) throw err;
+            }
+          }
+        }
+
+        // Best-effort dunning notice (transactional): the first strike says
+        // it will be retried, the second that the plan was cancelled.
         try {
-          const recipient = dunned
+          const recipient = dunnedUserId
             ? await lookupBillingRecipient(customerId)
             : null;
           if (recipient?.email) {
+            const amountCents = invoice.amount_due ?? invoice.amount_paid ?? 0;
             await sendEmail({
               to: recipient.email,
-              ...paymentFailedEmail({
-                planName: planDisplayName(recipient.plan),
-                amountCents: invoice.amount_due ?? invoice.amount_paid ?? 0,
-                currency: invoice.currency,
-                nextAttempt: invoice.next_payment_attempt
-                  ? formatBillingDate(invoice.next_payment_attempt)
-                  : null,
-              }),
+              ...(cancelled
+                ? planCancelledEmail({
+                    planName: planDisplayName(recipient.plan),
+                    amountCents,
+                    currency: invoice.currency,
+                  })
+                : paymentFailedEmail({
+                    planName: planDisplayName(recipient.plan),
+                    amountCents,
+                    currency: invoice.currency,
+                    nextAttempt: invoice.next_payment_attempt
+                      ? formatBillingDate(invoice.next_payment_attempt)
+                      : null,
+                  })),
             });
           }
         } catch (emailErr) {
@@ -1088,6 +1270,28 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
         // subscription flow.
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
         const tierId = paymentIntent.metadata?.aiCreditTierId;
+
+        const purchase = creditPurchaseFromMetadata(paymentIntent.metadata);
+        if (purchase) {
+          const chargeState = await creditChargeState(stripe, paymentIntent);
+          if (chargeState === "refunded") {
+            // Recorded as reversed, so the checkout confirmation cannot
+            // credit it either.
+            await recordReversedCreditPurchase(paymentIntent.id, purchase);
+            console.log(
+              `[Stripe] payment_intent ${paymentIntent.id} was refunded before it was credited; not crediting (event ${event.id})`,
+            );
+            break;
+          }
+          if (chargeState === "disputed") {
+            // charge.dispute.created records the purchase as reversed, and a
+            // won dispute grants it from there.
+            console.error(
+              `[Stripe] payment_intent ${paymentIntent.id} is under dispute; not crediting until the dispute is won (event ${event.id})`,
+            );
+            break;
+          }
+        }
 
         // Every PaymentIntent Stripe has ever created fires this event,
         // including a subscription's own invoice PaymentIntent (see
@@ -1290,10 +1494,28 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           console.log(
             `[Stripe] Refund clawed back ${bbR.seconds}s of Browserbase credit from user ${bbR.userId} (event ${event.id})`,
           );
-        if (!aiR.reversed && !ghR.reversed && !bbR.reversed)
-          console.log(
-            `[Stripe] charge.refunded for ${refundPi} matched no credit purchase (likely a subscription refund) (event ${event.id})`,
+        if (!aiR.reversed && !ghR.reversed && !bbR.reversed) {
+          // Nothing to reverse: either not a credit purchase at all (a
+          // subscription refund), or one whose credit has not landed yet. The
+          // second is recorded as already reversed so the credit is refused
+          // when it does arrive.
+          const purchase = await creditPurchaseForPaymentIntent(
+            stripe,
+            refundPi,
           );
+          if (
+            purchase &&
+            (await recordReversedCreditPurchase(refundPi, purchase))
+          ) {
+            console.log(
+              `[Stripe] Refund on ${refundPi} arrived before its credit; recorded so the credit is refused (event ${event.id})`,
+            );
+          } else {
+            console.log(
+              `[Stripe] charge.refunded for ${refundPi} matched no credit purchase (likely a subscription refund) (event ${event.id})`,
+            );
+          }
+        }
         await emailCreditReversals(
           [
             {
@@ -1320,11 +1542,13 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
       }
 
       case "charge.dispute.created": {
-        // A chargeback: the customer is pulling the money back. Treat it like a
-        // refund for one-time credits (the refunded_at guard makes this
-        // idempotent with any later charge.refunded). Plan/badge are left to the
-        // subscription lifecycle and admin review, since a dispute can be won.
-        // Logged at error level so a human sees it.
+        // A chargeback: the customer is pulling the money back. One-time
+        // credits are reversed now (the refunded_at guard makes this
+        // idempotent with any later charge.refunded); how much actually came
+        // off is written onto the dispute, because spent credit cannot be
+        // taken back and a won dispute must restore only what was taken.
+        // Plan/badge are left to the subscription lifecycle and admin review,
+        // since a dispute can be won. Logged at error level so a human sees it.
         const dispute = event.data.object as Stripe.Dispute;
         const disputePi =
           typeof dispute.payment_intent === "string"
@@ -1334,44 +1558,128 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           `[Stripe] Dispute opened (reason: ${dispute.reason}, amount ${dispute.amount} ${dispute.currency}) on payment_intent ${disputePi} (event ${event.id})`,
         );
         if (disputePi) {
-          const [aiR, ghR, bbR] = await Promise.all([
-            reverseAiCreditPurchase(disputePi),
-            reverseGithubCreditPurchase(disputePi),
-            reverseBrowserbaseCreditPurchase(disputePi),
-          ]);
-          if (aiR.reversed)
+          const purchase = await creditPurchaseForPaymentIntent(
+            stripe,
+            disputePi,
+          );
+          const reversals = await reverseCreditsForDispute(
+            disputePi,
+            purchase,
+            async (taken) => {
+              try {
+                await stripe.disputes.update(dispute.id, {
+                  metadata: restorableToMetadata(taken),
+                  // An update submits the dispute's evidence to the bank
+                  // unless told not to, and a submission is final: this
+                  // would answer every chargeback with an empty file.
+                  submit: false,
+                });
+              } catch (err) {
+                // Rolling back suits an outage, which the redelivery gets
+                // past. A refusal comes back on every redelivery, and rolling
+                // back on it would leave the credit unreversed for good, so
+                // the reversal stands and a person gets the amounts a win
+                // would have to give back.
+                if (!isRefusedStripeRequest(err)) throw err;
+                const context = {
+                  eventId: event.id,
+                  disputeId: dispute.id,
+                  paymentIntentId: disputePi,
+                  restorable:
+                    taken.map((r) => `${r.kind}:${r.restorable}`).join(",") ||
+                    "none",
+                };
+                logError(
+                  "stripe",
+                  "could not record on the dispute how much credit it reversed",
+                  err,
+                  context,
+                );
+                void sendAdminAlert({
+                  event: "stripe_dispute_reversal_unrecorded",
+                  severity: "warning",
+                  message: `Stripe refused the write that records on dispute ${dispute.id} how much credit it reversed (${context.restorable}). If the dispute is won, restore exactly that much by hand; "none" means there is nothing to restore.`,
+                  context,
+                });
+              }
+            },
+          );
+          for (const r of reversals) {
             console.log(
-              `[Stripe] Dispute clawed back ${aiR.tokens} AI tokens from user ${aiR.userId} (event ${event.id})`,
+              r.neverCredited
+                ? `[Stripe] Dispute on ${disputePi} arrived before its ${r.kind} credit; recorded so the credit is refused (event ${event.id})`
+                : `[Stripe] Dispute clawed back ${r.restorable} of ${r.amount} ${r.kind} credit from user ${r.userId} (event ${event.id})`,
             );
-          if (ghR.reversed)
-            console.log(
-              `[Stripe] Dispute clawed back ${ghR.tokens} GitHub review tokens from user ${ghR.userId} (event ${event.id})`,
-            );
-          if (bbR.reversed)
-            console.log(
-              `[Stripe] Dispute clawed back ${bbR.seconds}s of Browserbase credit from user ${bbR.userId} (event ${event.id})`,
-            );
+          }
           await emailCreditReversals(
-            [
-              {
-                ...aiR,
-                quantity: aiR.tokens ?? 0,
-                creditLabel: "AI analysis tokens",
-              },
-              {
-                ...ghR,
-                quantity: ghR.tokens ?? 0,
-                creditLabel: "GitHub review tokens",
-              },
-              {
-                ...bbR,
-                quantity: Math.round((bbR.seconds ?? 0) / 60),
-                creditLabel: "Browserbase minutes",
-              },
-            ],
+            reversals
+              .filter((r) => !r.neverCredited)
+              .map((r) => ({
+                reversed: true,
+                userId: r.userId,
+                quantity: creditQuantity(r.kind, r.amount),
+                creditLabel: CREDIT_LABELS[r.kind],
+              })),
             dispute.amount,
             dispute.currency,
             true,
+          );
+        }
+        break;
+      }
+
+      case "charge.dispute.closed": {
+        // "won" is a chargeback decided in our favour; "warning_closed" is an
+        // inquiry that never became one. Either way the money stayed, so the
+        // credit the dispute reversed is given back: exactly what it took,
+        // as recorded on the dispute when it opened.
+        const dispute = event.data.object as Stripe.Dispute;
+        if (dispute.status !== "won" && dispute.status !== "warning_closed") {
+          console.log(
+            `[Stripe] Dispute ${dispute.id} closed as ${dispute.status}; credits stay reversed (event ${event.id})`,
+          );
+          break;
+        }
+        const closedPi =
+          typeof dispute.payment_intent === "string"
+            ? dispute.payment_intent
+            : (dispute.payment_intent?.id ?? null);
+        if (!closedPi) break;
+
+        const restorable = restorableFromMetadata(dispute.metadata);
+        if (!restorable) {
+          // Opened before the amount was recorded, or Stripe refused the
+          // record when it opened. Guessing would mean restoring the whole
+          // purchase, credit the customer may already have spent, so a
+          // person decides.
+          const kinds = await reversedCreditKinds(closedPi);
+          if (kinds.length > 0) {
+            const context = {
+              eventId: event.id,
+              disputeId: dispute.id,
+              paymentIntentId: closedPi,
+              ledgers: kinds.join(","),
+            };
+            logError(
+              "stripe",
+              "a won dispute has reversed credits and no record of how much to restore",
+              undefined,
+              context,
+            );
+            void sendAdminAlert({
+              event: "stripe_dispute_won_unrestored",
+              severity: "warning",
+              message: `Dispute ${dispute.id} was won, and the credits it reversed (${kinds.join(", ")}) were not restored because the dispute carries no record of how much was taken. Restore them by hand from the user's credit balances.`,
+              context,
+            });
+          }
+          break;
+        }
+
+        const restored = await restoreCreditsAfterDispute(closedPi, restorable);
+        for (const r of restored) {
+          console.log(
+            `[Stripe] Dispute ${dispute.id} ${dispute.status}: restored ${r.amount} ${r.kind} credit to user ${r.userId} (event ${event.id})`,
           );
         }
         break;
@@ -1389,10 +1697,7 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
     // Delete our marker so the retry re-processes. Safe because every handler
     // write here is idempotent (plan UPDATE, credit ON CONFLICT tables).
     try {
-      await pool.query(
-        `DELETE FROM processed_stripe_events WHERE event_id = $1`,
-        [event.id],
-      );
+      await releaseStripeEvent(event.id);
     } catch (delErr) {
       console.error(
         "[Stripe] failed to roll back idempotency marker after handler error:",

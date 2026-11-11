@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
+import { parseIdParam } from "@/lib/api/path-id";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
@@ -17,7 +19,7 @@ import {
  * team they belong to. Same "team co-membership alone is enough for read
  * access" reasoning as GET /api/v3/webhooks.
  */
-export async function GET() {
+export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -44,7 +46,7 @@ export async function GET() {
       verificationRecordName: verificationRecordName(row.domain),
     })),
   });
-}
+});
 
 /**
  * POST /api/v3/domains — add a new domain, pending verification. Does not
@@ -55,7 +57,7 @@ export async function GET() {
  * distinct token, and can only reach 'verified' if THIS caller can
  * actually publish that token in DNS.
  */
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -85,8 +87,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const body = await request.json().catch(() => null);
-  const input = body?.domain;
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
+  const input = parsed.data.domain;
   if (!input || typeof input !== "string") {
     return NextResponse.json({ error: "Domain is required." }, { status: 400 });
   }
@@ -146,10 +149,10 @@ export async function POST(request: NextRequest) {
     },
     { status: 201 },
   );
-}
+});
 
 /** DELETE /api/v3/domains?id=123 */
-export async function DELETE(request: NextRequest) {
+export const DELETE = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session)
     return NextResponse.json(
@@ -157,14 +160,16 @@ export async function DELETE(request: NextRequest) {
       { status: 401 },
     );
 
-  const id = Number(request.nextUrl.searchParams.get("id"));
-  if (!id || !Number.isFinite(id)) {
+  const rawId = request.nextUrl.searchParams.get("id");
+  if (!rawId) {
     return NextResponse.json(
       { error: "Domain id is required." },
-      {
-        status: 400,
-      },
+      { status: 400 },
     );
+  }
+  const id = parseIdParam(rawId);
+  if (id === null) {
+    return NextResponse.json({ error: "Invalid domain id." }, { status: 400 });
   }
 
   const existing = await pool.query(
@@ -190,4 +195,4 @@ export async function DELETE(request: NextRequest) {
 
   await pool.query(`DELETE FROM domains WHERE id = $1`, [id]);
   return NextResponse.json({ success: true });
-}
+});

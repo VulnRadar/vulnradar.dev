@@ -7,6 +7,7 @@ import {
 } from "@/lib/config/constants";
 import { BRAND } from "@/lib/config/brand";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
+import { formatReportDate, formatReportTime } from "./format-instant";
 
 // ---------------------------------------------------------------------------
 // Colour
@@ -451,22 +452,13 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
   addText("SCAN DATE", 9, true, TEXT_MUTED);
   addSpacer(2);
   addText(
-    scanDate.toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    }),
+    formatReportDate(scanDate, { weekday: true }),
     11,
     false,
     TEXT_PRIMARY,
   );
   addText(
-    scanDate.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    }),
+    formatReportTime(scanDate, { seconds: true }),
     10,
     false,
     TEXT_SECONDARY,
@@ -710,7 +702,7 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
   addText("END OF REPORT", 9, true, TEXT_MUTED);
   addSpacer(4);
   addText(
-    `${APP_NAME} scanned ${result.url} with ${TOTAL_CHECKS_LABEL} checks on ${scanDate.toLocaleDateString()}.`,
+    `${APP_NAME} scanned ${result.url} with ${TOTAL_CHECKS_LABEL} checks on ${formatReportDate(scanDate)}.`,
     8,
     false,
     TEXT_MUTED,

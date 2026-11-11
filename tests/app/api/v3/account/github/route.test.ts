@@ -341,6 +341,26 @@ describe("PATCH /api/v3/account/github", () => {
     expect(res.status).toBe(401);
   });
 
+  // Owner decision D23, the same rule as the Discord sync.
+  it("is refused during an impersonation and writes nothing", async () => {
+    mockGetSession.mockResolvedValue({ userId: 3, impersonatedBy: 1 });
+    const res = await PATCH(patchRequest({ syncAvatar: true, syncName: true }));
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.impersonationBlocked).toBe(true);
+    expect(json.error).toMatch(/admin/i);
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockDeleteAvatarFilesIfLocal).not.toHaveBeenCalled();
+  });
+
+  it("still syncs for the account holder's own session", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [linked] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await PATCH(patchRequest({ syncName: true }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).updated).toEqual(["name"]);
+  });
+
   it("no-ops when nothing was asked for", async () => {
     const res = await PATCH(patchRequest({}));
     expect(await res.json()).toEqual({ success: true, updated: [] });

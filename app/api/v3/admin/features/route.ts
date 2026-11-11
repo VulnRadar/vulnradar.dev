@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
+import { parseRowId } from "@/lib/teams/parse-id";
 import {
   requireAdmin as _requireAdmin,
   isSuperAdminRole,
@@ -323,13 +325,15 @@ function appUrlShapeError(key: string, value: string): string | null {
  * Admin Features API
  * POST /api/v3/admin/features - Manage IP rules, security alerts, system settings, broadcasts, password policies
  */
-export async function POST(req: NextRequest) {
+export const POST = withErrorHandling(async (req: NextRequest) => {
   try {
     const user = await requireAdmin();
     if (!user)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = await req.json();
+    const parsed = await readJsonObject(req);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const { action, section } = body;
     const ip = await getClientIp();
 
@@ -345,7 +349,8 @@ export async function POST(req: NextRequest) {
         } = body;
 
         // Normalize URL/domain values by stripping protocol and trailing slashes
-        let normalizedValue = ip_address?.trim() || "";
+        let normalizedValue =
+          typeof ip_address === "string" ? ip_address.trim() : "";
         if (value_type === "url") {
           normalizedValue = normalizedValue.toLowerCase();
 
@@ -491,8 +496,26 @@ export async function POST(req: NextRequest) {
 
     if (section === "security_alerts") {
       if (action === "list") {
-        const { limit: rawLimit = 50, offset = 0, severity, user_id } = body;
+        const {
+          limit: rawLimit = 50,
+          offset: rawOffset,
+          severity,
+          user_id,
+        } = body;
         const limit = Math.min(500, Math.max(1, Number(rawLimit) || 50));
+        // OFFSET takes a bigint, so "abc" or 1.5 reached Postgres as a cast
+        // error and a 500, and a negative one as a different 500.
+        const offset = rawOffset === undefined ? 0 : rawOffset;
+        if (
+          typeof offset !== "number" ||
+          !Number.isSafeInteger(offset) ||
+          offset < 0
+        ) {
+          return NextResponse.json(
+            { error: "offset must be a whole number of at least 0." },
+            { status: 400 },
+          );
+        }
 
         // The account each alert is about. The panel's "Block user" action
         // blocks this user, and the row used to show only the alert type, an
@@ -682,17 +705,17 @@ export async function POST(req: NextRequest) {
               { status: 400 },
             );
           }
-          storedValue = validated.value;
+          const checked = validated.value;
 
-          const dateError = dateShapeError(key, storedValue);
+          const dateError = dateShapeError(key, checked);
           if (dateError) {
             return NextResponse.json({ error: dateError }, { status: 400 });
           }
-          const appUrlError = appUrlShapeError(key, storedValue);
+          const appUrlError = appUrlShapeError(key, checked);
           if (appUrlError) {
             return NextResponse.json({ error: appUrlError }, { status: 400 });
           }
-          if (key === "APP_URL") storedValue = new URL(storedValue).origin;
+          storedValue = key === "APP_URL" ? new URL(checked).origin : checked;
         }
 
         const oldResult = await pool.query(
@@ -1113,7 +1136,13 @@ export async function POST(req: NextRequest) {
       }
 
       if (action === "send") {
-        const { id } = body;
+        const id = parseRowId(body.id);
+        if (id === null) {
+          return NextResponse.json(
+            { error: "Invalid broadcast id" },
+            { status: 400 },
+          );
+        }
 
         // Get message first to validate it exists
         const check = await pool.query(
@@ -1212,7 +1241,13 @@ export async function POST(req: NextRequest) {
       }
 
       if (action === "resend") {
-        const { id } = body;
+        const id = parseRowId(body.id);
+        if (id === null) {
+          return NextResponse.json(
+            { error: "Invalid broadcast id" },
+            { status: 400 },
+          );
+        }
 
         // Claim the resend, rather than checking then writing.
         //
@@ -1291,4 +1326,4 @@ export async function POST(req: NextRequest) {
       { status: 500 },
     );
   }
-}
+});

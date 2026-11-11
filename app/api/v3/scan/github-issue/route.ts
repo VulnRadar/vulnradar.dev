@@ -9,6 +9,7 @@ import { getDecryptedGithubToken } from "@/lib/github/github-connections";
 import { createRepoIssue, isGithubTimeout } from "@/lib/github/github-api";
 import { normalizeHostForReputation } from "@/lib/scanner/host-reputation";
 import type { Vulnerability } from "@/lib/scanner/types";
+import { checkPageHref } from "@/lib/seo/check-page-href";
 // One list, not a fourth private copy. See its definition for the nine-table
 // history that made this worth consolidating.
 import { SEVERITY_ORDER } from "@/lib/config/client-constants";
@@ -69,7 +70,12 @@ function buildIssueBody(
       SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity),
   );
   for (const f of bySeverity.slice(0, MAX_FINDINGS_LISTED)) {
-    lines.push(`- **[${f.severity.toUpperCase()}]** ${f.title}`);
+    // Each line links the check's fix guide, so whoever picks the issue up
+    // starts at how to fix it rather than at a title.
+    const guide = checkPageHref(f.id);
+    lines.push(
+      `- **[${f.severity.toUpperCase()}]** ${f.title}${guide ? ` ([fix guide](${APP_URL}${guide}))` : ""}`,
+    );
   }
   if (bySeverity.length > MAX_FINDINGS_LISTED) {
     lines.push(

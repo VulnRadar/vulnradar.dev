@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getClientIp } from "@/lib/api/request-utils";
+import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 import { logAction, requirePermission } from "@/lib/auth/authorization";
 
-export async function GET() {
+export const GET = withErrorHandling(async () => {
   try {
     // requirePermission (not a raw getSession + hasStaffPermission) so this
     // also honors ENFORCE_STAFF_2FA like every other gated admin route.
@@ -25,9 +26,9 @@ export async function GET() {
       { status: 500 },
     );
   }
-}
+});
 
-export async function POST(req: Request) {
+export const POST = withErrorHandling(async (req: Request) => {
   try {
     const admin = await requirePermission(STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS);
     if (!admin) {
@@ -36,7 +37,9 @@ export async function POST(req: Request) {
 
     // audit-log: trusted client IP only.
     const ip = (await getClientIp()) || null;
-    const body = await req.json();
+    const parsed = await readJsonObject(req);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     const {
       title,
       message,
@@ -148,4 +151,4 @@ export async function POST(req: Request) {
       { status: 500 },
     );
   }
-}
+});

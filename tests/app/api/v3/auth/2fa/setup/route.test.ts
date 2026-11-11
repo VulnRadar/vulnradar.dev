@@ -183,6 +183,90 @@ describe("GET /api/v3/auth/2fa/setup", () => {
     // Encryption round-trips back to the same secret returned to the client.
     expect(decryptApiKey(storedEncrypted)).toBe(json.secret);
   });
+
+  it("is refused during an impersonation, like POST { action: 'start' } is", async () => {
+    // The old entry point to the same write: guarding only the POST would
+    // leave a cached client's GET as the way around it.
+    login(1);
+    sessionRow = defaultSessionRow({ user_id: 1, impersonated_by: 9 });
+    const res = await GET();
+    expect(res.status).toBe(403);
+    expect((await res.json()).impersonationBlocked).toBe(true);
+    expect(totpSecretUpdateCalls).toHaveLength(0);
+  });
+});
+
+// Starting enrolment writes a new totp_secret, so it is a POST: a GET is
+// exempt from the CSRF origin check, and any page could fire one from an
+// <img> tag to reset a half-finished enrolment. GET stays until the internal
+// alias deletion so a cached client keeps working.
+describe("POST /api/v3/auth/2fa/setup with { action: 'start' }", () => {
+  it("requires a session", async () => {
+    const res = await POST(req("POST", { action: "start" }));
+    expect(res.status).toBe(401);
+    expect(totpSecretUpdateCalls).toHaveLength(0);
+  });
+
+  it("returns the same secret and URI the GET does, storing only the ciphertext", async () => {
+    login(1);
+    const res = await POST(req("POST", { action: "start" }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(Object.keys(json).sort()).toEqual(["secret", "uri"]);
+    expect(json.secret).toMatch(/^[A-Z2-7]+$/);
+    expect(json.uri).toMatch(/^otpauth:\/\/totp\//);
+    expect(totpSecretUpdateCalls).toHaveLength(1);
+    const [stored, userId] = totpSecretUpdateCalls[0];
+    expect(userId).toBe(1);
+    expect(decryptApiKey(stored as string)).toBe(json.secret);
+  });
+
+  it("refuses to overwrite an already-enabled setup", async () => {
+    login();
+    totpEnabledRow = { totp_enabled: true };
+    const res = await POST(req("POST", { action: "start" }));
+    expect(res.status).toBe(400);
+    expect(totpSecretUpdateCalls).toHaveLength(0);
+  });
+
+  it("fails closed (503) when server-side encryption isn't configured", async () => {
+    login();
+    const original = process.env.API_KEY_ENCRYPTION_KEY;
+    delete process.env.API_KEY_ENCRYPTION_KEY;
+    try {
+      const res = await POST(req("POST", { action: "start" }));
+      expect(res.status).toBe(503);
+      expect(totpSecretUpdateCalls).toHaveLength(0);
+    } finally {
+      process.env.API_KEY_ENCRYPTION_KEY = original;
+    }
+  });
+
+  it("asks for no password and spends none of the password attempts", async () => {
+    login(1);
+    rateLimitCounts.set("2fa-setup:1:unknown", 5);
+    const res = await POST(req("POST", { action: "start" }));
+    expect(res.status).toBe(200);
+    expect(rateLimitCounts.get("2fa-setup:1:unknown")).toBe(5);
+  });
+
+  it("is refused during an impersonation, like finishing enrolment is", async () => {
+    login(1);
+    sessionRow = defaultSessionRow({ user_id: 1, impersonated_by: 9 });
+    const res = await POST(req("POST", { action: "start" }));
+    expect(res.status).toBe(403);
+    expect((await res.json()).impersonationBlocked).toBe(true);
+    expect(totpSecretUpdateCalls).toHaveLength(0);
+  });
+
+  it("answers 400 for an action it does not know", async () => {
+    login();
+    const res = await POST(req("POST", { action: "restart" }));
+    expect(res.status).toBe(400);
+    expect(totpSecretUpdateCalls).toHaveLength(0);
+    expect(enableUpdateCalls).toHaveLength(0);
+  });
 });
 
 describe("POST /api/v3/auth/2fa/setup", () => {

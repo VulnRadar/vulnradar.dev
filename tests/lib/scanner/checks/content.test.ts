@@ -306,26 +306,35 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
   ],
-  // The optional wrapper call sat between two `\s*` runs and could match
-  // nothing, leaving the two runs free to split the same whitespace every
-  // way: 16.2 seconds on a 128 KB body. The paren is folded into the
-  // optional group now, so every form it has to keep matching is listed.
+  // The legacy detector is an inert stub (owner decision D1): the link case is
+  // page-open-redirect-param-shape's and the client-side assignment is
+  // open-redirect-client-js's. Every shape it used to fire on is kept here so
+  // the stub staying quiet is a decision the suite shows, not an accident. The
+  // whitespace-run fixture is from when the second branch backtracked.
   "open-redirect": [
     {
-      description: "a redirect parameter carrying an absolute URL fires",
+      description:
+        "a redirect parameter carrying an absolute URL is the page check's now",
       body: '<html><body><a href="/go?next=https://evil.example/pwn">continue</a></body></html>',
-      expect: "fire",
-      evidenceIncludes: "open-redirect",
+      expect: "skip",
     },
     {
-      description: "assigning location straight from the query string fires",
+      description:
+        "an oEmbed url parameter naming the same origin never was a redirect",
+      url: "https://www.wbiw.com/",
+      body: '<html><head><link rel="alternate" type="application/json+oembed" href="/oembed?url=https%3A%2F%2Fwww.wbiw.com%2F"></head></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "assigning location from the query string is open-redirect-client-js's now",
       body: "<html><body><script>window.location = new URLSearchParams(location.search).get('r')</script></body></html>",
-      expect: "fire",
+      expect: "skip",
     },
     {
-      description: "the decodeURIComponent-wrapped form fires",
+      description: "the decodeURIComponent-wrapped form is also not reported",
       body: "<html><body><script>window.location = decodeURIComponent(location.hash)</script></body></html>",
-      expect: "fire",
+      expect: "skip",
     },
     {
       description: "a relative in-app redirect target does not fire",
@@ -368,10 +377,17 @@ const fixtures: DetectorFixtures = {
   ],
   "sensitive-meta-tags": [
     {
-      description: "meta tag whose name identifies it as a CSRF token",
-      body: '<html><head><meta name="csrf-token" content="abc123"></head></html>',
+      description:
+        "a meta tag naming an API secret still fires (the csrf pattern does not)",
+      body: '<html><head><meta name="api-secret" content="abc123"></head></html>',
       expect: "fire",
       evidenceIncludes: "sensitive data",
+    },
+    {
+      description:
+        "a CSRF token in a meta tag is how Laravel, Rails and Django hand it to script",
+      body: '<html><head><meta name="csrf-token" content="abc123"><meta name="csrf-param" content="authenticity_token"></head></html>',
+      expect: "skip",
     },
     {
       description:

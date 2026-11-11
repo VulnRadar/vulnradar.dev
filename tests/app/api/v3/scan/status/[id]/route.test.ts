@@ -43,9 +43,18 @@ function ctx(id: string) {
 
 const OWNER_ID = 42;
 
+const KEY = {
+  userId: OWNER_ID,
+  keyId: 7,
+  dailyLimit: 50,
+  needsTermsAcceptance: false,
+  scopes: ["scan:read", "scan:write"],
+};
+
 function row(overrides: Record<string, unknown> = {}) {
   return {
     id: 1,
+    public_id: "b".repeat(32),
     user_id: OWNER_ID,
     url: "https://example.com/",
     status: "running",
@@ -234,17 +243,67 @@ describe("GET /api/v3/scan/status/:id", () => {
     expect(params).toEqual(["a".repeat(32), null, OWNER_ID]);
   });
 
-  it.each(["not-a-scan", "99999999999999999999", "-3", "1.5"])(
-    "answers 404, not 500, for an id that is not a scan: %s",
-    async (id) => {
-      mockQuery.mockResolvedValueOnce({ rows: [] });
+  // The path segment is parsed before it reaches Postgres. Nothing in this list
+  // can name a scan, so none of them costs a query.
+  it.each([
+    "not-a-scan",
+    "99999999999999999999",
+    "-3",
+    "1.5",
+    "12abc",
+    "0",
+    "A".repeat(32),
+    "a".repeat(31),
+  ])("answers 404, not 500, and runs no query for: %s", async (id) => {
+    const res = await GET(req(), ctx(id));
 
-      const res = await GET(req(), ctx(id));
+    expect(res.status).toBe(404);
+    expect((await res.json()).code).toBe("SCAN_NOT_FOUND");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
 
-      expect(res.status).toBe(404);
-      expect(mockQuery.mock.calls[0][1]).toEqual([id, null, OWNER_ID]);
-    },
-  );
+  it("refuses a zero-padded number with no query, as History does", async () => {
+    const res = await GET(req(), ctx("007"));
+
+    expect(res.status).toBe(404);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("answers a failed scan with errorMessage beside error, the same sentence", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        row({
+          status: "failed",
+          error_message: "Scan exceeded the 120s time limit.",
+          failure_kind: "timeout",
+        }),
+      ],
+    });
+
+    const json = await (await GET(req(), ctx("1"))).json();
+
+    expect(json.error).toBe("Scan exceeded the 120s time limit.");
+    expect(json.errorMessage).toBe(json.error);
+    expect(json.failureKind).toBe("timeout");
+  });
+
+  it("sends errorMessage on a failed scan only", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [row({ status: "running" })] });
+    const running = await (await GET(req(), ctx("1"))).json();
+    expect(running.errorMessage).toBeUndefined();
+    expect(running.error).toBeUndefined();
+  });
+
+  it("names the scan by its public id on every status", async () => {
+    const publicId = "c".repeat(32);
+    mockQuery.mockResolvedValueOnce({
+      rows: [row({ status: "running", public_id: publicId })],
+    });
+
+    const json = await (await GET(req(), ctx("1"))).json();
+
+    expect(json.publicId).toBe(publicId);
+  });
 
   it("reports why a failed scan failed, as a kind a client can branch on", async () => {
     mockQuery.mockResolvedValueOnce({
@@ -332,7 +391,73 @@ describe("GET /api/v3/scan/status/:id", () => {
     mockValidateApiKey.mockResolvedValue(null);
     const res = await GET(req("GET", "vr_live_bad"), ctx("1"));
     expect(res.status).toBe(401);
+    expect((await res.json()).code).toBe("INVALID_API_KEY");
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("does not fall back to the session when a bad key is sent", async () => {
+    mockValidateApiKey.mockResolvedValue(null);
+
+    const res = await GET(req("GET", "vr_live_bad"), ctx("1"));
+
+    expect(res.status).toBe(401);
+    expect(mockGetSession).not.toHaveBeenCalled();
+  });
+
+  it("refuses a key whose account has not accepted the current Terms", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      ...KEY,
+      needsTermsAcceptance: true,
+    });
+
+    const res = await GET(req("GET", "vr_live_test"), ctx("1"));
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("TERMS_ACCEPTANCE_REQUIRED");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("needs scan:read on a key", async () => {
+    mockValidateApiKey.mockResolvedValue({ ...KEY, scopes: ["scan:write"] });
+
+    const res = await GET(req("GET", "vr_live_test"), ctx("1"));
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("SCOPE_MISSING");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("scopes the read to the key's own account", async () => {
+    mockValidateApiKey.mockResolvedValue({ ...KEY, userId: 77 });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await GET(req("GET", "vr_live_test"), ctx("1"));
+
+    expect(res.status).toBe(404);
+    expect(mockQuery.mock.calls[0][1]).toEqual(["1", 1, 77]);
+  });
+
+  it("answers 401 with the envelope and a Bearer challenge when nothing is sent", async () => {
+    mockGetSession.mockResolvedValue(null);
+
+    const res = await GET(req(), ctx("1"));
+
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.code).toBe("UNAUTHENTICATED");
+    expect(json.error).toBeTruthy();
+    expect(res.headers.get("WWW-Authenticate")).toContain("Bearer");
+  });
+
+  it("answers 500 with the envelope, not a thrown error, when the lookup fails", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockRejectedValueOnce(new Error("connection lost"));
+
+    const res = await GET(req(), ctx("1"));
+
+    expect(res.status).toBe(500);
+    expect((await res.json()).code).toBe("INTERNAL_ERROR");
+    logged.mockRestore();
   });
 });
 
@@ -345,7 +470,12 @@ describe("DELETE /api/v3/scan/status/:id", () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json).toEqual({ status: "failed", cancelled: true });
+    expect(json).toEqual({
+      publicId: "b".repeat(32),
+      status: "failed",
+      cancelled: true,
+      failureKind: "cancelled",
+    });
 
     // The flag has to survive the failure write, which is what the running
     // job reads to stop. finalizeScanFailure used to clear it here, so the
@@ -386,13 +516,68 @@ describe("DELETE /api/v3/scan/status/:id", () => {
     expect(params).toEqual(["1", 1, OWNER_ID]);
   });
 
-  it("answers 404 for an id that is not a scan instead of throwing from the cancel", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-
+  it("answers 404 for an id that is not a scan, without a query or a cancel", async () => {
     const res = await DELETE(req("DELETE"), ctx("not-a-scan"));
 
     expect(res.status).toBe(404);
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("accepts the public id and answers it back", async () => {
+    const publicId = "d".repeat(32);
+    mockQuery.mockResolvedValueOnce({
+      rows: [row({ status: "running", public_id: publicId })],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 });
+
+    const res = await DELETE(req("DELETE"), ctx(publicId));
+
+    expect(res.status).toBe(200);
+    expect(mockQuery.mock.calls[0][1]).toEqual([publicId, null, OWNER_ID]);
+    expect((await res.json()).publicId).toBe(publicId);
+  });
+
+  it("answers an already finished scan with the not-cancellable code", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [row({ status: "failed" })] });
+
+    const res = await DELETE(req("DELETE"), ctx("1"));
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe("SCAN_NOT_CANCELLABLE");
+  });
+
+  it("is not charged against an API key's quota", async () => {
+    mockValidateApiKey.mockResolvedValue(KEY);
+    mockQuery.mockResolvedValueOnce({ rows: [row({ status: "running" })] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 });
+
+    const res = await DELETE(req("DELETE", "vr_live_test"), ctx("1"));
+
+    expect(res.status).toBe(200);
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("needs scan:write on a key, and says which scope is missing", async () => {
+    mockValidateApiKey.mockResolvedValue({ ...KEY, scopes: ["scan:read"] });
+
+    const res = await DELETE(req("DELETE", "vr_live_test"), ctx("1"));
+
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.code).toBe("SCOPE_MISSING");
+    expect(json.error).toContain("scan:write");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("answers 401 with the envelope and a Bearer challenge when nothing is sent", async () => {
+    mockGetSession.mockResolvedValue(null);
+
+    const res = await DELETE(req("DELETE"), ctx("1"));
+
+    expect(res.status).toBe(401);
+    expect((await res.json()).code).toBe("UNAUTHENTICATED");
+    expect(res.headers.get("WWW-Authenticate")).toContain("Bearer");
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("returns 409 when the scan finishes in the race between the SELECT and the cancel UPDATE", async () => {

@@ -105,8 +105,10 @@ vi.mock("@/lib/email/email", () => ({
   criticalFindingsEmail: () => ({}),
 }));
 
-const { executeCrawlScan, crawlSoftDeadlineMs, asyncOuterTimeoutMs } =
+const { executeCrawlScan, crawlSoftDeadlineMs } =
   await import("@/lib/scanner/execute-crawl-scan");
+const { userAgentOf } = await import("./_user-agent-of");
+const { SCANNER_UA } = await import("@/lib/scanner/user-agent");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { currentScanId } = await import("@/lib/database/request-context");
 
@@ -992,19 +994,6 @@ describe("crawlSoftDeadlineMs", () => {
   });
 });
 
-describe("asyncOuterTimeoutMs", () => {
-  it("keeps the outer ceiling at least 2s past the branch timeout", () => {
-    // Configured below the branch timeout: the outer race would fire first
-    // and discard branches that had already finished.
-    expect(asyncOuterTimeoutMs(3_000, 12_000)).toBe(14_000);
-    expect(asyncOuterTimeoutMs(12_000, 12_000)).toBe(14_000);
-  });
-
-  it("leaves a ceiling that is already clear of the branch timeout alone", () => {
-    expect(asyncOuterTimeoutMs(15_000, 12_000)).toBe(15_000);
-  });
-});
-
 describe("executeCrawlScan: a crawl that runs out of time", () => {
   /**
    * Run a 9-page crawl whose first page to reach its checks moves the clock
@@ -1124,6 +1113,65 @@ describe("executeCrawlScan: pages that could not be read", () => {
         reason: "Blocked by a bot challenge",
       },
     ]);
+  });
+
+  it("lists one refused page among five by its status, without marking the crawl incomplete", async () => {
+    const pages = [
+      "https://example.com/",
+      "https://example.com/a",
+      "https://example.com/admin",
+      "https://example.com/c",
+      "https://example.com/d",
+    ];
+    mockSafeFetch.mockImplementation(async (url: string) =>
+      url.endsWith("/admin")
+        ? new Response("<html><title>403 Forbidden</title></html>", {
+            status: 403,
+            headers: { "content-type": "text/html", server: "awselb/2.0" },
+          })
+        : new Response("<html></html>", {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          }),
+    );
+
+    await executeCrawlScan(baseParams({ scanId: 79, selectedUrls: pages }));
+
+    const meta = completedMeta(79);
+    expect(meta.crawl.pagesScanned).toBe(4);
+    expect(meta.crawl.pagesUnreachable).toEqual([
+      { url: "https://example.com/admin", reason: "HTTP 403" },
+    ]);
+    // Its page checks never ran against the 403, so nothing was graded on it.
+    expect(
+      mockRunSyncChecks.mock.calls.map((call) => call[0] as string),
+    ).not.toContain("https://example.com/admin");
+    expect(meta.incomplete ?? []).toEqual([]);
+  });
+
+  it("keeps the host-level branches off HTTP when the main page is refused", async () => {
+    mockSafeFetch.mockImplementation(
+      async () =>
+        new Response("<html><title>403 Forbidden</title></html>", {
+          status: 403,
+          headers: { "content-type": "text/html", server: "awselb/2.0" },
+        }),
+    );
+
+    await executeCrawlScan(baseParams({ scanId: 80 }));
+
+    // The first async call is the host-level half, started once per crawl.
+    expect(mockRunAsyncChecks.mock.calls[0][4]).toBe("network");
+    expect(completedMeta(80).incomplete).toContain("bot-challenge");
+  });
+
+  it("fetches every page with the scanner's compatible User-Agent", async () => {
+    await executeCrawlScan(baseParams({ scanId: 81 }));
+
+    expect(mockSafeFetch.mock.calls.length).toBeGreaterThan(0);
+    for (const call of mockSafeFetch.mock.calls) {
+      expect(userAgentOf(call[1] as RequestInit)).toBe(SCANNER_UA);
+    }
   });
 
   it("writes an empty pagesUnreachable list when every page was read", async () => {

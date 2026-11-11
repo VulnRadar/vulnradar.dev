@@ -981,7 +981,12 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
   async function startAuthenticatorSetup() {
     setStartingSetup(true);
     try {
-      const res = await fetch(API.AUTH.TWO_FA.SETUP);
+      // A POST, so the CSRF origin check covers the write of a new secret.
+      const res = await fetch(API.AUTH.TWO_FA.SETUP, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "start" }),
+      });
       const data = await res.json();
       if (res.ok) {
         setTotpSetup({ uri: data.uri, secret: data.secret });

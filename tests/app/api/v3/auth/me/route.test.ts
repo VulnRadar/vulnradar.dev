@@ -81,6 +81,34 @@ vi.mock("@/lib/api/api-keys", () => ({
   validateApiKey: (...args: unknown[]) => mockValidateApiKey(...args),
 }));
 
+// The Bearer half's limiter and quota block have their own suite
+// (tests/lib/auth/me.test.ts). Replaced here so the faked pool above answers
+// only the queries this file is about.
+const mockCheckRateLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/rate-limiting/rate-limit")>()),
+  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
+}));
+
+const QUOTA = {
+  scans: {
+    limit: 100,
+    used: 3,
+    remaining: 97,
+    resetsAt: "2026-01-02T00:00:00.000Z",
+  },
+  requests: {
+    limit: 500,
+    used: 7,
+    remaining: 493,
+    resetsAt: "2026-01-02T05:00:00.000Z",
+  },
+};
+const mockBuildQuotaBlock = vi.fn();
+vi.mock("@/lib/api/quota", () => ({
+  buildQuotaBlock: (...args: unknown[]) => mockBuildQuotaBlock(...args),
+}));
+
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
 const { GET } = await import("@/app/api/v3/auth/me/route");
@@ -106,7 +134,31 @@ beforeEach(() => {
   bearerUserRow = null;
   settingsRows = [];
   invalidateSettingsCache();
+  mockCheckRateLimit.mockReset();
+  mockCheckRateLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 59,
+    retryAfterSeconds: 0,
+  });
+  mockBuildQuotaBlock.mockReset();
+  mockBuildQuotaBlock.mockResolvedValue(QUOTA);
 });
+
+/** A distinct key id per test, so the per-key quota cache never carries over. */
+let nextKeyId = 1000;
+function keyFor(overrides: Record<string, unknown> = {}) {
+  return {
+    keyId: nextKeyId++,
+    keyName: "CI key",
+    userId: 5,
+    email: "api@example.com",
+    userName: "API User",
+    dailyLimit: 500,
+    scopes: ["scan:read", "scan:write"],
+    needsTermsAcceptance: false,
+    ...overrides,
+  };
+}
 
 describe("GET /api/v3/auth/me", () => {
   describe("bearer token path", () => {
@@ -114,27 +166,72 @@ describe("GET /api/v3/auth/me", () => {
       mockValidateApiKey.mockResolvedValue(null);
       const res = await GET(meRequest({ authorization: "Bearer vr_bad_key" }));
       expect(res.status).toBe(401);
+      expect((await res.json()).code).toBe("INVALID_API_KEY");
+      expect(mockCheckRateLimit).not.toHaveBeenCalled();
     });
 
-    it("rejects a key that still needs Terms of Service acceptance", async () => {
-      mockValidateApiKey.mockResolvedValue({
-        userId: 5,
-        email: "api@example.com",
-        needsTermsAcceptance: true,
-      });
+    it("rejects a key that still needs Terms of Service acceptance, with its code", async () => {
+      mockValidateApiKey.mockResolvedValue(
+        keyFor({ needsTermsAcceptance: true }),
+      );
       const res = await GET(
         meRequest({ authorization: "Bearer vr_needs_tos" }),
       );
       expect(res.status).toBe(403);
+      expect((await res.json()).code).toBe("TERMS_ACCEPTANCE_REQUIRED");
+      expect(mockBuildQuotaBlock).not.toHaveBeenCalled();
+    });
+
+    it("answers 429 RATE_LIMITED with a Retry-After once the key's identity checks are spent", async () => {
+      const key = keyFor();
+      mockValidateApiKey.mockResolvedValue(key);
+      mockCheckRateLimit.mockResolvedValue({
+        allowed: false,
+        remaining: 0,
+        retryAfterSeconds: 42,
+      });
+
+      const res = await GET(meRequest({ authorization: "Bearer vr_busy" }));
+
+      expect(res.status).toBe(429);
+      expect(res.headers.get("Retry-After")).toBe("42");
+      expect((await res.json()).code).toBe("RATE_LIMITED");
+      expect(mockCheckRateLimit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: `auth-me:${key.keyId}`,
+          limit: "authMe",
+        }),
+      );
+      expect(mockBuildQuotaBlock).not.toHaveBeenCalled();
+      expect(queries).toHaveLength(0);
+    });
+
+    it("adds the key and the quota block to what a key learns about itself", async () => {
+      const key = keyFor();
+      mockValidateApiKey.mockResolvedValue(key);
+      bearerUserRow = { role: "user", plan: "free" };
+
+      const res = await GET(meRequest({ authorization: "Bearer vr_good_key" }));
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.key).toEqual({
+        id: key.keyId,
+        name: "CI key",
+        scopes: ["scan:read", "scan:write"],
+      });
+      expect(json.quota).toEqual(QUOTA);
+      expect(mockBuildQuotaBlock).toHaveBeenCalledWith(5, {
+        keyId: key.keyId,
+        dailyLimit: 500,
+      });
+      // The session view's fields stay on the session half.
+      expect(json.apiKeys).toBeUndefined();
+      expect(json.badges).toBeUndefined();
     });
 
     it("returns account info for a valid key, with no gift, using the plain plan", async () => {
-      mockValidateApiKey.mockResolvedValue({
-        userId: 5,
-        email: "api@example.com",
-        userName: "API User",
-        needsTermsAcceptance: false,
-      });
+      mockValidateApiKey.mockResolvedValue(keyFor());
       bearerUserRow = {
         totp_enabled: false,
         two_factor_method: null,
@@ -159,11 +256,7 @@ describe("GET /api/v3/auth/me", () => {
     });
 
     it("prefers an active gifted plan over the account's own plan", async () => {
-      mockValidateApiKey.mockResolvedValue({
-        userId: 5,
-        email: "api@example.com",
-        needsTermsAcceptance: false,
-      });
+      mockValidateApiKey.mockResolvedValue(keyFor());
       bearerUserRow = {
         totp_enabled: false,
         two_factor_method: null,
@@ -519,6 +612,73 @@ describe("GET /api/v3/auth/me", () => {
       expect(json.termsChangeSummary).toBe(
         "Added a new data retention clause.",
       );
+    });
+
+    // The Developer tab gates its Create button on this number, so it has to
+    // be the one POST /keys enforces: the live, admin-editable setting for
+    // the resolved plan, not the catalog's shipped default.
+    describe("apiKeys, the live per-plan key limit", () => {
+      function signIn(row: Record<string, unknown>) {
+        cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+        sessionRow = defaultSessionRow({ user_id: 7 });
+        userInfoRow = {
+          totp_enabled: false,
+          two_factor_method: null,
+          onboarding_completed: true,
+          avatar_url: null,
+          backup_codes: null,
+          subscription_status: null,
+          discord_id: null,
+          role: "user",
+          plan: "free",
+          ...row,
+        };
+      }
+
+      const billingOn = (extra: { key: string; value: string }[] = []) => [
+        { key: "BILLING_ENABLED", value: "true" },
+        { key: "BILLING_FREE_API_KEYS", value: "2" },
+        { key: "BILLING_CORE_SUPPORTER_API_KEYS", value: "7" },
+        { key: "BILLING_PRO_SUPPORTER_API_KEYS", value: "11" },
+        { key: "BILLING_ELITE_SUPPORTER_API_KEYS", value: "-1" },
+        ...extra,
+      ];
+
+      it("is -1 (unlimited) when billing is off", async () => {
+        signIn({ plan: "core_supporter" });
+        settingsRows = [{ key: "BILLING_ENABLED", value: "false" }];
+        const json = await (await GET(meRequest())).json();
+        expect(json.apiKeys).toBe(-1);
+      });
+
+      it("reads an admin's edited limit for the account's own plan", async () => {
+        signIn({ plan: "core_supporter" });
+        settingsRows = billingOn();
+        const json = await (await GET(meRequest())).json();
+        expect(json.apiKeys).toBe(7);
+      });
+
+      it("follows a higher gifted plan", async () => {
+        signIn({ plan: "free" });
+        giftedRow = { plan: "pro_supporter", expires_at: "2099-01-01" };
+        settingsRows = billingOn();
+        const json = await (await GET(meRequest())).json();
+        expect(json.apiKeys).toBe(11);
+      });
+
+      it("gives a staff account on the free plan the Pro Supporter floor", async () => {
+        signIn({ plan: "free", role: "admin" });
+        settingsRows = billingOn();
+        const json = await (await GET(meRequest())).json();
+        expect(json.apiKeys).toBe(11);
+      });
+
+      it("passes an unlimited plan through as -1", async () => {
+        signIn({ plan: "elite_supporter" });
+        settingsRows = billingOn();
+        const json = await (await GET(meRequest())).json();
+        expect(json.apiKeys).toBe(-1);
+      });
     });
   });
 });
