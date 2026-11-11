@@ -84,24 +84,62 @@ async function verifyRequiredTables(
   }
 }
 
+/** One sequence a SERIAL column owns, as the catalog query below lists it. */
+export interface OwnedSequence {
+  /** Schema-qualified and quoted where needed, ready for ::regclass. */
+  seq_ref: string;
+  /** quote_ident'd, ready to interpolate. */
+  tbl_ident: string;
+  col_ident: string;
+  tbl_name: string;
+}
+
+/**
+ * The repair for one sequence, as a single statement: read MAX(id) and the
+ * sequence's current position together, and move it only when it is behind.
+ *
+ * This used to read last_value in one query, MAX(id) in a second and call
+ * setval with the number it had computed in a third. A deploy boots while the
+ * old instance is still taking inserts, so between the first read and the
+ * setval the sequence could move past MAX(id), and setval then moved it back:
+ * the next inserts got ids that were already taken and failed on the primary
+ * key (bug-db-6). Here the comparison and the setval are one statement, and
+ * the value handed to setval is re-read inside it with GREATEST, so the only
+ * value it ever sets is one at or above where the sequence is at that moment.
+ *
+ * pg_sequence_last_value is NULL for a sequence nothing has drawn from yet;
+ * COALESCE treats that as 0, so a table filled with explicit ids is repaired.
+ */
+export function sequenceRepairSql(seq: OwnedSequence): {
+  text: string;
+  values: unknown[];
+} {
+  return {
+    text: `SELECT x.prev_value, setval($1::regclass, GREATEST(x.m, COALESCE(pg_sequence_last_value($1::regclass), 0))) AS new_value
+             FROM (SELECT MAX(${seq.col_ident})::bigint AS m,
+                          pg_sequence_last_value($1::regclass) AS prev_value
+                     FROM ${seq.tbl_ident}) x
+            WHERE x.m > COALESCE(pg_sequence_last_value($1::regclass), 0)`,
+    values: [seq.seq_ref],
+  };
+}
+
 /**
  * Detects and fixes any SERIAL sequence that fell behind MAX(id), e.g. after a
  * bulk import, seed, or explicit-ID insert that bypassed the migration tool.
  * Only logs when something was actually broken and fixed.
  */
-async function repairSequences(pool: Pool, appName: string): Promise<void> {
+export async function repairSequences(
+  pool: Pool,
+  appName: string,
+): Promise<void> {
   try {
-    const seqRes = await pool.query<{
-      seq_name: string;
-      tbl_name: string;
-      col_name: string;
-      last_value: string | null;
-    }>(`
+    const seqRes = await pool.query<OwnedSequence>(`
       SELECT
-        s.relname                     AS seq_name,
-        t.relname                     AS tbl_name,
-        a.attname                     AS col_name,
-        pg_sequence_last_value(s.oid) AS last_value
+        s.oid::regclass::text         AS seq_ref,
+        quote_ident(t.relname)        AS tbl_ident,
+        quote_ident(a.attname)        AS col_ident,
+        t.relname                     AS tbl_name
       FROM pg_class s
       JOIN pg_depend d ON d.objid = s.oid
         AND d.classid    = 'pg_class'::regclass
@@ -118,19 +156,17 @@ async function repairSequences(pool: Pool, appName: string): Promise<void> {
 
     const fixed: string[] = [];
 
-    for (const row of seqRes.rows) {
-      const maxRes = await pool.query<{ max_val: string | null }>(
-        `SELECT MAX("${row.col_name}") AS max_val FROM "${row.tbl_name}"`,
-      );
-      const maxVal =
-        maxRes.rows[0]?.max_val != null
-          ? parseInt(maxRes.rows[0].max_val, 10)
-          : 0;
-      const seqVal = row.last_value != null ? parseInt(row.last_value, 10) : 0;
-
-      if (maxVal > 0 && maxVal > seqVal) {
-        await pool.query(`SELECT setval($1, $2)`, [row.seq_name, maxVal]);
-        fixed.push(`${row.tbl_name} (was ${seqVal}, fixed to ${maxVal})`);
+    for (const seq of seqRes.rows) {
+      const { text, values } = sequenceRepairSql(seq);
+      const result = await pool.query<{
+        prev_value: string | null;
+        new_value: string;
+      }>(text, values);
+      const row = result.rows[0];
+      if (row) {
+        fixed.push(
+          `${seq.tbl_name} (was ${row.prev_value ?? "unused"}, fixed to ${row.new_value})`,
+        );
       }
     }
 
