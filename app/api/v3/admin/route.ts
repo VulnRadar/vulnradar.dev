@@ -2330,8 +2330,19 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
         }
       }
 
+      // The admin's address replaces any change the account had waiting:
+      // pending_email is cleared and every outstanding verification link is
+      // deleted in the same statement. A link mailed before the correction
+      // could otherwise still be opened afterwards and swap its own address
+      // back in over the admin's.
       await pool.query(
-        "UPDATE users SET email = $1, email_verified_at = NULL, updated_at = NOW() WHERE id = $2",
+        `WITH dropped_links AS (
+           DELETE FROM email_verification_tokens WHERE user_id = $2
+         )
+         UPDATE users
+            SET email = $1, email_verified_at = NULL, pending_email = NULL,
+                updated_at = NOW()
+          WHERE id = $2`,
         [newEmail, userId],
       );
       await logAction(

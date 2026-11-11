@@ -1430,7 +1430,7 @@ describe("PATCH /api/v3/admin — update_email is admin-only (AUDIT-002#auth-01)
     // Nothing was written: the deny happens before the action switch.
     expect(
       mockQuery.mock.calls.some((c) =>
-        String(c[0]).includes("UPDATE users SET email"),
+        /UPDATE users\s+SET email/.test(String(c[0])),
       ),
     ).toBe(false);
   });
@@ -1454,9 +1454,15 @@ describe("PATCH /api/v3/admin — update_email is admin-only (AUDIT-002#auth-01)
     );
     expect(res.status).toBe(200);
     const update = mockQuery.mock.calls.find((c) =>
-      String(c[0]).includes("UPDATE users SET email"),
+      /UPDATE users\s+SET email/.test(String(c[0])),
     );
     expect(String(update?.[0])).toContain("email_verified_at = NULL");
+    // A waiting self-service change and its link go with the correction, or
+    // the old link could swap its address back in afterwards.
+    expect(String(update?.[0])).toContain("pending_email = NULL");
+    expect(String(update?.[0])).toContain(
+      "DELETE FROM email_verification_tokens WHERE user_id = $2",
+    );
     expect(update?.[1]).toEqual(["new@example.com", 5]);
   }, 20000);
 
@@ -1487,7 +1493,7 @@ describe("PATCH /api/v3/admin — update_email is admin-only (AUDIT-002#auth-01)
       expect((await res.json()).error).toBe("Invalid email format");
       expect(
         mockQuery.mock.calls.some((c) =>
-          String(c[0]).includes("UPDATE users SET email"),
+          /UPDATE users\s+SET email/.test(String(c[0])),
         ),
       ).toBe(false);
       expect(mockLogAction).not.toHaveBeenCalled();
