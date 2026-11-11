@@ -41,6 +41,12 @@ export interface HistoryFilter {
   /** baseWhere plus whichever of q/tag were given. */
   where: string;
   params: unknown[];
+  /**
+   * Only the q/tag conditions, `TRUE` when neither was given. Its parameter
+   * numbers continue from baseParams, so it is valid against `params` and
+   * inside a statement whose WHERE is baseWhere.
+   */
+  filterWhere: string;
   /** Whether `where` differs from `baseWhere`. */
   filtering: boolean;
 }
@@ -75,24 +81,57 @@ export function buildHistoryFilter({
   }
 
   const params: unknown[] = [...baseParams];
-  let where = baseWhere;
+  const conditions: string[] = [];
   if (q !== null) {
     params.push(`%${escapeLikePattern(q)}%`);
-    where += `\n         AND sh.url ILIKE $${params.length} ESCAPE '\\'`;
+    conditions.push(`sh.url ILIKE $${params.length} ESCAPE '\\'`);
   }
   if (tag !== null) {
     // st_f.user_id = $1 as well as the scan join. Tags are per-user rows, so
     // matching on the join alone would let one user's tag on a URL select
     // another user's scan of it.
     params.push(tag);
-    where += `\n         AND EXISTS (SELECT 1 FROM scan_tags st_f WHERE st_f.scan_id = sh.id AND st_f.user_id = $1 AND st_f.tag = $${params.length})`;
+    conditions.push(
+      `EXISTS (SELECT 1 FROM scan_tags st_f WHERE st_f.scan_id = sh.id AND st_f.user_id = $1 AND st_f.tag = $${params.length})`,
+    );
   }
 
   return {
     baseWhere,
     baseParams,
-    where,
+    where: conditions.reduce(
+      (clause, condition) => `${clause}\n         AND ${condition}`,
+      baseWhere,
+    ),
     params,
-    filtering: q !== null || tag !== null,
+    filterWhere: conditions.length > 0 ? conditions.join(" AND ") : "TRUE",
+    filtering: conditions.length > 0,
+  };
+}
+
+/**
+ * The account total and the filtered count in one statement.
+ *
+ * They used to be two COUNT(*) queries over the same rows, the second one only
+ * when a filter was on, issued one after the other behind the list query. One
+ * pass over the user's rows answers both: `total` counts everything the base
+ * clause keeps (ownership, the GitHub exclusion, retention) and ignores q/tag,
+ * which is what the delete-everything confirmation counts, and `matched` is the
+ * same rows narrowed by the filter, which is what pagination is about. With no
+ * filter `filterWhere` is TRUE and the two are equal.
+ *
+ * Run against `filter.params`: the filter's placeholders sit after the base
+ * ones, so a single parameter list serves both halves.
+ */
+export function buildHistoryCountsQuery(filter: HistoryFilter): {
+  sql: string;
+  params: unknown[];
+} {
+  return {
+    sql: `SELECT COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE ${filter.filterWhere})::int AS matched
+       FROM scan_history sh
+       WHERE ${filter.baseWhere}`,
+    params: filter.params,
   };
 }

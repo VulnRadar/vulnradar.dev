@@ -1,9 +1,5 @@
 import pool from "@/lib/database/db";
-
-// scan_history.id is a SERIAL (int4). A numeric param larger than this can't
-// be a real primary key, and passing it to Postgres as an int would error on
-// overflow, so the legacy numeric fallback is skipped for it.
-const MAX_SCAN_ID = 2147483647;
+import { parseIdParam } from "@/lib/api/path-id";
 
 /**
  * The scan_history columns any resolve-by-id caller reads off the row. Typed
@@ -38,14 +34,15 @@ export interface ScanHistoryRow {
 /**
  * Classify a history route's :id param. Returns the numeric primary key it
  * refers to when it is an all-digits, in-range legacy id, or null when it is
- * an opaque public_id (or a number too large to be a real id). Shared by
- * every route that has to accept both id shapes so the "is this the legacy
- * numeric form" rule lives in exactly one place.
+ * an opaque public_id (or a number too large to be a real id: scan_history.id
+ * is an int4 SERIAL, and a bigger value would error on overflow in Postgres).
+ * Shared by every route that has to accept both id shapes so the "is this the
+ * legacy numeric form" rule lives in exactly one place, and that place is the
+ * strict path-id parser, so a spelling with leading zeros is not a second name
+ * for the same row.
  */
 export function scanNumericId(idParam: string): number | null {
-  if (!/^\d+$/.test(idParam)) return null;
-  const n = Number(idParam);
-  return Number.isSafeInteger(n) && n >= 1 && n <= MAX_SCAN_ID ? n : null;
+  return parseIdParam(idParam);
 }
 
 /**

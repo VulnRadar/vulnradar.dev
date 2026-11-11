@@ -49,6 +49,11 @@ describe("scanNumericId", () => {
   it("rejects 0, which is never a real serial id", () => {
     expect(scanNumericId("0")).toBeNull();
   });
+
+  it("rejects a spelling with leading zeros, so one row has one name", () => {
+    expect(scanNumericId("055")).toBeNull();
+    expect(scanNumericId("00")).toBeNull();
+  });
 });
 
 describe("resolveScanRow", () => {
