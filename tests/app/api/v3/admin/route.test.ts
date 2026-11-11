@@ -3739,6 +3739,9 @@ const USER_TARGET = {
   unsubscribe_token: null,
 };
 
+/** When each reservation reached checkRateLimit, for the refund-time check. */
+const reservationTimes: number[] = [];
+
 /**
  * The re-auth throttle is a fixed-window counter keyed per admin and IP. This
  * fake keeps the count the way checkRateLimit's guarded upsert does (refuse
@@ -3747,6 +3750,7 @@ const USER_TARGET = {
 function statefulReauthBucket(max = 10) {
   const buckets = new Map<string, number>();
   mockCheckRateLimit.mockImplementation(async ({ key }: { key: string }) => {
+    reservationTimes.push(Date.now());
     const n = buckets.get(key) ?? 0;
     if (n >= max) {
       return { allowed: false, remaining: 0, retryAfterSeconds: 600 };
@@ -3757,6 +3761,7 @@ function statefulReauthBucket(max = 10) {
   mockRefundRateLimitAttempt.mockImplementation(async (key: string) => {
     buckets.set(key, Math.max(0, (buckets.get(key) ?? 0) - 1));
   });
+  reservationTimes.length = 0;
   return buckets;
 }
 
@@ -3825,9 +3830,17 @@ describe("PATCH /api/v3/admin, the re-auth throttle counts failed passwords only
       );
       expect(res.status, `call ${i + 1}`).toBe(200);
     }
-    expect(mockRefundRateLimitAttempt).toHaveBeenCalledWith(
-      "admin-reauth:2:127.0.0.1",
-    );
+    expect(mockRefundRateLimitAttempt).toHaveBeenCalledTimes(12);
+    // Each refund is bounded by a time taken before its own reservation, so
+    // it can only ever land on the bucket that reservation wrote, never on
+    // the next window if the boundary passes while the password is checked.
+    mockRefundRateLimitAttempt.mock.calls.forEach(([key, before], i) => {
+      expect(key).toBe("admin-reauth:2:127.0.0.1");
+      expect(before).toBeInstanceOf(Date);
+      expect((before as Date).getTime()).toBeLessThanOrEqual(
+        reservationTimes[i],
+      );
+    });
   }, 60000);
 
   it("does not count a gated call that sent no password, which is not a guess", async () => {
@@ -3843,6 +3856,22 @@ describe("PATCH /api/v3/admin, the re-auth throttle counts failed passwords only
       expect((await res.json()).error).toMatch(/Re-enter your password/);
     }
   });
+
+  // clear_rate_limits is ungated and its pattern matches every bucket keyed by
+  // the account id, admin-reauth:<id>:<ip> included. Aimed at the caller's own
+  // account it was a reset button for the guess counter above.
+  it.each(["admin", "super_admin"])(
+    "%s: clear_rate_limits on its own account is refused and clears nothing",
+    async (role) => {
+      queueRole(role);
+      const res = await PATCH(
+        patchRequest({ action: "clear_rate_limits", userId: 2 }),
+      );
+      expect(res.status).toBe(400);
+      expect(statements().filter((s) => /rate_limits/.test(s.sql))).toEqual([]);
+      expect(mockLogAction).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not let ungated calls spend a wrong-password allowance", async () => {
     statefulReauthBucket();

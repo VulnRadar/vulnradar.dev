@@ -653,6 +653,11 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
       "set_role",
       // Staff must not be able to add to their own purchased balances.
       "grant_credits",
+      // Clearing your own buckets deletes admin-reauth:<you>:<ip>, the
+      // counter that caps guesses at your password, and this action is not
+      // itself password-gated. A hijacked session could guess ten times,
+      // clear, and guess ten more, without end.
+      "clear_rate_limits",
     ].includes(action)
   ) {
     return NextResponse.json(
@@ -746,6 +751,7 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
     // cap atomic, so a parallel burst of guesses cannot all get past a
     // read-then-record check before any of them is counted.
     const reauthKey = `admin-reauth:${session.userId}:${ip}`;
+    const reservedBefore = new Date();
     const adminRl = await checkRateLimit({
       key: reauthKey,
       ...RATE_LIMITS.adminReauth,
@@ -779,7 +785,7 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
     // an OAuth-only account with none, or a request that sent none (400 from
     // the helper) made no guess.
     if (reauth.ok || reauth.status === 400) {
-      await refundRateLimitAttempt(reauthKey);
+      await refundRateLimitAttempt(reauthKey, reservedBefore);
     }
     // Pinned to 403 for both the missing and the wrong case, which is what
     // this route has always returned and what the panel's re-auth dialog

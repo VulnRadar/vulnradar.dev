@@ -18,17 +18,20 @@ beforeEach(() => {
 });
 
 describe("refundRateLimitAttempt", () => {
-  it("decrements the key's newest bucket, never below zero", async () => {
+  it("decrements the newest bucket that had started by the reservation, never below zero", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
-    await refundRateLimitAttempt("admin-reauth:2:127.0.0.1");
+    const reservedBefore = new Date("2026-11-11T10:14:59.900Z");
+    await refundRateLimitAttempt("admin-reauth:2:127.0.0.1", reservedBefore);
     const [sql, params] = mockQuery.mock.calls[0];
     const text = String(sql).replace(/\s+/g, " ");
     expect(text).toContain('SET "count" = "count" - 1');
     expect(text).toContain('"count" > 0');
+    // Bounded by the reservation time, so a bucket opened after it (the next
+    // window, holding later guesses) is never the one decremented.
     expect(text).toContain(
-      "window_start = ( SELECT MAX(window_start) FROM rate_limits WHERE key = $1 )",
+      "window_start = ( SELECT MAX(window_start) FROM rate_limits WHERE key = $1 AND window_start <= $2 )",
     );
-    expect(params).toEqual(["admin-reauth:2:127.0.0.1"]);
+    expect(params).toEqual(["admin-reauth:2:127.0.0.1", reservedBefore]);
   });
 
   it("swallows a database error and reports it", async () => {
@@ -36,7 +39,9 @@ describe("refundRateLimitAttempt", () => {
       .spyOn(console, "error")
       .mockImplementation(() => {});
     mockQuery.mockRejectedValueOnce(new Error("connection reset"));
-    await expect(refundRateLimitAttempt("k")).resolves.toBeUndefined();
+    await expect(
+      refundRateLimitAttempt("k", new Date()),
+    ).resolves.toBeUndefined();
     expect(consoleError).toHaveBeenCalled();
     consoleError.mockRestore();
   });

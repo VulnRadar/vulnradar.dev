@@ -28,12 +28,18 @@ function reserve(key: string, maxAttempts: number) {
   return checkRateLimit({ key, maxAttempts, windowSeconds: WINDOW_SECONDS });
 }
 
+/** The start of the bucket checkRateLimit files `at` under. */
+function bucketOf(at: Date): Date {
+  const windowMs = WINDOW_SECONDS * 1000;
+  return new Date(Math.floor(at.getTime() / windowMs) * windowMs);
+}
+
 describeIntegration("refundRateLimitAttempt against the real table", () => {
   it("gives back the attempt the reservation counted", async () => {
     const key = unique("refund");
     await reserve(key, 3);
     await reserve(key, 3);
-    await refundRateLimitAttempt(key);
+    await refundRateLimitAttempt(key, new Date());
     expect(await countsFor(key)).toEqual([1]);
   });
 
@@ -41,7 +47,7 @@ describeIntegration("refundRateLimitAttempt against the real table", () => {
     const key = unique("refund-full");
     for (let i = 0; i < 3; i++) await reserve(key, 3);
     expect((await reserve(key, 3)).allowed).toBe(false);
-    await refundRateLimitAttempt(key);
+    await refundRateLimitAttempt(key, new Date());
     expect((await reserve(key, 3)).allowed).toBe(true);
   });
 
@@ -49,19 +55,19 @@ describeIntegration("refundRateLimitAttempt against the real table", () => {
     const key = unique("refund-successes");
     for (let i = 0; i < 12; i++) {
       expect((await reserve(key, 10)).allowed).toBe(true);
-      await refundRateLimitAttempt(key);
+      await refundRateLimitAttempt(key, new Date());
     }
     expect(await countsFor(key)).toEqual([0]);
   });
 
   it("never goes below zero and does nothing for a key with no bucket", async () => {
     const key = unique("refund-floor");
-    await refundRateLimitAttempt(key);
+    await refundRateLimitAttempt(key, new Date());
     expect(await countsFor(key)).toEqual([]);
 
     await reserve(key, 3);
-    await refundRateLimitAttempt(key);
-    await refundRateLimitAttempt(key);
+    await refundRateLimitAttempt(key, new Date());
+    await refundRateLimitAttempt(key, new Date());
     expect(await countsFor(key)).toEqual([0]);
   });
 
@@ -78,8 +84,42 @@ describeIntegration("refundRateLimitAttempt against the real table", () => {
     await reserve(key, 10);
     await reserve(other, 10);
 
-    await refundRateLimitAttempt(key);
+    await refundRateLimitAttempt(key, new Date());
     expect(await countsFor(key)).toEqual([1]);
     expect(await countsFor(other)).toEqual([1]);
+  });
+
+  // A request that reserved just before a window rolled over and refunds
+  // after it must not take the attempt out of the new window: that window may
+  // already hold wrong guesses, and decrementing it would cancel one. Seeded
+  // directly so the boundary does not depend on when the test runs.
+  it("never decrements a bucket that opened after the reservation", async () => {
+    const key = unique("refund-rollover");
+    const reservedBefore = new Date();
+    const current = bucketOf(reservedBefore);
+    const next = new Date(current.getTime() + WINDOW_SECONDS * 1000);
+    await pool.query(
+      `INSERT INTO rate_limits (key, "count", window_start)
+       VALUES ($1, 2, $2), ($1, 3, $3)`,
+      [key, current, next],
+    );
+
+    await refundRateLimitAttempt(key, reservedBefore);
+    expect(await countsFor(key)).toEqual([1, 3]);
+  });
+
+  it("leaves the count alone when no bucket had started by the reservation", async () => {
+    const key = unique("refund-none-before");
+    const reservedBefore = new Date();
+    const next = new Date(
+      bucketOf(reservedBefore).getTime() + WINDOW_SECONDS * 1000,
+    );
+    await pool.query(
+      `INSERT INTO rate_limits (key, "count", window_start) VALUES ($1, 1, $2)`,
+      [key, next],
+    );
+
+    await refundRateLimitAttempt(key, reservedBefore);
+    expect(await countsFor(key)).toEqual([1]);
   });
 });
