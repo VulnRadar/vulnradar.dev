@@ -17,7 +17,42 @@ const {
   normalizeHostForReputation,
   upsertHostReputation,
   getExactUrlReputation,
+  originPathVariants,
 } = await import("@/lib/scanner/host-reputation");
+const { URL_ORIGIN_PATH_SQL } = await import("@/lib/database/sql-fragments");
+const { RATING_FINDINGS_SQL } =
+  await import("@/lib/scanner/rating-findings-sql");
+
+describe("originPathVariants", () => {
+  it.each<[string, [string, string]]>([
+    [
+      "https://example.com/page?token=abc#top",
+      ["https://example.com/page", "https://example.com/page/"],
+    ],
+    [
+      "https://example.com/page/",
+      ["https://example.com/page/", "https://example.com/page"],
+    ],
+    ["https://example.com", ["https://example.com/", "https://example.com"]],
+    [
+      "example.com/a/b",
+      ["https://example.com/a/b", "https://example.com/a/b/"],
+    ],
+    [
+      "HTTP://Example.COM:8080/Path",
+      ["http://example.com:8080/Path", "http://example.com:8080/Path/"],
+    ],
+  ])("reads %s as origin and path, with and without a slash", (input, out) => {
+    expect(originPathVariants(input)).toEqual(out);
+  });
+
+  it.each(["", "   ", "http://", "ftp://example.com/x", "mailto://a@b.c"])(
+    "refuses %j",
+    (input) => {
+      expect(originPathVariants(input)).toBeNull();
+    },
+  );
+});
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -209,10 +244,13 @@ describe("upsertHostReputation", () => {
 describe("getExactUrlReputation", () => {
   const scannedAt = new Date("2026-01-01T00:00:00.000Z");
 
+  const PUBLIC_ID = "0123456789abcdef0123456789abcdef";
+
   function rowFor(overrides: Record<string, unknown> = {}) {
     return {
       id: 42,
-      url: "https://example.com/",
+      public_id: PUBLIC_ID,
+      origin_path: "https://example.com/",
       findings: [],
       summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
       scanned_at: scannedAt,
@@ -249,11 +287,49 @@ describe("getExactUrlReputation", () => {
     expect(result).toMatchObject({
       url: "https://example.com/",
       scanId: 42,
+      scanPublicId: PUBLIC_ID,
       lastScannedAt: "2026-01-01T00:00:00.000Z",
       severityCounts: { critical: 1, high: 2, medium: 0, low: 1, info: 0 },
     });
     const [sql] = mockQuery.mock.calls[0];
     expect(sql).toContain("ORDER BY scanned_at DESC");
+  });
+
+  // The extension asks by origin and path. Comparing through the same
+  // expression the partial index is built on is what lets Postgres use it;
+  // the integration suite proves the planner does.
+  it("compares origin and path through URL_ORIGIN_PATH_SQL, and reads only the rating fields", async () => {
+    await getExactUrlReputation("https://example.com/page");
+
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain(`${URL_ORIGIN_PATH_SQL} = ANY($1::text[])`);
+    expect(sql).toContain(RATING_FINDINGS_SQL);
+    // The bare findings column is never selected, only the projection.
+    expect(sql).not.toMatch(/(SELECT|,)\s*findings\s*(,|FROM)/);
+  });
+
+  it("answers with the stored origin and path, never the stored query string", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [rowFor({ origin_path: "https://example.com/reset" })],
+      rowCount: 1,
+    });
+
+    const result = await getExactUrlReputation("https://example.com/reset");
+
+    expect(result?.url).toBe("https://example.com/reset");
+    const [sql] = mockQuery.mock.calls[0];
+    // The bare url column is not even read back.
+    expect(sql).not.toMatch(/SELECT\s+id,\s*url\b/);
+  });
+
+  it("reports scanPublicId as null for a row that has none", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [rowFor({ public_id: null })],
+      rowCount: 1,
+    });
+    expect(
+      (await getExactUrlReputation("https://example.com/"))?.scanPublicId,
+    ).toBeNull();
   });
 
   // gap-ai-trust-boundary-2: scan_history.summary is the scan owner's own
@@ -291,12 +367,17 @@ describe("getExactUrlReputation", () => {
     await getExactUrlReputation("  example.com/page#section  ");
 
     const [, params] = mockQuery.mock.calls[0];
-    expect(params[0]).toBe("https://example.com/page");
+    expect(params[0]).toEqual([
+      "https://example.com/page",
+      "https://example.com/page/",
+    ]);
   });
 
   it("returns null without querying for an unusable URL", async () => {
     expect(await getExactUrlReputation("   ")).toBeNull();
     expect(await getExactUrlReputation("http://")).toBeNull();
+    expect(await getExactUrlReputation("ftp://example.com/file")).toBeNull();
+    expect(await getExactUrlReputation("javascript:alert(1)")).toBeNull();
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
