@@ -43,8 +43,8 @@ export const GET = withErrorHandling(async (request: Request) => {
   // (view_user_detail) and the exports.
   // Count total teams
   const countQuery = search
-    ? `SELECT COUNT(*) FROM teams WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'`
-    : `SELECT COUNT(*) FROM teams`;
+    ? `SELECT COUNT(*)::int AS count FROM teams WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'`
+    : `SELECT COUNT(*)::int AS count FROM teams`;
   const countParams = search ? [`%${searchEscaped}%`] : [];
 
   // Fetch teams with owner info and member count
@@ -58,7 +58,7 @@ export const GET = withErrorHandling(async (request: Request) => {
       u.email as owner_email,
       u.name as owner_name,
       u.avatar_url as owner_avatar_url,
-      (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.id) as member_count
+      (SELECT COUNT(*)::int FROM team_members tm WHERE tm.team_id = t.id) as member_count
     FROM teams t
     LEFT JOIN users u ON u.id = t.owner_id
     ${search ? "WHERE LOWER(t.name) LIKE LOWER($1) ESCAPE '\\'" : ""}
@@ -74,10 +74,10 @@ export const GET = withErrorHandling(async (request: Request) => {
   // load for nothing. The two are independent. Every other admin list route
   // already pairs them this way.
   const [countRes, teamsRes] = await Promise.all([
-    pool.query<{ count: string }>(countQuery, countParams),
+    pool.query<{ count: number }>(countQuery, countParams),
     pool.query(teamsQuery, teamsParams),
   ]);
-  const total = parseInt(countRes.rows[0].count, 10);
+  const total = countRes.rows[0].count;
   const totalPages = Math.ceil(total / limit);
 
   // Named `total`, like every other paginated admin list (content,
@@ -173,7 +173,7 @@ export const DELETE = withErrorHandling(async (request: Request) => {
   // Get team data for audit
   const teamRes = await pool.query(
     `SELECT t.name, t.owner_id, u.email as owner_email,
-      (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.id) as member_count
+      (SELECT COUNT(*)::int FROM team_members tm WHERE tm.team_id = t.id) as member_count
      FROM teams t
      LEFT JOIN users u ON u.id = t.owner_id
      WHERE t.id = $1`,

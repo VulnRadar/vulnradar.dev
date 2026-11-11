@@ -118,7 +118,7 @@ describe("GET /api/v3/admin/teams", () => {
 
   it("allows an admin to list teams", async () => {
     withRole("admin");
-    mockQuery.mockResolvedValueOnce({ rows: [{ count: "1" }] }); // count
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 1 }] }); // count
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, name: "Acme" }] }); // teams
     const res = await GET(getRequest());
     const json = await res.json();
@@ -132,7 +132,7 @@ describe("GET /api/v3/admin/teams", () => {
   // silently rendered 0. AUDIT-013#dup-08.
   it("names the row count total, matching every other paginated admin list", async () => {
     withRole("admin");
-    mockQuery.mockResolvedValueOnce({ rows: [{ count: "37" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 37 }] });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, name: "Acme" }] });
     const res = await GET(getRequest());
     const json = await res.json();
@@ -143,7 +143,7 @@ describe("GET /api/v3/admin/teams", () => {
 
   it("allows a super_admin to list teams (passes every admin-or-higher check)", async () => {
     withRole("super_admin");
-    mockQuery.mockResolvedValueOnce({ rows: [{ count: "1" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 1 }] });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, name: "Acme" }] });
     const res = await GET(getRequest());
     expect(res.status).toBe(200);
