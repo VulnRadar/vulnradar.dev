@@ -9,7 +9,7 @@ import {
 import { normalizeHostForReputation } from "@/lib/scanner/host-reputation";
 import {
   normalizeBlockedDomain,
-  findScansForBlockedDomain,
+  searchScansForBlockedDomain,
   deleteScansForBlockedDomain,
 } from "@/lib/admin/blocked-domain-scans";
 
@@ -47,17 +47,21 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         }
 
         const domain = normalizeBlockedDomain(value);
-        const scans = await findScansForBlockedDomain(domain);
+        // The list stops at 100 and the delete does not, so the panel is
+        // handed the exact number the delete would remove, and whether the
+        // list was cut, to quote in its confirmation.
+        const { scans, total, truncated } =
+          await searchScansForBlockedDomain(domain);
 
         await logAction(
           user.id,
           null,
           "blocked_data_search",
-          `Searched for scans matching blocked value: ${value} (found ${scans.length} results)`,
+          `Searched for scans matching blocked value: ${value} (found ${total} results)`,
           ip,
         );
 
-        return NextResponse.json({ scans });
+        return NextResponse.json({ scans, total, truncated });
       }
 
       case "delete_scans": {

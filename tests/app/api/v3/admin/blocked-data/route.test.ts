@@ -83,6 +83,7 @@ describe("POST /api/v3/admin/blocked-data — authorization", () => {
   it("allows an admin through the gate", async () => {
     queueRole("admin");
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ n: 0 }] });
     const res = await POST(
       postRequest({ action: "find_scans", value: "evil.com" }),
     );
@@ -108,12 +109,15 @@ describe("POST /api/v3/admin/blocked-data — actions", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 1, url: "https://evil.com/x", user_id: 9 }],
     });
+    mockQuery.mockResolvedValueOnce({ rows: [{ n: 1 }] });
     const res = await POST(
       postRequest({ action: "find_scans", value: "evil.com" }),
     );
     const json = await res.json();
     expect(res.status).toBe(200);
     expect(json.scans).toHaveLength(1);
+    expect(json.total).toBe(1);
+    expect(json.truncated).toBe(false);
     expect(mockLogAction).toHaveBeenCalledWith(
       1,
       null,
@@ -213,6 +217,34 @@ describe("POST /api/v3/admin/blocked-data — actions", () => {
       postRequest({ action: "not_a_real_action", value: "x" }),
     );
     expect(res.status).toBe(400);
+  });
+
+  it("reports the exact number the delete would remove when the list is cut", async () => {
+    // The list stops at 100 and the delete does not: the confirm used to
+    // quote 100 in front of a delete that removed every matching scan.
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({
+      rows: Array.from({ length: 100 }, (_, i) => ({
+        id: i + 1,
+        url: `https://evil.com/${i}`,
+        user_id: 9,
+      })),
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ n: 4000 }] });
+    const res = await POST(
+      postRequest({ action: "find_scans", value: "evil.com" }),
+    );
+    const json = await res.json();
+    expect(json.scans).toHaveLength(100);
+    expect(json.total).toBe(4000);
+    expect(json.truncated).toBe(true);
+    expect(mockLogAction).toHaveBeenCalledWith(
+      1,
+      null,
+      "blocked_data_search",
+      expect.stringContaining("found 4000 results"),
+      "127.0.0.1",
+    );
   });
 
   it("returns 500 when the database throws", async () => {
