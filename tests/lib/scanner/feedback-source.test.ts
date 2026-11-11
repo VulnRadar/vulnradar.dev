@@ -30,7 +30,11 @@ describe("feedback source", () => {
       resolve(process.cwd(), "lib/ai/verify-findings.ts"),
       "utf8",
     );
-    expect(source).toContain("'${AI_FEEDBACK_NOTE}'");
+    // The verifier interpolates the constant into its SQL, so its source holds
+    // the placeholder rather than the note's text. Built in two parts so it does
+    // not read as a template literal written with the wrong quotes.
+    const placeholder = "'$" + "{AI_FEEDBACK_NOTE}'";
+    expect(source).toContain(placeholder);
     expect(source).toContain(
       'import { AI_FEEDBACK_NOTE } from "@/lib/scanner/feedback-source";',
     );
