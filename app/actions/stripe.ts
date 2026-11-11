@@ -41,7 +41,7 @@ import { APP_URL, ROUTES } from "@/lib/config/constants";
 import pool from "@/lib/database/db";
 import { sendEmail, creditPurchaseReceiptEmail } from "@/lib/email/email";
 
-/** A billing period's length in days, for ordering one against another. */
+/** A billing period's length in days, for comparing one against another. */
 function periodDays(
   interval: string | null | undefined,
   count: number | null | undefined,
@@ -51,13 +51,19 @@ function periodDays(
 }
 
 /**
- * Whether moving `subscription` to `product` charges more: a higher plan, or
- * the same money paid over a longer period. Anything this cannot read counts
- * as costing more, because the cost of guessing wrong is lopsided: charging a
- * downgrade now only moves its credit forward, while deferring an upgrade
- * hands out the higher tier until a renewal that a cancel can prevent.
+ * Whether moving `subscription` to `product` has to be invoiced, and paid,
+ * before it applies: a higher plan, or any change of billing period. Stripe
+ * resets the billing cycle and invoices on the spot whenever the interval
+ * changes, so a lower plan on a different period is charged now as well, and
+ * without pending_if_incomplete that charge may fail while the new price
+ * applies anyway (past_due, which still grants the plan). Only a lower plan on
+ * the same period is a pure credit that can wait for the next invoice.
+ * Anything this cannot read counts as invoiced now, because the cost of
+ * guessing wrong is lopsided: invoicing a downgrade now only moves its credit
+ * forward, while deferring an upgrade hands out the higher tier until a
+ * renewal that a cancel can prevent.
  */
-async function switchCostsMore(
+async function switchInvoicedNow(
   stripe: Stripe,
   subscription: Stripe.Subscription,
   planId: string,
@@ -68,14 +74,12 @@ async function switchCostsMore(
     subscription,
   );
   if (!currentPlan) return true;
-  if (planRank(planId) !== planRank(currentPlan)) {
-    return planRank(planId) > planRank(currentPlan);
-  }
+  if (planRank(planId) > planRank(currentPlan)) return true;
   const recurring = subscription.items?.data?.[0]?.price?.recurring;
   const current = periodDays(recurring?.interval, recurring?.interval_count);
   const next = periodDays(product.interval, 1);
   if (current === null || next === null) return true;
-  return next > current;
+  return next !== current;
 }
 
 export type CreateSubscriptionResult =
@@ -272,12 +276,13 @@ export async function createSubscription(
 
       // create_prorations grants the new price now and puts the difference on
       // the NEXT renewal invoice, so an upgrade followed by a cancel before
-      // that renewal never paid for the higher tier at all. A switch that
-      // costs more is invoiced now instead, and pending_if_incomplete keeps
-      // the old price in place until that invoice is paid. A downgrade only
-      // ever produces a credit, which can wait for the next invoice.
+      // that renewal never paid for the higher tier at all. An upgrade or a
+      // change of billing period is invoiced now instead, and
+      // pending_if_incomplete keeps the old price in place until that invoice
+      // is paid. A lower plan on the same period only ever produces a credit,
+      // which can wait for the next invoice.
       if (
-        await switchCostsMore(stripe, existingSubscription, planId, product)
+        await switchInvoicedNow(stripe, existingSubscription, planId, product)
       ) {
         // A pending update accepts only the item and proration fields, so the
         // metadata and the cancel flag go in a second call, made only once

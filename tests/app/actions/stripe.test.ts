@@ -476,8 +476,8 @@ describe("createSubscription", () => {
     // grants the new price now and bills the difference on the NEXT renewal
     // invoice. Upgrade mid-cycle, cancel before the renewal, and that invoice
     // never comes: the higher tier was free. A move up the ladder, or onto a
-    // longer billing period, is now charged when it happens, and Stripe only
-    // applies it once that charge is paid.
+    // different billing period, is now charged when it happens, and Stripe
+    // only applies it once that charge is paid.
     beforeEach(() => {
       mockQuery.mockResolvedValueOnce({ rows: [switchableUser] });
     });
@@ -570,7 +570,7 @@ describe("createSubscription", () => {
 
     it("keeps a downgrade on create_prorations, credited against the next invoice", async () => {
       mockSubscriptionsRetrieve.mockResolvedValue(
-        liveSubscription("elite_supporter_yearly", "year"),
+        liveSubscription("elite_supporter_monthly", "month"),
       );
       mockSubscriptionsUpdate.mockResolvedValue({ id: "sub_existing" });
 
@@ -581,6 +581,48 @@ describe("createSubscription", () => {
       expect(params.proration_behavior).toBe("create_prorations");
       expect(params).not.toHaveProperty("payment_behavior");
     });
+
+    // Stripe resets the billing cycle and invoices on the spot whenever the
+    // interval changes, whatever proration_behavior says. Without
+    // pending_if_incomplete that invoice is allowed to fail and the new price
+    // applies anyway, past_due, which still grants the plan. A move onto a
+    // yearly price then holds the new plan for a year before a renewal comes
+    // round for the two-strike rule to count, so a lower plan is no
+    // exception.
+    it.each([
+      [
+        "a lower plan on a longer period",
+        "elite_supporter_monthly",
+        "month",
+        "pro_supporter_yearly",
+      ],
+      [
+        "a lower plan on a shorter period",
+        "elite_supporter_yearly",
+        "year",
+        "core_supporter_monthly",
+      ],
+    ] as const)(
+      "holds %s until its invoice is paid",
+      async (_label, current, interval, next) => {
+        mockSubscriptionsRetrieve.mockResolvedValue(
+          liveSubscription(current, interval),
+        );
+        mockSubscriptionsUpdate.mockResolvedValue({
+          id: "sub_existing",
+          pending_update: null,
+        });
+
+        await createSubscription(next);
+
+        expect(mockSubscriptionsUpdate.mock.calls[0][1]).toEqual(
+          expect.objectContaining({
+            proration_behavior: "always_invoice",
+            payment_behavior: "pending_if_incomplete",
+          }),
+        );
+      },
+    );
 
     it("leaves the plan alone and says so when the upgrade charge did not go through", async () => {
       mockSubscriptionsRetrieve.mockResolvedValue(

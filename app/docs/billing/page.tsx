@@ -242,13 +242,13 @@ export default function BillingDocsPage() {
         </p>
         <p className="text-sm leading-relaxed text-muted-foreground">
           Moving between paid plans switches the subscription you already have,
-          on the card already on file. A higher plan, or the same plan on a
-          longer billing period, charges the prorated difference to that card
-          straight away, and the new plan starts once that charge goes through;
-          if it is declined, you stay on the plan you had. A lower plan charges
-          nothing at the time: the unused part of the period comes off your next
-          invoice. Invoices, receipts, and your saved payment method live in the
-          Stripe billing portal, reachable from{" "}
+          on the card already on file. A higher plan, or a different billing
+          period, charges the prorated difference to that card straight away,
+          and the new plan starts once that charge goes through; if it is
+          declined, you stay on the plan you had. A lower plan on the same
+          billing period charges nothing at the time: the unused part of the
+          period comes off your next invoice. Invoices, receipts, and your saved
+          payment method live in the Stripe billing portal, reachable from{" "}
           <InlineCode>Profile &rarr; Billing</InlineCode> under &ldquo;Manage
           billing&rdquo;.
         </p>

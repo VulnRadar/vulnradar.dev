@@ -29,15 +29,21 @@ describe("/docs/billing", () => {
   });
 
   it("says an upgrade is charged now and a downgrade is not", () => {
-    // sec-money-1: an upgrade is invoiced at once with pending_if_incomplete,
-    // a downgrade keeps create_prorations.
+    // sec-money-1: an upgrade or a change of billing period is invoiced at
+    // once with pending_if_incomplete, a lower plan on the same period keeps
+    // create_prorations.
     expect(billing).toContain(
       "charges the prorated difference to that card straight away",
     );
     expect(billing).toContain(
       "if it is declined, you stay on the plan you had",
     );
-    expect(billing).toContain("A lower plan charges nothing at the time");
+    expect(billing).toContain(
+      "A higher plan, or a different billing period, charges",
+    );
+    expect(billing).toContain(
+      "A lower plan on the same billing period charges nothing at the time",
+    );
   });
 
   it("still says cancelling immediately refunds nothing", () => {

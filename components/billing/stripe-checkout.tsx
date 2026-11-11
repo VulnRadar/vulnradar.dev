@@ -362,10 +362,10 @@ function SwitchPlanPanel({
     <div className="space-y-5">
       <p className="text-sm text-muted-foreground">
         You already have a subscription, so this switches it on the card you
-        have on file. A higher plan or a longer billing period charges the
+        have on file. A higher plan or a different billing period charges the
         prorated difference to that card now, and the new plan starts once the
-        charge goes through. A lower plan charges nothing now: the unused time
-        comes off your next invoice.
+        charge goes through. A lower plan on the same billing period charges
+        nothing now: the unused time comes off your next invoice.
       </p>
       {error && <InlineAlert tone="error">{error}</InlineAlert>}
       <Button

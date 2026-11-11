@@ -32,13 +32,15 @@ describe("the plan switch panel", () => {
 
   it("says an upgrade is charged now, and when the new plan starts", () => {
     expect(html).toContain(
-      "A higher plan or a longer billing period charges the prorated difference to that card now",
+      "A higher plan or a different billing period charges the prorated difference to that card now",
     );
     expect(html).toContain("the new plan starts once the charge goes through");
   });
 
   it("says a downgrade charges nothing now", () => {
-    expect(html).toContain("A lower plan charges nothing now");
+    expect(html).toContain(
+      "A lower plan on the same billing period charges nothing now",
+    );
   });
 
   it("no longer promises only a prorated difference with no time attached", () => {
