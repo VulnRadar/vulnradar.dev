@@ -241,6 +241,65 @@ describe("POST /api/v3/admin/features — access_rules", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["10/8", "999.1.1.1", "10.0.0.0/33", "example.com", ""])(
+    "refuses to create an ip rule whose value %j no matcher can read",
+    async (value) => {
+      // The matcher ignores a value it cannot parse rather than failing every
+      // scan closed, so storing one made an inert rule that looked live.
+      queueRole("admin");
+      const res = await POST(
+        postRequest({
+          section: "access_rules",
+          action: "create",
+          rule_type: "blacklist",
+          value_type: "ip",
+          ip_address: value,
+        }),
+      );
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(/CIDR range/);
+      expect(
+        mockQuery.mock.calls.some(([sql]) =>
+          String(sql).includes("INSERT INTO access_rules"),
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it("accepts an IPv6 range for an ip rule", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 6 }] });
+    const res = await POST(
+      postRequest({
+        section: "access_rules",
+        action: "create",
+        rule_type: "blacklist",
+        value_type: "ip",
+        ip_address: "2001:db8::/32",
+      }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("refuses to change an ip rule's value to one no matcher can read", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({ rows: [{ value_type: "ip" }] });
+    const res = await POST(
+      postRequest({
+        section: "access_rules",
+        action: "update",
+        id: 3,
+        ip_address: "10.0.0.0/40",
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("UPDATE access_rules"),
+      ),
+    ).toBe(false);
+  });
+
   it("updates an allowed column and audit-logs it", async () => {
     queueRole("admin");
     mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE

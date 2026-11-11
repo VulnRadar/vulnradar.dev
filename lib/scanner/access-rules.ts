@@ -125,31 +125,49 @@ async function resolveAll(hostname: string): Promise<string[]> {
 }
 
 /**
+ * An ip rule's value read as an address or a CIDR range, or null when it is
+ * neither. The admin route refuses to store a value this cannot read
+ * (isValidIpRuleValue), and the matcher below uses the same reading, so the
+ * two cannot disagree about which rules are live.
+ */
+function parseIpRule(
+  value: string,
+): { base: string; prefix: number | null; type: "ipv4" | "ipv6" } | null {
+  const parts = value.trim().split("/");
+  if (parts.length > 2) return null;
+  const [base, prefixText] = parts;
+  const family = isIP(base);
+  if (family === 0) return null;
+  const type = family === 6 ? "ipv6" : "ipv4";
+  if (prefixText === undefined) return { base, prefix: null, type };
+  if (!/^[0-9]{1,3}$/.test(prefixText)) return null;
+  const prefix = Number(prefixText);
+  if (prefix > (family === 6 ? 128 : 32)) return null;
+  return { base, prefix, type };
+}
+
+/** Whether `value` is something an ip rule can match: an address or a CIDR. */
+export function isValidIpRuleValue(value: unknown): boolean {
+  return typeof value === "string" && parseIpRule(value) !== null;
+}
+
+/**
  * Whether an ip rule's value (an address, or a CIDR range) covers any of
  * `addresses`.
  *
  * Matched here rather than with `value::inet` in the query: that cast raises
- * on a value that is not an address, the admin form does not validate the
- * value, and an error fails the whole check closed. Once ip rules apply to
- * every hostname, one mistyped rule would have refused every scan on the
- * deployment. A value that does not parse matches nothing instead.
+ * on a value that is not an address, and an error fails the whole check
+ * closed. Rules stored before the admin route validated ip values can still
+ * hold one, and once ip rules apply to every hostname one mistyped rule would
+ * have refused every scan on the deployment. A value that does not parse
+ * matches nothing instead.
  */
 function ipRuleCovers(value: string, addresses: readonly string[]): boolean {
-  const parts = value.trim().split("/");
-  if (parts.length > 2) return false;
-  const [base, prefixText] = parts;
-  const family = isIP(base);
-  if (family === 0) return false;
-  const type = family === 6 ? "ipv6" : "ipv4";
+  const parsed = parseIpRule(value);
+  if (!parsed) return false;
   const rule = new BlockList();
-  if (prefixText === undefined) {
-    rule.addAddress(base, type);
-  } else {
-    if (!/^[0-9]{1,3}$/.test(prefixText)) return false;
-    const prefix = Number(prefixText);
-    if (prefix > (family === 6 ? 128 : 32)) return false;
-    rule.addSubnet(base, prefix, type);
-  }
+  if (parsed.prefix === null) rule.addAddress(parsed.base, parsed.type);
+  else rule.addSubnet(parsed.base, parsed.prefix, parsed.type);
   return addresses.some((address) => {
     const f = isIP(address);
     return f !== 0 && rule.check(address, f === 6 ? "ipv6" : "ipv4");

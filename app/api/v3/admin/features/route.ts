@@ -26,6 +26,7 @@ import {
 } from "@/lib/email/email";
 import { htmlToText } from "@/lib/email/html-to-text";
 import { claimBroadcastRecipients } from "@/lib/admin/broadcast-recipients";
+import { isValidIpRuleValue } from "@/lib/scanner/access-rules";
 import {
   BROADCAST_FALLBACK_COLUMN,
   isNotificationColumn,
@@ -47,6 +48,9 @@ import {
   invalidateSettingsCache,
   getSettings,
 } from "@/lib/config/runtime-config";
+
+const INVALID_IP_RULE_MESSAGE =
+  "That is not an IP address or a CIDR range, for example 203.0.113.7 or 203.0.113.0/24.";
 
 // Broadcast delivery. The send and resend actions used to carry two byte
 // identical copies of this loop, each of which (a) selected the entire
@@ -487,6 +491,16 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
           }
         }
 
+        // The matcher ignores an ip value it cannot read rather than failing
+        // every scan closed, so a typo here would make an inert rule that
+        // looks live in the list. Refused at write time instead.
+        if (value_type === "ip" && !isValidIpRuleValue(normalizedValue)) {
+          return NextResponse.json(
+            { error: INVALID_IP_RULE_MESSAGE },
+            { status: 400 },
+          );
+        }
+
         const result = await pool.query(
           `INSERT INTO access_rules (rule_type, value_type, value, description, reason, created_by, expires_at) 
            VALUES ($1, $2, $3, $4, $5, $6, $7) 
@@ -589,6 +603,24 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
             { error: "No updatable fields provided" },
             { status: 400 },
           );
+        }
+        if ("value" in mappedUpdates) {
+          const current = await pool.query<{ value_type: string }>(
+            `SELECT value_type FROM access_rules WHERE id = $1`,
+            [id],
+          );
+          const nextValue = mappedUpdates.value;
+          if (
+            current.rows[0]?.value_type === "ip" &&
+            !isValidIpRuleValue(
+              typeof nextValue === "string" ? nextValue.trim() : nextValue,
+            )
+          ) {
+            return NextResponse.json(
+              { error: INVALID_IP_RULE_MESSAGE },
+              { status: 400 },
+            );
+          }
         }
         const fields = safeEntries
           .map(([k], i) => `${k} = $${i + 2}`)
