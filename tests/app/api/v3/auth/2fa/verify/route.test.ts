@@ -241,6 +241,32 @@ beforeEach(async () => {
 });
 
 describe("POST /api/v3/auth/2fa/verify", () => {
+  it.each([null, [], "123456", 7])(
+    "answers a body that is not a JSON object (%j) with a 400, not a 500",
+    async (body) => {
+      const res = await POST(
+        verifyRequest(body, { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) }),
+      );
+      expect(res.status).toBe(400);
+      expect(queries).toEqual([]);
+    },
+  );
+
+  it.each([
+    { code: 123456 },
+    { backupCode: 12345678 },
+    { backupCode: ["ABCD-1234"] },
+  ])(
+    "answers a code that is not text (%j) with a 400, not a 500",
+    async (body) => {
+      const res = await POST(
+        verifyRequest(body, { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) }),
+      );
+      expect(res.status).toBe(400);
+      expect(queries).toEqual([]);
+    },
+  );
+
   it("rejects a request with neither a code nor a backup code", async () => {
     const res = await POST(
       verifyRequest(

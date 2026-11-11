@@ -8,7 +8,7 @@ import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { newLoginEmail } from "@/lib/email/email";
 import {
   ApiResponse,
-  parseBody,
+  readJsonObject,
   Validate,
   withErrorHandling,
 } from "@/lib/api/api-utils";
@@ -42,17 +42,22 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp();
   const userAgent = await getUserAgent();
 
-  const parsed = await parseBody<{
-    userId: number;
-    code?: string;
-    backupCode?: string;
-    rememberDevice?: boolean;
-  }>(request);
-  if (!parsed.success) return ApiResponse.badRequest(parsed.error);
+  const parsed = await readJsonObject(request);
+  if (!parsed.ok) return parsed.response;
   // `userId` from the body is intentionally NOT destructured: it must never be
   // trusted for authorization. The effective user id comes only from a signed
   // pending cookie below (lib/auth/pending-2fa.ts).
   const { code, backupCode, rememberDevice } = parsed.data;
+  // Both codes are read as text further down (.trim on the backup code), so a
+  // number or an array there was a TypeError and a 500.
+  if (
+    (code !== undefined && code !== null && typeof code !== "string") ||
+    (backupCode !== undefined &&
+      backupCode !== null &&
+      typeof backupCode !== "string")
+  ) {
+    return ApiResponse.badRequest("Code and backup code must be text.");
+  }
 
   const validationError = Validate.multiple([
     Validate.required(code || backupCode, "Code or backup code"),
