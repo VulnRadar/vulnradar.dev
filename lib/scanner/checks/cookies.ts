@@ -11,6 +11,7 @@ import {
   cookieHasAttribute,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
+import { isCsrfTokenReadableByDesign } from "../cookie-names";
 
 // "cookie-security" used to have a second, simpler implementation here. It
 // was dead: the check's definition lives in checks-data/headers.json with
@@ -36,31 +37,6 @@ const SUBDOMAIN_WIDE_BY_DESIGN =
 
 function isSubdomainWideByDesign(name: string): boolean {
   return SUBDOMAIN_WIDE_BY_DESIGN.test(name.trim());
-}
-
-/**
- * CSRF tokens that are readable by JavaScript ON PURPOSE.
- *
- * The double-submit-cookie pattern requires the page's own script to read the
- * cookie and echo it into a request header, so HttpOnly would break the
- * protection rather than add to it. Django ships `csrftoken` with
- * CSRF_COOKIE_HTTPONLY defaulting to False and its documentation says
- * HttpOnly is not a meaningful defence for it; Laravel ships `XSRF-TOKEN`
- * specifically so Axios can read it into X-XSRF-TOKEN.
- *
- * These names contain "token", so the sensitive-cookie filter below matched
- * every one of them and reported a correctly configured Django or Laravel
- * site as missing HttpOnly on an auth cookie. That is the whole framework
- * doing the right thing, reported as a defect.
- *
- * Only the HttpOnly check consults this. Secure and SameSite still apply: a
- * CSRF token sent over plain HTTP, or with no SameSite, is a real finding.
- */
-const CSRF_TOKEN_READABLE_BY_DESIGN =
-  /^(?:csrftoken|csrf[_-]?token|xsrf[_-]?token|_csrf|_csrf[_-]?token|ct0)$/i;
-
-function isCsrfTokenReadableByDesign(name: string): boolean {
-  return CSRF_TOKEN_READABLE_BY_DESIGN.test(name.trim());
 }
 
 export const detectors: Record<string, DetectFn> = {
