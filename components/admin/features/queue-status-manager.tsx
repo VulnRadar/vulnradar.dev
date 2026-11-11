@@ -43,8 +43,16 @@ import {
   type QueueStatusResponse,
 } from "./queue-status-utils";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { InlineAlert } from "@/components/shared/inline-alert";
 import { useConfirm } from "@/components/shared/use-confirm";
+import { useAuth } from "@/components/providers/auth-provider";
 import { formatRelativeTime } from "@/components/admin/utils";
+import {
+  getRoleLevel,
+  hasStaffPermission,
+  STAFF_PERMISSIONS,
+} from "@/lib/auth/permissions-client";
+import { STAFF_ROLE_HIERARCHY } from "@/lib/config/client-constants";
 
 // No admin panel manager currently uses SWR (see
 // components/providers/auth-provider.tsx for the only usage in the repo,
@@ -60,6 +68,29 @@ const POLL_INTERVAL_MS = 45_000;
  */
 const ROW_LINK =
   "-my-1 rounded-sm py-1 hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+/**
+ * What this role may do from the queue. The tab opens on VIEW_SYSTEM_STATS,
+ * which the ops role holds, but the sweep and the cancel are requireAdmin on
+ * the server and the user record needs VIEW_USERS. Ops was offered all three
+ * and got a generic failure that read as a transient fault.
+ */
+export function queueAccess(role: string | null | undefined) {
+  return {
+    canIntervene: getRoleLevel(role) >= STAFF_ROLE_HIERARCHY.admin,
+    canOpenUsers: hasStaffPermission(role, STAFF_PERMISSIONS.VIEW_USERS),
+  };
+}
+
+/** The scan's owner, as a link to their record only for a role that can open it. */
+function UserRef({ userId, linked }: { userId: number; linked: boolean }) {
+  if (!linked) return <span>user #{userId}</span>;
+  return (
+    <Link href={adminUserHref(userId)} className={cn("inline-block", ROW_LINK)}>
+      user #{userId}
+    </Link>
+  );
+}
 
 /**
  * Admin > System > Scanner Queue. AUDIT-010 admin-feature-gap: there was
@@ -91,6 +122,8 @@ export function QueueStatusManager() {
   const [inflightLoading, setInflightLoading] = useState(false);
   const [sweeping, setSweeping] = useState(false);
   const { confirm, confirmDialog } = useConfirm();
+  const { me } = useAuth();
+  const { canIntervene, canOpenUsers } = queueAccess(me?.role);
 
   const fetchFailures = useCallback(async () => {
     setFailuresLoading(true);
@@ -312,17 +345,10 @@ export function QueueStatusManager() {
 
         <CardContent className="px-4 sm:px-5 py-5 space-y-4">
           {!data && loadFailed ? (
-            <div className="flex items-start gap-3 p-4 rounded-lg border border-destructive/30 bg-destructive/10">
-              <LeadingIcon
-                line="sm"
-                icon={AlertTriangle}
-                className="text-destructive"
-              />
-              <p className="text-sm text-destructive">
-                Couldn&apos;t load the scanner queue. This is not an all-clear:
-                the queue state is unknown. Use Refresh to try again.
-              </p>
-            </div>
+            <InlineAlert tone="error">
+              Couldn&apos;t load the scanner queue. This is not an all-clear:
+              the queue state is unknown. Use Refresh to try again.
+            </InlineAlert>
           ) : loading || !data ? (
             // The strip AND the two age cells below it. Drawing the strip
             // alone meant the card grew by a whole fact row the moment the
@@ -421,7 +447,7 @@ export function QueueStatusManager() {
                           ? "Past every configured scan timeout. It is stuck, not slow."
                           : "Running inside the configured scan timeout."}
                       </p>
-                      {runningStuck && (
+                      {runningStuck && canIntervene && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -529,36 +555,36 @@ export function QueueStatusManager() {
                                       ? ` · started ${formatRelativeTime(new Date(scan.startedAt))}`
                                       : ""}{" "}
                                     &middot;{" "}
-                                    <Link
-                                      href={adminUserHref(scan.userId)}
-                                      className={cn("inline-block", ROW_LINK)}
-                                    >
-                                      user #{scan.userId}
-                                    </Link>{" "}
+                                    <UserRef
+                                      userId={scan.userId}
+                                      linked={canOpenUsers}
+                                    />{" "}
                                     &middot; {scan.source}
                                   </span>
                                 </div>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 shrink-0 gap-1.5"
-                                  onClick={() =>
-                                    confirm({
-                                      title: `Cancel scan #${scan.id}?`,
-                                      description: `This stops the scan for user #${scan.userId}. They see it fail with "Cancelled by an administrator.", whatever it had found so far is discarded, and there is no action that undoes this.`,
-                                      confirmLabel: "Cancel scan",
-                                      danger: true,
-                                      onConfirm: () => cancelScan(scan.id),
-                                    })
-                                  }
-                                  aria-label={`Cancel scan #${scan.id}`}
-                                >
-                                  <XCircle
-                                    className="h-3.5 w-3.5"
-                                    aria-hidden="true"
-                                  />
-                                  Cancel
-                                </Button>
+                                {canIntervene && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 shrink-0 gap-1.5"
+                                    onClick={() =>
+                                      confirm({
+                                        title: `Cancel scan #${scan.id}?`,
+                                        description: `This stops the scan for user #${scan.userId}. They see it fail with "Cancelled by an administrator.", whatever it had found so far is discarded, and there is no action that undoes this.`,
+                                        confirmLabel: "Cancel scan",
+                                        danger: true,
+                                        onConfirm: () => cancelScan(scan.id),
+                                      })
+                                    }
+                                    aria-label={`Cancel scan #${scan.id}`}
+                                  >
+                                    <XCircle
+                                      className="h-3.5 w-3.5"
+                                      aria-hidden="true"
+                                    />
+                                    Cancel
+                                  </Button>
+                                )}
                               </li>
                             ))}
                           </ul>
@@ -731,17 +757,10 @@ export function QueueStatusManager() {
                                               {scan.url}
                                             </Link>
                                             <span className="text-muted-foreground">
-                                              <Link
-                                                href={adminUserHref(
-                                                  scan.userId,
-                                                )}
-                                                className={cn(
-                                                  "inline-block",
-                                                  ROW_LINK,
-                                                )}
-                                              >
-                                                user #{scan.userId}
-                                              </Link>{" "}
+                                              <UserRef
+                                                userId={scan.userId}
+                                                linked={canOpenUsers}
+                                              />{" "}
                                               &middot; {scan.source}
                                               {scan.failedAt
                                                 ? ` · ${formatRelativeTime(new Date(scan.failedAt))}`
