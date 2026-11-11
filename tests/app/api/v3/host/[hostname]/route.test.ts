@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import type { Vulnerability } from "@/lib/scanner/types";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -34,6 +35,8 @@ vi.mock("@/lib/api/request-utils", () => ({
 }));
 
 const { GET } = await import("@/app/api/v3/host/[hostname]/route");
+const { getSiteGrade } = await import("@/lib/scanner/site-grade");
+const { getEngineConfidence } = await import("@/lib/scanner/safety-rating");
 
 function getRequest(hostname: string) {
   return new NextRequest(
@@ -134,6 +137,9 @@ describe("GET /api/v3/host/[hostname]", () => {
 
     const res = await GET(getRequest("bad-site.com"), params("bad-site.com"));
     const body = await res.json();
+    const served = [
+      { id: "a", severity: "critical", title: "Exposed .env file" },
+    ] as unknown as Vulnerability[];
     expect(body).toEqual({
       known: true,
       host: "bad-site.com",
@@ -145,6 +151,10 @@ describe("GET /api/v3/host/[hostname]", () => {
       authenticated: true,
       autoTags: ["Critical Exposure", "Secrets Exposed"],
       checksRun: 42,
+      // This snapshot predates the stored grade, so both are worked out from
+      // the findings served.
+      siteGrade: getSiteGrade(served),
+      engineConfidence: getEngineConfidence(served),
     });
   });
 
@@ -233,6 +243,93 @@ describe("GET /api/v3/host/[hostname]", () => {
     expect(queryParams2).toEqual([123]);
     // A live source answered, so the snapshot's copy is never read.
     expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
+
+  // The source scan's own siteGrade and engineConfidence leave out whatever
+  // the scanning account marked false positive, and anyone can be that
+  // account: scan a phishing host publicly, rule out its criticals, and the
+  // live row says A. The public page takes both from the snapshot, which is
+  // computed from every finding.
+  it("takes the grade and the engine confidence from the snapshot, never from the scanning account's view", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          danger_score: 9,
+          severity_counts: { critical: 1, high: 0, medium: 0, low: 0, info: 0 },
+          response_headers: null,
+          last_scanned_at: "2026-01-01T00:00:00.000Z",
+          result_meta: { checksRun: 10, siteGrade: "F", engineConfidence: 81 },
+          authenticated: false,
+          auto_tags: [],
+          source_scan_id: 321,
+        },
+      ],
+      rowCount: 1,
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          findings: [{ id: "c", severity: "critical", title: "SQL injection" }],
+          result_meta: {
+            checksRun: 10,
+            siteGrade: "A+",
+            engineConfidence: 97,
+            aiSummary: "Nothing serious.",
+          },
+        },
+      ],
+      rowCount: 1,
+    });
+
+    const res = await GET(getRequest("phish.test"), params("phish.test"));
+    const body = await res.json();
+    expect(body.siteGrade).toBe("F");
+    expect(body.engineConfidence).toBe(81);
+    // Everything else the live row carries still wins over the snapshot.
+    expect(body.aiSummary).toBe("Nothing serious.");
+  });
+
+  it("grades a snapshot that predates the stored grade from the findings it serves", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          danger_score: 9,
+          severity_counts: { critical: 1, high: 0, medium: 0, low: 0, info: 0 },
+          response_headers: null,
+          last_scanned_at: "2026-01-01T00:00:00.000Z",
+          result_meta: {},
+          authenticated: false,
+          auto_tags: [],
+          source_scan_id: 322,
+        },
+      ],
+      rowCount: 1,
+    });
+    const findings = [
+      {
+        id: "c",
+        severity: "critical",
+        title: "SQL injection",
+        category: "content",
+        confidence: 95,
+      },
+    ];
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          findings,
+          result_meta: { siteGrade: "A+", engineConfidence: 97 },
+        },
+      ],
+      rowCount: 1,
+    });
+
+    const res = await GET(getRequest("legacy.test"), params("legacy.test"));
+    const body = await res.json();
+    const asVulns = findings as unknown as Vulnerability[];
+    expect(body.siteGrade).toBe(getSiteGrade(asVulns));
+    expect(body.siteGrade).not.toBe("A+");
+    expect(body.engineConfidence).toBe(getEngineConfidence(asVulns));
   });
 
   it("does not select the snapshot's findings on the first read", async () => {

@@ -4,6 +4,9 @@ import {
   normalizeHostForReputation,
   type SeverityCounts,
 } from "@/lib/scanner/host-reputation";
+import { getEngineConfidence } from "@/lib/scanner/safety-rating";
+import { resultMetaIsIncomplete } from "@/lib/scanner/score-findings";
+import { getSiteGrade, isSiteGrade } from "@/lib/scanner/site-grade";
 import { APP_NAME } from "@/lib/config/constants";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
@@ -197,6 +200,25 @@ export async function GET(
       ...row.result_meta,
       ...liveMeta,
     };
+
+    // Except the grade and the engine confidence. On the source scan row those
+    // are the scanning account's own view: execute-scan leaves out the
+    // findings that account marked false positive when it finalises, and the
+    // recompute after a verdict does the same. Anyone can scan a host
+    // publicly, so reading them from there let a free account rule out a
+    // phishing host's criticals and have this page print an A beside the
+    // criticals it still lists. The snapshot's copy is computed from every
+    // finding (upsertHostReputation) and only a verified owner's verdicts
+    // reach it (recomputeScanScore). A snapshot from before the grade was
+    // stored gets one from the findings this response serves.
+    const snapshotMeta = row.result_meta ?? {};
+    meta.siteGrade = isSiteGrade(snapshotMeta.siteGrade)
+      ? snapshotMeta.siteGrade
+      : getSiteGrade(findings);
+    meta.engineConfidence =
+      typeof snapshotMeta.engineConfidence === "number"
+        ? snapshotMeta.engineConfidence
+        : getEngineConfidence(findings, resultMetaIsIncomplete(meta));
 
     /**
      * An explicit list, because a spread is not an allowlist.

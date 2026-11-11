@@ -30,6 +30,13 @@ vi.mock("@/lib/auth", async (importOriginal) => {
   };
 });
 
+// The public host report reads the client IP for its limiter, and there is no
+// request scope here to read it from.
+vi.mock("@/lib/api/request-utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api/request-utils")>()),
+  getClientIp: async () => "203.0.113.78",
+}));
+
 let pageFindings: Vulnerability[] = [];
 vi.mock("@/lib/scanner/engine", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/scanner/engine")>()),
@@ -78,6 +85,7 @@ const { aggregateCheckAccuracy, assessCheckAccuracy } =
   await import("@/lib/scanner/check-accuracy");
 const { scoreFindings } = await import("@/lib/scanner/score-findings");
 const { POST: postFeedback } = await import("@/app/api/v3/scan/feedback/route");
+const { GET: hostReport } = await import("@/app/api/v3/host/[hostname]/route");
 const { remapLegacyFindingIds } =
   await import("@/lib/scanner/finding-id-remap");
 const { generateId, legacyFindingId } = await import("@/lib/scanner/_helpers");
@@ -230,6 +238,18 @@ describeIntegration("scan scoring and identity", () => {
       if (!rep) await new Promise((r) => setTimeout(r, 20));
     }
     expect(rep?.severity_counts.critical).toBe(1);
+
+    // And the public report grades the host on every finding, although the
+    // source scan row it reads the rest of its detail from carries the
+    // scanning account's own grade.
+    const res = await hostReport(
+      new NextRequest(`http://localhost/api/v3/host/${host}`),
+      { params: Promise.resolve({ hostname: host }) },
+    );
+    expect(res.status).toBe(200);
+    const report = (await res.json()) as { siteGrade?: string };
+    expect(report.siteGrade).toBe(scoreFindings([X, Y], new Set()).siteGrade);
+    expect(report.siteGrade).not.toBe(withoutX.siteGrade);
   });
 
   it("stores what changed since the owner's previous completed scan", async () => {
