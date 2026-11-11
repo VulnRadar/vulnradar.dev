@@ -947,7 +947,8 @@ export const upgrade = {
     "v4.0.0 foundation: failure_kind on scan_history, scan_id on " +
     "system_error_logs, the SMTP delivery columns on email_logs, " +
     "last_success_at / last_failure_at / last_error on " +
-    "worker_failure_state, assigned_to on support_tickets, and the " +
+    "worker_failure_state, assigned_to on support_tickets, " +
+    "last_used_api_version and last_used_client on api_keys, and the " +
     "ai_chat_events and ai_message_feedback tables.",
 
   addTables: [
@@ -1534,6 +1535,18 @@ export const upgrade = {
       table: "email_verification_tokens",
       column: "email",
       definition: "VARCHAR(255)",
+    },
+    // The API version and first-party client a key was last used with, for
+    // the v3 sunset review.
+    {
+      table: "api_keys",
+      column: "last_used_api_version",
+      definition: "VARCHAR(8)",
+    },
+    {
+      table: "api_keys",
+      column: "last_used_client",
+      definition: "VARCHAR(64)",
     },
   ],
 
@@ -2380,7 +2393,8 @@ export const downgrade = {
     "already promoted out of the AI-suggestion path reverts to needing an " +
     "AI call again until re-promoted. Also DELETES every AI chat event " +
     "and every thumbs up or down on an AI reply (ai_chat_events, " +
-    "ai_message_feedback), and every scan's failure_kind. Re-adds the five unused v2.0.0 " +
+    "ai_message_feedback), every scan's failure_kind, and the API version " +
+    "and client each key was last used with. Re-adds the five unused v2.0.0 " +
     "columns the upgrade dropped (AUDIT-011 drift-17), empty, so the " +
     "result is a true v2.0.0 shape.",
 
@@ -2511,6 +2525,8 @@ export const downgrade = {
     // support_tickets), so only this one needs its own drop.
     { table: "scan_history", column: "failure_kind" },
     { table: "email_verification_tokens", column: "email" },
+    { table: "api_keys", column: "last_used_api_version" },
+    { table: "api_keys", column: "last_used_client" },
   ],
 
   // AUDIT-011#drift-17: the five dead columns the upgrade drops existed at
