@@ -8,9 +8,20 @@ import {
   supportTicketStatusChangedEmail,
 } from "@/lib/email/email";
 import { createUserNotification } from "@/lib/notifications/user-notifications";
-import { APP_URL, SUPPORT_EMAIL } from "@/lib/config/constants";
+import { APP_URL, ROUTES, SUPPORT_EMAIL } from "@/lib/config/constants";
 import { logError } from "@/lib/logging/log";
+import { INBOX_TICKET_PARAM } from "./inbox-deep-link";
 import type { TicketCategory } from "./ticket-constants";
+
+/**
+ * Where a staff alert sends the reader: the admin support inbox with this
+ * ticket's thread already open (components/admin/features/support-inbox.tsx
+ * reads the parameter). `support-tickets` is the tab id the admin page routes
+ * on.
+ */
+export function staffTicketUrl(ticketId: number): string {
+  return `${APP_URL}${ROUTES.ADMIN}?tab=support-tickets&${INBOX_TICKET_PARAM}=${ticketId}`;
+}
 
 // The bodies used to be built here, as bare `<p>` strings with a fourth
 // private copy of escapeHtml, and were sent with no layout: no wordmark, no
@@ -48,7 +59,10 @@ export async function notifyStaffOfTicketActivity(opts: {
   try {
     await sendEmail({
       to: SUPPORT_EMAIL,
-      ...supportTicketStaffAlertEmail(opts),
+      ...supportTicketStaffAlertEmail({
+        ...opts,
+        inboxUrl: staffTicketUrl(opts.ticketId),
+      }),
     });
   } catch (err) {
     logError("support", "could not email staff about a ticket", err, {

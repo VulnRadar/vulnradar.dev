@@ -37,6 +37,19 @@ import {
   type TicketStatus,
   STAFF_TICKET_STATUS_LABELS,
 } from "@/lib/support/ticket-constants";
+import {
+  NO_DRAFTS,
+  hasUnsentDraft,
+  readDraft,
+  replyForTicket,
+  writeDraft,
+  type ReplyDrafts,
+} from "@/lib/support/reply-drafts";
+import {
+  INBOX_TICKET_PARAM,
+  deepLinkOutcome,
+  parseTicketParam,
+} from "@/lib/support/inbox-deep-link";
 
 interface InboxTicket {
   id: number;
@@ -80,6 +93,8 @@ interface Thread {
     assignedTo?: { id: number; name: string | null; mine: boolean } | null;
   };
   messages: ThreadMessage[];
+  /** False when this deployment has no AI provider, so no Translate button. */
+  translationAvailable?: boolean;
 }
 
 const FILTERS: { key: string; label: string }[] = [
@@ -205,8 +220,15 @@ function TicketInbox() {
   const [openId, setOpenId] = useState<number | null>(null);
   const [thread, setThread] = useState<Thread | null>(null);
   const [threadLoading, setThreadLoading] = useState(false);
-  const [reply, setReply] = useState("");
+  // One draft per ticket. A single string followed the staff member from one
+  // customer's ticket to the next, one click from sending private text to the
+  // wrong person (lib/support/reply-drafts.ts).
+  const [drafts, setDrafts] = useState<ReplyDrafts>(NO_DRAFTS);
   const [replying, setReplying] = useState(false);
+  const [ticketParam, setTicketParam] = useQueryParam<string>(
+    INBOX_TICKET_PARAM,
+    "",
+  );
   const [assigning, setAssigning] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -233,6 +255,9 @@ function TicketInbox() {
   // owner's id for staff, but the row is the fallback for a thread that
   // predates it.
   const openTicket = tickets?.find((t) => t.id === openId) ?? null;
+
+  const reply = readDraft(drafts, thread?.ticket.id ?? null);
+  const unsentDraft = hasUnsentDraft(drafts);
 
   const filterParams = useCallback((): URLSearchParams => {
     const params = new URLSearchParams();
@@ -289,7 +314,14 @@ function TicketInbox() {
   }, [filterParams, nextCursor, loadingMore]);
 
   const openThread = useCallback(
-    async (id: number, opts: { moveFocus?: boolean } = {}) => {
+    async (
+      id: number,
+      opts: {
+        moveFocus?: boolean;
+        /** A link named this ticket: on any failure fall back to the queue and say nothing. */
+        quiet?: boolean;
+      } = {},
+    ) => {
       setOpenId(id);
       // A different ticket's thread is dropped before this one loads, so its
       // header is never shown over the new one's skeleton. A reload of the
@@ -303,12 +335,20 @@ function TicketInbox() {
       if (opts.moveFocus) focusOn("thread-heading");
       try {
         const res = await fetch(API.SUPPORT_TICKET(id));
+        if (opts.quiet && deepLinkOutcome(res) === "queue") {
+          setOpenId(null);
+          setThread(null);
+          focusOn(null);
+          return;
+        }
         if (!res.ok) throw new Error("Could not open this ticket.");
         setThread(await res.json());
       } catch (e) {
-        setError(
-          e instanceof Error ? e.message : "Could not open this ticket.",
-        );
+        if (opts.quiet) setOpenId(null);
+        else
+          setError(
+            e instanceof Error ? e.message : "Could not open this ticket.",
+          );
         setThread(null);
         focusOn(null);
       } finally {
@@ -322,6 +362,28 @@ function TicketInbox() {
     // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: setState runs only in loadInbox' async continuation
     void loadInbox();
   }, [loadInbox]);
+
+  // The alert email links /admin?tab=support-tickets&ticket=<id>. The param is
+  // consumed (taken out of the URL) so a refresh lands on the queue instead of
+  // reopening it, and an id that is junk, missing or not this person's to see
+  // opens the queue without a word about it.
+  useEffect(() => {
+    if (!ticketParam) return;
+    setTicketParam(null);
+    const id = parseTicketParam(ticketParam);
+    if (id === null) return;
+    // oxlint-disable-next-line react/set-state-in-effect -- consuming a URL param: setState runs only in openThread's async continuation
+    void openThread(id, { moveFocus: true, quiet: true });
+  }, [ticketParam, setTicketParam, openThread]);
+
+  // Drafts live in memory only. Closing the tab or following a link out of the
+  // admin panel would drop every one of them, so ask first while one has text.
+  useEffect(() => {
+    if (!unsentDraft) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsentDraft]);
 
   useEffect(() => {
     const timer = setTimeout(() => setQuery(search.trim()), SEARCH_DEBOUNCE_MS);
@@ -346,22 +408,25 @@ function TicketInbox() {
   async function sendReply(e: React.FormEvent) {
     e.preventDefault();
     if (replying || !thread) return;
+    // The id is the open ticket's and the text is that ticket's own draft, read
+    // together here so neither can come from another thread.
+    const { ticketId, message } = replyForTicket(drafts, thread.ticket.id);
     setReplying(true);
     setError(null);
     setAnnouncement("");
     try {
-      const res = await fetch(API.SUPPORT_TICKET(thread.ticket.id), {
+      const res = await fetch(API.SUPPORT_TICKET(ticketId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: reply }),
+        body: JSON.stringify({ message }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Could not send the reply.");
-      setReply("");
+      setDrafts((d) => writeDraft(d, ticketId, ""));
       // The Send button was focused and is disabled while the thread reloads;
       // the composer is where they go on typing.
       focusOn("reply");
-      await openThread(thread.ticket.id);
+      await openThread(ticketId);
       setAnnouncement("Reply sent.");
       void loadInbox();
     } catch (e) {
@@ -936,6 +1001,9 @@ function TicketInbox() {
                         body={m.body}
                         bodyLocale={m.bodyLocale}
                         translation={m.translation}
+                        translationAvailable={
+                          thread.translationAvailable !== false
+                        }
                       />
                     </div>
                   </div>
@@ -958,7 +1026,10 @@ function TicketInbox() {
                     data-focus-id="reply"
                     value={reply}
                     maxLength={TICKET_MESSAGE_MAX}
-                    onChange={(e) => setReply(e.target.value)}
+                    onChange={(e) => {
+                      const text = e.target.value;
+                      setDrafts((d) => writeDraft(d, thread.ticket.id, text));
+                    }}
                     placeholder="Reply to the user..."
                     aria-label="Reply"
                     rows={3}

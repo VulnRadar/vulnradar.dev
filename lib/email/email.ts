@@ -3256,9 +3256,11 @@ export function supportTicketStaffAlertEmail(input: {
   fromEmail: string;
   body: string;
   isNew: boolean;
+  /** A link that opens this ticket's thread; the plain queue when omitted. */
+  inboxUrl?: string;
 }) {
   const verb = input.isNew ? "New" : "Reply on";
-  const inboxUrl = supportInboxUrl();
+  const inboxUrl = input.inboxUrl ?? supportInboxUrl();
   return {
     template: "supportTicketStaffAlert",
     subject: `[Ticket #${input.ticketId}] ${input.subject}`,

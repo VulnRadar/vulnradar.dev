@@ -121,6 +121,60 @@ describe("the contact form view", () => {
   });
 });
 
+describe("the reply draft", () => {
+  it("is kept per ticket, not in one string that follows the staff member", () => {
+    // The helper's rules are tested in tests/lib/support/reply-drafts.test.ts;
+    // this pins that the inbox actually goes through it.
+    expect(INBOX).toContain("useState<ReplyDrafts>(NO_DRAFTS)");
+    expect(INBOX).toContain("readDraft(drafts, thread?.ticket.id ?? null)");
+    expect(INBOX).toContain("writeDraft(d, thread.ticket.id, text)");
+    expect(INBOX).not.toMatch(/useState\(""\);\s*\n\s*const \[replying/);
+    expect(INBOX).not.toContain("setReply(");
+  });
+
+  it("sends the id and the text together from the open ticket's draft", () => {
+    expect(INBOX).toContain("replyForTicket(drafts, thread.ticket.id)");
+    expect(INBOX).toContain("API.SUPPORT_TICKET(ticketId)");
+    expect(INBOX).toContain("JSON.stringify({ message })");
+  });
+
+  it("asks before the tab closes while a draft has text", () => {
+    expect(INBOX).toContain('window.addEventListener("beforeunload", warn)');
+    expect(INBOX).toContain("hasUnsentDraft(drafts)");
+  });
+});
+
+describe("a link from the staff alert", () => {
+  it("reads ?ticket= through the url-state helper the panel already uses", () => {
+    expect(INBOX).toMatch(/useQueryParam<string>\(\s*INBOX_TICKET_PARAM,\s*""/);
+  });
+
+  it("opens that thread quietly and takes the param out of the URL", () => {
+    expect(INBOX).toContain("setTicketParam(null)");
+    expect(INBOX).toContain("parseTicketParam(ticketParam)");
+    expect(INBOX).toContain("{ moveFocus: true, quiet: true }");
+  });
+
+  it("falls back to the queue without an error for a missing or forbidden ticket", () => {
+    expect(INBOX).toContain('deepLinkOutcome(res) === "queue"');
+    // The quiet branch returns before the line that raises the error.
+    const quiet = INBOX.indexOf('deepLinkOutcome(res) === "queue"');
+    const raise = INBOX.indexOf(
+      'throw new Error("Could not open this ticket.")',
+    );
+    expect(quiet).toBeGreaterThan(-1);
+    expect(quiet).toBeLessThan(raise);
+    expect(INBOX).toContain("if (opts.quiet) setOpenId(null);");
+  });
+});
+
+describe("the Translate button", () => {
+  it("is told whether the server can translate, from the ticket response", () => {
+    expect(INBOX).toContain("translationAvailable?: boolean;");
+    expect(INBOX).toContain("thread.translationAvailable !== false");
+  });
+});
+
 describe("copy", () => {
   it("has no em dashes in either file", () => {
     expect(INBOX).not.toContain("—");
