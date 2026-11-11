@@ -1870,19 +1870,23 @@ export function failedLoginAttemptsEmail(
   };
 }
 
+// keyName: an account with several keys (CI, a staging deploy, a laptop) had
+// no way to tell from this email which one was stuck in a retry loop.
 export function rateLimitedEmail(
   ipAddress: string,
   _details: SecurityAlertDetails,
+  keyName: string,
 ) {
   return {
     template: "rateLimited",
-    preheader: `Throttled from ${ipAddress}. Requests resume when the window resets.`,
+    preheader: `${keyName} was throttled from ${ipAddress}. Requests resume when the window resets.`,
     subject: `Your ${APP_NAME} API key was rate limited`,
-    text: `Your ${APP_NAME} API key hit its request limit and is temporarily throttled. Requests will start going through again once the window resets.\n\nIP address: ${ipAddress}\nStatus: Rate limited\n\nThe limit is tied to your plan and resets within 24 hours. If you're hitting it often, spread requests out or upgrade for more headroom.`,
+    text: `Your ${APP_NAME} API key hit its request limit and is temporarily throttled. Requests will start going through again once the window resets.\n\nKey name: ${keyName}\nIP address: ${ipAddress}\nStatus: Rate limited\n\nThe limit is tied to your plan and resets within 24 hours. If you're hitting it often, spread requests out or upgrade for more headroom.`,
     html: `
       ${emailHeading("Your API key was rate limited")}
       ${emailLead(`Your ${APP_NAME} API key hit its request limit and is temporarily throttled. Requests will start going through again once the window resets.`)}
       ${emailDetailPanel([
+        { label: "Key name", value: escapeHtml(keyName) },
         { label: "IP address", value: escapeHtml(ipAddress), mono: true },
         {
           label: "Status",

@@ -654,6 +654,7 @@ describe("POST /api/v3/scan", () => {
   it("emails the key owner (api_usage_alerts) and returns 429 without dispatching a scan when the API key is rate limited", async () => {
     mockValidateApiKey.mockResolvedValue({
       keyId: 9,
+      keyName: "CI deploy key",
       userId: 42,
       email: "owner@example.com",
       dailyLimit: 50,
@@ -690,6 +691,7 @@ describe("POST /api/v3/scan", () => {
   it("still returns 429 even when the rate-limit notification email fails to send", async () => {
     mockValidateApiKey.mockResolvedValue({
       keyId: 9,
+      keyName: "CI deploy key",
       userId: 42,
       email: "owner@example.com",
       dailyLimit: 50,
@@ -1599,5 +1601,12 @@ describe("POST /api/v3/scan - the over-limit email", () => {
       maxAttempts: 1,
       windowSeconds: 86400,
     });
+    // Which key it was, for an account with several: the email used to say
+    // only that "your API key" was throttled.
+    const [{ emailContent }] = mockSendNotificationEmail.mock.calls[0] as [
+      { emailContent: { text: string; html: string } },
+    ];
+    expect(emailContent.text).toContain("Key name: CI deploy key");
+    expect(emailContent.html).toContain("CI deploy key");
   });
 });

@@ -108,6 +108,7 @@ const createScan = withErrorHandling(async (request: NextRequest) => {
         // make the inbox usable again.
         const limitedUserId = keyData.userId;
         const limitedKeyId = keyData.keyId;
+        const limitedKeyName = keyData.keyName;
         (async () => {
           const alertWindow = await checkGlobalRL({
             key: `api-limit-alert:${limitedKeyId}`,
@@ -120,10 +121,14 @@ const createScan = withErrorHandling(async (request: NextRequest) => {
             userId: keyData.userId,
             userEmail: keyData.email,
             type: "api_usage_alerts",
-            emailContent: rateLimitedEmail(rateLimitIp, {
-              ipAddress: rateLimitIp,
-              userAgent: await getUserAgent(),
-            }),
+            emailContent: rateLimitedEmail(
+              rateLimitIp,
+              {
+                ipAddress: rateLimitIp,
+                userAgent: await getUserAgent(),
+              },
+              limitedKeyName,
+            ),
           });
         })().catch((err) =>
           logError("scan", "failed to send the rate-limit notification", err, {

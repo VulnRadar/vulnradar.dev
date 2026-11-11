@@ -140,7 +140,10 @@ export async function buildTemplateCorpus(
       name: "apiKeyBindingReset",
       ...e.apiKeyBindingResetEmail("CI pipeline", DETAILS),
     },
-    { name: "rateLimited", ...e.rateLimitedEmail("203.0.113.42", DETAILS) },
+    {
+      name: "rateLimited",
+      ...e.rateLimitedEmail("203.0.113.42", DETAILS, "CI pipeline"),
+    },
 
     // Webhooks
     {
