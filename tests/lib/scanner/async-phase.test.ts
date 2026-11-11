@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { AsyncCheckResult } from "@/lib/scanner/async-checks";
+import type { Vulnerability } from "@/lib/scanner/types";
 
 // ScanCancelledError lives in scan-jobs.ts, which imports the pool.
 vi.mock("@/lib/database/db", () => ({ default: { query: vi.fn() } }));
@@ -50,11 +51,11 @@ describe("asyncOuterTimeoutMs", () => {
 
 describe("startAsyncPhase", () => {
   it("returns what the checks reported when they settle in time", async () => {
-    const finding = { id: "dns-1" };
+    const finding = { id: "dns-1" } as unknown as Vulnerability;
     mockRunAsyncChecksDetailed.mockResolvedValue({
       findings: [finding],
       incomplete: ["tls"],
-    } satisfies Partial<AsyncCheckResult> as unknown as AsyncCheckResult);
+    } satisfies AsyncCheckResult);
 
     const result = await startAsyncPhase({
       url: "https://example.com",
