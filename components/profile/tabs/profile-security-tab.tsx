@@ -32,7 +32,16 @@ import {
   clearAuthCache,
 } from "@/components/providers/auth-provider";
 import type { ProfileTabProps } from "@/components/profile/types";
-import { EditDialog, KEEP_OPEN } from "@/components/shared/edit-dialog";
+import {
+  EditDialog,
+  KEEP_OPEN,
+  useEditDialogError,
+} from "@/components/shared/edit-dialog";
+import { EmailStepUp, stepUpCanSave } from "@/components/shared/email-step-up";
+import {
+  useClientConfig,
+  type ClientConfig,
+} from "@/lib/hooks/use-client-config";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useConfirm } from "@/components/shared/use-confirm";
@@ -128,12 +137,15 @@ const NETWORK_ERROR =
   "We could not reach the server. Check your connection and try again.";
 
 type SendResult =
-  { ok: true; data: { backupCodes?: string[] } } | { ok: false; error: string };
+  | { ok: true; data: { backupCodes?: string[]; maskedEmail?: string } }
+  | { ok: false; error: string };
 
 // Every password below goes into the body exactly as it was typed. The server
 // compares it with the stored hash as is, so a trimmed copy of a password
 // that starts or ends with a space can never pass the re-auth check, and
-// every refused attempt still counts against the rate limit.
+// every refused attempt still counts against the rate limit. An account with
+// no password sends none (undefined drops out of the JSON): it has passed the
+// mailed step-up instead, which the server reads from its own cookie.
 async function sendJson(
   url: string,
   method: "POST" | "PATCH" | "DELETE",
@@ -223,7 +235,7 @@ export async function savePassword(
 }
 
 export async function regenerateBackupCodes(
-  password: string,
+  password: string | undefined,
 ): Promise<{ ok: true; codes: string[] } | { ok: false; error: string }> {
   const result = await sendJson(
     API.AUTH.TWO_FA.BACKUP_CODES,
@@ -237,7 +249,7 @@ export async function regenerateBackupCodes(
 
 export async function verifyAuthenticator(
   code: string,
-  password: string,
+  password: string | undefined,
 ): Promise<{ ok: true; codes: string[] } | { ok: false; error: string }> {
   const result = await sendJson(
     API.AUTH.TWO_FA.SETUP,
@@ -249,14 +261,36 @@ export async function verifyAuthenticator(
   return { ok: true, codes: result.data.backupCodes ?? [] };
 }
 
-export async function enableEmailCodes(
-  password: string,
-): Promise<string | null> {
+/**
+ * The first half of turning email codes on: re-authenticate and have the
+ * server mail a confirmation code. Nothing changes on the account yet; an
+ * address that never gets our mail must not become the only way back in.
+ */
+export async function sendEmailCodesConfirmation(
+  password: string | undefined,
+): Promise<
+  { ok: true; maskedEmail: string | null } | { ok: false; error: string }
+> {
   const result = await sendJson(
     API.AUTH.TWO_FA.EMAIL_SETUP,
     "POST",
     { password },
     "That password was not accepted. Try again.",
+  );
+  if (!result.ok) return result;
+  return { ok: true, maskedEmail: result.data.maskedEmail ?? null };
+}
+
+/** The second half: the mailed code comes back, and email codes turn on. */
+export async function enableEmailCodes(
+  password: string | undefined,
+  code: string,
+): Promise<string | null> {
+  const result = await sendJson(
+    API.AUTH.TWO_FA.EMAIL_SETUP,
+    "POST",
+    { password, code },
+    "That code did not match. Check the email and try again.",
   );
   return result.ok ? null : result.error;
 }
@@ -274,7 +308,7 @@ export function turnOffTwoFactorRequest(method: TwoFactorMethod): {
 
 export async function turnOffTwoFactor(
   method: TwoFactorMethod,
-  password: string,
+  password: string | undefined,
 ): Promise<string | null> {
   const request = turnOffTwoFactorRequest(method);
   const result = await sendJson(
@@ -292,16 +326,49 @@ function closeOnly(onClose: () => void) {
   };
 }
 
+/**
+ * An input inside one of these dialogs. When a save fails, the dialog shows
+ * why in its own alert, and every field points at that alert with
+ * aria-invalid and aria-describedby, as the fields did before they moved into
+ * EditDialog. Without it a screen reader user heard the alert once and then
+ * found nothing on the field to say it was the one that was wrong.
+ */
+function DialogInput(props: React.ComponentProps<typeof Input>) {
+  const { error, errorId } = useEditDialogError();
+  const describedBy =
+    [props["aria-describedby"], error ? errorId : undefined]
+      .filter(Boolean)
+      .join(" ") || undefined;
+  return (
+    <Input
+      {...props}
+      aria-invalid={error ? true : undefined}
+      aria-describedby={describedBy}
+    />
+  );
+}
+
+/** Props every confirm-it-is-you dialog below takes from the tab. */
+interface ReauthProps {
+  /** False for an account created through a provider: it steps up by email. */
+  hasPassword?: boolean;
+  /** False when the server cannot send mail (see EmailStepUp). */
+  emailConfigured?: boolean;
+}
+
 export function PasswordDialog({
   hasPassword,
+  emailConfigured = true,
   onClose,
   onSaved,
 }: {
   hasPassword: boolean;
+  emailConfigured?: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [draft, setDraft] = useState<PasswordDraft>(EMPTY_PASSWORD_DRAFT);
+  const [stepUpDone, setStepUpDone] = useState(false);
   const set =
     (key: keyof PasswordDraft) => (e: { target: { value: string } }) =>
       setDraft((d) => ({ ...d, [key]: e.target.value }));
@@ -315,6 +382,7 @@ export function PasswordDialog({
       saveLabel={hasPassword ? "Update password" : "Set password"}
       savingLabel={hasPassword ? "Updating..." : "Saving..."}
       dirty={isPasswordDraftDirty(draft)}
+      canSave={hasPassword || stepUpCanSave(emailConfigured, stepUpDone)}
       onSave={async () => {
         const error = await savePassword(draft, hasPassword);
         if (error) return error;
@@ -322,10 +390,10 @@ export function PasswordDialog({
       }}
     >
       <div className="flex flex-col gap-4">
-        {hasPassword && (
+        {hasPassword ? (
           <div className="flex flex-col gap-2">
             <Label htmlFor="sec-current-pw">Current password</Label>
-            <Input
+            <DialogInput
               id="sec-current-pw"
               type="password"
               autoComplete="current-password"
@@ -335,14 +403,21 @@ export function PasswordDialog({
               className="h-10"
             />
           </div>
+        ) : (
+          // An account with no password could set one on its session
+          // alone, which handed a stolen session a password of its own.
+          <EmailStepUp
+            idPrefix="set-password-step-up"
+            emailConfigured={emailConfigured}
+            onReady={() => setStepUpDone(true)}
+          />
         )}
         <div className="flex flex-col gap-2">
           <Label htmlFor="sec-new-pw">New password</Label>
-          <Input
+          <DialogInput
             id="sec-new-pw"
             type="password"
             autoComplete="new-password"
-            autoFocus={!hasPassword}
             value={draft.next}
             onChange={set("next")}
             className="h-10"
@@ -354,7 +429,7 @@ export function PasswordDialog({
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="sec-confirm-new-pw">Confirm new password</Label>
-          <Input
+          <DialogInput
             id="sec-confirm-new-pw"
             type="password"
             autoComplete="new-password"
@@ -383,7 +458,7 @@ function PasswordField({
   return (
     <div className="flex flex-col gap-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input
+      <DialogInput
         id={id}
         type="password"
         autoComplete="current-password"
@@ -396,17 +471,75 @@ function PasswordField({
   );
 }
 
+/**
+ * The password field for an account that has one, the mailed step-up where
+ * it would be for an account that does not.
+ */
+function ReauthField({
+  id,
+  hasPassword,
+  emailConfigured,
+  password,
+  onPasswordChange,
+  onStepUpDone,
+}: {
+  id: string;
+  hasPassword: boolean;
+  emailConfigured: boolean;
+  password: string;
+  onPasswordChange: (value: string) => void;
+  onStepUpDone: () => void;
+}) {
+  return hasPassword ? (
+    <PasswordField
+      id={id}
+      label="Confirm your password"
+      value={password}
+      onChange={onPasswordChange}
+    />
+  ) : (
+    <EmailStepUp
+      idPrefix={`${id}-step-up`}
+      emailConfigured={emailConfigured}
+      onReady={onStepUpDone}
+    />
+  );
+}
+
+/** What a confirm-it-is-you dialog's Save waits on, and what it sends. */
+function useReauth({
+  hasPassword = true,
+  emailConfigured = true,
+}: ReauthProps) {
+  const [password, setPassword] = useState("");
+  const [stepUpDone, setStepUpDone] = useState(false);
+  return {
+    hasPassword,
+    emailConfigured,
+    password,
+    setPassword,
+    onStepUpDone: () => setStepUpDone(true),
+    ready: hasPassword
+      ? password !== ""
+      : stepUpCanSave(emailConfigured, stepUpDone),
+    dirty: password !== "",
+    /** Undefined for an account with no password: the step-up stands in. */
+    sent: hasPassword ? password : undefined,
+  };
+}
+
 export function RegenerateBackupCodesDialog({
   onClose,
   onIssued,
   returnFocusRef,
-}: {
+  ...reauthProps
+}: ReauthProps & {
   onClose: () => void;
   /** Hands the new set to the tab, whose takeover panel is the one place it shows. */
   onIssued: (codes: string[]) => void;
   returnFocusRef?: React.RefObject<HTMLElement | null>;
 }) {
-  const [password, setPassword] = useState("");
+  const reauth = useReauth(reauthProps);
   return (
     <EditDialog
       open
@@ -418,20 +551,22 @@ export function RegenerateBackupCodesDialog({
       description={`Your ${BACKUP_CODE_SET_SIZE} current codes stop working the moment new ones are issued.`}
       saveLabel="Generate new codes"
       savingLabel="Generating..."
-      dirty={password !== ""}
-      canSave={password !== ""}
+      dirty={reauth.dirty}
+      canSave={reauth.ready}
       returnFocusRef={returnFocusRef}
       onSave={async () => {
-        const result = await regenerateBackupCodes(password);
+        const result = await regenerateBackupCodes(reauth.sent);
         if (!result.ok) return result.error;
         onIssued(result.codes);
       }}
     >
-      <PasswordField
+      <ReauthField
         id="regen-backup-password"
-        label="Confirm your password"
-        value={password}
-        onChange={setPassword}
+        hasPassword={reauth.hasPassword}
+        emailConfigured={reauth.emailConfigured}
+        password={reauth.password}
+        onPasswordChange={reauth.setPassword}
+        onStepUpDone={reauth.onStepUpDone}
       />
     </EditDialog>
   );
@@ -447,7 +582,8 @@ export function AuthenticatorSetupDialog({
   onClose,
   onEnabled,
   returnFocusRef,
-}: {
+  ...reauthProps
+}: ReauthProps & {
   setup: AuthenticatorSetup;
   /** resetEnrolment: any way out drops the half-finished secret. */
   onClose: () => void;
@@ -456,7 +592,7 @@ export function AuthenticatorSetupDialog({
 }) {
   const [enrolStep, setEnrolStep] = useState<EnrolStep>("scan");
   const [code, setCode] = useState("");
-  const [password, setPassword] = useState("");
+  const reauth = useReauth(reauthProps);
   const codeInputRef = useRef<HTMLInputElement>(null);
 
   // Move focus to the code field when the verify step appears, so the flow
@@ -490,15 +626,15 @@ export function AuthenticatorSetupDialog({
       description="Two steps: add the account to your app, then prove it works with a code."
       saveLabel={verifying ? "Verify and turn on" : "I have added it"}
       savingLabel="Verifying..."
-      dirty={code !== "" || password !== ""}
-      canSave={!verifying || (code.length === 6 && password !== "")}
+      dirty={code !== "" || reauth.dirty}
+      canSave={!verifying || (code.length === 6 && reauth.ready)}
       returnFocusRef={returnFocusRef}
       onSave={async () => {
         if (!verifying) {
           setEnrolStep("verify");
           return KEEP_OPEN;
         }
-        const result = await verifyAuthenticator(code, password);
+        const result = await verifyAuthenticator(code, reauth.sent);
         if (!result.ok) return result.error;
         onEnabled(result.codes);
       }}
@@ -572,12 +708,14 @@ export function AuthenticatorSetupDialog({
         ) : (
           <div className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
-              Enter the current code from your app, then confirm your password.
+              {reauth.hasPassword
+                ? "Enter the current code from your app, then confirm your password."
+                : "Enter the current code from your app, then confirm it is you with a code we email to you."}
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="flex flex-col gap-2">
                 <Label htmlFor="setup-2fa-code">6-digit code</Label>
-                <Input
+                <DialogInput
                   id="setup-2fa-code"
                   ref={codeInputRef}
                   type="text"
@@ -593,18 +731,27 @@ export function AuthenticatorSetupDialog({
                   className="h-10 w-[180px] text-center text-lg tracking-[0.3em] font-mono"
                 />
               </div>
-              <div className="flex flex-col gap-2 flex-1 min-w-0">
-                <Label htmlFor="setup-2fa-password">Your password</Label>
-                <Input
-                  id="setup-2fa-password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="h-10"
-                />
-              </div>
+              {reauth.hasPassword && (
+                <div className="flex flex-col gap-2 flex-1 min-w-0">
+                  <Label htmlFor="setup-2fa-password">Your password</Label>
+                  <DialogInput
+                    id="setup-2fa-password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={reauth.password}
+                    onChange={(e) => reauth.setPassword(e.target.value)}
+                    className="h-10"
+                  />
+                </div>
+              )}
             </div>
+            {!reauth.hasPassword && (
+              <EmailStepUp
+                idPrefix="setup-2fa-step-up"
+                emailConfigured={reauth.emailConfigured}
+                onReady={reauth.onStepUpDone}
+              />
+            )}
             <Button
               type="button"
               variant="ghost"
@@ -647,16 +794,26 @@ function SecretKey({ secret }: { secret: string }) {
   );
 }
 
+/**
+ * Two steps, because the server takes two: confirm it is you and have a code
+ * mailed, then enter that code to turn email codes on. Until the code comes
+ * back nothing on the account changes, so an address that does not get our
+ * mail can never become the only way in.
+ */
 export function EnableEmailCodesDialog({
   email,
   onClose,
   onEnabled,
-}: {
+  ...reauthProps
+}: ReauthProps & {
   email?: string;
   onClose: () => void;
   onEnabled: () => void;
 }) {
-  const [password, setPassword] = useState("");
+  const reauth = useReauth(reauthProps);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const confirming = sentTo !== null;
   return (
     <EditDialog
       open
@@ -664,23 +821,58 @@ export function EnableEmailCodesDialog({
       tier="compact"
       size="sm"
       title="Turn on email codes?"
-      description={`From your next sign-in, we email a 6-digit code to ${email || "your inbox"} after your password.`}
-      saveLabel="Turn on email codes"
-      savingLabel="Turning on..."
-      dirty={password !== ""}
-      canSave={password !== ""}
+      description={
+        confirming
+          ? `We sent a 6-digit code to ${sentTo}. Enter it to turn email codes on.`
+          : `From your next sign-in, we email a 6-digit code to ${email || "your inbox"} ${reauth.hasPassword ? "after your password" : "after you sign in"}. First we send one now, to check it arrives.`
+      }
+      saveLabel={
+        confirming ? "Turn on email codes" : "Send a confirmation code"
+      }
+      savingLabel={confirming ? "Turning on..." : "Sending..."}
+      dirty={reauth.dirty || code !== ""}
+      canSave={confirming ? code.length === 6 : reauth.ready}
       onSave={async () => {
-        const error = await enableEmailCodes(password);
+        if (!confirming) {
+          const sent = await sendEmailCodesConfirmation(reauth.sent);
+          if (!sent.ok) return sent.error;
+          setSentTo(sent.maskedEmail ?? email ?? "your inbox");
+          return KEEP_OPEN;
+        }
+        const error = await enableEmailCodes(reauth.sent, code);
         if (error) return error;
         onEnabled();
       }}
     >
-      <PasswordField
-        id="enable-email-2fa-password"
-        label="Confirm your password"
-        value={password}
-        onChange={setPassword}
-      />
+      {confirming ? (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="enable-email-2fa-code">6-digit code</Label>
+          <DialogInput
+            id="enable-email-2fa-code"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9]{6}"
+            maxLength={6}
+            placeholder="000000"
+            autoFocus
+            value={code}
+            onChange={(e) =>
+              setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+            }
+            className="h-10 w-[180px] text-center text-lg tracking-[0.3em] font-mono"
+          />
+        </div>
+      ) : (
+        <ReauthField
+          id="enable-email-2fa-password"
+          hasPassword={reauth.hasPassword}
+          emailConfigured={reauth.emailConfigured}
+          password={reauth.password}
+          onPasswordChange={reauth.setPassword}
+          onStepUpDone={reauth.onStepUpDone}
+        />
+      )}
     </EditDialog>
   );
 }
@@ -695,12 +887,13 @@ export function TurnOffTwoFactorDialog({
   method,
   onClose,
   onTurnedOff,
-}: {
+  ...reauthProps
+}: ReauthProps & {
   method: TwoFactorMethod;
   onClose: () => void;
   onTurnedOff: () => void;
 }) {
-  const [password, setPassword] = useState("");
+  const reauth = useReauth(reauthProps);
   return (
     <EditDialog
       open
@@ -713,19 +906,21 @@ export function TurnOffTwoFactorDialog({
       saveLabel="Turn off"
       savingLabel="Turning off..."
       cancelLabel="Keep it on"
-      dirty={password !== ""}
-      canSave={password !== ""}
+      dirty={reauth.dirty}
+      canSave={reauth.ready}
       onSave={async () => {
-        const error = await turnOffTwoFactor(method, password);
+        const error = await turnOffTwoFactor(method, reauth.sent);
         if (error) return error;
         onTurnedOff();
       }}
     >
-      <PasswordField
+      <ReauthField
         id={`disable-${method}-2fa-password`}
-        label="Confirm your password"
-        value={password}
-        onChange={setPassword}
+        hasPassword={reauth.hasPassword}
+        emailConfigured={reauth.emailConfigured}
+        password={reauth.password}
+        onPasswordChange={reauth.setPassword}
+        onStepUpDone={reauth.onStepUpDone}
       />
     </EditDialog>
   );
@@ -941,9 +1136,15 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
 
   // False only for an OAuth-only account (Google/GitHub/Discord sign-up)
   // that has never set a password. It has no "current password" to enter,
-  // so the dialog skips that field and the server-side re-auth gate
-  // (app/api/v3/auth/update/route.ts) skips checking one.
+  // so every dialog below shows the mailed step-up where that field would be
+  // (components/shared/email-step-up.tsx, lib/auth/reauth.ts).
   const hasPassword = user?.hasPassword ?? true;
+  // Read optionally until the client config carries it: an older response
+  // without the field means mail works, which is the server's own default.
+  const clientConfig: ClientConfig & { emailConfigured?: boolean } =
+    useClientConfig();
+  const emailConfigured = clientConfig.emailConfigured !== false;
+  const reauthProps = { hasPassword, emailConfigured };
 
   async function handleForceLogout() {
     setLogoutError(null);
@@ -1308,58 +1509,63 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
             )}
           </div>
 
-          {/* ── Email codes ── */}
-          <div
-            className={cn(
-              "rounded-xl border p-4 sm:p-5 flex flex-col gap-4",
-              emailActive
-                ? "border-primary/25 bg-primary/4"
-                : "border-border bg-card",
-            )}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground">
-                  Email codes
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  We send a 6-digit code to {user?.email || "your inbox"} at
-                  every sign-in. Simpler to set up, but only as safe as your
-                  email account.
-                </p>
+          {/* ── Email codes ── Not offered on a server that cannot send mail:
+              the first sign-in after turning it on would need a code that
+              never arrives. Still shown while it is on, so it can be turned
+              off. */}
+          {(emailConfigured || emailActive) && (
+            <div
+              className={cn(
+                "rounded-xl border p-4 sm:p-5 flex flex-col gap-4",
+                emailActive
+                  ? "border-primary/25 bg-primary/4"
+                  : "border-border bg-card",
+              )}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">
+                    Email codes
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    We send a 6-digit code to {user?.email || "your inbox"} at
+                    every sign-in. Simpler to set up, but only as safe as your
+                    email account.
+                  </p>
+                </div>
+                {emailActive ? (
+                  <StatusPill tone="on">Active</StatusPill>
+                ) : (
+                  (!totpEnabled || appActive) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5 shrink-0"
+                      disabled={appActive}
+                      onClick={() => {
+                        if (appActive) return;
+                        setEnableEmailOpen(true);
+                      }}
+                    >
+                      {appActive
+                        ? "Turn off the authenticator app first"
+                        : "Turn on email codes"}
+                    </Button>
+                  )
+                )}
               </div>
-              {emailActive ? (
-                <StatusPill tone="on">Active</StatusPill>
-              ) : (
-                (!totpEnabled || appActive) && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 gap-1.5 shrink-0"
-                    disabled={appActive}
-                    onClick={() => {
-                      if (appActive) return;
-                      setEnableEmailOpen(true);
-                    }}
-                  >
-                    {appActive
-                      ? "Turn off the authenticator app first"
-                      : "Turn on email codes"}
-                  </Button>
-                )
+
+              {emailActive && (
+                <button
+                  type="button"
+                  onClick={() => setTurnOffMethod("email")}
+                  className="self-start -my-1.5 py-1.5 text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  Turn off email codes
+                </button>
               )}
             </div>
-
-            {emailActive && (
-              <button
-                type="button"
-                onClick={() => setTurnOffMethod("email")}
-                className="self-start -my-1.5 py-1.5 text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                Turn off email codes
-              </button>
-            )}
-          </div>
+          )}
         </div>
       </Section>
 
@@ -1420,9 +1626,9 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
                         the connection IP so a failed or absent capture never
                         leaves this blank. */}
                     {s.ipv4Address || s.ipAddress
-                      ? `${s.ipv4Address || s.ipAddress} · `
-                      : ""}
-                    Signed in {formatDateTime(s.createdAt)}
+                      ? `${s.ipv4Address || s.ipAddress}, signed in `
+                      : "Signed in "}
+                    {formatDateTime(s.createdAt)}
                   </p>
                 </div>
                 {!s.isCurrent && (
@@ -1489,8 +1695,10 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {d.ipAddress ? `${d.ipAddress} · ` : ""}
-                      Last used {formatDateTime(d.lastUsedAt)}
+                      {d.ipAddress
+                        ? `${d.ipAddress}, last used `
+                        : "Last used "}
+                      {formatDateTime(d.lastUsedAt)}
                     </p>
                   </div>
                   <Button
@@ -1553,6 +1761,7 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
       {passwordDialogOpen && (
         <PasswordDialog
           hasPassword={hasPassword}
+          emailConfigured={emailConfigured}
           onClose={() => setPasswordDialogOpen(false)}
           onSaved={() => {
             // A first password turns an OAuth-only account into one with a
@@ -1566,6 +1775,7 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
       )}
       {regenerateOpen && (
         <RegenerateBackupCodesDialog
+          {...reauthProps}
           onClose={() => setRegenerateOpen(false)}
           returnFocusRef={backupPanelRef}
           onIssued={(codes) => {
@@ -1577,6 +1787,7 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
       )}
       {totpSetup && (
         <AuthenticatorSetupDialog
+          {...reauthProps}
           setup={totpSetup}
           onClose={resetEnrolment}
           returnFocusRef={backupPanelRef}
@@ -1594,6 +1805,7 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
       )}
       {enableEmailOpen && (
         <EnableEmailCodesDialog
+          {...reauthProps}
           email={user?.email}
           onClose={() => setEnableEmailOpen(false)}
           onEnabled={() => {
@@ -1607,6 +1819,7 @@ export function ProfileSecurityTab(props: ProfileSecurityTabProps) {
       )}
       {turnOffMethod && (
         <TurnOffTwoFactorDialog
+          {...reauthProps}
           method={turnOffMethod}
           onClose={() => setTurnOffMethod(null)}
           onTurnedOff={() => {

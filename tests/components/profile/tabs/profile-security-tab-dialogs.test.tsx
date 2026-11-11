@@ -82,6 +82,21 @@ interface EditDialogMockProps {
   onOpenChange: (open: boolean) => void;
 }
 
+/** What useEditDialogError hands the fields: set by the a11y cases below. */
+const dialogError = vi.hoisted(() => ({
+  error: null as string | null,
+  errorId: "edit-dialog-error" as string | undefined,
+}));
+
+/** The client config the tab reads; emailConfigured is absent by default. */
+const clientConfig = vi.hoisted(() => ({
+  value: {} as Record<string, unknown>,
+}));
+
+vi.mock("@/lib/hooks/use-client-config", () => ({
+  useClientConfig: () => clientConfig.value,
+}));
+
 vi.mock("@/components/shared/edit-dialog", async () => {
   const outcome = await import("@/components/shared/edit-dialog-outcome");
   function EditDialog(props: EditDialogMockProps) {
@@ -100,13 +115,19 @@ vi.mock("@/components/shared/edit-dialog", async () => {
       </div>
     );
   }
-  return { EditDialog, KEEP_OPEN: outcome.KEEP_OPEN };
+  return {
+    EditDialog,
+    KEEP_OPEN: outcome.KEEP_OPEN,
+    useEditDialogError: () => ({ ...dialogError }),
+  };
 });
 
 vi.mock("@/components/providers/auth-provider", () => ({
   refreshAuthCache: vi.fn(),
   clearAuthCache: vi.fn(),
 }));
+
+const { EmailStepUp } = await import("@/components/shared/email-step-up");
 
 const { KEEP_OPEN, editCloseDecision } =
   await import("@/components/shared/edit-dialog-outcome");
@@ -128,6 +149,7 @@ const {
   savePassword,
   regenerateBackupCodes,
   verifyAuthenticator,
+  sendEmailCodesConfirmation,
   enableEmailCodes,
   turnOffTwoFactor,
   turnOffTwoFactorRequest,
@@ -211,9 +233,15 @@ function typeInto(el: El, value: string) {
   });
 }
 
-/** Type into a PasswordField: its onChange takes the string. */
+/**
+ * Type into a PasswordField, or the ReauthField that holds one: both take the
+ * string, as onChange and onPasswordChange.
+ */
 function typeValue(el: El, value: string) {
-  (el.props.onChange as (v: string) => void)(value);
+  const handler = (el.props.onChange ?? el.props.onPasswordChange) as (
+    v: string,
+  ) => void;
+  handler(value);
 }
 
 /**
@@ -299,6 +327,8 @@ beforeEach(() => {
   hooks.states = [];
   hooks.index = 0;
   vi.mocked(refreshAuthCache).mockClear();
+  dialogError.error = null;
+  clientConfig.value = {};
 });
 
 afterEach(() => {
@@ -403,7 +433,8 @@ describe("every password on the Security tab is sent exactly as typed", () => {
     await savePassword({ current: " pw ", next: long, confirm: long }, true);
     await regenerateBackupCodes(" pw ");
     await verifyAuthenticator("123456", " pw ");
-    await enableEmailCodes(" pw ");
+    await sendEmailCodesConfirmation(" pw ");
+    await enableEmailCodes(" pw ", "123456");
     await turnOffTwoFactor("app", " pw ");
     await turnOffTwoFactor("email", " pw ");
     expect(calls.map((c) => c.body)).toEqual([
@@ -411,6 +442,7 @@ describe("every password on the Security tab is sent exactly as typed", () => {
       { password: " pw " },
       { code: "123456", currentPassword: " pw " },
       { password: " pw " },
+      { password: " pw ", code: "123456" },
       { password: " pw " },
       { password: " pw " },
     ]);
@@ -910,12 +942,16 @@ describe("EnableEmailCodesDialog", () => {
     expect(html).toContain('data-size="sm"');
     expect(html).toContain("dev@example.com");
     expect(html.match(/type="password"/g)).toHaveLength(1);
-    expect(html).toContain(">Turn on email codes<");
+    // The first Save only mails a code; turning on is the second.
+    expect(html).toContain(">Send a confirmation code<");
     expect(html).toContain(">Cancel<");
   });
 
-  it("POSTs the password and turns email codes on in the tab", async () => {
-    const calls = stubFetch();
+  it("mails a confirmation code first and turns email codes on only once it comes back", async () => {
+    const calls = stubFetch(() => ({
+      ok: true,
+      data: { codeSent: true, maskedEmail: "de***@example.com" },
+    }));
     const props = { onClose: vi.fn(), onEnabled: vi.fn() };
     typeValue(
       byId(direct(EnableEmailCodesDialog, props), "enable-email-2fa-password"),
@@ -923,12 +959,30 @@ describe("EnableEmailCodesDialog", () => {
     );
     expect(
       await dialogProps(direct(EnableEmailCodesDialog, props)).onSave(),
-    ).toBeUndefined();
+    ).toBe(KEEP_OPEN);
+    expect(props.onEnabled).not.toHaveBeenCalled();
+
+    const confirm = direct(EnableEmailCodesDialog, props);
+    expect(dialogProps(confirm).saveLabel).toBe("Turn on email codes");
+    expect(textOf(dialogProps(confirm).description)).toContain(
+      "de***@example.com",
+    );
+    expect(dialogProps(confirm).canSave).toBe(false);
+    typeAsBrowser(confirm, "enable-email-2fa-code", "12a3456");
+    const ready = direct(EnableEmailCodesDialog, props);
+    expect(dialogProps(ready).canSave).toBe(true);
+    expect(await dialogProps(ready).onSave()).toBeUndefined();
+
     expect(calls).toEqual([
       {
         url: API.AUTH.TWO_FA.EMAIL_SETUP,
         method: "POST",
         body: { password: "pw" },
+      },
+      {
+        url: API.AUTH.TWO_FA.EMAIL_SETUP,
+        method: "POST",
+        body: { password: "pw", code: "123456" },
       },
     ]);
     expect(props.onEnabled).toHaveBeenCalledTimes(1);
@@ -1154,5 +1208,291 @@ describe("setting a first password", () => {
     expect(call).toMatch(
       /onSaved=\{\(\) => \{[\s\S]*if \(!hasPassword\) onUserPatch\?\.\(\{ hasPassword: true \}\);/,
     );
+  });
+});
+
+/* ── an account with no password steps up by email ── */
+
+describe("an account with no password confirms with the mailed step-up", () => {
+  // A stolen session used to be enough for every one of these on an account
+  // created through a provider. The server now wants the step-up cookie
+  // (lib/auth/reauth.ts), and each dialog shows EmailStepUp where the
+  // password field was.
+  const setup = { uri: "otpauth://totp/x?secret=A", secret: "A" };
+  const cases: [string, (props: never) => unknown, object, string][] = [
+    [
+      "RegenerateBackupCodesDialog",
+      RegenerateBackupCodesDialog,
+      { onClose: vi.fn(), onIssued: vi.fn() },
+      "regen-backup-password",
+    ],
+    [
+      "EnableEmailCodesDialog",
+      EnableEmailCodesDialog,
+      { onClose: vi.fn(), onEnabled: vi.fn() },
+      "enable-email-2fa-password",
+    ],
+    [
+      "TurnOffTwoFactorDialog (app)",
+      TurnOffTwoFactorDialog,
+      { method: "app", onClose: vi.fn(), onTurnedOff: vi.fn() },
+      "disable-app-2fa-password",
+    ],
+    [
+      "TurnOffTwoFactorDialog (email)",
+      TurnOffTwoFactorDialog,
+      { method: "email", onClose: vi.fn(), onTurnedOff: vi.fn() },
+      "disable-email-2fa-password",
+    ],
+  ];
+
+  it.each(cases)(
+    "%s renders the step-up and no password input",
+    (_name, component, props, id) => {
+      const Component = component as (
+        p: Record<string, unknown>,
+      ) => ReactElement;
+      const without = renderToStaticMarkup(
+        <Component {...props} hasPassword={false} />,
+      );
+      expect(without).not.toContain('type="password"');
+      expect(without).not.toContain(`id="${id}"`);
+      expect(without).toContain(">Email me a code<");
+
+      const withPassword = renderToStaticMarkup(
+        <Component {...props} hasPassword />,
+      );
+      expect(withPassword).toContain('type="password"');
+      expect(withPassword).toContain(`id="${id}"`);
+      expect(withPassword).not.toContain(">Email me a code<");
+    },
+  );
+
+  it.each(cases)(
+    "%s holds Save until the step-up is done, then sends no password",
+    async (_name, component, props) => {
+      const calls = stubFetch(() => ({ ok: true, data: { backupCodes: [] } }));
+      const full = { ...props, hasPassword: false } as never;
+      const first = direct(component, full);
+      expect(dialogProps(first).canSave).toBe(false);
+
+      // The step-up sits in ReauthField, which hands its onReady straight
+      // through as onStepUpDone.
+      const field = find(first, (el) => "onStepUpDone" in el.props)!;
+      expect(field.props.hasPassword).toBe(false);
+      (field.props.onStepUpDone as () => void)();
+      const ready = direct(component, full);
+      expect(dialogProps(ready).canSave).toBe(true);
+      await dialogProps(ready).onSave();
+      expect(calls).toHaveLength(1);
+      expect(calls[0].body).toEqual({});
+    },
+  );
+
+  it("AuthenticatorSetupDialog swaps the password for the step-up on the verify step", async () => {
+    const calls = stubFetch(() => ({ ok: true, data: { backupCodes: [] } }));
+    const props = {
+      setup,
+      onClose: vi.fn(),
+      onEnabled: vi.fn(),
+      hasPassword: false,
+    };
+    await dialogProps(direct(AuthenticatorSetupDialog, props)).onSave();
+    const verify = direct(AuthenticatorSetupDialog, props);
+    const html = renderToStaticMarkup(verify);
+    expect(html).not.toContain('id="setup-2fa-password"');
+    expect(html).toContain(">Email me a code<");
+
+    typeAsBrowser(verify, "setup-2fa-code", "123456");
+    expect(dialogProps(direct(AuthenticatorSetupDialog, props)).canSave).toBe(
+      false,
+    );
+    (
+      ofType(direct(AuthenticatorSetupDialog, props), EmailStepUp)!.props
+        .onReady as () => void
+    )();
+    const ready = direct(AuthenticatorSetupDialog, props);
+    expect(dialogProps(ready).canSave).toBe(true);
+    await dialogProps(ready).onSave();
+    expect(calls.map((c) => c.body)).toEqual([{ code: "123456" }]);
+  });
+
+  it("PasswordDialog asks for the step-up before setting a first password", () => {
+    const html = renderToStaticMarkup(
+      <PasswordDialog
+        hasPassword={false}
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+    expect(html).not.toContain("sec-current-pw");
+    expect(html).toContain(">Email me a code<");
+    const props = { hasPassword: false, onClose: vi.fn(), onSaved: vi.fn() };
+    const first = direct(PasswordDialog, props);
+    expect(dialogProps(first).canSave).toBe(false);
+    (ofType(first, EmailStepUp)!.props.onReady as () => void)();
+    expect(dialogProps(direct(PasswordDialog, props)).canSave).toBe(true);
+  });
+
+  it("lets Save go at once on a server that cannot send mail, for the server to judge", () => {
+    const props = {
+      onClose: vi.fn(),
+      onIssued: vi.fn(),
+      hasPassword: false,
+      emailConfigured: false,
+    };
+    const tree = direct(RegenerateBackupCodesDialog, props);
+    expect(dialogProps(tree).canSave).toBe(true);
+    const field = find(tree, (el) => "onStepUpDone" in el.props)!;
+    expect(field.props.emailConfigured).toBe(false);
+    expect(
+      renderToStaticMarkup(<RegenerateBackupCodesDialog {...props} />),
+    ).toContain(">Sign in again<");
+  });
+
+  it("hands every dialog the account's hasPassword from the tab", () => {
+    const props = baseProps({
+      user: { hasPassword: false, totpEnabled: true, twoFactorMethod: "app" },
+    });
+    (
+      byText(direct(ProfileSecurityTab, props), "New codes")!.props
+        .onClick as () => void
+    )();
+    const dialog = ofType(
+      direct(ProfileSecurityTab, props),
+      RegenerateBackupCodesDialog,
+    )!;
+    expect(dialog.props.hasPassword).toBe(false);
+    expect(dialog.props.emailConfigured).toBe(true);
+  });
+});
+
+/* ── email codes need a server that sends mail ── */
+
+describe("email codes on a server that cannot send mail", () => {
+  it("does not offer them", () => {
+    clientConfig.value = { emailConfigured: false };
+    const tree = direct(ProfileSecurityTab, baseProps());
+    expect(byText(tree, "Turn on email codes")).toBeUndefined();
+    expect(textOf(tree)).not.toContain("Email codes");
+  });
+
+  it("still lets an account that has them turn them off", () => {
+    clientConfig.value = { emailConfigured: false };
+    const tree = direct(
+      ProfileSecurityTab,
+      baseProps({ user: { totpEnabled: true, twoFactorMethod: "email" } }),
+    );
+    expect(byText(tree, "Turn off email codes")).toBeDefined();
+  });
+
+  it("offers them while the config says nothing either way", () => {
+    const tree = direct(ProfileSecurityTab, baseProps());
+    expect(byText(tree, "Turn on email codes")).toBeDefined();
+  });
+});
+
+/* ── a failed save points every field at the dialog's alert ── */
+
+describe("a failed save marks the dialog's fields", () => {
+  // Moving the fields into EditDialog lost their aria-invalid and
+  // aria-describedby: the failure showed only in the dialog's alert, and a
+  // screen reader on the field heard nothing about it.
+  beforeEach(() => {
+    dialogError.error = "Incorrect password.";
+  });
+
+  function inputs(html: string): string[] {
+    return html.match(/<input[^>]*>/g) ?? [];
+  }
+
+  it.each([
+    [
+      "PasswordDialog",
+      <PasswordDialog
+        key="p"
+        hasPassword
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+      3,
+    ],
+    [
+      "RegenerateBackupCodesDialog",
+      <RegenerateBackupCodesDialog
+        key="r"
+        onClose={() => {}}
+        onIssued={() => {}}
+      />,
+      1,
+    ],
+    [
+      "EnableEmailCodesDialog",
+      <EnableEmailCodesDialog
+        key="e"
+        onClose={() => {}}
+        onEnabled={() => {}}
+      />,
+      1,
+    ],
+    [
+      "TurnOffTwoFactorDialog",
+      <TurnOffTwoFactorDialog
+        key="t"
+        method="app"
+        onClose={() => {}}
+        onTurnedOff={() => {}}
+      />,
+      1,
+    ],
+  ] as const)("%s", (_name, element, count) => {
+    const fields = inputs(renderToStaticMarkup(element));
+    expect(fields).toHaveLength(count);
+    for (const field of fields) {
+      expect(field).toContain('aria-invalid="true"');
+      expect(field).toMatch(/aria-describedby="[^"]*edit-dialog-error"/);
+    }
+  });
+
+  it("keeps the new password's own hint alongside the alert", () => {
+    const html = renderToStaticMarkup(
+      <PasswordDialog hasPassword onClose={() => {}} onSaved={() => {}} />,
+    );
+    expect(html).toMatch(
+      /id="sec-new-pw"[^>]*aria-describedby="sec-new-pw-hint edit-dialog-error"|aria-describedby="sec-new-pw-hint edit-dialog-error"[^>]*id="sec-new-pw"/,
+    );
+  });
+
+  it("AuthenticatorSetupDialog, on the verify step", async () => {
+    const props = {
+      setup: { uri: "otpauth://totp/x?secret=A", secret: "A" },
+      onClose: vi.fn(),
+      onEnabled: vi.fn(),
+    };
+    await dialogProps(direct(AuthenticatorSetupDialog, props)).onSave();
+    const fields = inputs(
+      renderToStaticMarkup(direct(AuthenticatorSetupDialog, props)),
+    );
+    expect(fields).toHaveLength(2);
+    for (const field of fields) {
+      expect(field).toContain('aria-invalid="true"');
+    }
+  });
+
+  it("marks nothing while there is no failure", () => {
+    dialogError.error = null;
+    const html = renderToStaticMarkup(
+      <RegenerateBackupCodesDialog onClose={() => {}} onIssued={() => {}} />,
+    );
+    expect(html).not.toContain("aria-invalid");
+    expect(html).not.toContain("edit-dialog-error");
+  });
+});
+
+describe("the session and device rows", () => {
+  it("join the address and the date without a middle dot anywhere in the tab", () => {
+    expect(SOURCE).not.toMatch(/[—–·]/);
+    expect(SOURCE).toContain(", signed in ");
+    expect(SOURCE).toContain(", last used ");
   });
 });

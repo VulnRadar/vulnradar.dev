@@ -25,9 +25,136 @@ import { useOAuthProviders } from "@/lib/hooks/use-oauth-providers";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { getQueryParam, setQueryParams } from "@/lib/ui/url-state";
 import { markGithubLinkStarted } from "@/components/modals/github-link-marker";
-import { ProviderReauthDialog } from "./provider-reauth-dialog";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { InlineAlert } from "@/components/shared/inline-alert";
+import { EmailStepUp, stepUpCanSave } from "@/components/shared/email-step-up";
+import {
+  useClientConfig,
+  type ClientConfig,
+} from "@/lib/hooks/use-client-config";
+import {
+  ProviderReauthDialog,
+  requestProviderStart,
+} from "./provider-reauth-dialog";
 import { socialErrorCopy } from "./social-error-copy";
 import type { ProfileTabProps } from "../types";
+
+/**
+ * Linking a provider adds a permanent way into the account. An account with a
+ * password confirms it in ProviderReauthDialog; one without used to go
+ * straight to the provider on its session alone, so a stolen session could
+ * attach the attacker's own Google or Discord and keep access after the owner
+ * signed out everywhere. It now passes the mailed step-up first.
+ */
+export function ProviderStepUpDialog({
+  label,
+  startUrl,
+  onStarted,
+  onClose,
+}: {
+  label: string;
+  startUrl: string;
+  onStarted?: () => void;
+  onClose: () => void;
+}) {
+  // Read optionally until the client config carries it; missing means mail
+  // works, which is the server's own default.
+  const config: ClientConfig & { emailConfigured?: boolean } =
+    useClientConfig();
+  const emailConfigured = config.emailConfigured !== false;
+  const [stepUpDone, setStepUpDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ready = stepUpCanSave(emailConfigured, stepUpDone);
+
+  const handleContinue = async () => {
+    if (busy || !ready) return;
+    setBusy(true);
+    setError(null);
+    const result = await requestProviderStart(startUrl, false, "");
+    if ("error" in result) {
+      setError(result.error);
+      setBusy(false);
+      return;
+    }
+    onStarted?.();
+    // A full document navigation on purpose, and busy stays on until it
+    // happens: this is the provider's consent page, not an app route.
+    window.location.href = result.url;
+  };
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(isOpen) => {
+        if (!isOpen && !busy) onClose();
+      }}
+    >
+      <DialogContent variant="shell" size="sm">
+        <DialogHeader>
+          <DialogTitle>Connect {label}</DialogTitle>
+          <DialogDescription>
+            This adds another way to sign in to this account, so confirm it is
+            you before going to {label}.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          <div className="flex flex-col gap-4">
+            <EmailStepUp
+              idPrefix="provider-step-up"
+              emailConfigured={emailConfigured}
+              onReady={() => setStepUpDone(true)}
+            />
+            {error && <InlineAlert tone="error">{error}</InlineAlert>}
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void handleContinue()}
+            disabled={busy || !ready}
+          >
+            Continue
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** The password check for an account with one, the mailed step-up otherwise. */
+function ProviderConfirmDialog({
+  hasPassword,
+  ...props
+}: {
+  label: string;
+  startUrl: string;
+  hasPassword: boolean;
+  onStarted?: () => void;
+  onClose: () => void;
+}) {
+  return hasPassword ? (
+    <ProviderReauthDialog {...props} hasPassword />
+  ) : (
+    <ProviderStepUpDialog {...props} />
+  );
+}
 
 const DiscordIcon = () => (
   <svg
@@ -301,7 +428,7 @@ function OAuthIdentityCard({
       </Card>
 
       {showReauth && (
-        <ProviderReauthDialog
+        <ProviderConfirmDialog
           label={label}
           startUrl={`${API.AUTH.OAUTH_START(provider)}?action=link`}
           hasPassword={hasPassword}
@@ -962,7 +1089,7 @@ export function ProfileSocialTab({
       </section>
 
       {showDiscordReauth && (
-        <ProviderReauthDialog
+        <ProviderConfirmDialog
           label="Discord"
           startUrl={API.AUTH.DISCORD_CONNECT}
           hasPassword={hasPassword}
