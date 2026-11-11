@@ -12,8 +12,12 @@ vi.mock("@/lib/rate-limiting/rate-limit", () => ({
   checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
 }));
 
-const { checkTargetScanLimit, targetScanLimitMessage } =
-  await import("@/lib/rate-limiting/target-limits");
+const {
+  checkTargetScanLimit,
+  targetScanLimitMessage,
+  checkDemoTargetScanLimit,
+  demoTargetScanLimitMessage,
+} = await import("@/lib/rate-limiting/target-limits");
 
 beforeEach(() => {
   mockCheckRateLimit.mockReset();
@@ -81,5 +85,58 @@ describe("targetScanLimitMessage", () => {
     const message = targetScanLimitMessage("example.com");
     expect(message).toContain("example.com");
     expect(message).toMatch(/verify ownership/i);
+  });
+});
+
+describe("checkDemoTargetScanLimit", () => {
+  it("counts anonymous demo scans in their own bucket on the registrable domain", async () => {
+    const result = await checkDemoTargetScanLimit("https://www.example.com/");
+
+    expect(result.rootDomain).toBe("example.com");
+    const [config] = mockCheckRateLimit.mock.calls[0];
+    // Never the shared bucket: demo traffic must not spend the allowance of
+    // the accounts scanning the same site.
+    expect(config.key).toBe("scantarget-demo:example.com");
+  });
+
+  it("allows a handful of demo scans of one site an hour, far fewer than the shared bucket", async () => {
+    await checkDemoTargetScanLimit("https://example.com/");
+    await checkTargetScanLimit("https://example.com/");
+
+    const [demo, shared] = mockCheckRateLimit.mock.calls.map(([c]) => c);
+    expect(demo.windowSeconds).toBe(3600);
+    expect(demo.maxAttempts).toBeGreaterThanOrEqual(10);
+    expect(demo.maxAttempts).toBeLessThanOrEqual(20);
+    expect(demo.maxAttempts).toBeLessThan(shared.maxAttempts);
+  });
+
+  it("reports the refusal and its retry-after when the bucket is spent", async () => {
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 99,
+    });
+
+    const result = await checkDemoTargetScanLimit("https://example.com/");
+
+    expect(result).toEqual({
+      allowed: false,
+      retryAfterSeconds: 99,
+      rootDomain: "example.com",
+    });
+  });
+
+  it("fails open on an unparseable URL, like the shared bucket", async () => {
+    const result = await checkDemoTargetScanLimit("not a url");
+
+    expect(result.allowed).toBe(true);
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("names the domain and offers an account, since there is no domain to verify without one", () => {
+    const message = demoTargetScanLimitMessage("example.com");
+    expect(message).toContain("example.com");
+    expect(message).toMatch(/free account/);
+    expect(message).not.toMatch(/[–—]/);
   });
 });

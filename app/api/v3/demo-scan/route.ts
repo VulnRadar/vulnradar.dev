@@ -23,52 +23,16 @@ import {
   readSubdomains,
 } from "@/lib/scanner/subdomain-auto";
 import { scanningPausedResponse } from "@/lib/admin/service-state";
+import { safeReadBody } from "@/lib/scanner/read-bounded-body";
+import { readJsonObject } from "@/lib/api/api-utils";
+import { burstLimitedResponse } from "@/lib/api/rate-limit-response";
+import { versioned } from "@/lib/api/v4/wrap";
+import {
+  checkDemoTargetScanLimit,
+  demoTargetScanLimitMessage,
+} from "@/lib/rate-limiting/target-limits";
 
-function _isValidUrl(input: string): boolean {
-  try {
-    const url = new URL(input);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-async function safeReadBody(
-  response: Response,
-  maxBytes: number,
-): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) return "";
-  const decoder = new TextDecoder("utf-8", { fatal: false });
-  const chunks: string[] = [];
-  let totalBytes = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      totalBytes += value.byteLength;
-      if (totalBytes > maxBytes) {
-        const overshoot = totalBytes - maxBytes;
-        const trimmed = value.slice(0, value.byteLength - overshoot);
-        if (trimmed.byteLength > 0)
-          chunks.push(decoder.decode(trimmed, { stream: false }));
-        break;
-      }
-      chunks.push(decoder.decode(value, { stream: true }));
-    }
-  } catch {
-    /* return what we have */
-  } finally {
-    try {
-      reader.cancel();
-    } catch {
-      /* ignore */
-    }
-  }
-  return chunks.join("");
-}
-
-export async function POST(request: NextRequest) {
+async function createDemoScan(request: NextRequest): Promise<NextResponse> {
   try {
     // PAUSE_SCANNING (and MAINTENANCE_MODE, which implies it). This route is
     // unauthenticated and IP-limited only, so it is the highest-volume way
@@ -114,19 +78,21 @@ export async function POST(request: NextRequest) {
     });
 
     if (!rateCheck.allowed) {
+      // Retry-After is the wait the message rounds into hours. It was not
+      // sent at all, so a client could only read the sentence.
       const hours = Math.ceil(rateCheck.retryAfterSeconds / 3600);
-      return NextResponse.json(
-        {
-          error: `Demo limit reached (${DEMO_SCAN_LIMIT} scans per ${DEMO_WINDOW_HOURS} hours). Try again in ~${hours} hour${hours !== 1 ? "s" : ""}, or create a free account for unlimited scans.`,
-          remaining: 0,
-          limit: DEMO_SCAN_LIMIT,
-        },
-        { status: 429 },
+      return burstLimitedResponse(
+        rateCheck,
+        `Demo limit reached (${DEMO_SCAN_LIMIT} scans per ${DEMO_WINDOW_HOURS} hours). Try again in ~${hours} hour${hours !== 1 ? "s" : ""}, or create a free account for unlimited scans.`,
+        { remaining: 0, limit: DEMO_SCAN_LIMIT },
       );
     }
 
-    const body = await request.json();
-    const { url } = body;
+    // A malformed body is the caller's mistake and answers 400. It used to
+    // throw inside request.json() and land in the catch below as a 500.
+    const parsedBody = await readJsonObject(request);
+    if (!parsedBody.ok) return parsedBody.response;
+    const { url } = parsedBody.data;
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
@@ -160,6 +126,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Anonymous scans of one site, in a bucket of their own (see
+    // checkDemoTargetScanLimit). The per-IP limit above bounds one visitor;
+    // this bounds what visitors together can aim at one domain, which the
+    // per-IP key cannot see.
+    const targetLimit = await checkDemoTargetScanLimit(urlObj.href);
+    if (!targetLimit.allowed) {
+      return burstLimitedResponse(
+        targetLimit,
+        demoTargetScanLimitMessage(targetLimit.rootDomain),
+        { statusCode: "TARGET_RATE_LIMIT", code: "TARGET_RATE_LIMIT" },
+      );
+    }
+
     const startTime = Date.now();
 
     let response: Response;
@@ -187,7 +166,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const responseBody = await safeReadBody(response, MAX_BODY_SIZE);
+    // The shared bounded reader, with the fetch's own deadline: the copy this
+    // route carried had a byte cap and no time bound, so a target that sent
+    // headers and then one byte every thirty seconds held an anonymous
+    // request open for as long as it liked.
+    const responseBody = await safeReadBody(
+      response,
+      MAX_BODY_SIZE,
+      fetchTimeoutMs,
+    );
     const headers = response.headers;
 
     // Capture response headers as a plain object for evidence. Redacted the
@@ -317,3 +304,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = versioned("demoScan.create", createDemoScan);
