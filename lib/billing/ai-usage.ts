@@ -12,11 +12,12 @@ import {
 } from "@/lib/billing/token-reservation";
 
 /**
- * Unified, fixed-window AI token usage tracking for the aiTokensPerWindow
- * plan limit -- shared across AI chat (app/api/v3/ai/chat), AI finding
- * verification (lib/ai/verify-findings.ts), and AI scan summaries
- * (lib/ai/scan-summary.ts). GitHub repo AI code review
- * (lib/billing/github-review-usage.ts, the githubReviewTokensPerWindow
+ * Unified, fixed-window AI token usage tracking. AI finding verification
+ * (lib/ai/verify-findings.ts) is metered against the aiTokensPerWindow plan
+ * limit; AI chat (app/api/v3/ai/chat), AI scan summaries
+ * (lib/ai/scan-summary.ts) and auto-tag suggestions are recorded in the same
+ * table under their own kind and are not (see AiUsageKind). GitHub repo AI
+ * code review (lib/billing/github-review-usage.ts, the githubReviewTokensPerWindow
  * plan limit) resets on this exact same window: it imports
  * currentWindowStart()/resolveCurrentWindow() directly from here rather
  * than duplicating the bucketing math, and reads the same
@@ -83,14 +84,30 @@ export async function resolveCurrentWindow(
   return { windowStart: currentWindowStart(date, windowHours), windowHours };
 }
 
-/** Real (not estimated) tokens spent so far in the given window. */
+/**
+ * What an ai_usage row was spent on. ai_usage is keyed by
+ * (user_id, window_start, kind), and only METERED_AI_KIND is metered: it is
+ * what the plan's aiTokensPerWindow allowance counts and the only kind whose
+ * overspill may come out of purchased credit. The other kinds are free
+ * features whose tokens are kept for admin cost visibility.
+ *
+ * Before the kind existed every AI feature wrote into one row per window, so
+ * a long support chat, a scan summary or a background auto-tag guess used up
+ * the allowance the user had for verifying findings, and the billing page
+ * reported them as verification spend.
+ */
+export type AiUsageKind = "verify" | "chat" | "summary" | "tag";
+
+export const METERED_AI_KIND = "verify" satisfies AiUsageKind;
+
+/** Real (not estimated) metered tokens spent so far in the given window. */
 export async function getAiTokensUsed(
   userId: number,
   windowStart: Date,
 ): Promise<number> {
   const result = await pool.query<{ tokens_used: number }>(
-    "SELECT tokens_used FROM ai_usage WHERE user_id = $1 AND window_start = $2",
-    [userId, windowStart],
+    "SELECT tokens_used FROM ai_usage WHERE user_id = $1 AND window_start = $2 AND kind = $3",
+    [userId, windowStart, METERED_AI_KIND],
   );
   return result.rows[0]?.tokens_used ?? 0;
 }
@@ -268,25 +285,30 @@ export async function recordAiTokens(
    * somebody had to write down.
    */
   chargeCredits = false,
+  /**
+   * Which row the tokens land in (see AiUsageKind). Defaults to the metered
+   * kind so a paid caller that omits it is still counted; a free feature
+   * names its own kind and then never touches the allowance or the balance,
+   * whatever chargeCredits says.
+   */
+  kind: AiUsageKind = METERED_AI_KIND,
 ): Promise<void> {
   if (tokens <= 0) return;
   const start = windowStart ?? (await resolveCurrentWindow()).windowStart;
 
   const result = await pool.query<{ tokens_used: number }>(
-    `INSERT INTO ai_usage (user_id, window_start, tokens_used, updated_at)
-     VALUES ($1, $2, $3, NOW())
-     ON CONFLICT (user_id, window_start)
+    `INSERT INTO ai_usage (user_id, window_start, tokens_used, kind, updated_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (user_id, window_start, kind)
      DO UPDATE SET tokens_used = ai_usage.tokens_used + $3, updated_at = NOW()
      RETURNING tokens_used`,
-    [userId, start, tokens],
+    [userId, start, tokens, kind],
   );
+  // The total of THIS kind's row, so the split below is computed against
+  // metered usage only.
   const newTotal = result.rows[0]?.tokens_used ?? tokens;
 
-  // The AI support chat is documented as free and never gates, so it records
-  // window usage for visibility but must NOT spend the user's purchased
-  // credit balance (which was bought for finding-verification). The paid
-  // features leave chargeCredits at its default.
-  if (!chargeCredits) return;
+  if (!chargeCredits || kind !== METERED_AI_KIND) return;
 
   const limits = await getUserPlanLimits(userId);
   const limitTokens = limits?.aiTokensPerWindow ?? -1;
@@ -403,9 +425,21 @@ export async function settleAiTokens(
 ): Promise<void> {
   await settleReservation(AI_TOKEN_LEDGER, reservation, actualTokens, {
     recordUncapped: (tokens) =>
-      recordAiTokens(reservation.userId, tokens, reservation.windowStart, true),
+      recordAiTokens(
+        reservation.userId,
+        tokens,
+        reservation.windowStart,
+        true,
+        METERED_AI_KIND,
+      ),
     chargeOverrun: (tokens) =>
-      recordAiTokens(reservation.userId, tokens, reservation.windowStart, true),
+      recordAiTokens(
+        reservation.userId,
+        tokens,
+        reservation.windowStart,
+        true,
+        METERED_AI_KIND,
+      ),
   });
 }
 
@@ -436,8 +470,8 @@ export interface AiUsageQuotaCheck {
  * here: it reserves through reserveAiTokens, because a yes from this check
  * holds nothing for the run that follows it. Bypasses
  * entirely for a user with their own AI key configured (those calls cost
- * VulnRadar nothing). Otherwise compares the current window's REAL usage
- * so far against the plan's aiTokensPerWindow cap.
+ * VulnRadar nothing). Otherwise compares the current window's REAL metered
+ * usage so far against the plan's aiTokensPerWindow cap.
  *
  * Fails safe, not fail-open, on the "is this even gated" question: only a
  * genuinely disabled billing system is unlimited (matching every other

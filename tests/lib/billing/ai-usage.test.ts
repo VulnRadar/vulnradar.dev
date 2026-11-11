@@ -214,9 +214,9 @@ describe("recordAiTokens", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toMatch(/INSERT INTO ai_usage/);
-    expect(sql).toMatch(/ON CONFLICT \(user_id, window_start\)/);
+    expect(sql).toMatch(/ON CONFLICT \(user_id, window_start, kind\)/);
     expect(sql).toMatch(/RETURNING tokens_used/);
-    expect(params).toEqual([1, windowStart, 500]);
+    expect(params).toEqual([1, windowStart, 500, "verify"]);
   });
 
   it("is a no-op for zero or negative token counts", async () => {

@@ -6,6 +6,8 @@ import {
   getAiCreditBalance,
   getAiTokensUsed,
   resolveCurrentWindow,
+  recordAiTokens,
+  checkAiUsageQuota,
 } from "@/lib/billing/ai-usage";
 import {
   reserveGithubReviewTokens,
@@ -187,5 +189,100 @@ describeIntegration("AI and GitHub review credit reservations", () => {
     expect(debits.filter((d) => d.ok)).toHaveLength(1);
     expect(await getGithubCreditBalance(user.id)).toBe(400);
     expect(await getGithubReviewTokensUsed(user.id, windowStart)).toBe(600);
+  });
+});
+
+/**
+ * ai_usage is keyed by (user_id, window_start, kind) and only 'verify' is
+ * metered. Chat, scan summaries and auto-tags used to write into the same row
+ * as verification, so a free feature used up the allowance bought or granted
+ * for verifying findings. Whether the kinds really land in separate rows is a
+ * question about the unique key Postgres enforces, so it is asked here.
+ */
+describeIntegration("ai_usage kinds: only verification is metered", () => {
+  beforeEach(async () => {
+    await setSettings({ BILLING_ENABLED: true });
+  });
+
+  afterAll(async () => {
+    await clearSettings();
+  });
+
+  it("80000 chat tokens leave checkAiUsageQuota allowed with usedTokens 0", async () => {
+    await setSettings({ BILLING_FREE_AI_TOKENS_PER_WINDOW: 50_000 });
+    const user = await createUser();
+    const { windowStart } = await resolveCurrentWindow();
+
+    await recordAiTokens(user.id, 80_000, windowStart, false, "chat");
+
+    const quota = await checkAiUsageQuota(user.id);
+    expect(quota.allowed).toBe(true);
+    expect(quota.usedTokens).toBe(0);
+
+    // The row is kept for the admin spend report, under its own kind.
+    const rows = await pool.query<{ kind: string; tokens_used: number }>(
+      "SELECT kind, tokens_used FROM ai_usage WHERE user_id = $1 AND window_start = $2",
+      [user.id, windowStart],
+    );
+    expect(rows.rows).toEqual([{ kind: "chat", tokens_used: 80_000 }]);
+  });
+
+  it("400k chat tokens with a 1000 credit balance spend nothing", async () => {
+    await setSettings({ BILLING_FREE_AI_TOKENS_PER_WINDOW: 0 });
+    const user = await createUser({ aiCreditBalance: 1000 });
+    const { windowStart } = await resolveCurrentWindow();
+
+    await recordAiTokens(user.id, 400_000, windowStart, false, "chat");
+    // Even a caller that asks to charge cannot charge a free kind.
+    await recordAiTokens(user.id, 400_000, windowStart, true, "chat");
+
+    expect(await getAiCreditBalance(user.id)).toBe(1000);
+    expect(await getAiTokensUsed(user.id, windowStart)).toBe(0);
+  });
+
+  it("chat, summary and tag rows sit beside the verification row without merging into it", async () => {
+    await setSettings({ BILLING_FREE_AI_TOKENS_PER_WINDOW: 20_000 });
+    const user = await createUser({ aiCreditBalance: 1000 });
+    const { windowStart } = await resolveCurrentWindow();
+
+    await recordAiTokens(user.id, 15_000, windowStart, false, "chat");
+    await recordAiTokens(user.id, 15_000, windowStart, false, "summary");
+    await recordAiTokens(user.id, 15_000, windowStart, false, "tag");
+    // Fits the 20000 allowance whole once the free kinds are not counted.
+    await recordAiTokens(user.id, 10_000, windowStart, true, "verify");
+
+    expect(await getAiTokensUsed(user.id, windowStart)).toBe(10_000);
+    expect(await getAiCreditBalance(user.id)).toBe(1000);
+    const kinds = await pool.query<{ kind: string }>(
+      "SELECT kind FROM ai_usage WHERE user_id = $1 AND window_start = $2 ORDER BY kind",
+      [user.id, windowStart],
+    );
+    expect(kinds.rows.map((r) => r.kind)).toEqual([
+      "chat",
+      "summary",
+      "tag",
+      "verify",
+    ]);
+  });
+
+  it("a verification reservation is not shrunk by chat spent earlier in the window", async () => {
+    await setSettings({ BILLING_FREE_AI_TOKENS_PER_WINDOW: 1000 });
+    const user = await createUser();
+    const { windowStart } = await resolveCurrentWindow();
+
+    await recordAiTokens(user.id, 5000, windowStart, false, "chat");
+
+    const gate = await reserveAiTokens(user.id, 1000);
+    if (!gate.allowed) throw new Error(gate.message);
+    expect(gate.reservation.windowPortion).toBe(1000);
+    expect(gate.reservation.creditPortion).toBe(0);
+
+    await settleAiTokens(gate.reservation, 400);
+    expect(await getAiTokensUsed(user.id, windowStart)).toBe(400);
+    const chat = await pool.query<{ tokens_used: number }>(
+      "SELECT tokens_used FROM ai_usage WHERE user_id = $1 AND window_start = $2 AND kind = 'chat'",
+      [user.id, windowStart],
+    );
+    expect(chat.rows[0]?.tokens_used).toBe(5000);
   });
 });
