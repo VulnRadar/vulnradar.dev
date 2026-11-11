@@ -119,7 +119,7 @@ describe("ending a subscription immediately", () => {
 
   it("is what the Billing tab's cancel route calls", () => {
     const routes = [...sources.keys()].filter((f) =>
-      /billing\/subscription\/cancel\/route\.ts$/.test(f),
+      f.endsWith("billing/subscription/cancel/route.ts"),
     );
     expect(routes.length).toBeGreaterThan(0);
     for (const route of routes) {
