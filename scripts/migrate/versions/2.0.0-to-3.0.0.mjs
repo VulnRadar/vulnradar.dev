@@ -2414,6 +2414,16 @@ export const upgrade = {
         "CREATE INDEX idx_gru_updated ON github_review_usage(updated_at) (retention prune, AUDIT-012 perf-15)",
       destructive: false,
     },
+    // The per-kind AI usage key replaces the one-row-per-window primary key
+    // (the "ai-usage-drop-window-key" boot step has the reason). Runs after
+    // addIndexes has built idx_ai_usage_user_window_kind, so the table is
+    // never without a key.
+    {
+      sql: "ALTER TABLE ai_usage DROP CONSTRAINT IF EXISTS ai_usage_pkey",
+      label:
+        "Drop ai_usage_pkey (user_id, window_start); idx_ai_usage_user_window_kind is the key",
+      destructive: false,
+    },
     // ── Constraint-bearing indexes. These live in dataUpdates rather than
     // addIndexes because each needs a data step to run FIRST: addIndexes
     // is expanded before dataUpdates, so an index that can only be built
