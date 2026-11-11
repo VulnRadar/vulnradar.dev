@@ -544,10 +544,10 @@
     "title": "Rails default session cookie name reveals framework",
     "category": "information-disclosure",
     "severity": "info",
-    "description": "A cookie matching Rails' default *_session naming convention was found in the Set-Cookie header. This reveals that the server-side framework is Ruby on Rails, but not which version.",
-    "evidence": "Cookie matching the Rails '_session' default naming convention detected in Set-Cookie response header, revealing the Rails framework.",
+    "description": "A cookie named in Rails' default style, _<app>_session with a leading underscore, was found in the Set-Cookie header. That points to Ruby on Rails but does not reveal a version. Laravel's laravel_session and CodeIgniter's ci_session lack the underscore and are not reported.",
+    "evidence": "Cookie named _<app>_session (Rails' default session key style) found in the Set-Cookie response header.",
     "riskImpact": "Knowing the server runs Rails lets attackers focus reconnaissance on Rails-specific vulnerabilities and misconfigurations instead of probing the stack blindly. This is a framework fingerprint only: it does not reveal the Rails version, and is unrelated to whether X-Powered-By or X-Runtime headers are present.",
-    "explanation": "Rails names its session cookie <app>_session by default. This name is a recognizable Rails fingerprint independent of any response header. Renaming it to a generic opaque string costs nothing and removes this passive disclosure.",
+    "explanation": "Rails names its session cookie _<app>_session unless config/initializers/session_store.rb sets another key. The name is a recognisable Rails fingerprint independent of any response header. Renaming it to a generic opaque string costs nothing and removes this passive disclosure.",
     "fixSteps": [
       "Set a custom session cookie key in config/initializers/session_store.rb.",
       "Choose a name that does not reference the framework or language.",

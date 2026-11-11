@@ -96,15 +96,15 @@
     "title": "External CDN Script Without SRI Hash",
     "category": "supply-chain",
     "severity": "medium",
-    "description": "An external JavaScript file is loaded from a CDN without a Subresource Integrity (integrity=) attribute. If the CDN is compromised or serves a different file version, malicious code can run on your site without detection.",
-    "evidence": "External script without SRI integrity attribute detected.",
+    "description": "A pinned script on cdnjs, jsDelivr, unpkg, Google Hosted Libraries, the jQuery CDN or BootstrapCDN has no integrity attribute. A versioned URL should never change, so a hash costs nothing.",
+    "evidence": "Pinned library CDN script without an integrity attribute, with its URL.",
     "riskImpact": "CDN compromises (Polyfill.io 2024, event-stream 2018, ua-parser-js 2021) have injected malicious code into millions of sites. SRI is the primary defense: it makes CDN tampering immediately detectable and blocks execution of modified scripts.",
-    "explanation": "When you load a script from a CDN without SRI, you're trusting that CDN completely. SRI lets you cryptographically pin the exact bytes of the script you tested, so any modification by a compromised CDN is blocked.",
+    "explanation": "A script at a versioned library URL is supposed to be immutable, which is exactly the case SRI is built for. The hash makes the browser refuse the file if the CDN, the package or a mirror serves different bytes. Scripts on your own origin, on the same site, from vendors that update their files on purpose (tag managers, analytics, payment and CAPTCHA scripts), and from unpinned or unknown hosts are not reported by this check.",
     "fixSteps": [
-      "Generate SRI hash: npx sri-hash https://cdn.example.com/script.js",
-      "Add integrity and crossorigin attributes to all external script and link tags.",
-      "Pin to specific versions in CDN URLs, avoid 'latest' or major-version aliases.",
-      "Consider self-hosting critical scripts instead of relying on CDNs."
+      "Generate the hash: curl -s URL | openssl dgst -sha384 -binary | openssl base64 -A.",
+      "Add integrity=\"sha384-...\" and crossorigin=\"anonymous\" to the script tag.",
+      "Keep the exact version in the URL, so the hash stays valid.",
+      "Consider self-hosting the file if you would rather not depend on the CDN at all."
     ],
     "codeExamples": [
       {

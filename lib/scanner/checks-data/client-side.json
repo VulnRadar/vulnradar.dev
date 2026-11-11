@@ -154,10 +154,10 @@
     "type": "body-pattern",
     "title": "document.write() in Page Scripts",
     "category": "client-side",
-    "severity": "high",
-    "description": "document.write() was found in the page scripts. This function is dangerous because it can overwrite the entire page document, is a primary DOM XSS sink, and is deprecated in modern browsers.",
+    "severity": "low",
+    "description": "document.write() appears in the page scripts. It is deprecated, can overwrite the whole document when it runs after load, and is a DOM XSS sink if attacker-controlled data reaches it.",
     "evidence": "document.write() call detected in page scripts.",
-    "riskImpact": "If any attacker-controlled data reaches document.write(), it results in DOM XSS. Additionally, document.write() called after page load rewrites the entire document, destroying all event listeners and breaking React/Vue/Angular hydration.",
+    "riskImpact": "Whether this is exploitable depends on what is written, and the scan does not trace that. The reliable costs are practical: a call after page load rewrites the document, destroying event listeners and breaking React, Vue and Angular hydration, and Chrome blocks it for some cross-site scripts on slow connections.",
     "explanation": "document.write() is a legacy API from the early web. Modern JavaScript has safe alternatives for all of its use cases. Browsers have started restricting it (Chrome warns in console), and it's likely to be removed eventually.",
     "fixSteps": [
       "Replace document.write('<script>...') with dynamic script element creation: const s = document.createElement('script'); s.src = url; document.head.appendChild(s).",
@@ -183,16 +183,16 @@
     "type": "body-pattern",
     "title": "eval() in Client-Side JavaScript",
     "category": "client-side",
-    "severity": "high",
-    "description": "eval() or the Function() constructor was found in client-side JavaScript. These functions execute strings as code and are a top DOM XSS sink.",
-    "evidence": "eval() or Function() constructor detected in client-side scripts.",
-    "riskImpact": "If any attacker-controlled data reaches eval() or new Function(), it results in arbitrary JavaScript execution. This is rated as one of the most dangerous DOM XSS sinks because it can bypass CSP 'unsafe-inline' in some browsers.",
+    "severity": "low",
+    "description": "eval() or the Function() constructor is called in an inline script with an argument that is not a constant string. Whatever that value holds runs as code. A call with a fixed string literal is not reported.",
+    "evidence": "eval() or new Function() called on a non-literal value in an inline script.",
+    "riskImpact": "If attacker-controlled data reaches the call (a URL fragment, postMessage data, a value read back from storage), it is arbitrary JavaScript execution in the page. The scan sees the call, not the data flow, so this is a lead to review, not a confirmed injection.",
     "explanation": "eval() and new Function(string) convert strings into executable code. When combined with user input; URL parameters, postMessage data, or third-party data; they enable arbitrary code execution.",
     "fixSteps": [
-      "Remove all eval() and new Function(string) calls.",
+      "Remove eval() and new Function(string) calls that take a variable.",
       "Replace eval(jsonString) with JSON.parse(jsonString).",
-      "Replace eval(mathExpression) with a safe math parser library.",
-      "Enable the CSP 'unsafe-eval' restriction to block these at the browser level."
+      "Replace eval(mathExpression) with a safe expression parser.",
+      "Drop 'unsafe-eval' from script-src once nothing needs it, so the browser refuses these calls."
     ],
     "codeExamples": [
       {
@@ -214,15 +214,15 @@
     "title": "External Script Without Subresource Integrity",
     "category": "client-side",
     "severity": "medium",
-    "description": "One or more external JavaScript files are loaded from CDNs or third-party domains without an integrity attribute. If the CDN is compromised, the script can be replaced with malicious code that runs in all users' browsers.",
-    "evidence": "External script tag without integrity attribute detected.",
-    "riskImpact": "Supply-chain attacks via compromised CDNs have affected millions of websites. Without SRI, the browser has no way to verify that the script content matches what you tested. A single CDN compromise silently injects malicious code into your site.",
-    "explanation": "Subresource Integrity (SRI) allows browsers to verify that fetched resources haven't been altered. The integrity attribute contains a cryptographic hash of the expected script content: if the served content doesn't match, the browser refuses to execute it.",
+    "description": "A script from a public library CDN is loaded at an exact version with no integrity attribute. If the CDN or the package is compromised, the changed file runs in every visitor's browser.",
+    "evidence": "Pinned library CDN script without an integrity attribute, with its URL.",
+    "riskImpact": "Compromised CDN files and hijacked packages have injected code into thousands of sites. Without SRI the browser cannot tell that a versioned file changed, so the page runs whatever the CDN serves.",
+    "explanation": "Subresource Integrity lets the browser check a fetched file against a hash you wrote down. It suits exactly this case, a library at a fixed version. Your own scripts, same-site assets, vendors that change their files on purpose (tag managers, analytics, payment and CAPTCHA scripts) and unpinned URLs are not reported by this check, because a hash would either be pointless or break the integration.",
     "fixSteps": [
-      "Generate SRI hashes: openssl dgst -sha384 -binary script.js | openssl base64 -A.",
-      "Add integrity='sha384-...' and crossorigin='anonymous' to external script tags.",
-      "Use the SRI Hash Generator at https://www.srihash.org/.",
-      "Pin to a specific version of the CDN resource (not 'latest') so the hash remains valid."
+      "Generate the hash: openssl dgst -sha384 -binary script.js | openssl base64 -A.",
+      "Add integrity=\"sha384-...\" and crossorigin=\"anonymous\" to the script tag.",
+      "Keep the exact version in the URL (not 'latest' or a major alias), so the hash stays valid.",
+      "Or self-host the file and drop the third-party dependency."
     ],
     "codeExamples": [
       {

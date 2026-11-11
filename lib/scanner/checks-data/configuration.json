@@ -4,15 +4,15 @@
     "type": "combined",
     "title": "No Rate-Limit Policy Detected",
     "category": "configuration",
-    "severity": "medium",
-    "description": "No rate-limiting headers (X-RateLimit-Limit, RateLimit-Limit, Retry-After) or a 429 response were observed. Without rate-limiting, brute-force, credential stuffing, and scraping attacks can run unchecked.",
+    "severity": "info",
+    "description": "An API host answered with none of RateLimit-Limit, X-RateLimit-Limit or Retry-After, or a response sent RateLimit-Limit without RateLimit-Policy. These headers only describe a limit that exists: their absence does not show that none is enforced.",
     "evidence": "No rate-limit policy detected.",
-    "riskImpact": "Attackers can brute-force credentials, scrape all content, or exhaust backend resources with no request budget enforced. APIs without rate-limiting are a primary target for enumeration and DoS.",
-    "explanation": "Rate-limiting controls how many requests a client can make within a time window. Without it, malicious actors can submit thousands of authentication attempts, harvest user data, or trigger expensive server operations at will.",
+    "riskImpact": "Clients cannot see the request budget they have, so well-behaved integrations back off late or not at all. Whether brute force and scraping are really possible depends on limits the server enforces without announcing them, which an external scan cannot see.",
+    "explanation": "Rate limiting caps how many requests a client can make in a time window. Announcing the cap with RateLimit-* or X-RateLimit-* headers and answering 429 with Retry-After lets clients stay inside it. A server can enforce a limit and say nothing, so this is a prompt to document the policy for API consumers rather than evidence that the endpoint is unprotected.",
     "fixSteps": [
-      "Add rate-limiting middleware (e.g., upstash/ratelimit, express-rate-limit, nginx limit_req).",
+      "Enforce a limit in middleware or at the proxy (upstash/ratelimit, express-rate-limit, nginx limit_req) if the endpoint has none.",
       "Return 429 Too Many Requests with a Retry-After header when the limit is exceeded.",
-      "Return X-RateLimit-Limit, X-RateLimit-Remaining, and X-RateLimit-Reset headers on every response."
+      "Publish the budget with RateLimit-Limit, RateLimit-Remaining and RateLimit-Reset (or the X-RateLimit-* names) so clients can pace themselves."
     ],
     "codeExamples": [
       {
@@ -39,7 +39,7 @@
     "type": "header",
     "title": "Set-Cookie on a Response a Shared Cache May Store",
     "category": "configuration",
-    "severity": "medium",
+    "severity": "low",
     "description": "The response sets an application cookie, carries an explicit sign that a shared cache may store it, and has no Cache-Control: no-store, no-cache or private. A CDN or reverse proxy that stores it can replay the Set-Cookie to other visitors. Cookies a CDN or load balancer adds for itself are not reported, and neither are static assets, whose bytes are the same for every visitor.",
     "evidence": "Configuration-level finding for `vary-header-cookie` against {{url}}.",
     "riskImpact": "A shared cache that stores this response can hand the same Set-Cookie to later visitors, which puts one user's session or per-user state in another user's browser.",
@@ -93,8 +93,7 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
       "https://datatracker.ietf.org/doc/html/rfc6265#section-5.3"
     ],
-    "_idx": 30,
-    "cwe": "CWE-1275"
+    "_idx": 30
   },
   {
     "id": "vary-header-missing",
@@ -253,7 +252,7 @@
     "type": "combined",
     "title": "CORS Endpoint Missing Vary: Origin",
     "category": "configuration",
-    "severity": "medium",
+    "severity": "low",
     "description": "An endpoint returns a dynamic Access-Control-Allow-Origin header (reflecting the request's Origin) without including Vary: Origin. Caches that store this response may serve one origin's response to a different origin.",
     "evidence": "Configuration-level finding for `configuration-vary-origin-cors-missing` against {{url}}.",
     "riskImpact": "A shared cache that stores the response for origin A (with Access-Control-Allow-Origin: https://a.example.com) without a Vary: Origin instruction may then serve that cached response to origin B. Origin B's browser reads the ACAO header and may erroneously believe it has cross-origin access.",
@@ -545,14 +544,24 @@
     "explanation": ".env files are meant to be read by the server process at startup and never served over HTTP. A response that consists of literal KEY=VALUE lines means either the web root includes the .env file directly, or an endpoint is echoing its contents (e.g. a debug/info route left enabled).",
     "fixSteps": [
       "Remove .env from the web-accessible document root immediately and rotate every credential it contained.",
-      "Add a web-server rule that denies access to dotfiles (Nginx: 'location ~ /\\.'; Apache: '<FilesMatch \"^\\.\">').",
+      "Add a web-server rule that denies access to dotfiles (Nginx: 'location ~ /\\.'; Apache: '<FilesMatch \"^\\.\">' with Require all denied; Caddy: a path matcher on '*/.*' with respond 404), and leave /.well-known/ reachable for certificate issuance.",
       "Audit for any debug/info endpoint that dumps environment variables and remove it from production."
     ],
     "codeExamples": [
       {
         "label": "Nginx: deny dotfiles",
         "language": "nginx",
-        "code": "location ~ /\\. {\n  deny all;\n  return 404;\n}"
+        "code": "location ~ /\\.(?!well-known) {\n  deny all;\n  return 404;\n}"
+      },
+      {
+        "label": "Apache: deny dotfiles",
+        "language": "apache",
+        "code": "# Matches the file name only, so /.well-known/acme-challenge/<token> still works.\n<FilesMatch \"^\\.\">\n  Require all denied\n</FilesMatch>"
+      },
+      {
+        "label": "Caddy: answer 404 for dotfiles",
+        "language": "caddy",
+        "code": "example.com {\n  @dotfiles {\n    path */.*\n    not path /.well-known/*\n  }\n  respond @dotfiles 404\n\n  root * /var/www/site\n  file_server\n}"
       }
     ],
     "references": [
