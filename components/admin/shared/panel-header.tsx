@@ -35,6 +35,7 @@ export function AdminPanelHeader({
   tone = "info",
   title,
   subtitle,
+  hint,
   status,
   actions,
   children,
@@ -45,9 +46,13 @@ export function AdminPanelHeader({
    *  state; pass warn/crit when the panel's own subject is in that state. */
   tone?: AdminStatusTone;
   title: string;
-  /** One line saying what the panel holds or what its numbers mean. Not a
-   *  restatement of the title. */
+  /** One short line saying what the panel holds or what its numbers mean. Not
+   *  a restatement of the title. Anything longer than a line goes in `hint`. */
   subtitle?: ReactNode;
+  /** An `InfoHint` for the background that a first-time reader wants and a
+   *  returning one does not. Sits right after the title, outside the h2, so
+   *  the button is not part of the heading's text. */
+  hint?: ReactNode;
   /** A StatusPill or count badge, sitting with the title rather than in the
    *  action row so it reads as part of the heading. */
   status?: ReactNode;
@@ -82,6 +87,7 @@ export function AdminPanelHeader({
               <h2 className="text-base font-semibold tracking-tight">
                 {title}
               </h2>
+              {hint}
               {status}
             </div>
             {subtitle && (
