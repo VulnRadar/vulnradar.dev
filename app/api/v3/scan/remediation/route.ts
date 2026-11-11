@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { z } from "zod";
+import { readJsonObject } from "@/lib/api/api-utils";
 import {
   REMEDIATION_STATUSES,
   normalizeDueAt,
@@ -57,14 +58,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+  const parsedBody = await readJsonObject(req);
+  if (!parsedBody.ok) return parsedBody.response;
 
-  const result = SetSchema.safeParse(body);
+  const result = SetSchema.safeParse(parsedBody.data);
   if (!result.success) {
     return NextResponse.json(
       { error: "Invalid request", details: result.error.flatten() },
@@ -166,15 +163,21 @@ export async function GET(req: NextRequest) {
           AND ($3::text IS NULL OR finding_id = $3)
         ORDER BY updated_at DESC
         LIMIT $4`,
-      [session.userId, findingUrl, findingId, REMEDIATION_LIST_LIMIT],
+      // One more than the page, so a full page that is also the last one is
+      // not reported as cut short: only a row past the limit proves there is
+      // more.
+      [session.userId, findingUrl, findingId, REMEDIATION_LIST_LIMIT + 1],
     );
+    const truncated = rows.rows.length > REMEDIATION_LIST_LIMIT;
     // Reported rather than silently applied (AUDIT-014#magic-20): triage
     // state that stops at 500 rows with no indication reads as "there is
     // nothing more", which is the opposite of what a truncation means.
     return NextResponse.json({
-      remediation: rows.rows,
+      remediation: truncated
+        ? rows.rows.slice(0, REMEDIATION_LIST_LIMIT)
+        : rows.rows,
       limit: REMEDIATION_LIST_LIMIT,
-      truncated: rows.rows.length === REMEDIATION_LIST_LIMIT,
+      truncated,
     });
   } catch (err: unknown) {
     const migrated = tableMissingResponse(err);

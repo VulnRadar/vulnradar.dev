@@ -74,6 +74,31 @@ describe("POST /api/v3/scan/remediation", () => {
   });
 
   it.each([
+    ["a JSON null", "null"],
+    ["a JSON array", "[]"],
+    ["an empty body", ""],
+  ])("answers 400 for %s, not a TypeError", async (_label, body) => {
+    const res = await POST(
+      new NextRequest("http://localhost/api/v3/scan/remediation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("INVALID_REQUEST");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("refuses a body past the size cap with 413 before parsing it", async () => {
+    const res = await POST(
+      postRequest(validPayload({ note: "x".repeat(2 * 1024 * 1024) })),
+    );
+    expect(res.status).toBe(413);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it.each([
     ["unknown status", { status: "maybe" }],
     ["empty findingId", { findingId: "" }],
     ["malformed findingUrl", { findingUrl: "not-a-url" }],
@@ -218,6 +243,43 @@ describe("GET /api/v3/scan/remediation", () => {
     expect(sql).toContain("FROM finding_remediation");
     expect(sql).toContain("WHERE user_id = $1");
     expect(params[0]).toBe(42);
+  });
+
+  // The list is cut at 500 rows and says so. It used to say so whenever it
+  // returned exactly 500, which is also what a user with exactly 500 rows gets,
+  // so a complete list was reported as cut short.
+  const rowsOf = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      finding_id: `f-${i}`,
+      status: "fixed",
+    }));
+
+  it("asks for one row past the limit, to know whether there is more", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await GET(paramRequest("GET"));
+    expect(mockQuery.mock.calls[0][1][3]).toBe(501);
+  });
+
+  it("is not truncated when the list is exactly the limit", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: rowsOf(500) });
+    const json = await (await GET(paramRequest("GET"))).json();
+    expect(json.remediation).toHaveLength(500);
+    expect(json.limit).toBe(500);
+    expect(json.truncated).toBe(false);
+  });
+
+  it("is truncated, and sends only the limit, when a row past it exists", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: rowsOf(501) });
+    const json = await (await GET(paramRequest("GET"))).json();
+    expect(json.remediation).toHaveLength(500);
+    expect(json.remediation[499].finding_id).toBe("f-499");
+    expect(json.truncated).toBe(true);
+  });
+
+  it("is not truncated below the limit", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: rowsOf(3) });
+    const json = await (await GET(paramRequest("GET"))).json();
+    expect(json.truncated).toBe(false);
   });
 
   it("returns 500 on an unrelated database error", async () => {

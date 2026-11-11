@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { z } from "zod";
+import { readJsonObject } from "@/lib/api/api-utils";
 import {
   REMEDIATION_STATUSES,
   normalizeDueAt,
@@ -54,14 +55,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+  const parsedBody = await readJsonObject(req);
+  if (!parsedBody.ok) return parsedBody.response;
 
-  const result = BulkSchema.safeParse(body);
+  const result = BulkSchema.safeParse(parsedBody.data);
   if (!result.success) {
     return NextResponse.json(
       { error: "Invalid request", details: result.error.flatten() },
