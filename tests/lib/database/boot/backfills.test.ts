@@ -53,14 +53,16 @@ const SQL_PHASES: Array<[string, (sql: string) => boolean]> = [
   ["scan-urls", (sql) => sql.includes("FROM scan_history")],
   ["audit-redaction", (sql) => sql.includes("UPDATE admin_audit_log")],
   ["feedback-source", (sql) => sql.includes("UPDATE scan_finding_feedback")],
+  ["finding-id-remap", (sql) => sql.includes("FROM finding_remediation")],
 ];
 
-/** The four phases that walk whole tables, which the boot connection runs. */
+/** The phases that walk whole tables, which the boot connection runs. */
 const TABLE_PHASES = [
   "sub-daily-schedules",
   "scan-urls",
   "audit-redaction",
   "feedback-source",
+  "finding-id-remap",
 ];
 
 function bootPool() {
@@ -110,6 +112,7 @@ describe("runBootBackfills", () => {
       "scan-urls",
       "audit-redaction",
       "feedback-source",
+      "finding-id-remap",
     ]);
     expect(onClient).toEqual(TABLE_PHASES);
     expect(release).toHaveBeenCalledWith(true);

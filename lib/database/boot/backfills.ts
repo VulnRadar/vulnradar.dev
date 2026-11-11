@@ -27,6 +27,7 @@ import { DEFAULT_BADGES_SQL } from "@/lib/database/schema/seeds.mjs";
 import { logError } from "@/lib/logging/log";
 import { parsedFormOf } from "@/lib/scanner/canonical-url";
 import { AI_FEEDBACK_NOTE } from "@/lib/scanner/feedback-source";
+import { remapLegacyFindingIds } from "@/lib/scanner/finding-id-remap";
 import {
   FREQUENCIES,
   SCHEDULE_FREQUENCIES,
@@ -41,8 +42,8 @@ import {
 type BackfillExecutor = Pick<Pool, "query">;
 
 /**
- * The four that walk whole tables (scan_history, admin_audit_log,
- * scheduled_scans, scan_finding_feedback) run on the boot's own connection,
+ * The ones that walk whole tables (scan_history, admin_audit_log,
+ * scheduled_scans, scan_finding_feedback, finding_remediation) run on the boot's own connection,
  * with its ten-minute statement timeout and five-second lock timeout, rather
  * than under the app pool's 30 seconds (ops-10): on a large scan_history the
  * URL rewrite was cancelled part way at every boot. Everything before them is
@@ -65,6 +66,11 @@ export async function runBootBackfills(
     await canonicalizeStoredScanUrls(executor);
     await redactSecretSettingAuditRows(executor);
     await backfillAiFeedbackSource(executor);
+    // After the source backfill, so the copies it makes carry the AI marking.
+    // Every boot rather than once: there is no run-once flag table, and the
+    // copy is ON CONFLICT DO NOTHING, so a boot with nothing left to carry
+    // over inserts nothing.
+    await remapLegacyFindingIds(executor);
   }).catch((err) => {
     logError(
       "db",

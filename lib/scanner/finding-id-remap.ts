@@ -19,6 +19,9 @@
  * overwritten.
  */
 import type { Pool } from "pg";
+
+/** The boot connection (lib/database/boot/apply-boot-schema.ts) or a pool. */
+type RemapExecutor = Pick<Pool, "query">;
 import { logError } from "@/lib/logging/log";
 import {
   canonicalScanUrl,
@@ -121,7 +124,7 @@ function asStoredHit(raw: unknown): StoredHit | null {
  * of that URL that carried the id.
  */
 async function findStoredHit(
-  pool: Pool,
+  pool: RemapExecutor,
   userId: number,
   findingId: string,
   findingUrl: string,
@@ -146,7 +149,7 @@ async function findStoredHit(
 }
 
 async function keyFor(
-  pool: Pool,
+  pool: RemapExecutor,
   row: {
     user_id: number;
     finding_id: string;
@@ -177,7 +180,9 @@ export interface RemapCounts {
  * nobody left for the verdict to apply to. Never throws: a failure is logged
  * and the counts so far are returned, and the next run picks up the rest.
  */
-export async function remapLegacyFindingIds(pool: Pool): Promise<RemapCounts> {
+export async function remapLegacyFindingIds(
+  pool: RemapExecutor,
+): Promise<RemapCounts> {
   const counts: RemapCounts = { feedback: 0, remediation: 0 };
   try {
     let afterId = 0;
