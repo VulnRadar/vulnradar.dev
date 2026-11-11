@@ -100,6 +100,45 @@ describe("PUT /api/v3/admin/notifications/[id]", () => {
     expect(res.status).toBe(400);
   });
 
+  it("says which link is wrong and why, in the body the dialog shows", async () => {
+    withRole("admin");
+    const res = await PUT(
+      putRequest({ action_url: "/ok", action_url_2: "data:text/html,x" }),
+      ctx("1"),
+    );
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error).toMatch(
+      /^The second button's URL must start with https:\/\//,
+    );
+    // Refused before the UPDATE: only the permission lookup ran.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("turns a date Postgres cannot read into a 400 that names it", async () => {
+    withRole("admin");
+    mockQuery.mockRejectedValueOnce(
+      Object.assign(new Error("invalid input syntax for type timestamp"), {
+        code: "22007",
+      }),
+    );
+    const res = await PUT(putRequest({ starts_at: "not a date" }), ctx("1"));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/start or end time/);
+  });
+
+  it("keeps an unexpected database failure a 500", async () => {
+    withRole("admin");
+    mockQuery.mockRejectedValueOnce(new Error("connection reset"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await PUT(putRequest({ title: "t" }), ctx("1"));
+      expect(res.status).toBe(500);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("returns 404 when the notification does not exist", async () => {
     withRole("admin");
     mockQuery.mockResolvedValueOnce({ rows: [] });

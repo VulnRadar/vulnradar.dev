@@ -47,6 +47,7 @@ import { cn } from "@/lib/ui/utils";
 import { formatTimestamp } from "@/components/admin/utils";
 import { toLocalDatetimeInputValue } from "@/lib/notifications/local-datetime";
 import { API } from "@/lib/config/client-constants";
+import { firstActionUrlProblem } from "@/lib/notifications/admin-input";
 import { useConfirm } from "@/components/shared/use-confirm";
 
 interface AdminNotification {
@@ -219,6 +220,9 @@ export function NotificationsManager() {
   const { confirm, confirmDialog } = useConfirm();
   const [isCreating, setIsCreating] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Shown inside the dialog. A save failure used to go to the page's error
+  // line, which sits behind the open dialog, so it read as a silent no-op.
+  const [formError, setFormError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AdminNotification | null>(
     null,
   );
@@ -297,6 +301,7 @@ export function NotificationsManager() {
       priority: "0",
     });
     setEditingNotification(null);
+    setFormError(null);
     setIsCreating(true);
   };
 
@@ -326,15 +331,31 @@ export function NotificationsManager() {
       priority: notif.priority.toString(),
     });
     setEditingNotification(notif);
+    setFormError(null);
     setIsCreating(true);
   };
 
   const closeDialog = () => {
     setIsCreating(false);
     setEditingNotification(null);
+    setFormError(null);
   };
 
+  /**
+   * Throws on any failure, after putting the reason in the dialog: the edit
+   * path runs this as useConfirm's onConfirm, which stays open on a throw and
+   * closes on a resolve, so a refused save must not resolve.
+   */
   const handleSave = async () => {
+    setFormError(null);
+    const urlProblem = firstActionUrlProblem({
+      action_url: formData.action_url,
+      action_url_2: formData.action_url_2,
+    });
+    if (urlProblem) {
+      setFormError(urlProblem);
+      throw new Error(urlProblem);
+    }
     setSaving(true);
     try {
       const payload = {
@@ -366,16 +387,37 @@ export function NotificationsManager() {
       const url = editingNotification
         ? `${API.ADMIN}/notifications/${editingNotification.id}`
         : `${API.ADMIN}/notifications`;
-      const res = await fetch(url, {
-        method: editingNotification ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error("Failed to save notification");
-      await fetchNotifications();
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: editingNotification ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } catch {
+        throw new Error(
+          "We could not reach the server, so nothing was saved. Check your connection and try again.",
+        );
+      }
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as {
+          error?: unknown;
+        } | null;
+        throw new Error(
+          typeof data?.error === "string" && data.error
+            ? data.error
+            : `The notification was not saved (HTTP ${res.status}). Try again.`,
+        );
+      }
       closeDialog();
+      await fetchNotifications();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : "The notification was not saved. Try again.";
+      setFormError(message);
+      throw err instanceof Error ? err : new Error(message);
     } finally {
       setSaving(false);
     }
@@ -761,6 +803,15 @@ export function NotificationsManager() {
           </DialogHeader>
 
           <DialogBody>
+            {formError && (
+              <InlineAlert
+                tone="error"
+                className="mb-4"
+                onDismiss={() => setFormError(null)}
+              >
+                {formError}
+              </InlineAlert>
+            )}
             <div className="rounded-lg border border-border/40 overflow-hidden divide-y divide-border/40">
               {/* Content */}
               <div>
@@ -1094,7 +1145,9 @@ export function NotificationsManager() {
                       confirmLabel: "Replace it",
                       onConfirm: handleSave,
                     })
-                  : handleSave()
+                  : // The reason is already in the dialog; the rejection
+                    // only exists for the confirm path above.
+                    void handleSave().catch(() => undefined)
               }
               disabled={saving || !formData.title || !formData.message}
             >

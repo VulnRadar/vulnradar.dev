@@ -4,6 +4,10 @@ import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getClientIp } from "@/lib/api/request-utils";
 import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 import { logAction, requirePermission } from "@/lib/auth/authorization";
+import {
+  firstActionUrlProblem,
+  notificationInputError,
+} from "@/lib/notifications/admin-input";
 
 export const GET = withErrorHandling(async () => {
   try {
@@ -74,30 +78,11 @@ export const POST = withErrorHandling(async (req: Request) => {
     // execute arbitrary JS in vulnradar.dev's origin the moment any
     // user clicks the notification's CTA. Restrict to http(s) and
     // same-origin paths only.
-    for (const [field, value] of [
-      ["action_url", action_url],
-      ["action_url_2", action_url_2],
-    ] as const) {
-      if (value == null || value === "") continue;
-      if (typeof value !== "string") {
-        return NextResponse.json(
-          { error: `${field} must be a string` },
-          { status: 400 },
-        );
-      }
-      const lower = value.trim().toLowerCase();
-      const allowed =
-        lower.startsWith("https://") ||
-        lower.startsWith("http://") ||
-        (lower.startsWith("/") && !lower.startsWith("//"));
-      if (!allowed) {
-        return NextResponse.json(
-          {
-            error: `${field} must start with https://, http://, or / (no javascript:, data:, or other schemes)`,
-          },
-          { status: 400 },
-        );
-      }
+    // The rule lives in lib/notifications/admin-input.ts, which the dialog
+    // checks before it sends.
+    const urlProblem = firstActionUrlProblem({ action_url, action_url_2 });
+    if (urlProblem) {
+      return NextResponse.json({ error: urlProblem }, { status: 400 });
     }
 
     // Generate unique cookie_id: notif_ + 16 random hex chars
@@ -145,6 +130,10 @@ export const POST = withErrorHandling(async (req: Request) => {
 
     return NextResponse.json({ notification: result.rows[0] });
   } catch (error) {
+    const reason = notificationInputError(error);
+    if (reason) {
+      return NextResponse.json({ error: reason }, { status: 400 });
+    }
     console.error("Error creating notification:", error);
     return NextResponse.json(
       { error: "Failed to create notification" },

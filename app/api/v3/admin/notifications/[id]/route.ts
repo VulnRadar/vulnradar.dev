@@ -5,6 +5,10 @@ import { getClientIp } from "@/lib/api/request-utils";
 import { readJsonObject, withErrorHandling } from "@/lib/api/api-utils";
 import { parseIdParam } from "@/lib/api/path-id";
 import { logAction, requirePermission } from "@/lib/auth/authorization";
+import {
+  firstActionUrlProblem,
+  notificationInputError,
+} from "@/lib/notifications/admin-input";
 
 export const PUT = withErrorHandling(
   async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
@@ -54,31 +58,11 @@ export const PUT = withErrorHandling(
       // SECURITY: action_url/action_url_2 are rendered as an <a href> by the
       // client-side notification UI. Reject anything that isn't http(s) or a
       // same-origin path so a moderator can't store a `javascript:` URL that
-      // would execute arbitrary JS in vulnradar.dev's origin.
-      for (const [field, value] of [
-        ["action_url", action_url],
-        ["action_url_2", action_url_2],
-      ] as const) {
-        if (value == null || value === "") continue;
-        if (typeof value !== "string") {
-          return NextResponse.json(
-            { error: `${field} must be a string` },
-            { status: 400 },
-          );
-        }
-        const lower = value.trim().toLowerCase();
-        const allowed =
-          lower.startsWith("https://") ||
-          lower.startsWith("http://") ||
-          (lower.startsWith("/") && !lower.startsWith("//"));
-        if (!allowed) {
-          return NextResponse.json(
-            {
-              error: `${field} must start with https://, http://, or / (no javascript:, data:, or other schemes)`,
-            },
-            { status: 400 },
-          );
-        }
+      // would execute arbitrary JS in vulnradar.dev's origin. The dialog
+      // checks the same rule before it sends.
+      const urlProblem = firstActionUrlProblem({ action_url, action_url_2 });
+      if (urlProblem) {
+        return NextResponse.json({ error: urlProblem }, { status: 400 });
       }
 
       const result = await pool.query(
@@ -145,6 +129,12 @@ export const PUT = withErrorHandling(
 
       return NextResponse.json({ notification: result.rows[0] });
     } catch (error) {
+      // A value Postgres refused is the editor's to fix, so it gets a 400
+      // that names the field instead of a 500 that names nothing.
+      const reason = notificationInputError(error);
+      if (reason) {
+        return NextResponse.json({ error: reason }, { status: 400 });
+      }
       console.error("Error updating notification:", error);
       return NextResponse.json(
         { error: "Failed to update notification" },
