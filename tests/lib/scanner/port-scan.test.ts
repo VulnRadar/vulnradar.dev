@@ -207,6 +207,13 @@ describe("scanPorts sweeps only what a target proof authorized", () => {
     expect(h.connectIps).toEqual([]);
   });
 
+  it("accepts the proof for a host written with the root dot", async () => {
+    const proof = issueProof("example.com", "93.184.216.34");
+    const result = await scanPorts("example.com.", freshSignal(), { proof });
+    expect(result).not.toBeNull();
+    expect(new Set(h.connectIps)).toEqual(new Set(["93.184.216.34"]));
+  });
+
   it("connects to the proven address only, even when DNS now answers another", async () => {
     const proof = issueProof("example.com", "151.101.1.69");
     h.lookup.mockResolvedValue([{ address: "93.184.216.34" }]);

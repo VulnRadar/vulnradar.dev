@@ -451,7 +451,11 @@ async function authorizedSweepIp(
   let ip: string;
   if ("proof" in authorization) {
     const { proof } = authorization;
-    if (!isProvenTarget(proof) || proof.host !== host) return null;
+    // proveTargetControl drops the root dot, so "example.com." is the name
+    // it proved as "example.com".
+    if (!isProvenTarget(proof) || proof.host !== host.replace(/\.$/, "")) {
+      return null;
+    }
     ip = proof.ip;
   } else {
     const proved = await proveTargetControl(host, authorization.userId, {
