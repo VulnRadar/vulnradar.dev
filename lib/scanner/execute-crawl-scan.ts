@@ -631,6 +631,9 @@ async function runCrawlScan(params: ExecuteCrawlScanParams): Promise<void> {
     // the whole crawl. Only reaches here after the route enforced verified
     // domain ownership; best-effort, never throws, and refuses any target that
     // resolves to a private/internal address (see lib/scanner/port-scan.ts).
+    // Passing the account makes scanPorts prove the server itself serves the
+    // account's verification token before it connects (target-proof.ts):
+    // owning the zone's DNS is not owning every server a name points at.
     let portScanHost: string | null = null;
     try {
       portScanHost = new URL(normalizedMainUrl).hostname;
@@ -639,7 +642,7 @@ async function runCrawlScan(params: ExecuteCrawlScanParams): Promise<void> {
     }
     const portScanPromise: Promise<PortScanResult | null> =
       portScan && portScanHost
-        ? scanPorts(portScanHost, cancelSignal)
+        ? scanPorts(portScanHost, cancelSignal, { userId: authedUserId })
         : Promise.resolve(null);
     portScanPromise.catch(() => {});
 

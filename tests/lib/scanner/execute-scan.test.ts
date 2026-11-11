@@ -803,6 +803,7 @@ describe("executeScan", () => {
       expect(mockScanPorts).toHaveBeenCalledWith(
         "example.com",
         expect.anything(),
+        { userId: expect.any(Number) },
       );
       expect(mockBuildRiskyPortFindings).toHaveBeenCalled();
 
