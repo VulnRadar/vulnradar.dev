@@ -50,6 +50,7 @@ const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { AUTH_SESSION_COOKIE_NAME, DEVICE_TRUST_COOKIE_NAME } =
   await import("@/lib/config/constants");
 const { GET } = await import("@/app/api/v3/auth/trusted-devices/route");
+const { hashDeviceFingerprint } = await import("@/lib/auth/device-trust");
 
 beforeEach(() => {
   mockQuery.mockClear();
@@ -73,7 +74,9 @@ describe("GET /api/v3/auth/trusted-devices", () => {
     deviceRows = [
       {
         id: 1,
-        device_fingerprint: "fingerprint-current",
+        // The row holds the hash of the cookie, never the cookie itself
+        // (lib/auth/device-trust.ts), so "this device" is found by hashing.
+        device_fingerprint: hashDeviceFingerprint("fingerprint-current"),
         device_name: "Work laptop",
         ip_address: "203.0.113.5",
         user_agent:
@@ -84,7 +87,7 @@ describe("GET /api/v3/auth/trusted-devices", () => {
       },
       {
         id: 2,
-        device_fingerprint: "fingerprint-other",
+        device_fingerprint: hashDeviceFingerprint("fingerprint-other"),
         device_name: null,
         ip_address: "198.51.100.9",
         user_agent: "curl/8.0",
@@ -121,5 +124,29 @@ describe("GET /api/v3/auth/trusted-devices", () => {
     const body = JSON.stringify(json);
     expect(body).not.toContain("fingerprint-current");
     expect(body).not.toContain("fingerprint-other");
+    expect(body).not.toContain(hashDeviceFingerprint("fingerprint-current"));
+  });
+
+  it("marks no row current from a cookie whose raw value happens to be stored", async () => {
+    // A row written before the hash holds the raw token. It no longer unlocks
+    // anything, so it must not be shown as this device either.
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "raw-session-1");
+    cookieState.set(DEVICE_TRUST_COOKIE_NAME, "fingerprint-legacy");
+    sessionRow = defaultSessionRow({ user_id: 33 });
+    deviceRows = [
+      {
+        id: 3,
+        device_fingerprint: "fingerprint-legacy",
+        device_name: null,
+        ip_address: null,
+        user_agent: null,
+        last_used_at: "2026-01-02T00:00:00.000Z",
+        created_at: "2026-01-01T00:00:00.000Z",
+        expires_at: "2026-06-01T00:00:00.000Z",
+      },
+    ];
+
+    const json = await (await GET()).json();
+    expect(json.devices[0].isCurrent).toBe(false);
   });
 });
