@@ -97,4 +97,173 @@ describe("VERIFY_SYSTEM_PROMPT", () => {
   it("does not let the model re-score severity instead of judging truth", () => {
     expect(VERIFY_SYSTEM_PROMPT).toContain("You are not re-scoring");
   });
+
+  // The old prompt told the model to answer "confirmed with confidence 85-92"
+  // to every async- finding and "Do NOT return uncertain". Eight such checks
+  // collected 34 to 71 confirmed rows each, none of which carried information,
+  // and the same prompt also told it to judge DNS interpretation, so which
+  // instruction won varied per run.
+  describe("DNS findings are judged, not stamped", () => {
+    it("no longer orders a fixed verdict for the async- family", () => {
+      expect(VERIFY_SYSTEM_PROMPT).not.toContain('Do NOT return "uncertain"');
+      expect(VERIFY_SYSTEM_PROMPT).not.toContain(
+        'Return "confirmed" with confidence 85-92',
+      );
+      expect(VERIFY_SYSTEM_PROMPT).not.toContain(
+        "DNS check with async- prefix (scanner verified via DNS: trust it)",
+      );
+      expect(VERIFY_SYSTEM_PROMPT).toContain(
+        "No family of checks has a fixed verdict",
+      );
+    });
+
+    it("keeps the observation protected from HTTP data", () => {
+      expect(VERIFY_SYSTEM_PROMPT).toContain(
+        "You CANNOT refute a DNS finding using HTTP probe data",
+      );
+    });
+
+    it("asks who owns the zone and whether the name receives mail", () => {
+      expect(VERIFY_SYSTEM_PROMPT).toContain(
+        "Does the owner control this zone?",
+      );
+      expect(VERIFY_SYSTEM_PROMPT).toContain(
+        "Is this name a mail domain at all?",
+      );
+      expect(VERIFY_SYSTEM_PROMPT).toContain("vercel.app");
+    });
+
+    it("splits TLSA for the web from TLSA for SMTP", () => {
+      expect(VERIFY_SYSTEM_PROMPT).toContain("_443._tcp");
+      expect(VERIFY_SYSTEM_PROMPT).toContain("_25._tcp");
+    });
+  });
+
+  describe("an unusable probe is uncertain", () => {
+    it("names the statuses and the challenge signals", () => {
+      expect(VERIFY_SYSTEM_PROMPT).toContain("Is the probe usable?");
+      expect(VERIFY_SYSTEM_PROMPT).toContain(
+        "status_code is 401, 403, 429 or any 5xx",
+      );
+      expect(VERIFY_SYSTEM_PROMPT).toContain("cf-mitigated");
+      expect(VERIFY_SYSTEM_PROMPT).toContain("proof-of-work");
+    });
+
+    it("never lets a challenge or block page refute a finding", () => {
+      expect(VERIFY_SYSTEM_PROMPT).toContain(
+        "Never use an unusable probe to refute a finding",
+      );
+    });
+
+    it("treats a scanner and probe disagreement as uncertain", () => {
+      expect(VERIFY_SYSTEM_PROMPT).toContain(
+        "The site answers the scanner and the probe differently",
+      );
+    });
+
+    it("no longer claims the probe is the scanner's own response", () => {
+      expect(VERIFY_SYSTEM_PROMPT).not.toContain(
+        "The live_probe you have is the same source the scanner used",
+      );
+      expect(VERIFY_SYSTEM_PROMPT).toContain(
+        "SEPARATE request from the one the scanner graded",
+      );
+    });
+
+    it("does not call a 503 or a redirect a reason to dismiss a finding", () => {
+      expect(VERIFY_SYSTEM_PROMPT).not.toContain(
+        "status_code is 404, 301, or 503",
+      );
+    });
+  });
+
+  describe("header checks need a header or a named standard to be dismissed", () => {
+    it("scopes the interpretation licence", () => {
+      expect(VERIFY_SYSTEM_PROMPT).toContain(
+        'this page does not need it" is not a reason',
+      );
+      expect(VERIFY_SYSTEM_PROMPT).toContain(
+        "a NAMED standard or browser behaviour",
+      );
+    });
+
+    it("keeps the withdrawn-standard examples that the licence exists for", () => {
+      expect(VERIFY_SYSTEM_PROMPT).toContain("X-XSS-Protection");
+      expect(VERIFY_SYSTEM_PROMPT).toContain("Expect-CT");
+    });
+  });
+
+  describe("body-content and supply-chain evidence", () => {
+    it("no longer cites target-blank-no-noopener as a check to confirm blind", () => {
+      expect(VERIFY_SYSTEM_PROMPT).not.toContain(
+        "(inline-style-attr, target-blank-no-noopener",
+      );
+      expect(VERIFY_SYSTEM_PROMPT).toContain("inline-style-attr");
+    });
+
+    it("sends count-only evidence with nothing visible to uncertain", () => {
+      expect(VERIFY_SYSTEM_PROMPT).toContain(
+        "the evidence only counts instances",
+      );
+      expect(VERIFY_SYSTEM_PROMPT).not.toContain(
+        'Return "confirmed" citing that the scanner parsed the full document',
+      );
+    });
+
+    it("compares the resource host with the page host", () => {
+      expect(VERIFY_SYSTEM_PROMPT).toContain(
+        "compare the resource's host with the host of final_url",
+      );
+      expect(VERIFY_SYSTEM_PROMPT).toContain(
+        "A first-party resource is the page's own code",
+      );
+    });
+
+    it("carries the benign patterns the research measured", () => {
+      for (const topic of [
+        'target="_blank" without rel',
+        "Google Fonts",
+        'Function("return this")()',
+        "csrf-token",
+        "storefrontAccessToken",
+        "XSRF-TOKEN",
+        "__cf_bm",
+        "t=y; p=;",
+      ]) {
+        expect(
+          VERIFY_SYSTEM_PROMPT,
+          `the prompt must still cover ${topic}`,
+        ).toContain(topic);
+      }
+    });
+
+    it("still treats a pinned third-party CDN file without integrity as real", () => {
+      expect(VERIFY_SYSTEM_PROMPT).toContain(
+        "with no integrity attribute is a real finding: confirmed",
+      );
+    });
+  });
+
+  it("covers every category the scanner emits", () => {
+    for (const category of [
+      "client-side",
+      "supply-chain",
+      "vibe-code",
+      "host-validation",
+      "reputation",
+      "active-probes",
+    ]) {
+      expect(
+        VERIFY_SYSTEM_PROMPT,
+        `category ${category} is missing from the prompt`,
+      ).toContain(category);
+    }
+  });
+
+  it("describes optional prompt blocks as optional, so it never promises data it is not sent", () => {
+    expect(VERIFY_SYSTEM_PROMPT).toContain(
+      "scanner_response_headers (when present)",
+    );
+    expect(VERIFY_SYSTEM_PROMPT).toContain("dns_context (when present)");
+  });
 });

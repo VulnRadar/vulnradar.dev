@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   VERIFY_EVAL_CASES,
   splitByExpected,
@@ -43,6 +43,18 @@ describe("the verification eval set", () => {
     const { shouldConfirm, shouldFlag } = splitByExpected(VERIFY_EVAL_CASES);
     expect(shouldConfirm.length).toBeGreaterThanOrEqual(5);
     expect(shouldFlag.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("has cases where uncertain is the right answer", () => {
+    // The third direction of error: a model that never says uncertain turns a
+    // challenge page or a 403 into a verdict that is written to feedback.
+    const { shouldDefer } = splitByExpected(VERIFY_EVAL_CASES);
+    expect(shouldDefer.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("has unique case names", () => {
+    const names = VERIFY_EVAL_CASES.map((c) => c.name);
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it("gives every case a rationale someone can argue with", () => {
@@ -99,6 +111,68 @@ describe("the verification eval set", () => {
       expect(prompt).toContain(`finding_id: ${c.finding.id}`);
       expect(prompt).toContain("live_probe:");
     }
+  });
+});
+
+describe("the eval runner", () => {
+  // The runner used to carry its own copy of the chat-completions and
+  // Anthropic requests, which could drift from what production sends. It now
+  // goes through postChatCompletion, so these pin that it asks the same
+  // question: the shipped prompt, and a thrown error (not a silent miss) when
+  // the endpoint refuses.
+  const endpoint = { baseUrl: "https://llm.test/v1", apiKey: "k", model: "m" };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the shipped system prompt and the case prompt", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: "ok" } }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { callVerifyForEval } = await import("./verify-eval-runner");
+    const text = await callVerifyForEval(endpoint, "the user prompt");
+
+    expect(text).toBe("ok");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://llm.test/v1/chat/completions");
+    const body = JSON.parse(String(init.body));
+    expect(body.messages[0]).toEqual({
+      role: "system",
+      content: VERIFY_SYSTEM_PROMPT,
+    });
+    expect(body.messages[1]).toEqual({
+      role: "user",
+      content: "the user prompt",
+    });
+  });
+
+  it("throws on an HTTP failure instead of scoring it as a wrong verdict", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("bad key", { status: 401 })),
+    );
+    const { callVerifyForEval } = await import("./verify-eval-runner");
+    await expect(callVerifyForEval(endpoint, "p")).rejects.toThrow(/401/);
+  });
+
+  it("has no request code of its own", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(
+      new URL("./verify-eval-runner.ts", import.meta.url),
+      "utf8",
+    );
+    expect(src).toContain("postChatCompletion");
+    expect(src).not.toContain("/chat/completions");
+    expect(src).not.toContain("callAnthropicMessages");
   });
 });
 
@@ -159,7 +233,8 @@ describe.skipIf(!liveEval)("live verification eval", () => {
         });
       }
 
-      const { shouldConfirm, shouldFlag } = splitByExpected(VERIFY_EVAL_CASES);
+      const { shouldConfirm, shouldFlag, shouldDefer } =
+        splitByExpected(VERIFY_EVAL_CASES);
       const rate = (subset: VerifyEvalCase[]) => {
         const hits = scored.filter((s) => subset.includes(s.case) && s.ok);
         return subset.length === 0 ? 1 : hits.length / subset.length;
@@ -178,6 +253,7 @@ describe.skipIf(!liveEval)("live verification eval", () => {
           `Overall            ${(overall * 100).toFixed(0)}%`,
           `Real findings      ${(rate(shouldConfirm) * 100).toFixed(0)}%  (should confirm)`,
           `False positives    ${(rate(shouldFlag) * 100).toFixed(0)}%  (should flag)`,
+          `Unjudgeable        ${(rate(shouldDefer) * 100).toFixed(0)}%  (should say uncertain)`,
           "",
           ...lines,
           "",
