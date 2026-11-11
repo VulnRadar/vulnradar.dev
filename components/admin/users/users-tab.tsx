@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/table";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import { cn } from "@/lib/ui/utils";
-import { pluralize } from "@/lib/ui/plural";
+import { plural, pluralize } from "@/lib/ui/plural";
 import { PLANS, getPlanById } from "@/lib/billing/catalog";
 import { staffRolesByRank } from "@/lib/admin/staff-roles";
 import {
@@ -102,6 +102,7 @@ export function UsersTab({
   users,
   page,
   totalPages,
+  total,
   pageSize,
   searchQuery,
   onSearchQueryChange,
@@ -119,6 +120,8 @@ export function UsersTab({
   users: AdminUser[];
   page: number;
   totalPages: number;
+  /** Accounts matching the search and filters, across every page. */
+  total: number | null;
   pageSize: number;
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
@@ -135,6 +138,12 @@ export function UsersTab({
   const roleSelectId = useId();
   const planSelectId = useId();
   const filtersActive = hasActiveUserFilters(filters);
+  // An empty page past page 1 means rows exist elsewhere (this page's own rows
+  // were removed), so "nobody has registered" would be false.
+  const emptyDescription =
+    page > 1
+      ? "This page has no accounts left. Use the pagination below to go back."
+      : "No users have registered yet.";
 
   return (
     <>
@@ -236,7 +245,11 @@ export function UsersTab({
               variant="secondary"
               className="text-[11px] font-medium h-5 px-2 shrink-0 tabular-nums"
             >
-              {stats ? Number(stats.total_users).toLocaleString() : 0}
+              {/* The rows behind the current search and filters, across every
+                  page. It used to be the site-wide user count, so a filter
+                  that left three accounts still badged the directory with
+                  thousands. */}
+              {(total ?? Number(stats?.total_users ?? 0)).toLocaleString()}
             </Badge>
           }
           actions={
@@ -336,7 +349,7 @@ export function UsersTab({
                     ? `No results for "${searchQuery}". Try a different search term.`
                     : filtersActive
                       ? "No account matches these filters."
-                      : "No users have registered yet."
+                      : emptyDescription
                 }
               />
             ) : (
@@ -444,16 +457,16 @@ export function UsersTab({
                         <TableCell className="px-4 py-4">
                           <div className="flex flex-col gap-0.5">
                             <span className="text-sm font-medium font-mono tabular-nums">
-                              {u.scan_count}{" "}
+                              {Number(u.scan_count)}{" "}
                               <span className="text-muted-foreground font-sans font-normal">
-                                scans
+                                {plural(u.scan_count, "scan")}
                               </span>
                             </span>
                             <span className="text-xs text-muted-foreground">
                               <span className="font-mono tabular-nums">
-                                {u.api_key_count}
+                                {Number(u.api_key_count)}
                               </span>{" "}
-                              API keys
+                              {plural(u.api_key_count, "API key")}
                             </span>
                           </div>
                         </TableCell>
@@ -580,7 +593,7 @@ export function UsersTab({
                     ? `No results for "${searchQuery}".`
                     : filtersActive
                       ? "No account matches these filters."
-                      : "No users have registered yet."
+                      : emptyDescription
                 }
               />
             )}
@@ -695,7 +708,7 @@ export function UsersTab({
           </div>
 
           {/* Pagination */}
-          {users.length > 0 && (
+          {(users.length > 0 || page > 1) && (
             <div className="px-5 py-4 border-t border-border/40 bg-muted/20">
               <PaginationControl
                 currentPage={page}

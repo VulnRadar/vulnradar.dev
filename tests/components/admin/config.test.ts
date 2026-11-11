@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest";
 import {
   ACTION_LABELS,
   ACTION_META,
+  actionSuccessMessage,
   DANGER_ZONE_ACTIONS,
   PASSWORD_GATED_ACTIONS,
   SUPPORT_CARD_ACTIONS,
@@ -195,5 +196,37 @@ describe("PASSWORD_GATED_ACTIONS", () => {
         !REGISTERED_IDS.has(action) && !knownNonPatchEntries.has(action),
     );
     expect(unknown).toEqual([]);
+  });
+});
+
+describe("actionSuccessMessage", () => {
+  it("prefers a sentence the server wrote", () => {
+    expect(
+      actionSuccessMessage("adjust_credits", { message: "Took 40 of 100." }),
+    ).toBe("Took 40 of 100.");
+  });
+
+  it("falls back to the label, then to a generic line", () => {
+    expect(actionSuccessMessage("disable", {})).toBe("Account disabled.");
+    expect(actionSuccessMessage("not_an_action", null)).toBe(
+      "Action completed.",
+    );
+  });
+
+  it("does not claim the keys were revoked when the route left them", () => {
+    const text = actionSuccessMessage("force_logout_all", {
+      apiKeysRevoked: false,
+    });
+    expect(text).toContain("API keys were left in place");
+    expect(text).not.toContain("every API key revoked");
+  });
+
+  it("keeps the full claim when the keys went too", () => {
+    expect(
+      actionSuccessMessage("force_logout_all", { apiKeysRevoked: true }),
+    ).toBe("Every session ended and every API key revoked.");
+    expect(actionSuccessMessage("force_logout_all", {})).toBe(
+      "Every session ended and every API key revoked.",
+    );
   });
 });

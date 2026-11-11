@@ -21,6 +21,7 @@ import {
   otherEndedCount,
   ranForLabel,
   adminUserHref,
+  userReferenceHref,
   type FailedScan,
   type QueueCounts,
 } from "@/components/admin/features/queue-status-utils";
@@ -331,5 +332,17 @@ describe("ranForLabel", () => {
 describe("adminUserHref", () => {
   it("is the deep link the support inbox and the audit log already use", () => {
     expect(adminUserHref(42)).toBe("/admin?tab=users&user=42");
+  });
+});
+
+describe("userReferenceHref", () => {
+  it("links a user reference for a role that can open accounts", () => {
+    expect(userReferenceHref(42, "moderator")).toBe("/admin?tab=users&user=42");
+  });
+
+  it("returns no link for a role that would only be refused", () => {
+    // ops watches the queue but holds no VIEW_USERS.
+    expect(userReferenceHref(42, "ops")).toBeNull();
+    expect(userReferenceHref(42, undefined)).toBeNull();
   });
 });

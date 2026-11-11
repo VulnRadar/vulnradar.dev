@@ -37,7 +37,7 @@ import {
 } from "@/components/admin/shared";
 import { SkeletonRegion } from "@/components/shared/skeleton-shapes";
 import { AdminDataSkeleton } from "@/components/admin/admin-skeleton";
-import { ACTION_LABELS } from "@/components/admin/config";
+import { actionSuccessMessage } from "@/components/admin/config";
 import {
   hasStaffPermission,
   isStaffRole,
@@ -83,19 +83,25 @@ import { Toast as AdminToast } from "@/components/admin/shared";
 // Response envelopes for the admin API. Annotating each fetcher's
 // res.json() with these turns a route that renames or drops an envelope key
 // into a compile error instead of a runtime undefined.
-import type {
-  AdminUsersResponse,
-  AdminStatsResponse,
-  AdminAuditResponse,
-  AdminStaffResponse,
-  AdminTeamsResponse,
-  AdminTeamDetailResponse,
-  AdminUserDetailResponse,
-  AdminBadgesResponse,
-  AdminActionResponse,
-  TeamRenameResponse,
-  TeamDeleteResponse,
+import {
+  isTeamDetailResponse,
+  type AdminUsersResponse,
+  type AdminStatsResponse,
+  type AdminAuditResponse,
+  type AdminStaffResponse,
+  type AdminTeamsResponse,
+  type AdminTeamDetailResponse,
+  type AdminBadgesResponse,
+  type AdminActionResponse,
+  type TeamRenameResponse,
+  type TeamDeleteResponse,
 } from "@/components/admin/types.responses";
+import { pageAfterEmpty } from "@/components/admin/users/paging";
+import { scrollBehavior } from "@/components/admin/shared/scroll-behavior";
+import {
+  canOpenUserRecords,
+  loadUserDetail,
+} from "@/components/admin/users/user-detail-fetch";
 
 // Every tab panel is code-split. All of them used to be static imports, so
 // one /admin visit downloaded and parsed ~1.3 MB of JavaScript (the second
@@ -299,6 +305,10 @@ function AdminContent() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  // Accounts matching the current search and filters, across every page. Null
+  // until the first list answers, so the badge falls back to the site total
+  // rather than claiming zero.
+  const [usersTotal, setUsersTotal] = useState<number | null>(null);
   const [usersPageSize, setUsersPageSize] = useState(10);
   const [searchQuery, setSearchQuery] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -359,10 +369,16 @@ function AdminContent() {
   const [teamsError, setTeamsError] = useState<string | null>(null);
   const [teamsPage, setTeamsPage] = useState(1);
   const [teamsTotalPages, setTeamsTotalPages] = useState(1);
+  // Teams matching the search, across every page; the directory badge reads
+  // it. Null until the first list answers.
+  const [teamsTotal, setTeamsTotal] = useState<number | null>(null);
   const [teamsPageSize, setTeamsPageSize] = useState(10);
   const [teamsSearch, setTeamsSearch] = useState("");
   const [teamMembers, setTeamMembers] = useState<TeamMembersState | null>(null);
   const [teamMembersLoading, setTeamMembersLoading] = useState(false);
+  // Why the member list is empty, when it is empty for a reason: a failed
+  // request is not "This team has no members".
+  const [teamMembersError, setTeamMembersError] = useState<string | null>(null);
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([]);
   const [adminsLoading, setAdminsLoading] = useState(false);
   const [adminsError, setAdminsError] = useState<string | null>(null);
@@ -428,76 +444,96 @@ function AdminContent() {
   );
 
   // FETCH FUNCTIONS - must be defined before handleHashChange
-  const fetchData = useCallback(
-    async (
-      p: number,
-      search: string,
-      isInitial: boolean,
-      limit: number,
-      sort?: { column: "name" | "joined" | null; direction: SortDirection },
-    ) => {
-      if (isInitial) setLoading(true);
-      else setSearchLoading(true);
-      try {
-        const params = new URLSearchParams({
-          page: String(p),
-          limit: String(limit),
-        });
-        if (search.trim()) params.set("search", search.trim());
-        for (const [key, value] of userFilterParams(userFiltersRef.current)) {
-          params.set(key, value);
-        }
-        // Sort is applied by the server across the whole table. Passed as an
-        // argument rather than read from state so the header control can
-        // refetch with its new value before the state update commits.
-        const activeSort = sort ?? userSortRef.current;
-        if (activeSort.column && activeSort.direction) {
-          params.set("sort", activeSort.column);
-          params.set("dir", activeSort.direction);
-        }
-        const res = await fetch(`${API.ADMIN}?${params}`);
-        if (res.status === 403) {
-          const data = await res.json().catch(() => null);
-          if (data?.code === "2fa_required") setTwoFactorLockout(true);
-          setForbidden(true);
-          setLoading(false);
-          setSearchLoading(false);
-          return;
-        }
-        // Anything else that is not ok is a server fault, not an
-        // authorization one. It used to fall through to res.json() and land
-        // in the catch below, which called setForbidden(true) and told the
-        // operator their account lacked permission during an outage: the
-        // wrong debugging path, with no retry and no status code anywhere.
-        if (!res.ok) {
-          setLoadFailedStatus(res.status);
-          setLoading(false);
-          setSearchLoading(false);
-          return;
-        }
-        const data: AdminUsersResponse | null = await res
-          .json()
-          .catch(() => null);
-        if (!data) {
-          setLoadFailedStatus(res.status);
-          setLoading(false);
-          setSearchLoading(false);
-          return;
-        }
-        setLoadFailedStatus(null);
-        setUsers(data.users);
-        setPage(data.page);
-        setTotalPages(data.totalPages);
-        if (data.callerRole) setCallerRole(data.callerRole);
-      } catch (error) {
-        console.error("Failed to fetch admin data", error);
-        setLoadFailedStatus(0);
+  // The newest list request. A search keystroke, a page click and a refresh
+  // each start one, and an older answer landing after a newer one used to
+  // overwrite it, so the table showed the results of the previous query.
+  const usersRequestRef = useRef(0);
+
+  const fetchData = useCallback(async function loadUsers(
+    p: number,
+    search: string,
+    isInitial: boolean,
+    limit: number,
+    sort?: { column: "name" | "joined" | null; direction: SortDirection },
+  ): Promise<void> {
+    const requestId = ++usersRequestRef.current;
+    if (isInitial) setLoading(true);
+    else setSearchLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(p),
+        limit: String(limit),
+      });
+      if (search.trim()) params.set("search", search.trim());
+      for (const [key, value] of userFilterParams(userFiltersRef.current)) {
+        params.set(key, value);
       }
-      setLoading(false);
-      setSearchLoading(false);
-    },
-    [],
-  );
+      // Sort is applied by the server across the whole table. Passed as an
+      // argument rather than read from state so the header control can
+      // refetch with its new value before the state update commits.
+      const activeSort = sort ?? userSortRef.current;
+      if (activeSort.column && activeSort.direction) {
+        params.set("sort", activeSort.column);
+        params.set("dir", activeSort.direction);
+      }
+      const res = await fetch(`${API.ADMIN}?${params}`);
+      if (requestId !== usersRequestRef.current) return;
+      if (res.status === 403) {
+        const data = await res.json().catch(() => null);
+        if (data?.code === "2fa_required") setTwoFactorLockout(true);
+        setForbidden(true);
+        setLoading(false);
+        setSearchLoading(false);
+        return;
+      }
+      // Anything else that is not ok is a server fault, not an
+      // authorization one. It used to fall through to res.json() and land
+      // in the catch below, which called setForbidden(true) and told the
+      // operator their account lacked permission during an outage: the
+      // wrong debugging path, with no retry and no status code anywhere.
+      if (!res.ok) {
+        setLoadFailedStatus(res.status);
+        setLoading(false);
+        setSearchLoading(false);
+        return;
+      }
+      const data: AdminUsersResponse | null = await res
+        .json()
+        .catch(() => null);
+      if (requestId !== usersRequestRef.current) return;
+      if (!data) {
+        setLoadFailedStatus(res.status);
+        setLoading(false);
+        setSearchLoading(false);
+        return;
+      }
+      // The page the operator was on no longer exists: its last row was
+      // deleted, or another admin removed accounts. An empty page past the
+      // end read as "No users have registered yet" with no pagination to
+      // get back, so ask for the last page that has rows instead.
+      const lastPage = pageAfterEmpty(
+        p,
+        data.users.length,
+        data.total,
+        data.totalPages,
+      );
+      if (lastPage !== null) {
+        return loadUsers(lastPage, search, isInitial, limit, sort);
+      }
+      setLoadFailedStatus(null);
+      setUsers(data.users);
+      setPage(data.page);
+      setTotalPages(data.totalPages);
+      setUsersTotal(data.total);
+      if (data.callerRole) setCallerRole(data.callerRole);
+    } catch (error) {
+      if (requestId !== usersRequestRef.current) return;
+      console.error("Failed to fetch admin data", error);
+      setLoadFailedStatus(0);
+    }
+    setLoading(false);
+    setSearchLoading(false);
+  }, []);
 
   // The aggregate counters, apart from the list. Fetched on mount and after a
   // mutation, and not on paging, searching or sorting: those used to recompute
@@ -606,8 +642,17 @@ function AdminContent() {
     }
   }, []);
 
+  // The newest teams request. Searching fires one per keystroke after the
+  // debounce, and an older answer landing late replaced the newer one.
+  const teamsRequestRef = useRef(0);
+
   const fetchTeams = useCallback(
-    async (p = 1, search?: string, limit = teamsPageSize) => {
+    async function loadTeams(
+      p = 1,
+      search?: string,
+      limit = teamsPageSize,
+    ): Promise<void> {
+      const requestId = ++teamsRequestRef.current;
       setTeamsLoading(true);
       try {
         // limit follows the page-size selector. It used to be hardcoded to
@@ -630,6 +675,7 @@ function AdminContent() {
         // permission denial.
         const res = await fetch(`${API.ADMIN}/teams?${params}`);
         const data: AdminTeamsResponse = await res.json();
+        if (requestId !== teamsRequestRef.current) return;
         if (!res.ok) {
           setTeams([]);
           setTeamsError(
@@ -639,16 +685,31 @@ function AdminContent() {
           );
           return;
         }
+        const rows = Array.isArray(data.teams) ? data.teams : [];
+        // The page the operator was on is gone (its last team was deleted):
+        // go to the last page that has rows rather than showing an empty one
+        // with no pagination to get back.
+        const lastPage = pageAfterEmpty(
+          p,
+          rows.length,
+          data.total,
+          data.totalPages,
+        );
+        if (lastPage !== null) return loadTeams(lastPage, search, limit);
         setTeamsError(null);
-        setTeams(Array.isArray(data.teams) ? data.teams : []);
+        setTeams(rows);
         setTeamsPage(data.page || 1);
         setTeamsTotalPages(data.totalPages || 1);
+        setTeamsTotal(typeof data.total === "number" ? data.total : null);
       } catch {
+        if (requestId !== teamsRequestRef.current) return;
         setTeamsError("Couldn't load teams.");
       } finally {
         // In finally: the early return above skipped this, so the 403 a
         // moderator gets kept the skeleton up and teamsError never showed.
-        setTeamsLoading(false);
+        // Only the newest request clears it, or an answer that was dropped as
+        // stale would drop the skeleton under the one still loading.
+        if (requestId === teamsRequestRef.current) setTeamsLoading(false);
       }
     },
     [teamsSearch, teamsPageSize],
@@ -665,7 +726,7 @@ function AdminContent() {
   // replaces the object, and skipped entirely when the panel is already where
   // the user is looking.
   useEffect(() => {
-    const id = selectedUser?.user.id ?? null;
+    const id = selectedUser?.user?.id ?? null;
     if (id === null) {
       scrolledToUserRef.current = null;
       return;
@@ -678,26 +739,36 @@ function AdminContent() {
     // Already at the top of the viewport, or close to it: moving the page
     // under someone who can see the panel is worse than doing nothing.
     if (top >= 0 && top < 120) return;
-    el.scrollIntoView({
-      block: "start",
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? "auto"
-        : "smooth",
-    });
+    el.scrollIntoView({ block: "start", behavior: scrollBehavior() });
   }, [selectedUser]);
 
+  // Which open of the detail panel the answer in flight belongs to. Opening
+  // account 7 and then 9 before 7 answers must not leave 7 on screen.
+  const detailRequestRef = useRef(0);
+
   const fetchUserDetail = useCallback(
-    async (userId: number, skipUrlUpdate = false) => {
+    async (userId: number, skipUrlUpdate = false, refresh = false) => {
+      const requestId = ++detailRequestRef.current;
       setDetailLoading(true);
-      try {
-        const res = await fetch(
-          `${API.ADMIN}?section=user-detail&userId=${userId}`,
-        );
-        const data: AdminUserDetailResponse = await res.json();
-        setSelectedUser(data);
+      // A reload after the operator's own write (refresh) is not logged by the
+      // route as a view of the account.
+      const outcome = await loadUserDetail(userId, refresh);
+      if (requestId !== detailRequestRef.current) return;
+      if (outcome.ok) {
+        setSelectedUser(outcome.detail);
         if (!skipUrlUpdate) updateUrlWithUser(userId, activeTab, false);
-      } catch {
-        showToast("Failed to load user details.", "error");
+      } else {
+        // An error body used to be stored as the selected user, and the panel
+        // then read `.user.id` off it during render: a 404 from a stale link
+        // took the whole admin panel to the route error boundary. Say why,
+        // show the list, and take the dead id out of the address bar so a
+        // reload does not do it again. A failed reload keeps the record on
+        // screen, which is still the last true thing known about it.
+        showToast(outcome.message, "error");
+        if (!refresh) {
+          setSelectedUser(null);
+          updateUrlWithUser(null, activeTab);
+        }
       }
       setDetailLoading(false);
     },
@@ -833,16 +904,42 @@ function AdminContent() {
     forbidden ? null : HEALTH_POLL_INTERVAL_MS,
   );
 
+  // The team whose members the modal is waiting on. Closing the modal and
+  // opening another team before the first answers must not paint the first
+  // team's people under the second team's name.
+  const teamMembersRequestRef = useRef(0);
+
   async function fetchTeamMembers(teamId: number) {
+    const requestId = ++teamMembersRequestRef.current;
     setTeamMembersLoading(true);
+    setTeamMembersError(null);
     try {
       const res = await fetch(`${API.ADMIN}/teams/${teamId}`);
-      const data: AdminTeamDetailResponse = await res.json();
+      const data: AdminTeamDetailResponse | null = await res
+        .json()
+        .catch(() => null);
+      if (requestId !== teamMembersRequestRef.current) return;
+      if (!res.ok || !isTeamDetailResponse(data) || data.team.id !== teamId) {
+        setTeamMembers(null);
+        setTeamMembersError(
+          res.status === 403
+            ? "Your role cannot view team members."
+            : res.status === 404
+              ? "That team no longer exists."
+              : "Couldn't load the members of this team.",
+        );
+        return;
+      }
       setTeamMembers(data);
     } catch {
-      showToast("Failed to load team members", "error");
+      if (requestId !== teamMembersRequestRef.current) return;
+      setTeamMembers(null);
+      setTeamMembersError("Couldn't load the members of this team.");
+    } finally {
+      if (requestId === teamMembersRequestRef.current) {
+        setTeamMembersLoading(false);
+      }
     }
-    setTeamMembersLoading(false);
   }
 
   // A refusal is returned rather than toasted: the rename dialog shows it in
@@ -894,6 +991,19 @@ function AdminContent() {
     setActionLoading(null);
   }
 
+  // The list, the counters and the open record, once, after the operator's
+  // own write. The record is fetched with the refresh flag so it is not
+  // logged as a fresh view of the account.
+  async function refreshAfterWrite(userId: number) {
+    await Promise.all([
+      fetchData(page, searchQuery, false, usersPageSize),
+      fetchStats(),
+    ]);
+    if (selectedUser && selectedUser.user?.id === userId) {
+      await fetchUserDetail(userId, true, true);
+    }
+  }
+
   async function handleAction(
     userId: number,
     action: string,
@@ -904,7 +1014,12 @@ function AdminContent() {
     // "Badge awarded." for each, which stacked and told the operator nothing
     // about the batch as a whole. Pass a string to override the label, or
     // false to stay silent. Not part of `extra`, which is sent as request body.
-    options?: { toast?: string | false },
+    //
+    // `refetch: false` leaves the list, stats and open record as they are. A
+    // save that makes several writes passes it on each and calls
+    // refreshAfterWrite once at the end: every reload of the record is a
+    // round trip, and each used to write its own "viewed this account" row.
+    options?: { toast?: string | false; refetch?: boolean },
   ): Promise<{
     ok: boolean;
     error?: string;
@@ -927,32 +1042,33 @@ function AdminContent() {
         if (action === "create_badge" || action === "delete_badge") {
           fetchAllBadges();
         }
-        // ACTION_LABELS lives in components/admin/config.ts. This used to be
-        // an inlined duplicate that had drifted ahead of the exported one, so
-        // a label added in the obvious place never appeared.
         if (options?.toast !== false) {
           // A message the server wrote beats the generic label: it says what
           // actually happened, which is not always what was asked for (a
-          // credit removal that took only what was left).
+          // credit removal that took only what was left, a force logout that
+          // left the API keys alone).
           showToast(
-            options?.toast ||
-              data.message ||
-              ACTION_LABELS[action] ||
-              "Action completed.",
+            options?.toast || actionSuccessMessage(action, data),
             "success",
           );
         }
         // Skip refetch for badge award/revoke - onBadgesChanged handles optimistic UI update
-        if (action !== "award_badge" && action !== "revoke_badge") {
-          await Promise.all([
-            fetchData(page, searchQuery, false, usersPageSize),
-            fetchStats(),
-          ]);
-          if (selectedUser && selectedUser.user.id === userId) {
-            if (action === "delete") {
+        if (
+          options?.refetch !== false &&
+          action !== "award_badge" &&
+          action !== "revoke_badge"
+        ) {
+          if (action === "delete") {
+            await Promise.all([
+              fetchData(page, searchQuery, false, usersPageSize),
+              fetchStats(),
+            ]);
+            if (selectedUser && selectedUser.user?.id === userId) {
               setSelectedUser(null);
               updateUrlWithUser(null, activeTab);
-            } else await fetchUserDetail(userId);
+            }
+          } else {
+            await refreshAfterWrite(userId);
           }
         }
         result = { ok: true, change: data.change };
@@ -978,6 +1094,7 @@ function AdminContent() {
     }
     setSearchLoading(true);
     const timeout = setTimeout(async () => {
+      const requestId = ++usersRequestRef.current;
       try {
         // Carry the chosen page size; omitting it made the server fall back to
         // its default while the pagination control still showed usersPageSize,
@@ -998,16 +1115,19 @@ function AdminContent() {
           params.set("dir", activeSort.direction);
         }
         const res = await fetch(`${API.ADMIN}?${params}`);
+        if (requestId !== usersRequestRef.current) return;
         if (res.ok) {
-          const data = await res.json();
+          const data: AdminUsersResponse = await res.json();
+          if (requestId !== usersRequestRef.current) return;
           setUsers(data.users);
           setPage(data.page);
           setTotalPages(data.totalPages);
+          setUsersTotal(data.total);
         }
       } catch {
         /* ignore */
       }
-      setSearchLoading(false);
+      if (requestId === usersRequestRef.current) setSearchLoading(false);
     }, 300);
     return () => {
       clearTimeout(timeout);
@@ -1509,6 +1629,7 @@ function AdminContent() {
                   detailLoading={detailLoading}
                   actionLoading={actionLoading}
                   callerRole={callerRole}
+                  callerId={me?.userId ?? null}
                   allBadges={allBadges}
                   onBadgesChanged={(awardedIds, revokedIds) => {
                     setSelectedUser((prev) => {
@@ -1537,6 +1658,7 @@ function AdminContent() {
                     setSelectedUser(null);
                     updateUrlWithUser(null, activeTab);
                   }}
+                  onRefresh={refreshAfterWrite}
                   onAction={handleAction}
                 />
               </div>
@@ -1552,6 +1674,7 @@ function AdminContent() {
                 users={sortedUsers}
                 page={page}
                 totalPages={totalPages}
+                total={usersTotal}
                 pageSize={usersPageSize}
                 searchQuery={searchQuery}
                 onSearchQueryChange={setSearchQuery}
@@ -1593,6 +1716,7 @@ function AdminContent() {
                   callerRole,
                   STAFF_PERMISSIONS.EXPORT_AUDIT_LOG,
                 )}
+                canOpenUsers={canOpenUserRecords(callerRole)}
                 onNotify={showToast}
               />
             )}
@@ -1617,6 +1741,7 @@ function AdminContent() {
                 setTeamsSearch={setTeamsSearch}
                 fetchTeams={fetchTeams}
                 teamsTotalPages={teamsTotalPages}
+                teamsTotal={teamsTotal}
                 teamsPage={teamsPage}
                 teamsPageSize={teamsPageSize}
                 setTeamsPageSize={setTeamsPageSize}
@@ -1626,6 +1751,7 @@ function AdminContent() {
                 teamMembers={teamMembers}
                 setTeamMembers={setTeamMembers}
                 teamMembersLoading={teamMembersLoading}
+                teamMembersError={teamMembersError}
                 actionLoading={actionLoading}
                 callerRole={callerRole}
               />

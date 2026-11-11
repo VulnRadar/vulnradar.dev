@@ -111,6 +111,27 @@ export const ACTION_LABELS: Record<string, string> = {
   reset_free_github_trial: "Free GitHub review trial reset.",
 };
 
+/**
+ * The success toast for one admin action, from what the route answered.
+ *
+ * A sentence the server wrote wins. Force Logout All is the case the label
+ * cannot cover: the route ends every session for a role that holds
+ * REVOKE_USER_SESSIONS but only revokes the API keys for one that also holds
+ * REVOKE_USER_API_KEYS, and says which half ran in `apiKeysRevoked`. The
+ * static label claims both, so during a credential-leak response a moderator
+ * was told the keys were dead when they were still working.
+ */
+export function actionSuccessMessage(
+  action: string,
+  body: { message?: string; apiKeysRevoked?: boolean } | null | undefined,
+): string {
+  if (body?.message) return body.message;
+  if (action === "force_logout_all" && body?.apiKeysRevoked === false) {
+    return "Every session ended. API keys were left in place: your role cannot revoke them.";
+  }
+  return ACTION_LABELS[action] || "Action completed.";
+}
+
 // Audit log filter categories: defined in components/admin/utils.ts
 // (re-exported from the barrel to avoid duplicate declarations)
 

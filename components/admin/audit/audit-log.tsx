@@ -86,6 +86,12 @@ interface AuditLogProps {
   onFiltersChange: (next: AuditFilters) => void;
   /** Whether this role holds EXPORT_AUDIT_LOG; the Export menu is not drawn without it. */
   canExport: boolean;
+  /**
+   * Whether this role holds VIEW_USERS. An entry's target is only a link when
+   * it does: the account page answers 403 to a role without it, so the link
+   * could only end in a refusal.
+   */
+  canOpenUsers: boolean;
   onNotify: (message: string, type: "success" | "error") => void;
 }
 
@@ -176,6 +182,7 @@ export function AuditLog({
   filters,
   onFiltersChange,
   canExport,
+  canOpenUsers,
   onNotify,
 }: AuditLogProps) {
   const [expandedLog, setExpandedLog] = useState<number | null>(null);
@@ -622,7 +629,7 @@ export function AuditLog({
                                         avatarUrl={log.target_avatar_url}
                                       />
                                     </button>
-                                    {log.target_user_id ? (
+                                    {log.target_user_id && canOpenUsers ? (
                                       <a
                                         href={`/admin?tab=users&user=${log.target_user_id}`}
                                         onClick={(e) => e.stopPropagation()}

@@ -72,6 +72,8 @@ interface TeamsListProps {
   setTeamsSearch: (search: string) => void;
   fetchTeams: (page?: number, search?: string, pageSize?: number) => void;
   teamsTotalPages: number;
+  /** Teams matching the search, across every page. Null before the first load. */
+  teamsTotal?: number | null;
   teamsPage: number;
   teamsPageSize: number;
   setTeamsPageSize: (size: number) => void;
@@ -84,8 +86,91 @@ interface TeamsListProps {
     members: { team: Team; members: TeamMember[] } | null,
   ) => void;
   teamMembersLoading: boolean;
+  /** Set when the member request failed, so the modal says so and offers a retry. */
+  teamMembersError?: string | null;
   actionLoading: string | null;
   callerRole: string;
+}
+
+/**
+ * The member list inside the team modal. Its own component so the three
+ * outcomes of the request are distinct states: a failed request used to fall
+ * through to "This team has no members", a claim about the team made out of
+ * an outage, with no way to try again.
+ */
+export function TeamMembersBody({
+  loading,
+  error,
+  members,
+  onRetry,
+}: {
+  loading: boolean;
+  error: string | null;
+  members: TeamMember[];
+  onRetry: () => void;
+}) {
+  return loading ? (
+    // The modal lists members as separately bordered rows in a gap
+    // stack: an avatar, a name over an address, and a role badge.
+    // DataTableSkeleton drew one bordered block with a table header
+    // bar across the top, which is not a shape this modal has.
+    <SkeletonRegion label="Loading team members">
+      <RowListSkeleton rows={4} lead="avatar" lines={1} boxed />
+    </SkeletonRegion>
+  ) : error ? (
+    <div className="flex flex-col items-center gap-3 py-6 text-center">
+      <p role="alert" className="text-sm text-muted-foreground">
+        {error}
+      </p>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-9 gap-2"
+        onClick={() => onRetry()}
+      >
+        <RefreshCw className="h-4 w-4" aria-hidden="true" />
+        Try again
+      </Button>
+    </div>
+  ) : members.length === 0 ? (
+    <p className="py-6 text-center text-sm text-muted-foreground">
+      This team has no members.
+    </p>
+  ) : (
+    <div className="space-y-2">
+      {members.map((member) => (
+        <div
+          key={member.user_id}
+          className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border/50 hover:bg-muted/50 transition-colors"
+        >
+          <UserAvatar
+            name={member.name}
+            email={member.email}
+            size="sm"
+            avatarUrl={member.avatar_url}
+          />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground truncate">
+              {member.name || member.email.split("@")[0]}
+            </p>
+            <p className="text-xs text-muted-foreground truncate font-mono">
+              {member.email}
+            </p>
+          </div>
+          <Badge
+            variant="outline"
+            className={cn(
+              "text-[11px] px-2 py-0.5 font-medium capitalize",
+              ROLE_COLORS[member.role] ||
+                "bg-muted text-muted-foreground border-border",
+            )}
+          >
+            {member.role}
+          </Badge>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function TeamsList({
@@ -96,6 +181,7 @@ export function TeamsList({
   setTeamsSearch,
   fetchTeams,
   teamsTotalPages,
+  teamsTotal = null,
   teamsPage,
   teamsPageSize,
   setTeamsPageSize,
@@ -105,6 +191,7 @@ export function TeamsList({
   teamMembers,
   setTeamMembers,
   teamMembersLoading,
+  teamMembersError = null,
   actionLoading,
   callerRole,
 }: TeamsListProps) {
@@ -174,7 +261,9 @@ export function TeamsList({
           description={
             teamMembersLoading
               ? "Loading members..."
-              : pluralize(teamMembers?.members.length ?? 0, "member")
+              : teamMembersError
+                ? "Members unavailable"
+                : pluralize(teamMembers?.members.length ?? 0, "member")
           }
           icon={
             <UsersRound
@@ -183,53 +272,12 @@ export function TeamsList({
             />
           }
         >
-          {teamMembersLoading ? (
-            // The modal lists members as separately bordered rows in a gap
-            // stack: an avatar, a name over an address, and a role badge.
-            // DataTableSkeleton drew one bordered block with a table header
-            // bar across the top, which is not a shape this modal has.
-            <SkeletonRegion label="Loading team members">
-              <RowListSkeleton rows={4} lead="avatar" lines={1} boxed />
-            </SkeletonRegion>
-          ) : (teamMembers?.members ?? []).length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              This team has no members.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {(teamMembers?.members ?? []).map((member) => (
-                <div
-                  key={member.user_id}
-                  className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border/50 hover:bg-muted/50 transition-colors"
-                >
-                  <UserAvatar
-                    name={member.name}
-                    email={member.email}
-                    size="sm"
-                    avatarUrl={member.avatar_url}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">
-                      {member.name || member.email.split("@")[0]}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate font-mono">
-                      {member.email}
-                    </p>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-[11px] px-2 py-0.5 font-medium capitalize",
-                      ROLE_COLORS[member.role] ||
-                        "bg-muted text-muted-foreground border-border",
-                    )}
-                  >
-                    {member.role}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          )}
+          <TeamMembersBody
+            loading={teamMembersLoading}
+            error={teamMembersError}
+            members={teamMembers?.members ?? []}
+            onRetry={() => fetchTeamMembers(modalTeam.id)}
+          />
         </ModalShell>
       )}
 
@@ -245,7 +293,10 @@ export function TeamsList({
                 variant="secondary"
                 className="text-[11px] font-medium h-5 px-2 tabular-nums"
               >
-                {teams.length}
+                {/* The teams behind the current search, across every page. It
+                    showed the rows on screen, so a directory of 40 teams
+                    badged itself 10. */}
+                {teamsTotal ?? teams.length}
               </Badge>
             }
             actions={
@@ -575,26 +626,27 @@ export function TeamsList({
                     </div>
                   ))}
                 </div>
-
-                {/* Pagination */}
-                {teams.length > 0 && (
-                  <div className="px-5 py-4 border-t border-border/40 bg-muted/20">
-                    <PaginationControl
-                      currentPage={teamsPage}
-                      totalPages={teamsTotalPages}
-                      onPageChange={(p) => fetchTeams(p)}
-                      pageSize={teamsPageSize}
-                      onPageSizeChange={(s) => {
-                        setTeamsPageSize(s);
-                        // Pass s explicitly: the state update has not committed
-                        // yet, so fetchTeams would still read the old size.
-                        fetchTeams(1, undefined, s);
-                      }}
-                    />
-                  </div>
-                )}
               </>
             )}
+            {/* Pagination */}
+            {!teamsLoading &&
+              !teamsError &&
+              (teams.length > 0 || teamsPage > 1) && (
+                <div className="px-5 py-4 border-t border-border/40 bg-muted/20">
+                  <PaginationControl
+                    currentPage={teamsPage}
+                    totalPages={teamsTotalPages}
+                    onPageChange={(p) => fetchTeams(p)}
+                    pageSize={teamsPageSize}
+                    onPageSizeChange={(s) => {
+                      setTeamsPageSize(s);
+                      // Pass s explicitly: the state update has not committed
+                      // yet, so fetchTeams would still read the old size.
+                      fetchTeams(1, undefined, s);
+                    }}
+                  />
+                </div>
+              )}
           </CardContent>
         </Card>
 

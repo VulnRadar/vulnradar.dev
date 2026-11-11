@@ -90,6 +90,7 @@ function detail(user: Record<string, unknown> = {}, extra = {}) {
 function setup(
   opts: {
     callerRole?: string;
+    callerId?: number | null;
     user?: Record<string, unknown>;
     result?: (action: string) => { ok: boolean; error?: string };
   } = {},
@@ -99,6 +100,7 @@ function setup(
     change: { field: action, oldValue: "before", newValue: "after" },
   }));
   const onBadgesChanged = vi.fn();
+  const onRefresh = vi.fn(async (_id: number) => {});
   const props = {
     detail: detail(opts.user),
     detailLoading: false,
@@ -106,13 +108,15 @@ function setup(
     onClose: () => {},
     onAction,
     callerRole: opts.callerRole ?? "super_admin",
+    callerId: opts.callerId === undefined ? 2 : opts.callerId,
+    onRefresh,
     allBadges: [BEE, OWL],
     onBadgesChanged,
   } as unknown as PanelProps;
   const panel = harness(UserDetailPanel);
   const render = () => panel.render(props);
   const calls = () => onAction.mock.calls as unknown as Call[];
-  return { props, render, calls, onAction, onBadgesChanged };
+  return { props, render, calls, onAction, onBadgesChanged, onRefresh };
 }
 
 function click(tree: unknown, match: Parameters<typeof find>[1]) {
@@ -672,11 +676,12 @@ describe("badges", () => {
     ]);
     // One summary toast for the batch, the second PATCH stays quiet.
     expect(calls()[0][3]).toEqual({
+      refetch: false,
       toast: "Badges updated: 1 awarded, 1 removed.",
     });
-    expect(calls()[1][3]).toEqual({ toast: false });
+    expect(calls()[1][3]).toEqual({ refetch: false, toast: false });
     // The toast is one slot: the email's own would replace the summary.
-    expect(calls()[2][3]).toEqual({ toast: false });
+    expect(calls()[2][3]).toEqual({ refetch: false, toast: false });
     expect(onBadgesChanged).toHaveBeenCalledWith([3], [4]);
   });
 

@@ -57,11 +57,52 @@ export interface AdminTeamsResponse {
   teams: Team[];
   page: number;
   totalPages: number;
+  /** Teams matching the search, across every page. */
+  total: number;
 }
 
-export interface AdminTeamDetailResponse extends TeamDetail {}
+/** The body every admin route answers a refusal or a miss with. */
+export interface AdminErrorResponse {
+  error: string;
+}
 
-export interface AdminUserDetailResponse extends UserDetail {}
+/**
+ * GET /api/v3/admin/teams/[id]: the team and its members, or a 403 or 404
+ * body. A response is one or the other, never both.
+ */
+export type AdminTeamDetailResponse = TeamDetail | AdminErrorResponse;
+
+/**
+ * GET /api/v3/admin?section=user-detail: the account record, or an error body
+ * (403 "Your role cannot view accounts", 404 "User not found"). It used to
+ * claim to always be a UserDetail, so a refusal was stored as the selected
+ * user and the panel read `.user.id` off an error body during render.
+ */
+export type AdminUserDetailResponse = UserDetail | AdminErrorResponse;
+
+export function isUserDetailResponse(
+  body: AdminUserDetailResponse | null | undefined,
+): body is UserDetail {
+  return (
+    !!body &&
+    "user" in body &&
+    typeof body.user === "object" &&
+    body.user !== null
+  );
+}
+
+export function isTeamDetailResponse(
+  body: AdminTeamDetailResponse | null | undefined,
+): body is TeamDetail {
+  return (
+    !!body &&
+    "team" in body &&
+    typeof body.team === "object" &&
+    body.team !== null &&
+    "members" in body &&
+    Array.isArray(body.members)
+  );
+}
 
 export interface AdminBadgesResponse {
   badges: BadgeDef[];
@@ -73,6 +114,11 @@ export interface AdminActionResponse {
   /** A sentence about what the action did, for the toast. Set where the
    *  outcome can differ from the request, e.g. adjust_credits. */
   message?: string;
+  /**
+   * force_logout_all only: whether the keys were revoked along with the
+   * sessions. False for a role that may end sessions but not revoke keys.
+   */
+  apiKeysRevoked?: boolean;
   /**
    * Set by the sub-actions that mutate an account field (update_name,
    * update_email, update_plan, set_role). The panel collects these and

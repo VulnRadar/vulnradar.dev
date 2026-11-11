@@ -9,6 +9,7 @@
 // file, so it's actually exercised by a test rather than left untested.
 
 import { formatRelativeTime } from "@/components/admin/utils";
+import { canOpenUserRecords } from "@/components/admin/users/user-detail-fetch";
 import { CONFIG_BULK_SCAN_TIMEOUT_SECONDS } from "@/lib/config/config-values";
 import {
   FAILURE_KIND_LABELS,
@@ -220,6 +221,19 @@ export function ranForLabel(scan: FailedScan): string | null {
 /** Where the queue links an operator to look at one user. */
 export function adminUserHref(userId: number): string {
   return `/admin?tab=users&user=${userId}`;
+}
+
+/**
+ * The link for a "user #N" reference, or null when the viewer's role cannot
+ * open the account. The user page answers 403 to a role without VIEW_USERS
+ * (ops sees the queue but not accounts), so the reference stays plain text
+ * there instead of linking to a refusal.
+ */
+export function userReferenceHref(
+  userId: number,
+  role: string | null | undefined,
+): string | null {
+  return canOpenUserRecords(role) ? adminUserHref(userId) : null;
 }
 
 /**

@@ -13,6 +13,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getPaidPlans } from "@/lib/billing/catalog";
+import { useNow } from "@/lib/ui/clock";
+import {
+  giftEndDateInputValue,
+  giftEndDateIsPast,
+  giftEndDateToIso,
+  giftMinInputValue,
+} from "./gift-dates";
 
 interface GiftSubscriptionModalProps {
   open: boolean;
@@ -55,10 +62,10 @@ export function GiftSubscriptionModal({
     existingGift?.plan || "pro_supporter",
   );
   const [giftEndDate, setGiftEndDate] = useState(
-    existingGift?.end_date
-      ? new Date(existingGift.end_date).toISOString().slice(0, 16)
-      : "",
+    giftEndDateInputValue(existingGift?.end_date),
   );
+  const now = useNow();
+  const endsInPast = giftEndDate !== "" && giftEndDateIsPast(giftEndDate, now);
 
   // Stable ids so each <label htmlFor> names its control; both fields were
   // announced as unnamed to a screen reader.
@@ -69,11 +76,7 @@ export function GiftSubscriptionModal({
     if (open) {
       // oxlint-disable-next-line react/set-state-in-effect -- resets this modal's editable form fields from the existingGift prop whenever it reopens for a (possibly different) record
       setGiftPlan(existingGift?.plan || "pro_supporter");
-      setGiftEndDate(
-        existingGift?.end_date
-          ? new Date(existingGift.end_date).toISOString().slice(0, 16)
-          : "",
-      );
+      setGiftEndDate(giftEndDateInputValue(existingGift?.end_date));
     }
   }, [open, existingGift]);
 
@@ -149,11 +152,25 @@ export function GiftSubscriptionModal({
                 id={endDateId}
                 type="datetime-local"
                 value={giftEndDate}
+                min={giftMinInputValue(now)}
+                aria-invalid={endsInPast}
+                aria-describedby={endsInPast ? `${endDateId}-error` : undefined}
                 onChange={(e) => setGiftEndDate(e.target.value)}
                 className="h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
               />
             </div>
           </div>
+
+          {endsInPast && (
+            <p
+              id={`${endDateId}-error`}
+              role="alert"
+              className="text-xs text-destructive"
+            >
+              Pick a time in the future. A gift that has already ended would
+              replace the running one with nothing.
+            </p>
+          )}
 
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             {existingGift
@@ -186,10 +203,8 @@ export function GiftSubscriptionModal({
           </Button>
           <Button
             className="gap-1.5"
-            disabled={!giftEndDate || isLoading}
-            onClick={() =>
-              onGift(giftPlan, new Date(giftEndDate).toISOString())
-            }
+            disabled={!giftEndDate || endsInPast || isLoading}
+            onClick={() => onGift(giftPlan, giftEndDateToIso(giftEndDate))}
           >
             {isLoading ? (
               <>

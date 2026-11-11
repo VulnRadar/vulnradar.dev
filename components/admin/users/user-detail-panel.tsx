@@ -71,7 +71,9 @@ import {
   hasStaffPermission,
   canPerformAction,
   hasGodMode,
+  targetRefusal,
   STAFF_PERMISSIONS,
+  type AdminTarget,
 } from "@/lib/auth/permissions-client";
 import {
   SaveConfirmationModal,
@@ -104,6 +106,7 @@ import { GiftSubscriptionModal } from "./gift-subscription-modal";
 import { AccountHistory } from "./account-history";
 import { UsageReadout } from "./usage-readout";
 import { LeadingIcon } from "@/components/shared/leading-icon";
+import { InlineAlert } from "@/components/shared/inline-alert";
 import { Textarea } from "@/components/ui/textarea";
 import { useNow } from "@/lib/ui/clock";
 import {
@@ -126,15 +129,29 @@ interface UserDetailPanelProps {
     userId: number,
     action: string,
     extra?: Record<string, unknown>,
-    options?: { toast?: string | false },
+    options?: { toast?: string | false; refetch?: boolean },
   ) => Promise<{
     ok: boolean;
     error?: string;
     change?: { field: string; oldValue: string; newValue: string };
   }>;
   callerRole: string;
+  /** The signed-in staff member's own id; null until the session has loaded. */
+  callerId: number | null;
+  /**
+   * Reload the list, the counters and this record once, after a save that made
+   * several writes. The writes themselves are sent with refetch:false so the
+   * panel does not reload after each one.
+   */
+  onRefresh: (userId: number) => Promise<void>;
   allBadges: BadgeDef[];
   onBadgesChanged: (awardedIds: number[], revokedIds: number[]) => void;
+}
+
+/** Who is acting on whom, for the cards that ask whether the route would refuse. */
+export interface ActingContext {
+  callerId: number | null;
+  target: AdminTarget;
 }
 
 /**
@@ -154,24 +171,42 @@ interface UserDetailPanelProps {
  * server consults, so a card and its route cannot disagree about what a role
  * may do. The server still decides; this only stops the panel asking a
  * question whose answer is already known.
+ *
+ * The same goes for who the action is aimed at. The route also refuses an
+ * account the caller outranks too little (a peer, a higher rung, the owner
+ * account, themselves for the destructive actions), and it does so after the
+ * password check passes, so a moderator opening an admin was asked for a
+ * password, typed it, and was then told no, using up the re-auth budget for
+ * nothing.
  */
-function GatedActionCard({
+export function GatedActionCard({
   action,
   callerRole,
+  acting,
   description,
   ...rest
 }: React.ComponentProps<typeof ActionCard> & {
   action: string;
   callerRole: string;
+  acting: ActingContext;
 }) {
   const allowed = canPerformAction(callerRole, action);
+  const refusal = allowed
+    ? targetRefusal(
+        { id: acting.callerId, role: callerRole },
+        acting.target,
+        action,
+      )
+    : null;
   return (
     <ActionCard
       {...rest}
       description={
-        allowed ? description : "Your role cannot perform this action."
+        !allowed
+          ? "Your role cannot perform this action."
+          : (refusal ?? description)
       }
-      disabled={rest.disabled || !allowed}
+      disabled={rest.disabled || !allowed || refusal !== null}
     />
   );
 }
@@ -183,11 +218,35 @@ export function UserDetailPanel({
   onClose,
   onAction,
   callerRole,
+  callerId,
+  onRefresh,
   allBadges,
   onBadgesChanged,
 }: UserDetailPanelProps) {
   const u = detail.user;
   const perms = useAdminPermissions(callerRole);
+  const caller = { id: callerId, role: callerRole };
+  const acting: ActingContext = {
+    callerId,
+    target: { id: u.id, role: u.role },
+  };
+  // Whether this account is out of reach for the signed-in role, before any
+  // particular action is considered. The edit triggers below all ask it;
+  // set_role and the enable/disable toggle also ask the self rule, which the
+  // others do not have.
+  const accountRefusal = targetRefusal(caller, acting.target);
+  const roleRefusal = targetRefusal(caller, acting.target, "set_role");
+  // force_logout_all always ends the sessions but only revokes the keys for a
+  // role that holds REVOKE_USER_API_KEYS, which moderators do not.
+  const revokesKeys = hasStaffPermission(
+    callerRole,
+    STAFF_PERMISSIONS.REVOKE_USER_API_KEYS,
+  );
+  const disableRefusal = targetRefusal(
+    caller,
+    acting.target,
+    u.disabled_at ? "enable" : "disable",
+  );
   // Whether a gifted plan is still running, read against a clock that ticks
   // rather than a `new Date()` in render (see lib/ui/clock.ts).
   const now = useNow();
@@ -353,6 +412,9 @@ export function UserDetailPanel({
     variant?: "default" | "destructive",
     extraPayload?: Record<string, unknown>,
   ) => {
+    // The route would refuse this after the password check. Nothing opens, so
+    // a password is never typed for a request that cannot succeed.
+    if (targetRefusal(caller, acting.target, action)) return;
     // Every support action confirms. Five of them (the quota and rate-limit
     // resets) used to run straight from the click, on the argument that
     // handing capacity back destroys nothing and a dialog nobody needs is a
@@ -444,6 +506,10 @@ export function UserDetailPanel({
     const notifyUser = canBatch ? false : opts.notifyUser;
     const changesForEmail: ChangeForEmail[] = [];
     const steps: [string, Record<string, unknown>][] = [];
+    // Every write goes out with refetch:false and the panel reloads once at
+    // the end. Four writes used to mean four reloads of the list, the counters
+    // and the record, and each reload of the record is logged as a view.
+    const quiet = { refetch: false };
     if (changes.email !== undefined)
       steps.push([
         "update_email",
@@ -456,21 +522,28 @@ export function UserDetailPanel({
     if (changes.plan !== undefined)
       steps.push(["update_plan", { plan: changes.plan, notifyUser }]);
     let outcome: SaveResult = { ok: true };
+    let written = false;
     for (const [action, extra] of steps) {
-      const result = await onAction(u.id, action, extra);
+      const result = await onAction(u.id, action, extra, quiet);
       if (!result.ok) {
         outcome = { ok: false, error: result.error };
         break;
       }
+      written = true;
       if (result.change && action !== "update_email")
         changesForEmail.push(result.change);
     }
     if (canBatch && opts.notifyUser && changesForEmail.length > 0) {
-      await onAction(u.id, "notify_account_changes", {
-        changes: changesForEmail,
-        notifyUser: true,
-      });
+      await onAction(
+        u.id,
+        "notify_account_changes",
+        { changes: changesForEmail, notifyUser: true },
+        quiet,
+      );
     }
+    // A refusal part way still reloads: the writes before it are on the
+    // account, and the retry measures the draft against the refetched record.
+    if (written) await onRefresh(u.id);
     return outcome;
   };
 
@@ -505,7 +578,7 @@ export function UserDetailPanel({
         u.id,
         action,
         { badgeId: String(id), notifyUser: false },
-        badgeToast(),
+        { ...badgeToast(), refetch: false },
       ).then((result) => ({ id, result }));
     const [awarded, revoked] = await Promise.all([
       Promise.all(awards.map((id) => send("award_badge", id))),
@@ -528,9 +601,10 @@ export function UserDetailPanel({
         u.id,
         "notify_account_changes",
         { changes: changesForEmail, notifyUser: true },
-        { toast: false },
+        { toast: false, refetch: false },
       );
     }
+    if (awardedIds.length > 0 || revokedIds.length > 0) await onRefresh(u.id);
     const failed = [...awarded, ...revoked].find((r) => !r.result.ok);
     return failed ? { ok: false, error: failed.result.error } : { ok: true };
   };
@@ -642,6 +716,8 @@ export function UserDetailPanel({
                       ? "border-[hsl(var(--success))]/30 text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 hover:text-[hsl(var(--success))]"
                       : "border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive",
                   )}
+                  disabled={disableRefusal !== null}
+                  title={disableRefusal ?? undefined}
                   onClick={() =>
                     queueSupportAction(
                       u.disabled_at ? "enable" : "disable",
@@ -901,6 +977,13 @@ export function UserDetailPanel({
         </CardContent>
       </Card>
 
+      {/* Said once, here, rather than on every control the rule disables. */}
+      {!detailLoading && accountRefusal && (
+        <InlineAlert tone="info" live="off">
+          {accountRefusal}
+        </InlineAlert>
+      )}
+
       {/* Account Management - admin/mod can edit */}
       {!detailLoading && perms.canBanUsers && (
         <Card id="account-management" className="border-border/50 bg-card/50">
@@ -914,6 +997,7 @@ export function UserDetailPanel({
                 variant="outline"
                 size="sm"
                 className="h-11 sm:h-7 text-xs gap-1.5"
+                disabled={accountRefusal !== null}
                 onClick={() => setEditing({ kind: "account", userId: u.id })}
                 aria-label="Edit account"
               >
@@ -1032,7 +1116,8 @@ export function UserDetailPanel({
                   size="sm"
                   variant="outline"
                   className="h-11 sm:h-7 text-xs gap-1.5"
-                  disabled={hasGodMode(u.role)}
+                  disabled={hasGodMode(u.role) || roleRefusal !== null}
+                  title={roleRefusal ?? undefined}
                   onClick={() => setEditing({ kind: "role", userId: u.id })}
                 >
                   <Pencil className="h-3 w-3" aria-hidden="true" />
@@ -1096,6 +1181,7 @@ export function UserDetailPanel({
                       size="sm"
                       variant="outline"
                       className="h-11 sm:h-7 text-xs gap-1 bg-transparent flex-1"
+                      disabled={accountRefusal !== null}
                       onClick={() =>
                         setEditing({ kind: "badges", userId: u.id })
                       }
@@ -1536,9 +1622,10 @@ export function UserDetailPanel({
                 aria-label="New admin note"
                 value={newNote}
                 onChange={(e) => setNewNote(e.target.value)}
+                disabled={accountRefusal !== null}
                 className="h-9 text-sm flex-1"
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && newNote.trim()) {
+                  if (e.key === "Enter" && newNote.trim() && !accountRefusal) {
                     void addNote();
                   }
                 }}
@@ -1546,7 +1633,11 @@ export function UserDetailPanel({
               <Button
                 size="sm"
                 className="h-9 gap-1.5"
-                disabled={!newNote.trim() || isLoading("add_note")}
+                disabled={
+                  !newNote.trim() ||
+                  isLoading("add_note") ||
+                  accountRefusal !== null
+                }
                 onClick={() => {
                   if (newNote.trim()) void addNote();
                 }}
@@ -1596,6 +1687,7 @@ export function UserDetailPanel({
                         hit-testable. Below md they are always shown. */}
                     <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity shrink-0">
                       <button
+                        disabled={accountRefusal !== null}
                         onClick={() =>
                           setEditingNote({
                             id: note.id,
@@ -1603,19 +1695,20 @@ export function UserDetailPanel({
                             userId: u.id,
                           })
                         }
-                        className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:h-7 sm:w-7"
+                        className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40 sm:h-7 sm:w-7"
                         aria-label="Edit note"
                       >
                         <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                       </button>
                       <button
+                        disabled={accountRefusal !== null}
                         onClick={() =>
                           setPendingDeleteNote({
                             id: note.id,
                             text: note.note,
                           })
                         }
-                        className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive sm:h-7 sm:w-7"
+                        className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:pointer-events-none disabled:opacity-40 sm:h-7 sm:w-7"
                         aria-label="Delete note"
                       >
                         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1669,6 +1762,7 @@ export function UserDetailPanel({
                       loading={isLoading("revoke_sessions")}
                       action="revoke_sessions"
                       callerRole={callerRole}
+                      acting={acting}
                       onClick={() =>
                         queueSupportAction(
                           "revoke_sessions",
@@ -1680,7 +1774,7 @@ export function UserDetailPanel({
                     <GatedActionCard
                       icon={Key}
                       label="Revoke API Keys"
-                      description={`Invalidate all ${u.api_key_count} API key${u.api_key_count === 1 ? "" : "s"}. They cannot be recovered.`}
+                      description={`Invalidate all ${pluralize(u.api_key_count, "API key")}. They cannot be recovered.`}
                       color="text-destructive"
                       bg="bg-destructive/10"
                       // A revoked key is gone: the user has to issue a new one
@@ -1691,6 +1785,7 @@ export function UserDetailPanel({
                       loading={isLoading("revoke_api_keys")}
                       action="revoke_api_keys"
                       callerRole={callerRole}
+                      acting={acting}
                       onClick={() =>
                         queueSupportAction(
                           "revoke_api_keys",
@@ -1717,6 +1812,7 @@ export function UserDetailPanel({
                         loading={isLoading("reset_password")}
                         action="reset_password"
                         callerRole={callerRole}
+                        acting={acting}
                         onClick={() =>
                           queueSupportAction(
                             "reset_password",
@@ -1745,6 +1841,7 @@ export function UserDetailPanel({
                         loading={isLoading("issue_2fa_recovery_code")}
                         action="issue_2fa_recovery_code"
                         callerRole={callerRole}
+                        acting={acting}
                         onClick={() =>
                           queueSupportAction(
                             "issue_2fa_recovery_code",
@@ -1768,6 +1865,7 @@ export function UserDetailPanel({
                         loading={isLoading("clear_rate_limits")}
                         action="clear_rate_limits"
                         callerRole={callerRole}
+                        acting={acting}
                         onClick={() =>
                           queueSupportAction(
                             "clear_rate_limits",
@@ -1780,18 +1878,25 @@ export function UserDetailPanel({
                     <GatedActionCard
                       icon={UserX}
                       label="Force Logout All"
-                      description="Ends every session and revokes every API key"
+                      description={
+                        revokesKeys
+                          ? "Ends every session and revokes every API key"
+                          : "Ends every session. Your role cannot revoke API keys, so they stay valid."
+                      }
                       color="text-destructive"
                       bg="bg-destructive/10"
                       variant="danger"
                       loading={isLoading("force_logout_all")}
                       action="force_logout_all"
                       callerRole={callerRole}
+                      acting={acting}
                       onClick={() =>
                         queueSupportAction(
                           "force_logout_all",
                           "Force Logout All",
-                          `Logout and revoke all API keys for ${u.name || u.email}`,
+                          revokesKeys
+                            ? `Log ${u.name || u.email} out everywhere and revoke all API keys`
+                            : `Log ${u.name || u.email} out everywhere. API keys are left in place because your role cannot revoke them.`,
                         )
                       }
                     />
@@ -1821,6 +1926,7 @@ export function UserDetailPanel({
                         loading={isLoading("impersonate")}
                         action="impersonate"
                         callerRole={callerRole}
+                        acting={acting}
                         onClick={() =>
                           queueSupportAction(
                             "impersonate",
@@ -1880,6 +1986,7 @@ export function UserDetailPanel({
                         loading={isLoading("reset_daily_limit")}
                         action="reset_daily_limit"
                         callerRole={callerRole}
+                        acting={acting}
                         onClick={() =>
                           queueSupportAction(
                             "reset_daily_limit",
@@ -1902,6 +2009,7 @@ export function UserDetailPanel({
                         loading={isLoading("reset_ai_usage")}
                         action="reset_ai_usage"
                         callerRole={callerRole}
+                        acting={acting}
                         onClick={() =>
                           queueSupportAction(
                             "reset_ai_usage",
@@ -1924,6 +2032,7 @@ export function UserDetailPanel({
                         loading={isLoading("reset_github_review_usage")}
                         action="reset_github_review_usage"
                         callerRole={callerRole}
+                        acting={acting}
                         onClick={() =>
                           queueSupportAction(
                             "reset_github_review_usage",
@@ -1946,6 +2055,7 @@ export function UserDetailPanel({
                         loading={isLoading("reset_free_github_trial")}
                         action="reset_free_github_trial"
                         callerRole={callerRole}
+                        acting={acting}
                         onClick={() =>
                           queueSupportAction(
                             "reset_free_github_trial",
@@ -2132,6 +2242,7 @@ export function UserDetailPanel({
                         u.email_verified_at ? "unverify_email" : "verify_email"
                       }
                       callerRole={callerRole}
+                      acting={acting}
                       icon={u.email_verified_at ? MailX : MailCheck}
                       label={
                         u.email_verified_at ? "Unverify Email" : "Verify Email"
@@ -2172,6 +2283,7 @@ export function UserDetailPanel({
                       <GatedActionCard
                         action="resend_verification"
                         callerRole={callerRole}
+                        acting={acting}
                         icon={MailCheck}
                         label="Resend Verification"
                         description="Email a fresh verification link"
@@ -2196,6 +2308,7 @@ export function UserDetailPanel({
                       loading={isLoading("clear_avatar")}
                       action="clear_avatar"
                       callerRole={callerRole}
+                      acting={acting}
                       onClick={() =>
                         queueSupportAction(
                           "clear_avatar",
@@ -2207,6 +2320,7 @@ export function UserDetailPanel({
                     <GatedActionCard
                       action="send_notification"
                       callerRole={callerRole}
+                      acting={acting}
                       icon={Bell}
                       label="Send Notification"
                       description="Send an email notification"
@@ -2315,6 +2429,7 @@ export function UserDetailPanel({
                       <GatedActionCard
                         action="gift_subscription"
                         callerRole={callerRole}
+                        acting={acting}
                         icon={CrownIcon}
                         label="Edit Gift Subscription"
                         description={`${getPlanById(u.gifted_plan)?.name || u.gifted_plan} · expires ${new Date(u.gift_end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
@@ -2330,6 +2445,7 @@ export function UserDetailPanel({
                       <GatedActionCard
                         action="gift_subscription"
                         callerRole={callerRole}
+                        acting={acting}
                         icon={CrownIcon}
                         label="Gift a Subscription"
                         description={
@@ -2447,6 +2563,7 @@ export function UserDetailPanel({
                 loading={isLoading("toggle_ai_ban")}
                 action="toggle_ai_ban"
                 callerRole={callerRole}
+                acting={acting}
                 onClick={() =>
                   queueSupportAction(
                     "toggle_ai_ban",
@@ -2474,6 +2591,7 @@ export function UserDetailPanel({
                   loading={isLoading("delete_scans")}
                   action="delete_scans"
                   callerRole={callerRole}
+                  acting={acting}
                   onClick={() =>
                     queueSupportAction(
                       "delete_scans",
@@ -2501,6 +2619,7 @@ export function UserDetailPanel({
                 loading={isLoading("delete_webhooks")}
                 action="delete_webhooks"
                 callerRole={callerRole}
+                acting={acting}
                 onClick={() =>
                   queueSupportAction(
                     "delete_webhooks",
@@ -2520,6 +2639,7 @@ export function UserDetailPanel({
                 loading={isLoading("delete_schedules")}
                 action="delete_schedules"
                 callerRole={callerRole}
+                acting={acting}
                 onClick={() =>
                   queueSupportAction(
                     "delete_schedules",
@@ -2547,6 +2667,7 @@ export function UserDetailPanel({
                   loading={isLoading("delete")}
                   action="delete"
                   callerRole={callerRole}
+                  acting={acting}
                   onClick={() =>
                     queueSupportAction(
                       "delete",

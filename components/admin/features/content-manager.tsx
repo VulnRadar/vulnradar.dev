@@ -115,6 +115,10 @@ export function ContentManager() {
     null,
   );
   const [busyId, setBusyId] = useState<string | number | null>(null);
+  // Why the list is empty, when a failed request is the reason. An error body
+  // has neither hosts nor shares, so it used to paint "No hosts cached" and
+  // "Nobody has created a share link yet" over an outage.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Ticket so a slower earlier fetch (e.g. the Hosts tab) can't apply its
   // total/totalPages after a newer one (Shares) -- fast tab toggling otherwise
@@ -127,8 +131,17 @@ export function ContentManager() {
       const res = await fetch(
         `${API.ADMIN}/content?type=${t}&page=${p}&limit=${limit}`,
       );
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
       if (reqId !== fetchReqRef.current) return;
+      if (!res.ok || !data) {
+        setLoadError(
+          res.status === 403
+            ? "Your role cannot view public content."
+            : (data?.error ?? "Couldn't load this list."),
+        );
+        return;
+      }
+      setLoadError(null);
       if (t === "hosts") {
         setHosts(data.hosts || []);
       } else {
@@ -139,7 +152,7 @@ export function ContentManager() {
     } catch (error) {
       console.error("Error fetching admin content:", error);
       if (reqId === fetchReqRef.current) {
-        setToast({ message: "Failed to load list", type: "error" });
+        setLoadError("Couldn't load this list.");
       }
     } finally {
       if (reqId === fetchReqRef.current) setLoading(false);
@@ -340,6 +353,24 @@ export function ContentManager() {
               <SkeletonRegion label="Loading hosts and shares">
                 <DataTableSkeleton rows={6} />
               </SkeletonRegion>
+            ) : loadError ? (
+              <EmptyState
+                icon={tab === "hosts" ? Globe : Share2}
+                tone="error"
+                title="Couldn't load this list"
+                description={loadError}
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-2"
+                    onClick={() => fetchPage(tab, page, pageSize)}
+                  >
+                    <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                    Try again
+                  </Button>
+                }
+              />
             ) : tab === "hosts" ? (
               hosts.length === 0 ? (
                 <EmptyState

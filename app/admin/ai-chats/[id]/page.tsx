@@ -4,12 +4,14 @@ import { use, useEffect, useState } from "react";
 import {
   AlertTriangle,
   MessageCircle,
+  RefreshCw,
   ShieldOff,
   ThumbsDown,
   ThumbsUp,
   User,
   UserX,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { AppPageShell } from "@/components/shared/app-page-shell";
 import { EmptyState, StatusPill, UserAvatar } from "@/components/admin/shared";
 import { formatTimestamp } from "@/components/admin/utils";
@@ -137,6 +139,11 @@ export default function AdminConversationPage({ params }: PageProps) {
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  // A request that failed for any reason other than a 403 or a 404. It used to
+  // fall into "Conversation not found", which told the operator the chat had
+  // been cleaned up when the server had simply errored.
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
 
   useEffect(() => {
@@ -145,6 +152,8 @@ export default function AdminConversationPage({ params }: PageProps) {
       setLoading(true);
       setForbidden(false);
       setNotFound(false);
+      setFailed(false);
+      setDetail(null);
       try {
         const res = await fetch(`${API.AI_CONVERSATIONS}?id=${id}`);
         if (cancelled) return;
@@ -157,13 +166,14 @@ export default function AdminConversationPage({ params }: PageProps) {
           return;
         }
         if (!res.ok) {
-          setNotFound(true);
+          setFailed(true);
           return;
         }
         const data = (await res.json()) as ConversationDetail;
+        if (cancelled) return;
         setDetail(data);
       } catch {
-        if (!cancelled) setNotFound(true);
+        if (!cancelled) setFailed(true);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -172,7 +182,7 @@ export default function AdminConversationPage({ params }: PageProps) {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, attempt]);
 
   return (
     // The shared shell, not a fourth hand-written copy of min-h-screen +
@@ -199,6 +209,27 @@ export default function AdminConversationPage({ params }: PageProps) {
           title="Conversation not found"
           description="It may have expired and been cleaned up, or the id is wrong."
           className="py-24"
+        />
+      )}
+
+      {!loading && failed && (
+        <EmptyState
+          icon={AlertTriangle}
+          tone="error"
+          title="Couldn't load this conversation"
+          description="The request failed, so this is not a sign it was deleted."
+          className="py-24"
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 gap-2"
+              onClick={() => setAttempt((n) => n + 1)}
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              Try again
+            </Button>
+          }
         />
       )}
 

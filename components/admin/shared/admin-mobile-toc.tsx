@@ -6,6 +6,7 @@ import { ChevronDown, List, X } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { modalCloseChip } from "@/components/ui/modal-grammar";
 import { useInertBackground } from "@/lib/hooks/use-modal-a11y";
+import { scrollBehavior } from "./scroll-behavior";
 
 export interface AdminTocItem {
   /** Unique per list: it is this item's React key. Several items can point
@@ -265,7 +266,7 @@ export function AdminMobileToc({
     requestAnimationFrame(() => {
       document
         .getElementById(item.targetId ?? item.id)
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        ?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
     });
   };
 
