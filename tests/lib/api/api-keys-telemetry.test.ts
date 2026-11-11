@@ -259,6 +259,26 @@ describe("recordKeyUsage", () => {
     expect(usageWrites()).toHaveLength(2);
   });
 
+  it("still authenticates when the pool throws instead of rejecting", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    encryptedKeyRow = keyRow();
+    const realImpl = mockQuery.getMockImplementation()!;
+    mockQuery.mockImplementation(((sql: string, params: unknown[] = []) => {
+      if (sql.includes(USAGE_WRITE)) throw new Error("pool has ended");
+      return realImpl(sql, params);
+    }) as typeof realImpl);
+
+    try {
+      const result = await runWithApiContext(
+        { apiVersion: "v3", client: null },
+        () => validateApiKey(RAW_KEY),
+      );
+      expect(result?.keyId).toBe(9);
+    } finally {
+      mockQuery.mockImplementation(realImpl);
+    }
+  });
+
   it("remembers a bounded number of keys, forgetting the least recently written", async () => {
     const usage = { apiVersion: "v3", client: null } as const;
     for (let keyId = 1; keyId <= 10_000; keyId += 1) {

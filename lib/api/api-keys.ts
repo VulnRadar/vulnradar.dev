@@ -945,27 +945,28 @@ export function recordKeyUsage(
   };
   lastKeyUsageWrite.set(keyId, write);
 
-  return pool
-    .query(
-      `UPDATE api_keys
-          SET last_used_api_version = $2, last_used_client = $3
-        WHERE id = $1`,
-      [keyId, usage.apiVersion, client],
-    )
-    .then(
-      () => undefined,
-      (err: unknown) => {
-        if (lastKeyUsageWrite.get(keyId) === write) {
-          lastKeyUsageWrite.delete(keyId);
-        }
-        logError(
-          "api-keys",
-          "could not record which API version a key was used with",
-          err,
-          { keyId },
-        );
-      },
-    );
+  // An async body rather than a .then chain, so a pool that throws instead
+  // of rejecting still cannot fail the request that triggered the write.
+  return (async () => {
+    try {
+      await pool.query(
+        `UPDATE api_keys
+            SET last_used_api_version = $2, last_used_client = $3
+          WHERE id = $1`,
+        [keyId, usage.apiVersion, client],
+      );
+    } catch (err) {
+      if (lastKeyUsageWrite.get(keyId) === write) {
+        lastKeyUsageWrite.delete(keyId);
+      }
+      logError(
+        "api-keys",
+        "could not record which API version a key was used with",
+        err,
+        { keyId },
+      );
+    }
+  })();
 }
 
 /** Test-only: forget every throttled write. */
