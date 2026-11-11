@@ -735,7 +735,7 @@ describe("AuthenticatorSetupDialog", () => {
   };
 
   it("opens once the setup payload has resolved, and closing drops it", async () => {
-    stubFetch(() => ({ ok: true, data: setup }));
+    const calls = stubFetch(() => ({ ok: true, data: setup }));
     const props = baseProps();
     const trigger = byText(
       direct(ProfileSecurityTab, props),
@@ -744,6 +744,11 @@ describe("AuthenticatorSetupDialog", () => {
     expect(clearsTargetFloor(trigger.props.className)).toBe(true);
     expect(trigger.props["aria-expanded"]).toBeUndefined();
     await (trigger.props.onClick as () => Promise<void>)();
+    // Starting writes a new secret, so it is a POST the CSRF check covers,
+    // never the GET that any page could fire.
+    expect(calls).toEqual([
+      { url: API.AUTH.TWO_FA.SETUP, method: "POST", body: { action: "start" } },
+    ]);
     const dialog = ofType(
       direct(ProfileSecurityTab, props),
       AuthenticatorSetupDialog,
