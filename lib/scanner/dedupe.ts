@@ -121,11 +121,12 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   "supply-chain-http-script-on-https": "mixed-content",
 
   // A session cookie whose default name gives the framework away. The generic
-  // check and the PHP and Rails ones read the same Set-Cookie name, so a
-  // PHPSESSID or _app_session cookie was reported twice for one fact.
+  // check and the PHP one both read the Set-Cookie name PHPSESSID, so it was
+  // reported twice for one fact. rails-version-exposure is not in the group:
+  // cookie-name-disclosure does not know a Rails cookie, so the two never
+  // describe the same cookie.
   "cookie-name-disclosure": "framework-cookie-name",
   "php-version-exposed-in-cookie": "framework-cookie-name",
-  "rails-version-exposure": "framework-cookie-name",
 
   // SQL error text rendered into the page.
   "sql-error-in-page": "sql-error-disclosure",
@@ -138,14 +139,20 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   // wildcard and one http: source produced four. The group names are the ones
   // the PageChecks already use in lib/scanner/checks/page-checks/.
   "cookie-secure-missing": "cookie-missing-secure",
-  // The "code-" cookie checks are the same Set-Cookie test as the cookie
-  // checks above, written a second time in the code bundle.
+  // The only "code-" cookie check that still reads a Set-Cookie header. The
+  // other two (code-cookie-without-httponly, code-cookie-write-no-samesite)
+  // look at cookies a script writes with document.cookie, which is a different
+  // cookie from the Set-Cookie one the groups here describe, so they stay
+  // separate findings.
   "code-cookie-missing-secure-http": "cookie-missing-secure",
   "cookie-httponly-missing": "cookie-missing-httponly",
-  "code-cookie-without-httponly": "cookie-missing-httponly",
   "cookie-jwt-value-not-httponly": "cookie-missing-httponly",
   "cookie-samesite-missing": "cookie-missing-samesite",
-  "code-cookie-write-no-samesite": "cookie-missing-samesite",
+  // One script-written session cookie: code.ts reports the write, content.ts
+  // reports the same document.cookie access by the same cookie name, and both
+  // give the advice to issue it from the server with HttpOnly.
+  "code-cookie-without-httponly": "script-readable-session-cookie",
+  "document-cookie-access": "script-readable-session-cookie",
   // Fires only when a session cookie lacks SameSite=Lax/Strict, which is the
   // condition above restated as a CSRF risk. One fix, one finding.
   "cookie-no-csrf-token": "cookie-missing-samesite",
@@ -188,14 +195,6 @@ export const LEGACY_DEDUPE_GROUPS: Record<string, string> = {
   // reads from parsed anchors and form actions.
   "open-redirect": "open-redirect-param",
   "page-open-redirect-param-shape": "open-redirect-param",
-
-  // A password field with no usable autocomplete token. The legacy check sees
-  // the absent attribute, the PageCheck sees the absent attribute and the
-  // wrong value (off, username, and so on), so for password fields the legacy
-  // one is the subset. The legacy check also reads card-number fields, which
-  // no PageCheck covers, so a page with only a card field still gets it.
-  "autocomplete-sensitive": "password-autocomplete",
-  "page-password-field-autocomplete-wrong": "password-autocomplete",
 
   // Inline markup that runs script from page output. An <img onerror="..."> with
   // a sink call in it satisfies both detectors, so one tag read as two

@@ -62,15 +62,25 @@ describe("twin checks that report one fact are collapsed", () => {
     expect(findings).toHaveLength(3);
   });
 
-  it("reports a framework's default session cookie name once", () => {
-    for (const twin of [
+  it("reports a PHPSESSID cookie once", () => {
+    const { findings, merged } = collapse([
+      "cookie-name-disclosure",
       "php-version-exposed-in-cookie",
+    ]);
+    expect(merged).toBe(1);
+    expect(findings).toHaveLength(1);
+  });
+
+  it("keeps a Rails session cookie apart from the generic cookie-name finding", () => {
+    // cookie-name-disclosure only knows PHPSESSID, JSESSIONID,
+    // ASP.NET_SessionId and connect.sid, so it never reports the cookie
+    // rails-version-exposure does. Folding them hid one of two cookies.
+    const { findings, merged } = collapse([
+      "cookie-name-disclosure",
       "rails-version-exposure",
-    ]) {
-      const { findings, merged } = collapse(["cookie-name-disclosure", twin]);
-      expect(merged).toBe(1);
-      expect(findings).toHaveLength(1);
-    }
+    ]);
+    expect(merged).toBe(0);
+    expect(findings).toHaveLength(2);
   });
 
   it("collapses a third-party iframe without sandbox from both detectors", () => {
@@ -82,20 +92,44 @@ describe("twin checks that report one fact are collapsed", () => {
     expect(findings).toHaveLength(1);
   });
 
-  it("collapses the code- cookie checks into the cookie attribute they restate", () => {
-    const pairs: [string, string][] = [
+  it("collapses the Secure check that still reads Set-Cookie into the parsed one", () => {
+    const { findings, merged } = collapse([
+      "code-cookie-missing-secure-http",
+      "page-cookie-missing-secure",
+    ]);
+    expect(merged).toBe(1);
+    expect(findings).toHaveLength(1);
+  });
+
+  it("keeps a script-written cookie apart from a Set-Cookie header's", () => {
+    // These two read document.cookie writes, not the header, so a page whose
+    // Set-Cookie session cookie lacks the attribute and whose script writes a
+    // different session cookie has two facts. Grouping them let the header
+    // finding swallow the script one (SameSite) or the reverse (HttpOnly).
+    for (const [code, page] of [
       ["code-cookie-without-httponly", "page-cookie-missing-httponly"],
-      ["code-cookie-missing-secure-http", "page-cookie-missing-secure"],
       ["code-cookie-write-no-samesite", "page-cookie-missing-samesite"],
-    ];
-    for (const [code, page] of pairs) {
+      ["code-cookie-without-httponly", "cookie-httponly-missing"],
+      ["code-cookie-write-no-samesite", "cookie-samesite-missing"],
+    ]) {
       const { findings, merged } = collapse([code, page]);
-      expect({ pair: code, merged, count: findings.length }).toEqual({
-        pair: code,
-        merged: 1,
-        count: 1,
-      });
+      expect({
+        pair: `${code} ${page}`,
+        merged,
+        count: findings.length,
+      }).toEqual({ pair: `${code} ${page}`, merged: 0, count: 2 });
     }
+  });
+
+  it("reports one script-written session cookie once", () => {
+    // code.ts and content.ts both fire on a single document.cookie write of a
+    // session cookie, with the same advice.
+    const { findings, merged } = collapse([
+      "code-cookie-without-httponly",
+      "document-cookie-access",
+    ]);
+    expect(merged).toBe(1);
+    expect(findings).toHaveLength(1);
   });
 
   it("keeps the three cookie attributes as three findings", () => {
@@ -140,13 +174,15 @@ describe("twin checks that report one fact are collapsed", () => {
     expect(findings).toHaveLength(1);
   });
 
-  it("collapses a password field's autocomplete reported by both checks", () => {
+  it("keeps a card field's autocomplete apart from a password field's", () => {
+    // autocomplete-sensitive reads card fields only, so a page with a bare
+    // card field and a password field with a wrong token has two facts.
     const { findings, merged } = collapse([
       "autocomplete-sensitive",
       "page-password-field-autocomplete-wrong",
     ]);
-    expect(merged).toBe(1);
-    expect(findings).toHaveLength(1);
+    expect(merged).toBe(0);
+    expect(findings).toHaveLength(2);
   });
 
   it("does not fold the username autocomplete into the password one", () => {
@@ -249,6 +285,8 @@ const MIXED_SEVERITY_ALLOWED: Record<string, string> = {
   "csp-http-sources": "legacy medium, the parsed check high",
   "open-redirect-param":
     "legacy medium for the shape the parsed check rates low",
+  "script-readable-session-cookie":
+    "the cookie write is rated medium, the access check low",
 };
 
 describe("dedupe groups agree on severity", () => {

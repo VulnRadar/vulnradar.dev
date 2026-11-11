@@ -3597,7 +3597,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Layers,
         label: "Fewer Repeated Findings",
-        desc: "A server banner that names Server, X-Powered-By and X-AspNet-Version now shows as one finding instead of up to four, and the same goes for a third-party iframe without sandbox, a cookie missing an attribute, a framework's default session cookie name, a TRACE method that is advertised and confirmed, a redirect-shaped link parameter, a password field's autocomplete setting and an inline handler that injects script. The finding that survives lists the other checks that agreed with it.",
+        desc: "A server banner that names Server, X-Powered-By and X-AspNet-Version now shows as one finding instead of up to four, and the same goes for a third-party iframe without sandbox, a TRACE method that is advertised and confirmed, a redirect-shaped link parameter, a session cookie that a script writes and two checks both see, and an inline handler that injects script. Cookie attributes set by a Set-Cookie header and by document.cookie stay separate findings, because they are different cookies. The finding that survives lists the other checks that agreed with it.",
         category: "engine",
       },
       {
