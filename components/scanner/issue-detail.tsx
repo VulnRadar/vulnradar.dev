@@ -67,7 +67,7 @@ import {
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { useConfirm } from "@/components/shared/use-confirm";
 import { pluralize } from "@/lib/ui/plural";
-import { isAiFeedbackNote } from "@/lib/scanner/feedback-source";
+import { isAiFeedback } from "@/lib/scanner/feedback-source";
 
 /** Same key results-list.tsx writes when a finding is selected. */
 const FINDING_QUERY_PARAM = "finding";
@@ -217,12 +217,15 @@ export function FindingFeedback({
       .then(
         (
           data: {
-            feedback?: { verdict: FeedbackVerdict; notes?: string | null }[];
+            feedback?: {
+              verdict: FeedbackVerdict;
+              source?: string | null;
+            }[];
           } | null,
         ) => {
           if (cancelled || !data?.feedback?.length) return;
           const row = data.feedback[0];
-          if (isAiFeedbackNote(row.notes)) setAiSuggestion(row.verdict);
+          if (isAiFeedback(row)) setAiSuggestion(row.verdict);
           else setVerdict(row.verdict);
         },
       )

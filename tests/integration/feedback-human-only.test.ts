@@ -23,9 +23,11 @@ import { describeIntegration, createUser, unique } from "./_db";
  * (history/[id]/report without includeSuppressed) filters on. The gate's own
  * text says "findings you marked", and the user had marked nothing.
  *
- * The rule is one WHERE fragment with a COALESCE in it, and whether a NULL note
- * survives that comparison is a question for Postgres: a faked pool answers the
- * filter and its absence identically.
+ * The rule is one WHERE fragment on scan_finding_feedback.source, which the
+ * verifier writes as 'ai' and a person's verdict as 'human', and whether the
+ * column's default and the route's ON CONFLICT update land where they should
+ * is a question for Postgres: a faked pool answers the filter and its absence
+ * identically.
  */
 let sessionUserId: number | null = null;
 vi.mock("@/lib/auth", async (importOriginal) => {
@@ -64,6 +66,10 @@ function finding(id: string, severity: "critical" | "high"): Vulnerability {
   };
 }
 
+/**
+ * A row as its writer leaves it: the verifier's carries its note and
+ * source = 'ai'; a person's takes the column's default, which is 'human'.
+ */
 async function markFeedback(
   userId: number,
   findingId: string,
@@ -71,6 +77,15 @@ async function markFeedback(
   verdict: "false_positive" | "confirmed",
   notes: string | null,
 ): Promise<void> {
+  if (notes === AI_FEEDBACK_NOTE) {
+    await pool.query(
+      `INSERT INTO scan_finding_feedback
+         (user_id, finding_id, finding_url, verdict, notes, source)
+       VALUES ($1, $2, $3, $4, $5, 'ai')`,
+      [userId, findingId, url, verdict, notes],
+    );
+    return;
+  }
   await pool.query(
     `INSERT INTO scan_finding_feedback
        (user_id, finding_id, finding_url, verdict, notes)
@@ -214,6 +229,30 @@ describeIntegration("AI-written feedback never suppresses a finding", () => {
     expect(await getFalsePositiveIds(userId)).toEqual(
       new Set(["ai-then-human"]),
     );
+    // By source, which the route's update now writes: the note alone used to
+    // be what made the row human, while source stayed 'ai'.
+    const { rows } = await pool.query<{ source: string }>(
+      `SELECT source FROM scan_finding_feedback
+        WHERE user_id = $1 AND finding_id = $2`,
+      [userId, "ai-then-human"],
+    );
+    expect(rows).toEqual([{ source: "human" }]);
+  });
+
+  it("goes by who wrote the row, not by what its note says", async () => {
+    const userId = await seedUser();
+    const url = urlFor("source");
+    // A person's verdict whose comment happens to be the verifier's sentence,
+    // and an AI row with no note at all.
+    await pool.query(
+      `INSERT INTO scan_finding_feedback
+         (user_id, finding_id, finding_url, verdict, notes, source)
+       VALUES ($1, 'by-person', $2, 'false_positive', $3, 'human'),
+              ($1, 'by-ai', $2, 'false_positive', NULL, 'ai')`,
+      [userId, url, AI_FEEDBACK_NOTE],
+    );
+
+    expect(await getFalsePositiveIds(userId)).toEqual(new Set(["by-person"]));
   });
 
   it("alerts on a regression the AI called a false positive and stays quiet for one a person did", async () => {

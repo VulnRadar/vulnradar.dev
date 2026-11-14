@@ -911,6 +911,11 @@ describe("runAiVerification: syncs 'Mark this result' feedback from the AI verdi
     expect(sql).toContain(
       "ON CONFLICT (user_id, finding_id, finding_url) DO NOTHING",
     );
+    // Marked as the verifier's own row, which is what keeps it from hiding
+    // the finding (lib/scanner/feedback-source.ts). Without it the row took
+    // the column's 'human' default and a guess became a verdict.
+    expect(sql).toContain("verdict, notes, source)");
+    expect(sql).toMatch(/'ai'\s+FROM UNNEST/);
     // One statement per chunk, findings passed as arrays, so a chunk of ten
     // is one round trip rather than ten.
     expect(params).toEqual([

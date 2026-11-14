@@ -15,6 +15,9 @@ import { FindingFeedback } from "@/components/scanner/issue-detail";
 import { API } from "@/lib/config/client-constants";
 import { AI_FEEDBACK_NOTE } from "@/lib/scanner/feedback-source";
 
+/** Who wrote a stored row, as GET /scan/feedback reports it. */
+type Source = "ai" | "human";
+
 const FALSE_POSITIVE_LINE =
   "AI verification suggested false positive. Mark it yourself to hide it.";
 
@@ -25,9 +28,13 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status });
 }
 
-function storedRow(verdict: string, notes: string | null) {
+function storedRow(
+  verdict: string,
+  notes: string | null,
+  source: Source = notes === AI_FEEDBACK_NOTE ? "ai" : "human",
+) {
   fetchMock.mockResolvedValueOnce(
-    json({ feedback: [{ finding_id: "f1", verdict, notes }] }),
+    json({ feedback: [{ finding_id: "f1", verdict, notes, source }] }),
   );
 }
 
@@ -125,6 +132,17 @@ describe("FindingFeedback with a person's row", () => {
     ["their own note", "Staging only, not reachable."],
   ])("presses the stored verdict with %s", async (_label, notes) => {
     storedRow("false_positive", notes);
+    await show();
+
+    expect(pressedButtons()).toEqual(["False positive"]);
+    expect(screen.queryByText(/^AI verification suggested/)).toBeNull();
+  });
+
+  // The row says who wrote it. A person who overrode an AI row without a
+  // comment of their own kept the verifier's note text before the route
+  // cleared it, and the note was never the record: source is.
+  it("presses a person's verdict even when its note reads like the verifier's", async () => {
+    storedRow("false_positive", AI_FEEDBACK_NOTE, "human");
     await show();
 
     expect(pressedButtons()).toEqual(["False positive"]);

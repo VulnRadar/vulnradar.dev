@@ -151,11 +151,20 @@ async function verdict(
   value: "false_positive" | "confirmed",
   notes: string | null = null,
 ): Promise<void> {
+  // An AI row is written as the verifier writes it: its note and
+  // source = 'ai', which is what every reader goes by.
   await pool.query(
     `INSERT INTO scan_finding_feedback
-       (user_id, finding_id, finding_url, verdict, notes)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [userId, findingId, url, value, notes],
+       (user_id, finding_id, finding_url, verdict, notes, source)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [
+      userId,
+      findingId,
+      url,
+      value,
+      notes,
+      notes === AI_FEEDBACK_NOTE ? "ai" : "human",
+    ],
   );
 }
 

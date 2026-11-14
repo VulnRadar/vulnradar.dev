@@ -196,6 +196,19 @@ describe("POST /api/v3/scan/feedback", () => {
     ]);
   });
 
+  // Every reader that hides a finding goes by source (lib/scanner/
+  // feedback-source.ts). The update left it alone, so a person who clicked
+  // the verdict the AI verifier had filled in stayed 'ai' by source.
+  it("writes the row as a person's, on insert and when it takes over an AI row", async () => {
+    answerSavedVerdict("false_positive");
+
+    await POST(postRequest(validPayload({ verdict: "false_positive" })));
+
+    const [sql] = mockQuery.mock.calls[2];
+    expect(sql).toMatch(/verdict, notes, source\)\s+VALUES \(.*'human'\)/);
+    expect(sql).toMatch(/DO UPDATE SET[^;]*source = 'human'/);
+  });
+
   it("recomputes the scan's score after a successful save", async () => {
     answerSavedVerdict("false_positive");
 

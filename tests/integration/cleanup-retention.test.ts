@@ -54,12 +54,21 @@ describeIntegration("retention rules that are more than an age check", () => {
     daysOld: number,
     notes: string | null = null,
   ) {
+    // What the AI verifier writes: its note and source = 'ai'. The prune
+    // goes by source; the note is only text.
     await pool.query(
       `INSERT INTO scan_finding_feedback
-         (user_id, finding_id, finding_url, verdict, notes, created_at)
-       VALUES ($1, $2, 'https://feedback.example.test/', $3, $4,
+         (user_id, finding_id, finding_url, verdict, notes, source, created_at)
+       VALUES ($1, $2, 'https://feedback.example.test/', $3, $4, $6,
                NOW() - ($5::int * INTERVAL '1 day'))`,
-      [userId, findingId, verdict, notes, daysOld],
+      [
+        userId,
+        findingId,
+        verdict,
+        notes,
+        daysOld,
+        notes === AI_NOTE ? "ai" : "human",
+      ],
     );
   }
 

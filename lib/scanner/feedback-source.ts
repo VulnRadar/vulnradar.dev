@@ -10,24 +10,32 @@
  * issue that nobody had looked at. Owner decision T2: AI rows are kept, and
  * they never suppress.
  *
- * The note is the only thing that tells the two apart today, and it is reliable
- * in both directions: the verifier inserts with ON CONFLICT DO NOTHING, so it
- * never lands on a row a person already decided, and POST /scan/feedback
- * overwrites `notes` on conflict, so a person clicking a verdict the AI filled
- * in makes the row theirs.
+ * The `source` column is the record, and the only one: the verifier writes
+ * 'ai', POST /scan/feedback writes 'human' on insert and on the update that
+ * makes a row the AI filled in the person's own, and the triage carry-over
+ * copies it. There used to be a second definition, the note the verifier
+ * writes, which every reader compared against while the column was written by
+ * the boot backfill alone, so a person who overrode an AI row was human by
+ * note and 'ai' by source. The note is now only text, and the boot backfill
+ * reads it once, for the rows the verifier wrote before the column existed
+ * (lib/database/boot/backfills.ts).
  */
 
-/** The exact `notes` value the AI verifier writes on the rows it creates. */
+/**
+ * The exact `notes` value the AI verifier writes on the rows it creates. Only
+ * the boot backfill reads it, to mark the rows written before `source`.
+ */
 export const AI_FEEDBACK_NOTE = "Set automatically from an AI verify verdict.";
 
-export function isAiFeedbackNote(notes: string | null | undefined): boolean {
-  return notes === AI_FEEDBACK_NOTE;
+export type FeedbackSource = "human" | "ai";
+
+export function isAiFeedback(row: { source?: string | null }): boolean {
+  return row.source === "ai";
 }
 
 /**
  * Appended to a query on scan_finding_feedback so only rows a person wrote
- * match. COALESCE because `notes` is optional on a human verdict, and a bare
- * `notes <> '...'` is NULL for exactly those rows, which would drop every
- * human verdict that came without a comment.
+ * match. The column is NOT NULL with a 'human' default, so a bare comparison
+ * keeps every human verdict, with or without a comment.
  */
-export const HUMAN_FEEDBACK_SQL = `COALESCE(notes, '') <> '${AI_FEEDBACK_NOTE}'`;
+export const HUMAN_FEEDBACK_SQL = "source = 'human'";

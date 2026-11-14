@@ -99,11 +99,14 @@ export async function POST(req: NextRequest) {
     }
 
     const row = await pool.query(
+      // source = 'human' on the update too: a person clicking the verdict
+      // the AI verifier filled in makes the row theirs, and source is what
+      // every reader that hides a finding goes by (lib/scanner/feedback-source.ts).
       `INSERT INTO scan_finding_feedback
-         (user_id, scan_history_id, finding_id, finding_url, verdict, notes)
-       VALUES ($1, $2, $3, $4, $5, $6)
+         (user_id, scan_history_id, finding_id, finding_url, verdict, notes, source)
+       VALUES ($1, $2, $3, $4, $5, $6, 'human')
        ON CONFLICT (user_id, finding_id, finding_url)
-       DO UPDATE SET verdict = $5, notes = $6, created_at = NOW()
+       DO UPDATE SET verdict = $5, notes = $6, source = 'human', created_at = NOW()
        RETURNING id, verdict, created_at`,
       [
         session.userId,
@@ -156,7 +159,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const rows = await pool.query(
-      `SELECT finding_id, verdict, notes, created_at
+      `SELECT finding_id, verdict, notes, source, created_at
          FROM scan_finding_feedback
         WHERE user_id = $1
           AND ($2::text IS NULL OR finding_url = $2)

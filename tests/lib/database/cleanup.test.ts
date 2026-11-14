@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { AI_FEEDBACK_NOTE } from "@/lib/scanner/feedback-source";
 
 /**
  * Tests for lib/database/cleanup.ts: the periodic cleanup job.
@@ -332,16 +331,19 @@ describe("performDatabaseCleanup", () => {
     expect(prune?.sql).toContain(
       "AND (user_id IS NULL OR verdict <> 'false_positive')",
     );
-    expect(prune?.sql).toContain("AND notes IS DISTINCT FROM $2");
-    expect(prune?.params?.[0]).toBe(90);
+    expect(prune?.sql).toContain("AND source <> 'ai'");
+    expect(prune?.params).toEqual([90]);
   });
 
-  it("recognises AI-set feedback by the exact note the verifier writes", async () => {
+  it("recognises AI-set feedback by the row's source, not its note", async () => {
+    // The note is only text now: a person who overrides an AI row makes it
+    // 'human' (POST /scan/feedback), and the prune has to agree with every
+    // reader about which rows are the AI's.
     await performDatabaseCleanup();
     const prune = calls.find((c) =>
       c.sql.startsWith("DELETE FROM scan_finding_feedback"),
     );
-    expect(prune?.params?.[1]).toBe(AI_FEEDBACK_NOTE);
+    expect(prune?.sql).not.toContain("notes");
   });
 
   it("keeps a rate_limits row for the longest window any limiter can be set to", async () => {

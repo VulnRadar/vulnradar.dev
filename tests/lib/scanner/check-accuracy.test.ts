@@ -120,9 +120,7 @@ describe("aggregateCheckAccuracy", () => {
     const [sql] = mockQuery.mock.calls[0];
     expect(sql).toContain("array_agg(DISTINCT user_id)");
     expect(sql).toContain("user_id IS NOT NULL");
-    expect(sql).toContain(
-      "COALESCE(notes, '') <> 'Set automatically from an AI verify verdict.'",
-    );
+    expect(sql).toContain("source = 'human'");
     expect(sql).not.toContain("COUNT(*)");
   });
 

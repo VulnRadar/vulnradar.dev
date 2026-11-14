@@ -6,7 +6,6 @@ import pool from "@/lib/database/db";
 import { DB_CLEANUP_INTERVAL } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { RATE_LIMIT_MAX_WINDOW_SECONDS } from "@/lib/config/registry";
-import { AI_FEEDBACK_NOTE } from "@/lib/scanner/feedback-source";
 import { purgeExpiredAdminAuditLog } from "@/lib/database/audit-log-archive";
 import { createFailureEscalator } from "@/lib/admin/failure-escalation";
 import { AI_USAGE_WINDOWS_SHOWN } from "@/lib/admin/ai-usage-report";
@@ -633,11 +632,8 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
       `DELETE FROM scan_finding_feedback
        WHERE created_at < NOW() - ($1 * INTERVAL '1 day')
          AND (user_id IS NULL OR verdict <> 'false_positive')
-         AND notes IS DISTINCT FROM $2`,
-      [
-        cleanupRetention.CLEANUP_SCAN_FINDING_FEEDBACK_RETENTION_DAYS,
-        AI_FEEDBACK_NOTE,
-      ],
+         AND source <> 'ai'`,
+      [cleanupRetention.CLEANUP_SCAN_FINDING_FEEDBACK_RETENTION_DAYS],
     );
     stats.oldScanFindingFeedback = res.rowCount || 0;
   });

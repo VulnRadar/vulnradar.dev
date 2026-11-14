@@ -936,9 +936,9 @@ async function syncFeedbackFromAiVerdicts(
   const insert = (historyId: number | null) =>
     pool.query(
       `INSERT INTO scan_finding_feedback
-         (user_id, scan_history_id, finding_id, finding_url, verdict, notes)
+         (user_id, scan_history_id, finding_id, finding_url, verdict, notes, source)
        SELECT $1, $2, f.finding_id, $3, f.verdict,
-              '${AI_FEEDBACK_NOTE}'
+              '${AI_FEEDBACK_NOTE}', 'ai'
          FROM UNNEST($4::text[], $5::text[]) AS f(finding_id, verdict)
        ON CONFLICT (user_id, finding_id, finding_url) DO NOTHING`,
       [userId, historyId, url, findingIds, feedbackVerdicts],
