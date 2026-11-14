@@ -424,6 +424,52 @@ export function canActOnTarget(
 /**
  * Check if role can access admin panel
  */
+export const NOTE_REFUSAL = {
+  self: "Only the author can change a note about your own account.",
+  notAuthor: "Only a note's author or an admin can change it.",
+} as const;
+
+/**
+ * Why the admin route would refuse to edit or delete this admin note, or null
+ * when it would not. The author may always change their own note. Anyone else
+ * needs the admin or super_admin role, and even then not on a note about
+ * their own account: a note about you is someone else's record of you.
+ * `noteAdminId` is null once the author's account is deleted, and then only
+ * an admin acting on someone else's account may change it.
+ *
+ * The route's loadEditableNote asks this, and the Users panel asks it per
+ * note so a moderator is not offered Edit and Delete on another staff
+ * member's note only to be refused. Account-level refusals (targetRefusal)
+ * come first and are not repeated here.
+ */
+export function adminNoteRefusal({
+  noteAdminId,
+  targetUserId,
+  viewer,
+}: {
+  noteAdminId: number | null | undefined;
+  targetUserId: number;
+  viewer: AdminActor;
+}): string | null {
+  const isAuthor = viewer.id != null && noteAdminId === viewer.id;
+  if (isAuthor) return null;
+  if (viewer.id != null && targetUserId === viewer.id) {
+    return NOTE_REFUSAL.self;
+  }
+  const isAdmin =
+    viewer.role === STAFF_ROLES.ADMIN ||
+    viewer.role === STAFF_ROLES.SUPER_ADMIN;
+  return isAdmin ? null : NOTE_REFUSAL.notAuthor;
+}
+
+export function canEditAdminNote(note: {
+  noteAdminId: number | null | undefined;
+  targetUserId: number;
+  viewer: AdminActor;
+}): boolean {
+  return adminNoteRefusal(note) === null;
+}
+
 export function canAccessAdmin(role: string | null | undefined): boolean {
   return hasStaffPermission(role, STAFF_PERMISSIONS.ACCESS_ADMIN_PANEL);
 }

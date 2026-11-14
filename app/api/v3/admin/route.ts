@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth/authorization";
 import { Validate, withErrorHandling } from "@/lib/api/api-utils";
 import {
+  canEditAdminNote,
   hasGodMode,
   hasStaffPermission,
   STAFF_PERMISSIONS,
@@ -535,7 +536,7 @@ async function loadEditableNote(
   userId: number,
   session: { userId: number; role: string },
 ): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
-  const found = await pool.query<{ admin_id: number }>(
+  const found = await pool.query<{ admin_id: number | null }>(
     "SELECT admin_id FROM admin_user_notes WHERE id = $1 AND user_id = $2",
     [noteId, userId],
   );
@@ -546,11 +547,14 @@ async function loadEditableNote(
       response: NextResponse.json({ error: "Note not found" }, { status: 404 }),
     };
   }
-  const isAuthor = row.admin_id === session.userId;
-  const isAdmin =
-    session.role === STAFF_ROLES.ADMIN ||
-    session.role === STAFF_ROLES.SUPER_ADMIN;
-  if (!isAuthor && (userId === session.userId || !isAdmin)) {
+  // The same rule the Users panel disables each note's controls by.
+  if (
+    !canEditAdminNote({
+      noteAdminId: row.admin_id,
+      targetUserId: userId,
+      viewer: { id: session.userId, role: session.role },
+    })
+  ) {
     return {
       ok: false,
       response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),

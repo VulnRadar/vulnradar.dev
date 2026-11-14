@@ -3946,7 +3946,7 @@ const CHANGELOG: Release[] = [
       {
         icon: FileText,
         label: "Admin Notes Are Tied to Their Account",
-        desc: "Editing or deleting an admin note now only works on a note about the account being acted on, and a note about yourself can only be changed by whoever wrote it.",
+        desc: "Editing or deleting an admin note now only works on a note about the account being acted on. Only its author or an admin can change a note, a note about yourself can only be changed by whoever wrote it, and the user panel greys out Edit and Delete on the notes you cannot change.",
         category: "security",
       },
       {

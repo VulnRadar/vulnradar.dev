@@ -72,6 +72,7 @@ import {
   canPerformAction,
   hasGodMode,
   targetRefusal,
+  adminNoteRefusal,
   STAFF_PERMISSIONS,
   type AdminTarget,
 } from "@/lib/auth/permissions-client";
@@ -244,6 +245,23 @@ export function UserDetailPanel({
   // set_role and the enable/disable toggle also ask the self rule, which the
   // others do not have.
   const accountRefusal = targetRefusal(caller, acting.target);
+  // Per note: why the route would refuse its Edit and Delete, which also asks
+  // who wrote it (lib/auth/permissions-client.ts), or null when it would not.
+  const noteRefusal = (note: { admin_id: number | null }) =>
+    accountRefusal ??
+    adminNoteRefusal({
+      noteAdminId: note.admin_id,
+      targetUserId: u.id,
+      viewer: caller,
+    });
+  // The reason shown once above the notes, when the account itself is in
+  // reach and only some notes are not (the account-level line covers the rest).
+  const lockedNoteReason =
+    accountRefusal === null
+      ? ((detail.notes ?? [])
+          .map(noteRefusal)
+          .find((reason) => reason !== null) ?? null)
+      : null;
   const roleRefusal = targetRefusal(caller, acting.target, "set_role");
   // force_logout_all always ends the sessions but only revokes the keys for a
   // role that holds REVOKE_USER_API_KEYS, which moderators do not.
@@ -1668,6 +1686,15 @@ export function UserDetailPanel({
             {/* Notes list */}
             {detail.notes && detail.notes.length > 0 ? (
               <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                {/* The route lets only a note's author, or an admin on
+                    someone else's account, change it. Said once, here,
+                    rather than on every note it disables; an account-level
+                    refusal already has its own line above. */}
+                {lockedNoteReason && (
+                  <p className="text-xs text-muted-foreground">
+                    {lockedNoteReason}
+                  </p>
+                )}
                 {detail.notes.map((note) => (
                   <div
                     key={note.id}
@@ -1698,7 +1725,7 @@ export function UserDetailPanel({
                         hit-testable. Below md they are always shown. */}
                     <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity shrink-0">
                       <button
-                        disabled={accountRefusal !== null}
+                        disabled={noteRefusal(note) !== null}
                         onClick={() =>
                           setEditingNote({
                             id: note.id,
@@ -1712,7 +1739,7 @@ export function UserDetailPanel({
                         <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                       </button>
                       <button
-                        disabled={accountRefusal !== null}
+                        disabled={noteRefusal(note) !== null}
                         onClick={() =>
                           setPendingDeleteNote({
                             id: note.id,

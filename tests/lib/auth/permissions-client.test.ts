@@ -18,6 +18,9 @@ import {
   targetRefusal,
   SELF_BLOCKED_ACTIONS,
   TARGET_REFUSAL,
+  adminNoteRefusal,
+  canEditAdminNote,
+  NOTE_REFUSAL,
 } from "@/lib/auth/permissions-client";
 import { STAFF_ROLES } from "@/lib/config/client-constants";
 
@@ -590,5 +593,87 @@ describe("canActOnTarget mirrors the admin route's target rules", () => {
     );
     const inRoute = [...block.matchAll(/"([a-z_]+)",/g)].map((m) => m[1]);
     expect([...inRoute].sort()).toEqual([...SELF_BLOCKED_ACTIONS].sort());
+  });
+});
+
+/**
+ * Who may edit or delete an admin note: its author, or an admin or
+ * super_admin acting on someone else's account. The route's loadEditableNote
+ * and the Users panel both ask this, so the panel never offers a control the
+ * route refuses.
+ */
+describe("adminNoteRefusal", () => {
+  const viewer = (id: number | null, role: string) => ({ id, role });
+
+  it("always lets the author change their own note", () => {
+    for (const role of ["support", "moderator", "admin", "super_admin"]) {
+      expect(
+        adminNoteRefusal({
+          noteAdminId: 5,
+          targetUserId: 9,
+          viewer: viewer(5, role),
+        }),
+      ).toBeNull();
+    }
+    // Even on a note about their own account.
+    expect(
+      canEditAdminNote({
+        noteAdminId: 5,
+        targetUserId: 5,
+        viewer: viewer(5, "moderator"),
+      }),
+    ).toBe(true);
+  });
+
+  it("lets an admin or super_admin change another author's note on someone else's account", () => {
+    for (const role of ["admin", "super_admin"]) {
+      expect(
+        adminNoteRefusal({
+          noteAdminId: 5,
+          targetUserId: 9,
+          viewer: viewer(2, role),
+        }),
+      ).toBeNull();
+      // A note whose author's account was deleted.
+      expect(
+        adminNoteRefusal({
+          noteAdminId: null,
+          targetUserId: 9,
+          viewer: viewer(2, role),
+        }),
+      ).toBeNull();
+    }
+  });
+
+  it("refuses everyone else another author's note", () => {
+    for (const role of ["support", "moderator"]) {
+      expect(
+        adminNoteRefusal({
+          noteAdminId: 5,
+          targetUserId: 9,
+          viewer: viewer(2, role),
+        }),
+      ).toBe(NOTE_REFUSAL.notAuthor);
+    }
+  });
+
+  it("refuses even an admin another author's note about their own account", () => {
+    expect(
+      adminNoteRefusal({
+        noteAdminId: 5,
+        targetUserId: 2,
+        viewer: viewer(2, "super_admin"),
+      }),
+    ).toBe(NOTE_REFUSAL.self);
+  });
+
+  it("never reads a viewer that has not loaded as the author of a deleted author's note", () => {
+    expect(
+      canEditAdminNote({
+        noteAdminId: null,
+        targetUserId: 9,
+        viewer: viewer(null, "moderator"),
+      }),
+    ).toBe(false);
   });
 });

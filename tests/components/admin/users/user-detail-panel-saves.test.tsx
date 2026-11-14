@@ -94,6 +94,7 @@ function setup(
     callerId?: number | null;
     callerHasPassword?: boolean;
     user?: Record<string, unknown>;
+    notes?: unknown[];
     result?: (action: string) => { ok: boolean; error?: string };
   } = {},
 ) {
@@ -104,7 +105,7 @@ function setup(
   const onBadgesChanged = vi.fn();
   const onRefresh = vi.fn(async (_id: number) => {});
   const props = {
-    detail: detail(opts.user),
+    detail: detail(opts.user, opts.notes ? { notes: opts.notes } : {}),
     detailLoading: false,
     actionLoading: null,
     onClose: () => {},
@@ -779,6 +780,65 @@ describe("admin notes", () => {
     });
     expect(result).toEqual({ kind: "failed", message: "Forbidden" });
     expect(close).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The route lets only a note's author, or an admin or super_admin acting on
+   * someone else's account, edit or delete it. The panel used to disable the
+   * controls only on account-level refusals, so a moderator was offered Edit
+   * and Delete on another staff member's note that always ended in a 403.
+   */
+  describe("who may change a note", () => {
+    const note = (id: number, adminId: number | null) => ({
+      id,
+      note: `note ${id}`,
+      created_at: "2026-01-03T00:00:00Z",
+      admin_id: adminId,
+      admin_email: adminId === null ? "" : `staff${adminId}@example.com`,
+      admin_name: adminId === null ? "Former staff member" : "Staff",
+      admin_avatar_url: null,
+    });
+    const controls = (tree: unknown, label: string) =>
+      findAll(tree, labelled(label)).map((el) => el.props.disabled === true);
+
+    it("lets a moderator change only the notes it wrote, and says why", () => {
+      const { render } = setup({
+        callerRole: "moderator",
+        callerId: 2,
+        notes: [note(11, 1), note(12, 2), note(13, null)],
+      });
+      const tree = render();
+      expect(controls(tree, "Edit note")).toEqual([true, false, true]);
+      expect(controls(tree, "Delete note")).toEqual([true, false, true]);
+      expect(textOf(tree)).toContain(
+        "Only a note's author or an admin can change it.",
+      );
+    });
+
+    it("lets an admin change any note on someone else's account", () => {
+      const { render } = setup({
+        callerRole: "admin",
+        callerId: 2,
+        notes: [note(11, 1), note(13, null)],
+      });
+      const tree = render();
+      expect(controls(tree, "Edit note")).toEqual([false, false]);
+      expect(textOf(tree)).not.toContain("Only a note's author");
+    });
+
+    it("lets nobody but the author change a note about their own account", () => {
+      const { render } = setup({
+        callerRole: "admin",
+        callerId: 7,
+        user: { id: 7, role: "admin" },
+        notes: [note(11, 1), note(12, 7)],
+      });
+      const tree = render();
+      expect(controls(tree, "Edit note")).toEqual([true, false]);
+      expect(textOf(tree)).toContain(
+        "Only the author can change a note about your own account.",
+      );
+    });
   });
 
   it("the pencil keeps its touch size and there is no inline editor", () => {
