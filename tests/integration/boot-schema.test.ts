@@ -225,17 +225,49 @@ describeIntegration("boot schema", () => {
       "human",
     ]);
 
-    await backfillAiFeedbackSource(pool);
-    const first = await sources();
-    expect(first.map((r) => r.source)).toEqual(["ai", "human", "human"]);
+    // The backfill only runs until the legacy carry-over has finished, and
+    // register() in the global setup has already recorded one on this
+    // database. A boot of a database upgraded to 4.0.0 has not.
+    const { rows: meta } = await pool.query<{ done_at: Date | null }>(
+      "SELECT legacy_triage_done_at AS done_at FROM vulnradar_schema_meta WHERE id = 1",
+    );
+    const doneAt = meta[0]?.done_at ?? null;
+    await pool.query(
+      "UPDATE vulnradar_schema_meta SET legacy_triage_done_at = NULL WHERE id = 1",
+    );
+    try {
+      await backfillAiFeedbackSource(pool);
+      const first = await sources();
+      expect(first.map((r) => r.source)).toEqual(["ai", "human", "human"]);
 
-    // The second boot finds nothing to do and rewrites no row.
-    await backfillAiFeedbackSource(pool);
-    expect(await sources()).toEqual(first);
+      // The second boot finds nothing to do and rewrites no row.
+      await backfillAiFeedbackSource(pool);
+      expect(await sources()).toEqual(first);
 
-    await pool.query("DELETE FROM scan_finding_feedback WHERE user_id = $1", [
-      user.id,
-    ]);
+      // Once the carry-over has finished, source is the record and the note
+      // is only text: a row whose note matches is left as it is.
+      await pool.query(
+        "UPDATE vulnradar_schema_meta SET legacy_triage_done_at = NOW() WHERE id = 1",
+      );
+      await pool.query(
+        "UPDATE scan_finding_feedback SET source = 'human' WHERE id = $1",
+        [aiRow],
+      );
+      await backfillAiFeedbackSource(pool);
+      expect((await sources()).map((r) => r.source)).toEqual([
+        "human",
+        "human",
+        "human",
+      ]);
+    } finally {
+      await pool.query(
+        "UPDATE vulnradar_schema_meta SET legacy_triage_done_at = $1 WHERE id = 1",
+        [doneAt],
+      );
+      await pool.query("DELETE FROM scan_finding_feedback WHERE user_id = $1", [
+        user.id,
+      ]);
+    }
   });
 
   it("moves a sequence behind MAX(id) forward and never moves one back", async () => {
