@@ -1552,7 +1552,6 @@ export const upgrade = {
     // block of lib/database/schema/02-features.mjs, which has the reasons.
     // An email change waiting for the new address to be confirmed.
     { table: "users", column: "pending_email", definition: "VARCHAR(255)" },
-    { table: "users", column: "pending_email_token", definition: "TEXT" },
     // Which AI feature spent the tokens.
     {
       table: "ai_usage",
@@ -1630,8 +1629,6 @@ export const upgrade = {
       column: "ai_probe_status",
       definition: "TEXT",
     },
-    // The addresses a domain resolved to when it was verified.
-    { table: "domains", column: "verified_addresses", definition: "TEXT[]" },
     // An optional API key expiry, and when its owner was warned.
     { table: "api_keys", column: "expires_at", definition: "TIMESTAMPTZ" },
     {
@@ -2654,11 +2651,10 @@ export const downgrade = {
     { table: "email_verification_tokens", column: "email" },
     { table: "api_keys", column: "last_used_api_version" },
     { table: "api_keys", column: "last_used_client" },
-    // The 4.0.0 columns. ai_usage.kind, the scan_finding_feedback columns and
-    // domains.verified_addresses go with their tables in dropTables above;
-    // the two new indexes go with their table and column.
+    // The 4.0.0 columns. ai_usage.kind and the scan_finding_feedback columns
+    // go with their tables in dropTables above; the two new indexes go with
+    // their table and column.
     { table: "users", column: "pending_email" },
-    { table: "users", column: "pending_email_token" },
     { table: "scheduled_scans", column: "last_outcome" },
     { table: "scheduled_scans", column: "last_outcome_reason" },
     { table: "scheduled_scans", column: "skipped_streak" },

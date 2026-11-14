@@ -3718,7 +3718,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Database,
         label: "Database Groundwork for 4.0.0 Features",
-        desc: "The database gains the columns 4.0.0 features rely on: pending email changes, AI usage by feature, schedule outcomes and stored scan settings, webhook event filters and failure tracking, links from crawl pages to their crawl, AI verifier reasons, verified domain addresses, API key expiry, and what a mailed code is for. Feedback the AI verifier filled in is now marked as AI, and everything a person set stays theirs. The upgrade command adds the same columns.",
+        desc: "The database gains the columns 4.0.0 features rely on: pending email changes, AI usage by feature, schedule outcomes and stored scan settings, webhook event filters and failure tracking, links from crawl pages to their crawl, AI verifier reasons, API key expiry, and what a mailed code is for. Feedback the AI verifier filled in is now marked as AI, and everything a person set stays theirs. The upgrade command adds the same columns.",
         category: "changed",
       },
       {
