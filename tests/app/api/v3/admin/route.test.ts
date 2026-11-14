@@ -1473,17 +1473,58 @@ describe("PATCH /api/v3/admin — update_email is admin-only (AUDIT-002#auth-01)
       }),
     );
     expect(res.status).toBe(200);
-    const update = mockQuery.mock.calls.find((c) =>
-      /UPDATE users\s+SET email/.test(String(c[0])),
+    const sent = mockClientQuery.mock.calls.map(([sql, params]) => [
+      String(sql).replace(/\s+/g, " ").trim(),
+      params,
+    ]);
+    // One transaction, the token rows locked before the user row: the order
+    // auth/update writes them in and verify-email locks them in, so a
+    // correction racing a click on the waiting change's link waits instead
+    // of deadlocking. A waiting self-service change and its link go with the
+    // correction, or the old link could swap its address back in afterwards.
+    expect(sent).toEqual([
+      ["BEGIN", undefined],
+      ["DELETE FROM email_verification_tokens WHERE user_id = $1", [5]],
+      [
+        "UPDATE users SET email = $1, email_verified_at = NULL, pending_email = NULL, updated_at = NOW() WHERE id = $2",
+        ["new@example.com", 5],
+      ],
+      ["COMMIT", undefined],
+    ]);
+    expect(mockClientRelease).toHaveBeenCalledTimes(1);
+    expect(
+      mockQuery.mock.calls.some((c) =>
+        /UPDATE users\s+SET email/.test(String(c[0])),
+      ),
+    ).toBe(false);
+  }, 20000);
+
+  it("rolls the correction back whole when the user row cannot be written", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "old@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // duplicate-email check
+    mockClientQuery.mockImplementation(async (sql: string) => {
+      if (/UPDATE users/.test(sql)) throw new Error("deadlock detected");
+      return { rows: [], rowCount: 0 };
+    });
+    const res = await PATCH(
+      patchRequest({
+        action: "update_email",
+        userId: 5,
+        email: "new@example.com",
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
     );
-    expect(String(update?.[0])).toContain("email_verified_at = NULL");
-    // A waiting self-service change and its link go with the correction, or
-    // the old link could swap its address back in afterwards.
-    expect(String(update?.[0])).toContain("pending_email = NULL");
-    expect(String(update?.[0])).toContain(
-      "DELETE FROM email_verification_tokens WHERE user_id = $2",
-    );
-    expect(update?.[1]).toEqual(["new@example.com", 5]);
+    expect(res.status).toBe(500);
+    expect(mockClientQuery).toHaveBeenCalledWith("ROLLBACK");
+    expect(mockClientQuery).not.toHaveBeenCalledWith("COMMIT");
+    expect(mockClientRelease).toHaveBeenCalledTimes(1);
+    expect(mockLogAction).not.toHaveBeenCalled();
   }, 20000);
 
   it.each([
