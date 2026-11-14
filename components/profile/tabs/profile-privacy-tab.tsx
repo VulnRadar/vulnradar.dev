@@ -10,6 +10,8 @@ import { API, APP_SLUG, ROUTES } from "@/lib/config/client-constants";
 import { downloadBlob } from "@/lib/ui/download";
 import { formatDate } from "@/lib/ui/format-date";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { EmailStepUp, stepUpCanSave } from "@/components/shared/email-step-up";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 import type { ProfileTabProps } from "@/components/profile/types";
 
 export function ProfilePrivacyTab({
@@ -43,6 +45,14 @@ export function ProfilePrivacyTab({
   // still be open, which used to make a rejected deletion look identical to
   // a slow one once the banner timed out.
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // An account with no password confirms the deletion with a code mailed to
+  // it (EmailStepUp), as it does every other security change; its session
+  // alone is not enough. stepUpAttempt remounts the step-up when the server
+  // says the confirmation has run out, so a new code can be asked for.
+  const noPassword = user?.hasPassword === false;
+  const { emailConfigured } = useClientConfig();
+  const [stepUpDone, setStepUpDone] = useState(false);
+  const [stepUpAttempt, setStepUpAttempt] = useState(0);
 
   // "Scans are private by default" -- the account-level counterpart to the
   // per-scan "Keep this scan private" toggle on the scan form (see
@@ -220,7 +230,9 @@ export function ProfilePrivacyTab({
       const res = await fetch(API.ACCOUNT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword: deleteCurrentPassword }),
+        body: JSON.stringify(
+          noPassword ? {} : { currentPassword: deleteCurrentPassword },
+        ),
       });
       const data = await res.json();
       if (res.ok) {
@@ -231,6 +243,10 @@ export function ProfilePrivacyTab({
           window.location.href = ROUTES.LOGIN;
         }, 1500);
       } else {
+        if (data.stepUp === true) {
+          setStepUpDone(false);
+          setStepUpAttempt((n) => n + 1);
+        }
         setDeleteError(data.error || "Failed to delete account.");
       }
     } catch {
@@ -530,7 +546,9 @@ export function ProfilePrivacyTab({
         error={deleteError}
         confirmDisabled={
           deleteConfirmText !== "DELETE" ||
-          (user?.hasPassword !== false && !deleteCurrentPassword)
+          (noPassword
+            ? !stepUpCanSave(emailConfigured, stepUpDone)
+            : !deleteCurrentPassword)
         }
         onConfirm={handleDeleteAccount}
         onCancel={() => {
@@ -538,6 +556,8 @@ export function ProfilePrivacyTab({
           setDeleteConfirmText("");
           setDeleteCurrentPassword("");
           setDeleteError(null);
+          setStepUpDone(false);
+          setStepUpAttempt((n) => n + 1);
         }}
       >
         <div className="flex flex-col gap-1.5">
@@ -556,7 +576,14 @@ export function ProfilePrivacyTab({
             autoComplete="off"
           />
         </div>
-        {user?.hasPassword !== false && (
+        {noPassword ? (
+          <EmailStepUp
+            key={stepUpAttempt}
+            idPrefix="delete-account-step-up"
+            emailConfigured={emailConfigured}
+            onReady={() => setStepUpDone(true)}
+          />
+        ) : (
           <div className="flex flex-col gap-1.5">
             <Label
               htmlFor="delete-account-password"

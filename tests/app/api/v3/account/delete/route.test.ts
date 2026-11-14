@@ -81,7 +81,19 @@ vi.mock("@/lib/billing/stripe", () => ({
   getStripe: () => mockGetStripe(),
 }));
 
+// The step-up an account with no password confirms with is a cookie the
+// mailed code leaves behind (lib/auth/reauth.ts), read through next/headers.
+const { makeCookieStore } =
+  await import("@/tests/app/api/v3/auth/_test-harness");
+const { store: cookieStore, state: cookieState } = makeCookieStore();
+vi.mock("next/headers", () => ({
+  cookies: vi.fn(async () => cookieStore),
+}));
+
 const { POST } = await import("@/app/api/v3/account/delete/route");
+const { STEP_UP_COOKIE, signStepUpToken } = await import("@/lib/auth/reauth");
+const { hashSessionId } = await import("@/lib/auth/auth");
+const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
 const { hashPassword } = await import("@/lib/auth/password-hash");
 const { encryptApiKey } = await import("@/lib/auth/crypto");
 
@@ -111,6 +123,15 @@ beforeEach(() => {
   mockDeleteAvatarFilesIfLocal.mockResolvedValue(undefined);
   mockGetStripe.mockReset();
   mockGetStripe.mockReturnValue(null);
+  // Signed in, and, for the accounts with no password in this file, already
+  // confirmed with the mailed code. The suite below that is about that step
+  // takes the confirmation away.
+  cookieState.clear();
+  cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+  cookieState.set(
+    STEP_UP_COOKIE,
+    signStepUpToken(11, hashSessionId("session-1")),
+  );
 });
 
 function deleteRequest(body: unknown): Request {
@@ -155,12 +176,59 @@ describe("POST /api/v3/account/delete", () => {
     expect(json.error).toMatch(/incorrect/);
   });
 
-  it("skips the password check entirely for an OAuth-only account with no password set, using only the frontend's DELETE confirmation", async () => {
+  it("deletes an OAuth-only account with no password once it has confirmed with the mailed code", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ password_hash: null }] });
     const res = await POST(deleteRequest({})); // no currentPassword needed
     expect(res.status).toBe(200);
     expect(mockDestroySession).toHaveBeenCalledTimes(1);
   }, 20000);
+
+  // The session alone used to be enough for an account with no password, so
+  // a stolen cookie could permanently delete it: the one re-auth caller the
+  // step-up had not reached.
+  describe("an account with no password and no step-up", () => {
+    beforeEach(() => {
+      cookieState.delete(STEP_UP_COOKIE);
+      mockQuery.mockImplementation(async (sql: string) =>
+        sql.includes("FROM sessions")
+          ? { rows: [] }
+          : { rows: [{ password_hash: null, email: "a@b.test", name: "A" }] },
+      );
+    });
+
+    it("is refused with stepUp, and nothing is deleted or cancelled", async () => {
+      const cancel = vi.fn();
+      mockGetStripe.mockReturnValue({
+        subscriptions: { list: vi.fn(), retrieve: vi.fn(), cancel },
+      });
+
+      const res = await POST(deleteRequest({}));
+
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect(json.stepUp).toBe(true);
+      expect(mockConnect).not.toHaveBeenCalled();
+      expect(mockDestroySession).not.toHaveBeenCalled();
+      expect(cancel).not.toHaveBeenCalled();
+    });
+
+    it("is not let through by a password it does not have", async () => {
+      const res = await POST(deleteRequest({ currentPassword: "anything" }));
+      expect(res.status).toBe(403);
+      expect((await res.json()).stepUp).toBe(true);
+      expect(mockConnect).not.toHaveBeenCalled();
+    });
+
+    it("does not take another session's step-up", async () => {
+      cookieState.set(
+        STEP_UP_COOKIE,
+        signStepUpToken(11, hashSessionId("some-other-session")),
+      );
+      const res = await POST(deleteRequest({}));
+      expect(res.status).toBe(403);
+      expect(mockConnect).not.toHaveBeenCalled();
+    });
+  });
 
   it("rejects deletion when the password is wrong (real verifyPassword)", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ password_hash: realHash }] });

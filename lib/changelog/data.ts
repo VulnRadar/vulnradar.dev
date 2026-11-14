@@ -3814,7 +3814,7 @@ const CHANGELOG: Release[] = [
       {
         icon: KeyRound,
         label: "Email Confirmation for Accounts Without a Password",
-        desc: "Accounts that sign in with Google, GitHub or Discord and have no password now confirm security changes with a code emailed to them: setting a password, changing the email address, changing two-step settings, generating backup codes, linking another sign-in provider and staff actions. Before, a stolen session was enough to make any of these changes.",
+        desc: "Accounts that sign in with Google, GitHub or Discord and have no password now confirm security changes with a code emailed to them: setting a password, changing the email address, changing two-step settings, generating backup codes, linking another sign-in provider, deleting the account and staff actions. Before, a stolen session was enough to make any of these changes.",
         category: "security",
       },
       {

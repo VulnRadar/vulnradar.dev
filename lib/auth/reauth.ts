@@ -150,7 +150,26 @@ export async function verifyReauthPassword(
   if (row.rows.length === 0) {
     return { ok: false, status: 403, error: messages.wrong };
   }
-  const storedHash = row.rows[0].password_hash;
+  return verifyReauthAgainstHash(
+    userId,
+    row.rows[0].password_hash,
+    suppliedPassword,
+    messages,
+  );
+}
+
+/**
+ * verifyReauthPassword for a caller that has already read the account's
+ * users row and holds its password_hash, so the rule is the same one and the
+ * row is not read twice. `storedHash` must come from that row: null means the
+ * account has no password and confirms with the mailed step-up.
+ */
+export async function verifyReauthAgainstHash(
+  userId: number,
+  storedHash: string | null,
+  suppliedPassword: unknown,
+  messages: { missing: string; wrong: string },
+): Promise<ReauthResult> {
   if (!storedHash) return verifyStepUp(userId);
 
   if (typeof suppliedPassword !== "string" || suppliedPassword.length === 0) {

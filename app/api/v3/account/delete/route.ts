@@ -1,4 +1,5 @@
-import { getSession, destroySession, verifyPassword } from "@/lib/auth";
+import { getSession, destroySession } from "@/lib/auth";
+import { reauthRefusal, verifyReauthAgainstHash } from "@/lib/auth/reauth";
 import pool from "@/lib/database/db";
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
@@ -40,17 +41,19 @@ export const POST = withErrorHandling(async (request: Request) => {
     );
   }
 
-  // account: require the user to re-enter their current password
-  // before deletion. Without this, a stolen session cookie is enough
-  // to permanently destroy the account. The grace-period follow-up
-  // (mark-disabled-then-purge-after-7d) is tracked separately.
+  // account: confirm it is the owner before deletion. Without this, a stolen
+  // session cookie is enough to permanently destroy the account. The
+  // grace-period follow-up (mark-disabled-then-purge-after-7d) is tracked
+  // separately.
   //
-  // An OAuth-only account (Google/GitHub/Discord sign-up that never set a
-  // password -- see users.password_hash, and the same hasPassword check
-  // the Security tab uses) has nothing to re-enter here: skip the
-  // password check for it rather than permanently locking it out of
-  // deleting its own account. The frontend's "type DELETE to confirm"
-  // step is still required either way.
+  // A password account re-enters its password. An OAuth-only account
+  // (Google/GitHub/Discord sign-up that never set a password, see
+  // users.password_hash) used to skip the check and be deleted on the
+  // session alone, which is the one hole the step-up left open after it
+  // closed the same one on every other re-auth: it now confirms with the
+  // code mailed to its address, like every other sensitive change
+  // (lib/auth/reauth.ts). The frontend's "type DELETE to confirm" step is
+  // still required either way.
   const pwRow = await pool.query<{
     password_hash: string | null;
     email: string;
@@ -60,9 +63,7 @@ export const POST = withErrorHandling(async (request: Request) => {
     session.userId,
   ]);
   // No row at all (a stale/corrupted session referencing an already-gone
-  // user) must fail closed, the same as a wrong password -- distinct from
-  // a real row whose password_hash is legitimately null (OAuth-only),
-  // which is the only case that skips the check below.
+  // user) must fail closed, the same as a wrong password.
   if (!pwRow.rows[0]) {
     return ApiResponse.badRequest("Password is incorrect.");
   }
@@ -83,23 +84,28 @@ export const POST = withErrorHandling(async (request: Request) => {
     );
   }
 
-  const hasPassword = !!pwRow.rows[0].password_hash;
-
-  if (hasPassword) {
-    const parsed = await parseBody<{ currentPassword?: string }>(request);
+  const storedHash = pwRow.rows[0].password_hash;
+  // The body only carries a password, so an account with none sends nothing
+  // this route reads.
+  let currentPassword: unknown;
+  if (storedHash) {
+    const parsed = await parseBody<{ currentPassword?: unknown }>(request);
     if (!parsed.success) return ApiResponse.badRequest(parsed.error);
-    const { currentPassword } = parsed.data;
-    if (typeof currentPassword !== "string" || currentPassword.length === 0) {
-      return ApiResponse.badRequest(
-        "Re-enter your password to confirm account deletion.",
-      );
-    }
-    if (
-      !(await verifyPassword(currentPassword, pwRow.rows[0]!.password_hash))
-    ) {
-      return ApiResponse.badRequest("Password is incorrect.");
-    }
+    currentPassword = parsed.data.currentPassword;
   }
+  const reauth = await verifyReauthAgainstHash(
+    session.userId,
+    storedHash,
+    currentPassword,
+    {
+      missing: "Re-enter your password to confirm account deletion.",
+      wrong: "Password is incorrect.",
+    },
+  );
+  // 400 for a missing or a wrong password, which is what this route has
+  // always answered, and a 403 with `stepUp: true` for an account with no
+  // password that has not confirmed by email yet.
+  if (!reauth.ok) return reauthRefusal(reauth, 400, 400);
 
   // Capture the address and name BEFORE the purge: deleteUserAccountData
   // removes the users row (email included), so the confirmation below has to
