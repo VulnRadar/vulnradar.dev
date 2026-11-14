@@ -26,6 +26,8 @@ vi.mock("@/lib/database/db", () => ({
 const { checkForNewCriticalOrHighFindings } =
   await import("@/lib/scanner/regression-alert");
 const { HUMAN_FEEDBACK_SQL } = await import("@/lib/scanner/feedback-source");
+const { generateId, hitDistinguisher, legacyFindingId } =
+  await import("@/lib/scanner/_helpers");
 
 function finding(overrides: Partial<Vulnerability> = {}): Vulnerability {
   return {
@@ -50,6 +52,7 @@ function finding(overrides: Partial<Vulnerability> = {}): Vulnerability {
  */
 function installQueryMock({
   previousFindings = null as Vulnerability[] | null,
+  previousUrl = undefined as string | undefined,
   suppressedFindingIds = [] as string[],
   triagedFindingIds = [] as string[],
   triageQueryThrows = false,
@@ -60,7 +63,13 @@ function installQueryMock({
         rows:
           previousFindings === null
             ? []
-            : [{ findings: JSON.stringify(previousFindings) }],
+            : [
+                {
+                  id: 1,
+                  ...(previousUrl === undefined ? {} : { url: previousUrl }),
+                  findings: JSON.stringify(previousFindings),
+                },
+              ],
       };
     }
     if (sql.includes("FROM scan_finding_feedback")) {
@@ -406,5 +415,94 @@ describe("checkForNewCriticalOrHighFindings", () => {
       ["https://example.com/", "https://example.com"],
       42,
     ]);
+  });
+  // A scan stored before canonical URLs is the previous scan of the same site
+  // (it is found by every stored spelling), but its findings carry ids hashed
+  // from the old spelling. Diffing those by id against today's called every
+  // finding new, so the first rescan of a site typed as a bare host mailed
+  // all of its critical and high findings again.
+  describe("a previous scan stored before canonical URLs", () => {
+    const OLD_URL = "https://example.com";
+    const NEW_URL = "https://example.com/";
+
+    it("is the same set of findings as an identical rescan, not a new one", async () => {
+      const before = finding({
+        id: legacyFindingId("hsts-missing", OLD_URL),
+        severity: "high",
+      });
+      installQueryMock({ previousFindings: [before], previousUrl: OLD_URL });
+
+      const result = await checkForNewCriticalOrHighFindings({
+        userId: 1,
+        url: NEW_URL,
+        scanId: 99,
+        currentFindings: [
+          { ...before, id: generateId("hsts-missing", NEW_URL) },
+        ],
+      });
+
+      expect(result.hasNewCriticalOrHigh).toBe(false);
+      expect(result.newFindings).toEqual([]);
+      expect(result.outstandingFindings.map((f) => f.id)).toEqual([
+        generateId("hsts-missing", NEW_URL),
+      ]);
+    });
+
+    it("matches a multi-hit finding by the hit its old id never folded in", async () => {
+      const check = "page-outdated-vulnerable-library";
+      const excerpts = [{ label: "script", value: "/js/jquery-1.8.3.js" }];
+      const before = finding({
+        id: legacyFindingId(check, OLD_URL),
+        severity: "high",
+        evidence: "jQuery 1.8.3",
+        evidenceExcerpts: excerpts,
+      });
+      installQueryMock({ previousFindings: [before], previousUrl: OLD_URL });
+
+      const result = await checkForNewCriticalOrHighFindings({
+        userId: 1,
+        url: NEW_URL,
+        scanId: 99,
+        currentFindings: [
+          {
+            ...before,
+            id: generateId(
+              check,
+              NEW_URL,
+              hitDistinguisher({ excerpts, evidence: before.evidence }),
+            ),
+          },
+        ],
+      });
+
+      expect(result.newFindings).toEqual([]);
+      expect(result.outstandingFindings).toHaveLength(1);
+    });
+
+    it("still reports a finding the old scan did not have", async () => {
+      installQueryMock({
+        previousFindings: [
+          finding({ id: legacyFindingId("hsts-missing", OLD_URL) }),
+        ],
+        previousUrl: OLD_URL,
+      });
+
+      const result = await checkForNewCriticalOrHighFindings({
+        userId: 1,
+        url: NEW_URL,
+        scanId: 99,
+        currentFindings: [
+          finding({ id: generateId("hsts-missing", NEW_URL) }),
+          finding({
+            id: generateId("csp-missing", NEW_URL),
+            severity: "critical",
+          }),
+        ],
+      });
+
+      expect(result.newFindings.map((f) => f.id)).toEqual([
+        generateId("csp-missing", NEW_URL),
+      ]);
+    });
   });
 });

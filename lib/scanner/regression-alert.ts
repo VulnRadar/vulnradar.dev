@@ -19,8 +19,9 @@
  * Identity alone is not the whole answer, though: the id carries no severity,
  * so the severity of each matched finding is compared separately below.
  *
- * "New" is relative to the most recent prior *completed* scan of the exact
- * same (normalized) URL for the same user -- the same row a hand-triggered
+ * "New" is relative to the most recent prior *completed* scan of the same
+ * site for the same user (lib/scanner/previous-scan.ts, the lookup the scan's
+ * own stored diff makes too) -- the same row a hand-triggered
  * compare would land on if you asked it to diff against "whatever came
  * before this one." A finding whose most recent feedback
  * (scan_finding_feedback, see app/api/v3/scan/feedback/route.ts) is
@@ -42,18 +43,7 @@ import pool from "@/lib/database/db";
 import type { Vulnerability } from "./types";
 import { diffFindingsByKey } from "./finding-diff";
 import { HUMAN_FEEDBACK_SQL } from "./feedback-source";
-import { scanUrlLookupForms } from "./scan-identity";
-
-/**
- * Every stored spelling of `url`. Scans are stored in their canonical form
- * now, root slash included, while rows from before that hold the root without
- * it, so a lookup by one spelling alone read the first scan after the change
- * as the site's first and re-alerted on everything already known.
- */
-function urlForms(url: string): string[] {
-  const forms = scanUrlLookupForms(url);
-  return forms.length > 0 ? forms : [url];
-}
+import { getPreviousCompletedScan, urlForms } from "./previous-scan";
 
 function isCriticalOrHigh(f: Vulnerability): boolean {
   return f.severity === "critical" || f.severity === "high";
@@ -110,28 +100,6 @@ async function getTriagedFindingIds(
   }
 }
 
-/** The most recent *other*, completed scan of this exact URL for this user
- *  -- "previous scan" for diffing purposes. Excludes the scan currently
- *  being finalized (`excludeScanId`) so a scan never diffs against itself. */
-async function getPreviousScanFindings(
-  userId: number,
-  url: string,
-  excludeScanId: number,
-): Promise<Vulnerability[]> {
-  const result = await pool.query<{ findings: unknown }>(
-    `SELECT findings FROM scan_history
-     WHERE user_id = $1 AND url = ANY($2::text[]) AND id != $3
-       AND status = 'completed'
-     ORDER BY scanned_at DESC
-     LIMIT 1`,
-    [userId, urlForms(url), excludeScanId],
-  );
-  const raw = result.rows[0]?.findings;
-  if (!raw) return [];
-  const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-  return Array.isArray(parsed) ? (parsed as Vulnerability[]) : [];
-}
-
 export interface RegressionCheckParams {
   userId: number;
   /** The scanned URL, used both as the scan_history lookup key and the
@@ -167,14 +135,17 @@ export async function checkForNewCriticalOrHighFindings(
 ): Promise<RegressionCheckResult> {
   const { userId, url, scanId, currentFindings } = params;
 
-  const [previousFindings, falsePositiveIds, triagedIds] = await Promise.all([
-    getPreviousScanFindings(userId, url, scanId),
+  const [previous, falsePositiveIds, triagedIds] = await Promise.all([
+    getPreviousCompletedScan(userId, url, scanId),
     getSuppressedFindingIds(userId, url),
     getTriagedFindingIds(userId, url),
   ]);
   // One set from here down: "the user has already dealt with this", whether
   // they dealt with it by calling it wrong or by accepting it.
   const suppressedIds = new Set([...falsePositiveIds, ...triagedIds]);
+  // Ids already read in today's form (lib/scanner/previous-scan.ts), so a scan
+  // stored before canonical URLs is not a scan that had none of these.
+  const previousFindings = previous?.findings ?? [];
 
   const { added, unchanged } = diffFindingsByKey(
     previousFindings,

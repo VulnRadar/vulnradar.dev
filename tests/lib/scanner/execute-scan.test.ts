@@ -119,6 +119,7 @@ vi.mock("@/lib/scanner/cve-enrichment", () => ({
 const { executeScan, normalizeUrl } =
   await import("@/lib/scanner/execute-scan");
 const { canonicalScanUrl } = await import("@/lib/scanner/scan-identity");
+const { generateId, legacyFindingId } = await import("@/lib/scanner/_helpers");
 const { REFUSED_RESPONSES } = await import("./refused-page-fixtures");
 const { userAgentOf } = await import("./_user-agent-of");
 const { SCANNER_UA } = await import("@/lib/scanner/user-agent");
@@ -1138,14 +1139,20 @@ describe("executeScan scores what the owner has not ruled out", () => {
    * The default answers, plus a person's false-positive verdict on X and a
    * previous completed scan of the same URL that had X and Z.
    */
-  function installTriagedScan(previous: Vulnerability[] | null) {
+  function installTriagedScan(
+    previous: Vulnerability[] | null,
+    previousUrl = "https://example.com/",
+  ) {
     mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
       if (sql.includes("FROM scan_finding_feedback")) {
         return { rows: [{ finding_id: X.id }], rowCount: 1 };
       }
-      if (sql.includes("SELECT id, findings FROM scan_history")) {
+      if (sql.includes("SELECT id, url, findings FROM scan_history")) {
         return previous
-          ? { rows: [{ id: 77, findings: previous }], rowCount: 1 }
+          ? {
+              rows: [{ id: 77, url: previousUrl, findings: previous }],
+              rowCount: 1,
+            }
           : { rows: [], rowCount: 0 };
       }
       if (sql.includes("SELECT email FROM users")) return { rows: [] };
@@ -1236,10 +1243,52 @@ describe("executeScan scores what the owner has not ruled out", () => {
       fixedIds: [Z.id],
     });
     const lookup = mockQuery.mock.calls.find(([sql]) =>
-      (sql as string).includes("SELECT id, findings FROM scan_history"),
+      (sql as string).includes("SELECT id, url, findings FROM scan_history"),
     );
     expect(lookup?.[0]).toContain("status = 'completed'");
-    expect(lookup?.[1]).toEqual([42, "https://example.com/", 42]);
+    // Every stored spelling of the site, the same lookup the regression
+    // alert makes: the two used to disagree about which scan came before.
+    expect(lookup?.[1]).toEqual([
+      42,
+      ["https://example.com/", "https://example.com"],
+      42,
+    ]);
+  });
+
+  // A previous scan stored as "https://example.com", before canonical URLs,
+  // carries ids hashed from that spelling. Compared by id with today's, every
+  // finding read as new and every old one as fixed.
+  it("reads a previous scan stored before canonical URLs in today's ids", async () => {
+    const OLD_URL = "https://example.com";
+    const NEW_URL = "https://example.com/";
+    const now = [
+      vuln(generateId("hsts-missing", NEW_URL), "low"),
+      vuln(generateId("csp-missing", NEW_URL), "medium"),
+    ];
+    installTriagedScan(
+      [
+        vuln(legacyFindingId("hsts-missing", OLD_URL), "low"),
+        vuln(legacyFindingId("csp-missing", OLD_URL), "medium"),
+      ],
+      OLD_URL,
+    );
+    mockRunSyncChecks.mockReturnValue({
+      findings: now,
+      checksRun: 2,
+      checksSkipped: 0,
+      checksErrored: 0,
+      erroredChecks: [],
+      deduped: 0,
+    });
+
+    await executeScan(baseParams({ scanId: 45 }));
+
+    const meta = JSON.parse(completedParams()[6] as string);
+    expect(meta.diffAgainst).toEqual({
+      previousScanId: 77,
+      newIds: [],
+      fixedIds: [],
+    });
   });
 
   it("stores no diff for the first scan of a URL", async () => {

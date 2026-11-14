@@ -52,6 +52,7 @@ import pool from "@/lib/database/db";
 import { scoreFindings, scoreMeta } from "./score-findings";
 import { getFalsePositiveIds } from "./remediation-store";
 import { diffFindingsByKey } from "./finding-diff";
+import { getPreviousCompletedScan } from "./previous-scan";
 import { getSettings } from "@/lib/config/runtime-config";
 import { logError } from "@/lib/logging/log";
 import { runWithScanId } from "@/lib/database/request-context";
@@ -267,11 +268,11 @@ function rowWasClaimed(result: boolean | void): boolean {
 
 /**
  * The owner's view of what changed since their previous completed scan of the
- * same URL, stored on the scan so the result can say "new since last scan"
- * without diffing on every render. The same previous-scan lookup the
- * regression alert makes (lib/scanner/regression-alert.ts), by finding id.
- * Null for a first scan, and on any failure: a missing line is fine, a failed
- * scan is not.
+ * same site, stored on the scan so the result can say "new since last scan"
+ * without diffing on every render. The same previous scan the regression
+ * alert diffs against (lib/scanner/previous-scan.ts), by finding id, with the
+ * previous scan's ids read in today's form. Null for a first scan, and on any
+ * failure: a missing line is fine, a failed scan is not.
  */
 async function diffAgainstPreviousScan(
   userId: number,
@@ -284,25 +285,15 @@ async function diffAgainstPreviousScan(
   fixedIds: string[];
 } | null> {
   try {
-    const result = await pool.query<{ id: number; findings: unknown }>(
-      `SELECT id, findings FROM scan_history
-       WHERE user_id = $1 AND url = $2 AND id != $3 AND status = 'completed'
-       ORDER BY scanned_at DESC
-       LIMIT 1`,
-      [userId, url, scanId],
-    );
-    const row = result.rows[0];
-    if (!row || typeof row.id !== "number") return null;
-    const raw =
-      typeof row.findings === "string"
-        ? JSON.parse(row.findings)
-        : row.findings;
-    const previous = Array.isArray(raw) ? (raw as Vulnerability[]) : [];
-    const { added, removed } = diffFindingsByKey(previous, findings, (f) =>
-      String(f.id),
+    const previous = await getPreviousCompletedScan(userId, url, scanId);
+    if (!previous || typeof previous.id !== "number") return null;
+    const { added, removed } = diffFindingsByKey(
+      previous.findings,
+      findings,
+      (f) => String(f.id),
     );
     return {
-      previousScanId: row.id,
+      previousScanId: previous.id,
       newIds: added.map((f) => f.id),
       fixedIds: removed.map((f) => f.id),
     };
