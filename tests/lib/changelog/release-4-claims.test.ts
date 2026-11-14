@@ -66,3 +66,53 @@ describe("4.0.0 team entries", () => {
     );
   });
 });
+
+describe("4.0.0 wave 3b entries", () => {
+  const changes = () => release?.changes ?? [];
+  const labelsWhere = (match: (desc: string) => boolean) =>
+    changes()
+      .filter((c) => match(c.desc))
+      .map((c) => c.label);
+
+  // Each of these was told twice, by two pieces of the release that both
+  // touched it, and the two tellings had already started to differ.
+  it("tells the sign-up captcha timeout once", () => {
+    expect(
+      labelsWhere(
+        (d) => /captcha/i.test(d) && /10 seconds|ten seconds/i.test(d),
+      ),
+    ).toEqual(["Third-Party Calls Give Up After Ten Seconds"]);
+  });
+
+  it("tells an admin's correction cancelling a waiting email change once", () => {
+    expect(
+      labelsWhere(
+        (d) =>
+          /\badmin\b/i.test(d) &&
+          /(waiting|pending) (email )?(change|address)|change the account had waiting/i.test(
+            d,
+          ),
+      ),
+    ).toEqual(["Email Changes Wait for Confirmation"]);
+  });
+
+  it("tells the past gift expiry refusal once", () => {
+    expect(
+      labelsWhere((d) => /gift/i.test(d) && /in the past/i.test(d)),
+    ).toEqual(["Gift Expiry Uses Your Local Time"]);
+  });
+
+  it("tells Force Logout's API key message once", () => {
+    expect(
+      labelsWhere((d) => /Force Logout/.test(d) && /API keys/.test(d)),
+    ).toEqual(["Admin Actions on Protected Accounts Are Disabled Up Front"]);
+  });
+
+  // Crawls adopt the owner's verdicts in their own wave; until then the
+  // entry must not promise every later scan.
+  it("scopes dismissed false positives to the scans that honour them", () => {
+    expect(desc("False Positives Stay Dismissed on Every Rescan")).toContain(
+      "every later single-page or signed-in scan of the same site",
+    );
+  });
+});

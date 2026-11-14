@@ -1183,7 +1183,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Database] **[FIXED]** **Deploys Can No Longer Rewind an Id Sequence**
   The startup check that repairs id sequences could move one backwards while the previous version was still saving data, which made new records fail with a duplicate id. It now only ever moves a sequence forward.
 - [Database] **[CHANGED]** **Database Groundwork for 4.0.0 Features**
-  The database gains the columns 4.0.0 features rely on: pending email changes, AI usage by feature, schedule outcomes and stored scan settings, webhook event filters and failure tracking, links from crawl pages to their crawl, AI verifier reasons, verified domain addresses, API key expiry, and what a mailed code is for. Feedback the AI verifier filled in is now marked as AI, and everything a person set stays theirs. The upgrade command adds the same columns.
+  The database gains the columns 4.0.0 features rely on: pending email changes, AI usage by feature, schedule outcomes and stored scan settings, webhook event filters and failure tracking, links from crawl pages to their crawl, AI verifier reasons, API key expiry, and what a mailed code is for. Feedback the AI verifier filled in is now marked as AI, and everything a person set stays theirs. The upgrade command adds the same columns.
 - [Tag] **[FIXED]** **Scans No Longer Lose Their Results to a Failed Tag Write**
   If saving a scan's automatic tags failed, the database quietly threw away the scan's completion too, and the scan sat at running until it was closed as stale. Now only the tags are skipped and the results are kept. If the completion itself is rolled back, the scan is marked failed straight away instead of being reported as finished.
 - [CircleSlash] **[FIXED]** **Cancelling a Scan Stops It in Every Part of the Server**
@@ -1209,13 +1209,13 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Gauge] **[SECURITY]** **Feedback Can No Longer Be Used to Undermine a Check**
   A check's accuracy is now counted in distinct people, never in rows, so one account or the AI verifier's suggestions can no longer lower a check's confidence on other customers' scans. Marking results is rate limited and only accepts a finding the named scan reported. In v3, POST /scan/feedback now requires scanHistoryId.
 - [CheckCircle] **[FIXED]** **False Positives Stay Dismissed on Every Rescan**
-  A finding you mark false positive stays out of the summary, the count, the risk score and the grade on every later scan of the same site, not only on the scan you marked. The grade and badge update as soon as you mark it. Accepted risks still count toward the grade. The public host report still describes every finding.
+  A finding you mark false positive stays out of the summary, the count, the risk score and the grade on every later single-page or signed-in scan of the same site, not only on the scan you marked. The grade and badge update as soon as you mark it. Accepted risks still count toward the grade. The public host report still describes every finding.
 - [Fingerprint] **[ENGINE]** **Finding Ids Stay Put**
   A finding keeps its id when a second vulnerable library appears on the page or goes away, and when the same site is entered with or without the root slash or in different letter case, so triage marks and remediation status carry over. Existing marks are copied to the new ids when the server starts.
 - [Activity] **[ADDED]** **Scans Record What Changed Since Last Time**
   Each scan now stores which findings are new and which were fixed since your previous completed scan of the same URL, ready for the result view to show.
 - [KeyRound] **[SECURITY]** **Email Confirmation for Accounts Without a Password**
-  Accounts that sign in with Google, GitHub or Discord and have no password now confirm security changes with a code emailed to them: setting a password, changing the email address, changing two-step settings, generating backup codes, linking another sign-in provider and staff actions. Before, a stolen session was enough to make any of these changes.
+  Accounts that sign in with Google, GitHub or Discord and have no password now confirm security changes with a code emailed to them: setting a password, changing the email address, changing two-step settings, generating backup codes, linking another sign-in provider, deleting the account and staff actions. Before, a stolen session was enough to make any of these changes.
 - [Smartphone] **[SECURITY]** **Remembered Devices Stored as a Hash**
   Remembered devices are now stored as a one-way hash, so a copy of the database can no longer be used to skip two-step sign-in. A device remembered before this update asks for the second step once more.
 - [Mail] **[FIXED]** **Email Codes Check the Inbox First**
@@ -1223,7 +1223,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Fingerprint] **[FIXED]** **Two-Step Sign-In With Two Sign-Ins in Progress**
   Two-step sign-in no longer fails when a password sign-in and a Google, GitHub or Discord sign-in were started in the same browser. The code is now sent for, and checked against, the most recent one. Signing in also no longer cancels a confirmation code already on its way for a security change.
 - [MailOpen] **[SECURITY]** **Email Changes Wait for Confirmation**
-  Changing your email address now takes effect only when you open the link sent to the new address. Until then you keep signing in and getting mail at your current address, and that address gets a security notice once the change goes through. If another account takes the new address first, the change is cancelled, and an address an admin sets in the meantime replaces the waiting change.
+  Changing your email address now takes effect only when you open the link sent to the new address. Until then you keep signing in and getting mail at your current address, and that address gets a security notice once the change goes through. If another account takes the new address first, the change is cancelled. If an admin changes the account's address in the meantime, the waiting change is cancelled and its link stops working, so opening it later cannot swap the old pending address back in.
 - [UserCog] **[FIXED]** **Long Display Names**
   A display name over the allowed length is now refused with a clear message instead of a server error.
 - [Image] **[SECURITY]** **Profile Pictures From Discord**
@@ -1242,8 +1242,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Signing out, or signing out everywhere, while an admin is impersonating a user now also ends the admin's own saved session in that browser. Signing out everywhere also forgets trusted devices, says so before you confirm, and tells you how many API keys are still active.
 - [Key] **[SECURITY]** **Old Password Hashes Are Upgraded at Sign-In**
   Accounts whose passwords were stored with the older, cheaper hash are re-hashed at the current cost the next time they sign in. Two first sign-ups on a fresh install can no longer both become super admin.
-- [Mail] **[FIXED]** **Long Email Addresses and Slow Captcha Checks**
-  Password reset and sign-up no longer fail with a server error for very long email addresses. Sign-up now waits at most 10 seconds for the captcha service and asks the visitor to try again if it can't be reached.
+- [Mail] **[FIXED]** **Long Email Addresses No Longer Break Sign-Up**
+  Password reset and sign-up no longer fail with a server error for very long email addresses.
 - [Users] **[SECURITY]** **Leaving a Team Ends What You Shared With It**
   When someone leaves a team or is removed from it, their verified domains, scheduled scans and webhooks stop being shared with that team straight away. Teammates can no longer run active scans or port sweeps against a domain whose owner has left. This changes how v3 behaves now.
 - [ShieldQuestion] **[SECURITY]** **Domain Verification Switch Fails Closed**
@@ -1259,13 +1259,11 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [ShieldAlert] **[SECURITY]** **Batch AI Verification Respects Scan Blocks**
   Batch AI verification now refuses a target that the blocklist or the domain's owner has blocked from scanning, with the same blocked answer a scan gets, before any request is sent to it.
 - [FileText] **[SECURITY]** **Admin Notes Are Tied to Their Account**
-  Editing or deleting an admin note now only works on a note about the account being acted on, and a note about yourself can only be changed by whoever wrote it.
+  Editing or deleting an admin note now only works on a note about the account being acted on. Only its author or an admin can change a note, a note about yourself can only be changed by whoever wrote it, and the user panel greys out Edit and Delete on the notes you cannot change.
 - [KeyRound] **[ADMIN]** **Password Lockout Counts Wrong Passwords Only**
   The admin re-auth limit now counts only wrong passwords on actions that ask for one, so notes, badges and multi-field saves no longer lock a moderator out partway through.
 - [CalendarClock] **[FIXED]** **Disabling an Account Pauses Its Scheduled Scans**
   Disabling an account now pauses its scheduled scans, and enabling it again resumes the same ones on their normal schedule. Schedules the owner paused stay paused.
-- [CreditCard] **[ADMIN]** **Gift Expiry and Force Logout Report What Happened**
-  A gifted plan can no longer be given an expiry in the past, which used to end the active gift, and Force Logout now says whether API keys were revoked or left in place.
 - [Bell] **[SECURITY]** **Staff Notices Follow the 2FA Policy**
   Site notices written for staff or for admins are no longer shown to a staff account that the two-factor requirement has locked out of the admin panel, or to a session that still carries a role the account has since lost.
 - [FileSpreadsheet] **[SECURITY]** **Audit Log Export Is Safe to Open in a Spreadsheet**
@@ -1309,15 +1307,13 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [UserCog] **[ADMIN]** **Admin Panel No Longer Crashes on an Account You Cannot Open**
   Following a stale or refused user link in the admin panel now shows a short message and the user list instead of the whole panel falling over, and the dead link is cleared from the address bar. Roles without access to accounts no longer get links to them in the audit log.
 - [Shield] **[ADMIN]** **Admin Actions on Protected Accounts Are Disabled Up Front**
-  The user panel now greys out edits, role changes, badges, notes and support actions on accounts your role cannot act on (a peer, a higher role, the owner account, or yourself for destructive actions and clearing your own rate limits), with one note saying why, so you are no longer asked for your password only to be refused. Force Logout All says plainly when your role cannot revoke API keys, and no longer claims it did.
+  The user panel now greys out edits, role changes, badges, notes and support actions on accounts your role cannot act on (a peer, a higher role, the owner account, or yourself for destructive actions and clearing your own rate limits), with one note saying why, so you are no longer asked for your password only to be refused. Force Logout All now says whether API keys were revoked or left in place, and no longer claims it revoked them when your role cannot.
 - [List] **[FIXED]** **Admin Lists Show Failures and Real Totals**
   The user and team directories badge the total across all pages, say 1 scan and 1 API key correctly, and step back to the last page with rows after a delete empties one. Content, team members and AI conversations show a retry when a request fails instead of looking empty, and saving an account or badges now reloads once instead of after every write. The staff list's date column is labelled Account created, which is what it shows.
 - [CalendarClock] **[FIXED]** **Gift Expiry Uses Your Local Time**
-  The gift subscription dialog now shows and saves the expiry in your local time zone instead of shifting it by your UTC offset each time you save, and it will not accept a time in the past. The admin jump list also respects reduced motion.
+  The gift subscription dialog now shows and saves the expiry in your local time zone instead of shifting it by your UTC offset each time you save. A gifted plan can no longer be given an expiry in the past, which used to end the active gift at once. The admin jump list also respects reduced motion.
 - [ShieldCheck] **[SECURITY]** **A Trailing Dot No Longer Slips Past the Blocklist**
   A blocked host written with a trailing dot, such as blocked.com. or its percent-encoded form, read as a different host to the blocklist but was still fetched as blocked.com. The dot is now removed before the rules are checked, on every scan, crawl, bulk scan, discovery and AI verification.
-- [Mail] **[SECURITY]** **An Admin's Email Correction Cannot Be Undone by an Old Link**
-  When an admin changes an account's email address, any email change the account had waiting is cancelled and its confirmation link stops working, so opening that link later can no longer swap the old pending address back in.
 
 ---
 
@@ -3626,6 +3622,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1505
+- **Total changes documented:** 1503
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

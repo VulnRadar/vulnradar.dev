@@ -3838,7 +3838,7 @@ const CHANGELOG: Release[] = [
       {
         icon: MailOpen,
         label: "Email Changes Wait for Confirmation",
-        desc: "Changing your email address now takes effect only when you open the link sent to the new address. Until then you keep signing in and getting mail at your current address, and that address gets a security notice once the change goes through. If another account takes the new address first, the change is cancelled, and an address an admin sets in the meantime replaces the waiting change.",
+        desc: "Changing your email address now takes effect only when you open the link sent to the new address. Until then you keep signing in and getting mail at your current address, and that address gets a security notice once the change goes through. If another account takes the new address first, the change is cancelled. If an admin changes the account's address in the meantime, the waiting change is cancelled and its link stops working, so opening it later cannot swap the old pending address back in.",
         category: "security",
       },
       {
@@ -3897,8 +3897,8 @@ const CHANGELOG: Release[] = [
       },
       {
         icon: Mail,
-        label: "Long Email Addresses and Slow Captcha Checks",
-        desc: "Password reset and sign-up no longer fail with a server error for very long email addresses. Sign-up now waits at most 10 seconds for the captcha service and asks the visitor to try again if it can't be reached.",
+        label: "Long Email Addresses No Longer Break Sign-Up",
+        desc: "Password reset and sign-up no longer fail with a server error for very long email addresses.",
         category: "fixed",
       },
       {
@@ -3960,12 +3960,6 @@ const CHANGELOG: Release[] = [
         label: "Disabling an Account Pauses Its Scheduled Scans",
         desc: "Disabling an account now pauses its scheduled scans, and enabling it again resumes the same ones on their normal schedule. Schedules the owner paused stay paused.",
         category: "fixed",
-      },
-      {
-        icon: CreditCard,
-        label: "Gift Expiry and Force Logout Report What Happened",
-        desc: "A gifted plan can no longer be given an expiry in the past, which used to end the active gift, and Force Logout now says whether API keys were revoked or left in place.",
-        category: "admin",
       },
       {
         icon: Bell,
@@ -4096,7 +4090,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Shield,
         label: "Admin Actions on Protected Accounts Are Disabled Up Front",
-        desc: "The user panel now greys out edits, role changes, badges, notes and support actions on accounts your role cannot act on (a peer, a higher role, the owner account, or yourself for destructive actions and clearing your own rate limits), with one note saying why, so you are no longer asked for your password only to be refused. Force Logout All says plainly when your role cannot revoke API keys, and no longer claims it did.",
+        desc: "The user panel now greys out edits, role changes, badges, notes and support actions on accounts your role cannot act on (a peer, a higher role, the owner account, or yourself for destructive actions and clearing your own rate limits), with one note saying why, so you are no longer asked for your password only to be refused. Force Logout All now says whether API keys were revoked or left in place, and no longer claims it revoked them when your role cannot.",
         category: "admin",
       },
       {
@@ -4108,19 +4102,13 @@ const CHANGELOG: Release[] = [
       {
         icon: CalendarClock,
         label: "Gift Expiry Uses Your Local Time",
-        desc: "The gift subscription dialog now shows and saves the expiry in your local time zone instead of shifting it by your UTC offset each time you save, and it will not accept a time in the past. The admin jump list also respects reduced motion.",
+        desc: "The gift subscription dialog now shows and saves the expiry in your local time zone instead of shifting it by your UTC offset each time you save. A gifted plan can no longer be given an expiry in the past, which used to end the active gift at once. The admin jump list also respects reduced motion.",
         category: "fixed",
       },
       {
         icon: ShieldCheck,
         label: "A Trailing Dot No Longer Slips Past the Blocklist",
         desc: "A blocked host written with a trailing dot, such as blocked.com. or its percent-encoded form, read as a different host to the blocklist but was still fetched as blocked.com. The dot is now removed before the rules are checked, on every scan, crawl, bulk scan, discovery and AI verification.",
-        category: "security",
-      },
-      {
-        icon: Mail,
-        label: "An Admin's Email Correction Cannot Be Undone by an Old Link",
-        desc: "When an admin changes an account's email address, any email change the account had waiting is cancelled and its confirmation link stops working, so opening that link later can no longer swap the old pending address back in.",
         category: "security",
       },
     ],
