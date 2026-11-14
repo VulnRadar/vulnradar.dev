@@ -1001,16 +1001,18 @@ export async function* generateSqlDump({
     }
     yield headerLines.join("\n") + "\n\n";
 
-    yield marker("DUMP", {
-      format: DUMP_FORMAT,
-      version: DUMP_FORMAT_VERSION,
-      appVersion: meta.appVersion ?? null,
-      schemaVersion: schemaVersion ?? null,
-      createdAt: new Date().toISOString(),
-      tables: plan.order,
-      skipped: plan.skipped.map((s) => s.table),
-      incomplete: unsupported,
-    }) + "\n";
+    yield (
+      marker("DUMP", {
+        format: DUMP_FORMAT,
+        version: DUMP_FORMAT_VERSION,
+        appVersion: meta.appVersion ?? null,
+        schemaVersion: schemaVersion ?? null,
+        createdAt: new Date().toISOString(),
+        tables: plan.order,
+        skipped: plan.skipped.map((s) => s.table),
+        incomplete: unsupported,
+      }) + "\n"
+    );
 
     for (const stmt of DUMP_PREAMBLE) {
       yield `${marker("STMT")}\n${stmt};\n`;
@@ -1027,8 +1029,10 @@ export async function* generateSqlDump({
       if (ext.schema !== "public") {
         yield `${marker("STMT")}\nCREATE SCHEMA IF NOT EXISTS ${quoteIdent(ext.schema)};\n`;
       }
-      yield `${marker("STMT")}\nCREATE EXTENSION IF NOT EXISTS ` +
-        `${quoteIdent(ext.name)} WITH SCHEMA ${quoteIdent(ext.schema)};\n`;
+      yield (
+        `${marker("STMT")}\nCREATE EXTENSION IF NOT EXISTS ` +
+        `${quoteIdent(ext.name)} WITH SCHEMA ${quoteIdent(ext.schema)};\n`
+      );
     }
 
     for (const fn of functions) {
@@ -1043,27 +1047,35 @@ export async function* generateSqlDump({
     }
 
     for (const table of tables) {
-      yield `${marker("STMT")}\n` +
-        `${renderCreateTable(table, columnsByTable[table] || [])}\n`;
+      yield (
+        `${marker("STMT")}\n` +
+        `${renderCreateTable(table, columnsByTable[table] || [])}\n`
+      );
     }
 
     for (const seq of sequences) {
       if (seq.ownedByIdentity || !seq.ownerTable) continue;
-      yield `${marker("STMT")}\nALTER SEQUENCE ${qualify(seq.name)} OWNED BY ` +
-        `${qualify(seq.ownerTable)}.${quoteIdent(seq.ownerColumn)};\n`;
+      yield (
+        `${marker("STMT")}\nALTER SEQUENCE ${qualify(seq.name)} OWNED BY ` +
+        `${qualify(seq.ownerTable)}.${quoteIdent(seq.ownerColumn)};\n`
+      );
     }
 
     for (const table of tables) {
       for (const col of columnsByTable[table] || []) {
         if (col.generated === "s" || col.identity || !col.defaultExpr) continue;
-        yield `${marker("STMT")}\nALTER TABLE ONLY ${qualify(table)} ` +
-          `ALTER COLUMN ${quoteIdent(col.name)} SET DEFAULT ${col.defaultExpr};\n`;
+        yield (
+          `${marker("STMT")}\nALTER TABLE ONLY ${qualify(table)} ` +
+          `ALTER COLUMN ${quoteIdent(col.name)} SET DEFAULT ${col.defaultExpr};\n`
+        );
       }
     }
 
     for (const view of views) {
-      yield `${marker("STMT")}\nCREATE VIEW ${qualify(view.name)} AS\n` +
-        `${view.def.replace(/;?\s*$/, "")};\n`;
+      yield (
+        `${marker("STMT")}\nCREATE VIEW ${qualify(view.name)} AS\n` +
+        `${view.def.replace(/;?\s*$/, "")};\n`
+      );
     }
 
     // ── Data ──────────────────────────────────────────────────────────────
@@ -1091,8 +1103,10 @@ export async function* generateSqlDump({
         );
       }
 
-      yield `${marker("COPY", { table, columns: names })}\n` +
-        `${renderCopyHeader(table, names)}\n`;
+      yield (
+        `${marker("COPY", { table, columns: names })}\n` +
+        `${renderCopyHeader(table, names)}\n`
+      );
 
       const keyTypes = usablePk.map((k) => typeOf.get(k));
       const keyIndexes = usablePk.map((k) => names.indexOf(k));
@@ -1149,8 +1163,10 @@ export async function* generateSqlDump({
 
     for (const con of constraints) {
       if (con.type === "f") continue; // foreign keys come last
-      yield `${marker("STMT")}\nALTER TABLE ONLY ${qualify(con.table)} ` +
-        `ADD CONSTRAINT ${quoteIdent(con.name)} ${con.def};\n`;
+      yield (
+        `${marker("STMT")}\nALTER TABLE ONLY ${qualify(con.table)} ` +
+        `ADD CONSTRAINT ${quoteIdent(con.name)} ${con.def};\n`
+      );
     }
 
     for (const idx of indexes) {
@@ -1165,8 +1181,10 @@ export async function* generateSqlDump({
     // a foreign key added after every row exists cannot be violated by it.
     for (const con of constraints) {
       if (con.type !== "f") continue;
-      yield `${marker("STMT")}\nALTER TABLE ONLY ${qualify(con.table)} ` +
-        `ADD CONSTRAINT ${quoteIdent(con.name)} ${con.def};\n`;
+      yield (
+        `${marker("STMT")}\nALTER TABLE ONLY ${qualify(con.table)} ` +
+        `ADD CONSTRAINT ${quoteIdent(con.name)} ${con.def};\n`
+      );
     }
 
     for (const trg of triggers) {
