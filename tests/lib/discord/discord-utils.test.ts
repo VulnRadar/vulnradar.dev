@@ -78,14 +78,18 @@ describe("sendDiscordEmail2FACode", () => {
     await sendDiscordEmail2FACode(42, "user@example.com");
 
     expect(mockQuery).toHaveBeenCalledTimes(2);
+    // Only earlier sign-in codes go: a step-up code in flight survives.
     const [deleteSql, deleteParams] = mockQuery.mock.calls[0];
     expect(deleteSql).toContain("DELETE FROM email_2fa_codes");
-    expect(deleteParams).toEqual([42]);
+    expect(deleteParams).toEqual([42, "login"]);
 
     const [insertSql, insertParams] = mockQuery.mock.calls[1];
     expect(insertSql).toContain("INSERT INTO email_2fa_codes");
-    const [userId, codeHash, codeSalt, expiryMinutes] = insertParams;
+    const [userId, codeHash, codeSalt, expiryMinutes, purpose] = insertParams;
     expect(userId).toBe(42);
+    // Stored for the login purpose by the one issuer, not left to the
+    // column default.
+    expect(purpose).toBe("login");
     expect(typeof codeHash).toBe("string");
     expect(typeof codeSalt).toBe("string");
     // The expiry is a bound parameter from the admin setting, not a literal

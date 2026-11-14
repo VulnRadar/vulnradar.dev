@@ -2,7 +2,7 @@
 import { email2FACodeEmail, sendEmail } from "@/lib/email/email";
 import { encryptApiKey, decryptApiKey } from "@/lib/auth/crypto";
 import { getSetting } from "@/lib/config/runtime-config";
-import { randomInt, randomBytes, createHash } from "node:crypto";
+import { storeEmailCode } from "@/lib/auth/email-codes";
 
 /**
  * How long one call to Discord's API may take: the token refresh here, and
@@ -21,29 +21,13 @@ export async function sendDiscordEmail2FACode(
   userEmail: string,
 ): Promise<void> {
   try {
-    // Delete old codes for this user
-    await pool.query(
-      "DELETE FROM email_2fa_codes WHERE user_id = $1 AND purpose = 'login'",
-      [userId],
-    );
-
-    // Generate 6-digit code
-    const code = randomInt(100000, 999999).toString();
-
-    // L-2: salted hash. Same shape as the login route's email 2FA.
-    const codeSalt = randomBytes(32).toString("hex");
-    const codeHash = createHash("sha256")
-      .update(`${codeSalt}:${code}`)
-      .digest("hex");
-    // Read the admin setting, same as the other three insert sites (login,
-    // 2fa/email-send, oauth callback). This was a hardcoded INTERVAL '10
-    // minutes' literal, so changing EMAIL_2FA_CODE_EXPIRY_MINUTES in the admin
-    // panel silently did not apply to the Discord sign-in path.
+    // Read the admin setting, same as the other sign-in paths. This was a
+    // hardcoded INTERVAL '10 minutes' literal, so changing
+    // EMAIL_2FA_CODE_EXPIRY_MINUTES in the admin panel silently did not apply
+    // to the Discord sign-in path. Issued by the one issuer
+    // (lib/auth/email-codes.ts), for the login purpose only.
     const codeExpiryMinutes = await getSetting("EMAIL_2FA_CODE_EXPIRY_MINUTES");
-    await pool.query(
-      "INSERT INTO email_2fa_codes (user_id, code_hash, code_salt, expires_at) VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 minute'))",
-      [userId, codeHash, codeSalt, codeExpiryMinutes],
-    );
+    const code = await storeEmailCode(userId, "login", codeExpiryMinutes);
 
     // Send the email
     const emailContent = email2FACodeEmail(code, codeExpiryMinutes);

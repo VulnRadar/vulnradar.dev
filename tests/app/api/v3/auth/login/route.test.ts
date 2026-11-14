@@ -509,13 +509,19 @@ describe("POST /api/v3/auth/login", () => {
     expect(json.twoFactorMethod).toBe("email");
     expect(json.maskedEmail).toBe("us***@example.com");
     expect(email2FAInsertCalls).toHaveLength(1);
+    // Stored for the login purpose by the one issuer (lib/auth/email-codes.ts),
+    // not left to the column default by a hand-rolled INSERT.
+    expect(email2FAInsertCalls[0]![4]).toBe("login");
     // Only earlier sign-in codes are cleared: a step-up or setup code mailed
     // to the same account a moment ago has to survive a sign-in elsewhere.
     const cleared = mockQuery.mock.calls
-      .map(([sql]) => String(sql))
-      .filter((sql) => sql.startsWith("DELETE FROM email_2fa_codes"));
+      .filter(([sql]) => String(sql).startsWith("DELETE FROM email_2fa_codes"))
+      .map(([sql, params]) => [String(sql), params]);
     expect(cleared).toEqual([
-      "DELETE FROM email_2fa_codes WHERE user_id = $1 AND purpose = 'login'",
+      [
+        "DELETE FROM email_2fa_codes WHERE user_id = $1 AND purpose = $2",
+        [expect.any(Number), "login"],
+      ],
     ]);
     // Email send is queued via setImmediate; flush the macrotask queue.
     await new Promise((resolve) => setImmediate(resolve));

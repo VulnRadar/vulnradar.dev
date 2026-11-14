@@ -726,6 +726,9 @@ describe("GET /api/v3/auth/discord/callback", () => {
       await new Promise((resolve) => setImmediate(resolve));
 
       expect(emailCodeInsertCalls).toHaveLength(1);
+      // Stored for the login purpose by the one issuer, not left to the
+      // column default by a hand-rolled INSERT.
+      expect(emailCodeInsertCalls[0]![4]).toBe("login");
       expect(mockSendEmail).toHaveBeenCalledTimes(1);
     });
 

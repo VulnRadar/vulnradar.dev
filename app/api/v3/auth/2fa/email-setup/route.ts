@@ -226,9 +226,14 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
     "UPDATE users SET totp_enabled = false, two_factor_method = NULL WHERE id = $1",
     [session.userId],
   );
-  await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [
-    session.userId,
-  ]);
+  // The codes email sign-in issued, and an inbox check still waiting. Not a
+  // step-up (purpose 'reauth'): a password-less account confirming another
+  // change in another tab would have its code cancelled under it, the bug the
+  // sign-in paths had until they cleared their own purpose only.
+  await pool.query(
+    "DELETE FROM email_2fa_codes WHERE user_id = $1 AND purpose IN ('login', 'setup')",
+    [session.userId],
+  );
   // Same reasoning as the authenticator-app disable route: a device_trust row
   // is a standing "skip the second factor here" grant, so leaving them behind
   // meant re-enabling 2FA later silently re-honoured every previously trusted

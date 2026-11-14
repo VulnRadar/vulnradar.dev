@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomInt, randomBytes, createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   getUserByEmail,
   verifyPassword,
@@ -45,6 +45,7 @@ import { cookiesRequireHttps } from "@/lib/auth/cookie-secure";
 import { upgradePasswordHash } from "@/lib/auth/auth";
 import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
 import { logError } from "@/lib/logging/log";
+import { maskEmail, storeEmailCode } from "@/lib/auth/email-codes";
 
 // The pending sign-ins the OAuth and Discord callbacks park while they wait
 // for a second factor (app/api/v3/auth/oauth/[provider]/callback and
@@ -319,31 +320,14 @@ export const POST = withErrorHandling(async (request: Request) => {
     // If email 2FA, generate code and queue the email send (non-blocking)
     let maskedEmail: string | undefined;
     if (twoFactorMethod === "email") {
-      // Delete old codes
-      await pool.query(
-        "DELETE FROM email_2fa_codes WHERE user_id = $1 AND purpose = 'login'",
-        [user.id],
-      );
-      // Generate 6-digit code
-      const code = randomInt(100000, 999999).toString();
-      // L-2: salted hash. Per-row 32-byte random salt + SHA-256 keeps
-      // the verification table safe even if the DB leaks — a 6-digit
-      // code has only 10^6 ≈ 20 bits of entropy, so an unsalted
-      // pre-computed table is trivial to reverse.
-      const codeSalt = randomBytes(32).toString("hex");
-      const codeHash = createHash("sha256")
-        .update(`${codeSalt}:${code}`)
-        .digest("hex");
+      // The one issuer (lib/auth/email-codes.ts): salted, stored for the
+      // login purpose only, so a step-up or inbox-check code mailed to the
+      // same account a moment ago survives a sign-in elsewhere.
       const codeExpiryMinutes = await getSetting(
         "EMAIL_2FA_CODE_EXPIRY_MINUTES",
       );
-      await pool.query(
-        "INSERT INTO email_2fa_codes (user_id, code_hash, code_salt, expires_at) VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 minute'))",
-        [user.id, codeHash, codeSalt, codeExpiryMinutes],
-      );
-      // Mask email for UI
-      const parts = user.email.split("@");
-      maskedEmail = parts[0].substring(0, 2) + "***@" + parts[1];
+      const code = await storeEmailCode(user.id, "login", codeExpiryMinutes);
+      maskedEmail = maskEmail(user.email);
       // Send email in background - don't block the login response
       const emailContent = email2FACodeEmail(code, codeExpiryMinutes);
       setImmediate(() => {

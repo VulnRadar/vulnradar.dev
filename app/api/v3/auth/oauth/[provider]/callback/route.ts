@@ -18,7 +18,6 @@
 //     to a different identity at this provider.
 
 import { NextResponse } from "next/server";
-import { randomInt, randomBytes, createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import {
   createOAuthUser,
@@ -28,6 +27,7 @@ import {
 } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { getSetting, resolveAppUrl } from "@/lib/config/runtime-config";
+import { storeEmailCode } from "@/lib/auth/email-codes";
 import {
   OAUTH_PROVIDERS,
   isOAuthProviderConfigured,
@@ -534,20 +534,8 @@ async function sendOAuthEmail2FACode(
   userId: number,
   userEmail: string,
 ): Promise<void> {
-  await pool.query(
-    "DELETE FROM email_2fa_codes WHERE user_id = $1 AND purpose = 'login'",
-    [userId],
-  );
-  const code = randomInt(100000, 999999).toString();
-  const codeSalt = randomBytes(32).toString("hex");
-  const codeHash = createHash("sha256")
-    .update(`${codeSalt}:${code}`)
-    .digest("hex");
   const codeExpiryMinutes = await getSetting("EMAIL_2FA_CODE_EXPIRY_MINUTES");
-  await pool.query(
-    "INSERT INTO email_2fa_codes (user_id, code_hash, code_salt, expires_at) VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 minute'))",
-    [userId, codeHash, codeSalt, codeExpiryMinutes],
-  );
+  const code = await storeEmailCode(userId, "login", codeExpiryMinutes);
   const emailContent = email2FACodeEmail(code, codeExpiryMinutes);
   await sendEmail({
     to: userEmail,

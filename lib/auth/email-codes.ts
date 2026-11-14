@@ -47,7 +47,26 @@ export async function issueEmailCode(
   if (recent.rows.length > 0) {
     return { ok: false, retryAfterSeconds: cooldownSeconds };
   }
+  return {
+    ok: true,
+    code: await storeEmailCode(userId, purpose, expiryMinutes),
+  };
+}
 
+/**
+ * Replace this purpose's codes with a fresh one and return it for mailing,
+ * with no resend cooldown. The sign-in paths (the password sign-in and the
+ * OAuth and Discord callbacks) issue through this: each sign-in that reaches
+ * the second step mails its own code. They used to hand-roll the DELETE and
+ * the INSERT, which left the purpose to the column default and drew the code
+ * from randomInt(100000, 999999), whose upper bound is exclusive, so 999999
+ * was never sent.
+ */
+export async function storeEmailCode(
+  userId: number,
+  purpose: EmailCodePurpose,
+  expiryMinutes: number,
+): Promise<string> {
   await pool.query(
     "DELETE FROM email_2fa_codes WHERE user_id = $1 AND purpose = $2",
     [userId, purpose],
@@ -59,7 +78,7 @@ export async function issueEmailCode(
     "INSERT INTO email_2fa_codes (user_id, code_hash, code_salt, expires_at, purpose) VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 minute'), $5)",
     [userId, hashCode(salt, code), salt, expiryMinutes, purpose],
   );
-  return { ok: true, code };
+  return code;
 }
 
 /**

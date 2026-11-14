@@ -96,10 +96,18 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     return { rows: [] };
   if (s.startsWith("DELETE FROM email_2fa_codes WHERE user_id")) {
     deleteCodesCalls.push(params);
+    // Either one purpose bound as $2, or the literal list the disable path
+    // names, or (what it used to send) every purpose.
+    const listed = /purpose IN \(([^)]*)\)/.exec(s)?.[1];
+    const purposes = listed
+      ? listed.split(",").map((p) => p.trim().replace(/'/g, ""))
+      : params.length > 1
+        ? [params[1] as string]
+        : null;
     codeRows = codeRows.filter(
       (r) =>
         r.user_id !== params[0] ||
-        (params.length > 1 && r.purpose !== params[1]),
+        (purposes !== null && !purposes.includes(r.purpose)),
     );
     return { rows: [] };
   }
@@ -523,5 +531,30 @@ describe("DELETE /api/v3/auth/2fa/email-setup", () => {
 
     await new Promise((resolve) => setImmediate(resolve));
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  // Turning email codes off clears the codes email sign-in issued and a
+  // waiting inbox check. It used to clear every purpose, so a step-up code
+  // mailed for a change in another tab stopped working under it: the same
+  // bug the sign-in paths had until they cleared their own purpose only.
+  it("leaves a step-up code in flight when it turns email codes off", async () => {
+    login(1);
+    userRow = {
+      ...passwordUser(),
+      totp_enabled: true,
+      two_factor_method: "email",
+    };
+    codeRows = ["login", "setup", "reauth"].map((purpose) => ({
+      id: nextCodeId++,
+      user_id: 1,
+      code_hash: "h",
+      code_salt: "s",
+      purpose,
+    }));
+
+    const res = await DELETE(req("DELETE", { password: REAL_PASSWORD }));
+
+    expect(res.status).toBe(200);
+    expect(codeRows.map((r) => r.purpose)).toEqual(["reauth"]);
   });
 });
