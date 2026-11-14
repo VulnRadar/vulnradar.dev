@@ -3796,7 +3796,7 @@ const CHANGELOG: Release[] = [
       {
         icon: CheckCircle,
         label: "False Positives Stay Dismissed on Every Rescan",
-        desc: "A finding you mark false positive stays out of the summary, the count, the risk score and the grade on every later scan of the same site, not only on the scan you marked. The grade and badge update as soon as you mark it. Accepted risks still count toward the grade. The public host report still describes every finding.",
+        desc: "A finding you mark false positive stays out of the summary, the count, the risk score and the grade on every later single-page or signed-in scan of the same site, not only on the scan you marked. The grade and badge update as soon as you mark it. Accepted risks still count toward the grade. The public host report still describes every finding.",
         category: "fixed",
       },
       {

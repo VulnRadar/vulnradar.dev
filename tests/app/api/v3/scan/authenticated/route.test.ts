@@ -178,6 +178,16 @@ vi.mock("@/lib/webhooks/scan-notifications", () => ({
   notifyScanComplete: (...args: unknown[]) => mockNotifyScanComplete(...args),
 }));
 
+// The owner's false-positive verdicts, read once per scan. Mocked at the
+// module boundary so the read does not take the INSERT's place in the
+// mockQuery sequence the persistence assertions below depend on.
+const mockGetFalsePositiveIds = vi.fn(
+  async (..._args: unknown[]) => new Set<string>(),
+);
+vi.mock("@/lib/scanner/remediation-store", () => ({
+  getFalsePositiveIds: (...args: unknown[]) => mockGetFalsePositiveIds(...args),
+}));
+
 const { POST } = await import("@/app/api/v3/scan/authenticated/route");
 const { userAgentOf } = await import("@/tests/lib/scanner/_user-agent-of");
 const { SCANNER_UA_AUTHENTICATED } = await import("@/lib/scanner/user-agent");
@@ -192,6 +202,8 @@ function postRequest(body: unknown): NextRequest {
 
 beforeEach(() => {
   mockQuery.mockReset();
+  mockGetFalsePositiveIds.mockReset();
+  mockGetFalsePositiveIds.mockResolvedValue(new Set());
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue({ userId: 42 });
   mockEstablishScanSession.mockReset();
@@ -1123,6 +1135,80 @@ describe("POST /api/v3/scan/authenticated - the page behind the login", () => {
     expect(userAgentOf(mockSafeFetch.mock.calls[0][1] as RequestInit)).toBe(
       SCANNER_UA_AUTHENTICATED,
     );
+  });
+});
+
+/**
+ * A finding the owner marked false positive is left out of what a scan counts
+ * on every later scan of the site (lib/scanner/score-findings.ts). The
+ * single-page executor did that and this route did not: a finding dismissed
+ * on a normal scan came back in the summary, the count and the danger score
+ * of the next signed-in scan, and the stored result had no grade or safety
+ * rating at all.
+ */
+describe("POST /api/v3/scan/authenticated - the owner's verdicts", () => {
+  function finding(id: string, severity: "critical" | "low") {
+    return {
+      id,
+      title: `Finding ${id}`,
+      severity,
+      category: "headers",
+      description: "d",
+      evidence: "e",
+      riskImpact: "r",
+      explanation: "x",
+      fixSteps: [],
+      codeExamples: [],
+      confidence: 90,
+    };
+  }
+
+  it("scores the scan without a finding the owner ruled out, and keeps it in the row", async () => {
+    const { scoreFindings } = await import("@/lib/scanner/score-findings");
+    const ruledOut = finding("xss-reflected--a", "critical");
+    const kept = finding("hsts-missing--b", "low");
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [ruledOut, kept],
+      incomplete: [],
+    });
+    mockGetFalsePositiveIds.mockResolvedValue(new Set([ruledOut.id]));
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 970 }] });
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockGetFalsePositiveIds).toHaveBeenCalledWith(42);
+    expect(json.summary).toMatchObject({ critical: 0, low: 1, total: 1 });
+
+    const insert = mockQuery.mock.calls.find((call) =>
+      String(call[0]).includes("INSERT INTO scan_history"),
+    )!;
+    const params = insert[1] as unknown[];
+    const stored = JSON.parse(String(params[3])) as { id: string }[];
+    expect(stored.map((f) => f.id).sort()).toEqual(
+      [ruledOut.id, kept.id].sort(),
+    );
+    expect(JSON.parse(String(params[2]))).toMatchObject({
+      critical: 0,
+      total: 1,
+    });
+    expect(params[4]).toBe(1);
+
+    const expected = scoreFindings(
+      [kept] as Parameters<typeof scoreFindings>[0],
+      new Set(),
+    );
+    const meta = persistedResultMeta(mockQuery.mock.calls);
+    expect(meta.dangerScore).toBe(expected.dangerScore);
+    expect(meta.siteGrade).toBe(expected.siteGrade);
+    expect(meta.safetyRating).toBe(expected.safetyRating);
+    expect(meta.engineConfidence).toBe(expected.engineConfidence);
+    expect(json.dangerScore).toBe(expected.dangerScore);
   });
 });
 

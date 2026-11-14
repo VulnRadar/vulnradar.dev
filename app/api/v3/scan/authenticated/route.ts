@@ -38,13 +38,10 @@ import {
   ERROR_MESSAGES,
   SEVERITY_PRIORITY,
 } from "@/lib/config/constants";
-import { summarizeFindings } from "@/lib/scanner/severity-summary";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import type { Category, Vulnerability } from "@/lib/scanner/types";
-import {
-  getDangerScore,
-  getEngineConfidence,
-} from "@/lib/scanner/safety-rating";
+import { scoreFindings, scoreMeta } from "@/lib/scanner/score-findings";
+import { getFalsePositiveIds } from "@/lib/scanner/remediation-store";
 import {
   PAGE_CHECKS_INCOMPLETE,
   dedupeScanFindings,
@@ -615,8 +612,6 @@ async function createAuthenticatedScan(
       (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
     );
 
-    const summary = summarizeFindings(findings);
-
     const duration = Date.now() - startTime;
     const capturedHeaders: Record<string, string> = {};
     headers.forEach((value, key) => {
@@ -644,15 +639,20 @@ async function createAuthenticatedScan(
       ...(pageBlocked ? [BOT_CHALLENGE_INCOMPLETE] : []),
     ];
 
-    // Headline signals, same as a normal scan (getDangerScore/getEngineConfidence
-    // are pure over the findings). Without these an authenticated scan showed
-    // only duration + scanned time on the summary; they are also stored in
-    // result_meta so the History view of this scan matches every other result.
-    const dangerScore = getDangerScore(findings);
-    const engineConfidence = getEngineConfidence(
-      findings,
-      incomplete.length > 0,
-    );
+    // Headline signals, scored the way a single-page scan scores them
+    // (lib/scanner/score-findings.ts): the owner's false-positive verdicts
+    // leave a finding out of the summary, the count, the danger score, the
+    // grade and the safety rating on every later scan, not only on the one
+    // the verdict was given on. This route used to count every finding, so
+    // a finding dismissed on a normal scan was back in the headline of the
+    // next signed-in scan, and the History view of it had no grade or safety
+    // rating at all. Every finding stays in the row. A failed verdict read
+    // counts everything.
+    const suppressedIds = await getFalsePositiveIds(authedUserId);
+    const score = scoreFindings(findings, suppressedIds, {
+      incomplete: incomplete.length > 0,
+    });
+    const { summary, dangerScore, engineConfidence } = score;
     const resultMeta = {
       checksRun: syncResult.checksRun,
       ...(syncResult.checksErrored > 0
@@ -661,8 +661,7 @@ async function createAuthenticatedScan(
             erroredChecks: syncResult.erroredChecks,
           }
         : {}),
-      dangerScore,
-      engineConfidence,
+      ...scoreMeta(score),
       ...(incomplete.length > 0 ? { incomplete } : {}),
       // What answered in place of the signed-in page, as the single-page
       // executor records it.
@@ -687,7 +686,7 @@ async function createAuthenticatedScan(
           finalScanUrl,
           JSON.stringify(summary),
           JSON.stringify(findings),
-          summary.total,
+          score.findingsCount,
           duration,
           isApiKeyAuth ? "api" : "web",
           JSON.stringify(redactedHeaders),
