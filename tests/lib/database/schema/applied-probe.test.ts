@@ -25,7 +25,9 @@ const {
   appliedSql,
   checkValues,
   classifyStatement,
+  constraintAbsent,
   lockPlan,
+  relationAbsent,
   splitSqlStatements,
   stepProbe,
 } = await import("@/lib/database/schema/applied-probe.mjs");
@@ -335,6 +337,36 @@ describe("a CREATE INDEX CONCURRENTLY step", () => {
       `DROP INDEX CONCURRENTLY IF EXISTS ${step.concurrentIndex}`,
       norm((stepQueries(step) as string[])[0]),
     ]);
+  });
+});
+
+/**
+ * ai_usage swaps its (user_id, window_start) primary key for the
+ * (user_id, window_start, kind) unique index. The index step is warn-mode and
+ * can give up on the boot's lock timeout, and the drop used to be guarded on
+ * the old key alone, so it went ahead and left the table with no key: every
+ * ON CONFLICT (user_id, window_start, kind) upsert then failed.
+ */
+describe("the ai_usage key swap", () => {
+  it("drops the old key only once the new one exists", () => {
+    const build = byId("ai-usage-kind");
+    const created =
+      /CREATE UNIQUE INDEX IF NOT EXISTS (\w+)\s+ON ai_usage\(user_id, window_start, kind\)/.exec(
+        String(build.sql),
+      )?.[1];
+    expect(created).toBe("idx_ai_usage_user_window_kind");
+
+    const drop = byId("ai-usage-drop-window-key");
+    // The step runs when the guard says "not applied", so the guard has to
+    // count a missing replacement as nothing to do.
+    expect(drop.guard?.runWhen ?? false).toBe(false);
+    expect(drop.guard?.sql).toBe(
+      appliedSql([
+        `(${constraintAbsent("ai_usage", "ai_usage_pkey")}) OR (${relationAbsent(created!)})`,
+      ]),
+    );
+    // And it comes after the step that builds the index.
+    expect(steps.indexOf(drop)).toBeGreaterThan(steps.indexOf(build));
   });
 });
 
