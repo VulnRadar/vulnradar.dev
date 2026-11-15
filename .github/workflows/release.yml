@@ -950,9 +950,11 @@ jobs:
             LATEST=true
           fi
           echo "Latest release: ${LATEST} (highest stable tag ${HIGHEST})"
+          # The files step joins its list with spaces; none of the names has one.
+          read -r -a FILES <<< "${ARTIFACTS}"
           if gh release view "${TAG}" >/dev/null 2>&1; then
             echo "Release ${TAG} already exists; will upload assets."
-            gh release upload "${TAG}" ${ARTIFACTS} --clobber
+            gh release upload "${TAG}" "${FILES[@]}" --clobber
             gh release edit "${TAG}" --latest="${LATEST}"
           else
             echo "Creating release ${TAG}."
@@ -969,20 +971,20 @@ jobs:
             # app/api/version/route.ts polls, so every self-hosted instance
             # was offered a release candidate or an old-line backport as an
             # upgrade. GitHub excludes prereleases from /releases/latest.
-            PRERELEASE=""
+            PRERELEASE=()
             case "${TAG}" in
-              *-*) PRERELEASE="--prerelease" ;;
+              *-*) PRERELEASE=(--prerelease) ;;
             esac
             gh release create "${TAG}" \
               --title "${TAG}" \
               --notes-file "${NOTES}" \
               --latest="${LATEST}" \
-              ${PRERELEASE} \
-              ${ARTIFACTS}
+              "${PRERELEASE[@]}" \
+              "${FILES[@]}"
             rm -f "${NOTES}"
           fi
           gh release view "${TAG}" --json url -q .url > release_url.txt
-          echo "release_url=$(cat release_url.txt)" >> $GITHUB_OUTPUT
+          echo "release_url=$(cat release_url.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Summary
         env:

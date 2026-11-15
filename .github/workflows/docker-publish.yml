@@ -172,10 +172,10 @@ jobs:
 
       - name: Extract version from tag
         id: vars
-        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
 
       - name: Convert owner to lowercase
-        run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+        run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
 
       # release: `:latest` used to move on ANY v* tag. The repository
       # already carries tags like v1.9.4-patch.1, and app/api/version reads

@@ -535,7 +535,8 @@ jobs:
             BACKUP_DIR=ci-psql-check BACKUP_RETENTION_DAYS=0 \
             npm run db:backup
 
-          DUMP=$(ls -t ci-psql-check/*.sql.gz | head -1)
+          DUMP=$(find ci-psql-check -maxdepth 1 -name '*.sql.gz' -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
+          test -n "$DUMP"
           echo "importing $DUMP"
           gunzip -c "$DUMP" > ci-psql-check/dump.sql
 
@@ -967,6 +968,7 @@ jobs:
         run: |
           set -euo pipefail
           cp .env.example .env
+          # shellcheck disable=SC2329 # run by the EXIT trap below, which shellcheck does not follow
           cleanup() {
             status=$?
             if [ "$status" -ne 0 ]; then docker compose logs --no-color --tail 200 app || true; fi
