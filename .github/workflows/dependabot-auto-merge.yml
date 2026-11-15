@@ -53,10 +53,17 @@ jobs:
   dependabot-merge:
     name: Auto-merge patch updates
     runs-on: ubuntu-latest
-    # Longer than the wait loop's own 45-minute ceiling, which outlasts the
-    # slowest check on a pull request (the self-host smoke test allows 40
-    # minutes, and the image checks build an image before they start).
-    timeout-minutes: 55
+    # Longer than the wait loop's own 85-minute ceiling. The ceiling has to
+    # outlast the slowest chain of jobs a Dependabot pull request can start:
+    # Site checks runs on every root package.json, package-lock.json or
+    # Dockerfile bump, and its Lighthouse job (55 minutes) only starts after
+    # the image build (25), so 80 minutes before it reports. At 45 the gate
+    # gave up on every such patch bump while Lighthouse was still running.
+    # tests/repo/workflow-trust.test.ts derives that chain from the
+    # workflows and fails when a job grows past the ceiling. The job sits
+    # at the 90-minute cap every workflow job is held to, so a chain that
+    # grows past 85 has to get shorter rather than this wait longer.
+    timeout-minutes: 90
     # The pull request's author, GitHub's documented check for Dependabot.
     # github.actor is whoever caused this particular event, which is not the
     # same question: Dependabot is the actor when it pushes to the branch of a
@@ -95,7 +102,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          deadline=$(( $(date +%s) + 45 * 60 ))
+          deadline=$(( $(date +%s) + 85 * 60 ))
 
           # Each check as {name, bucket}. Check runs: pass on success, neutral
           # or skipped; pending until completed; anything else completed
@@ -107,7 +114,7 @@ jobs:
 
           while :; do
             if [ "$(date +%s)" -ge "$deadline" ]; then
-              echo "::error::Timed out after 45 minutes waiting for CI to report on ${HEAD_SHA}."
+              echo "::error::Timed out after 85 minutes waiting for CI to report on ${HEAD_SHA}."
               exit 1
             fi
 

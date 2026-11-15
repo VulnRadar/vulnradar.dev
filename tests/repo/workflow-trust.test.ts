@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -757,7 +758,7 @@ describe("dependabot-auto-merge.yml merges only the head CI checked", () => {
     expect(body).toMatch(
       /if \[ "\$pending" -eq 0 \] && \[ "\$passed" -gt 0 \]; then/,
     );
-    expect(body).toMatch(/deadline=\$\(\( \$\(date \+%s\) \+ 45 \* 60 \)\)/);
+    expect(body).toMatch(/deadline=\$\(\( \$\(date \+%s\) \+ \d+ \* 60 \)\)/);
   });
 
   it("still excludes only itself, by its job name", () => {
@@ -789,9 +790,101 @@ describe("dependabot-auto-merge.yml merges only the head CI checked", () => {
     );
   });
 
+  const waitMinutes = Number(
+    /deadline=\$\(\( \$\(date \+%s\) \+ (\d+) \* 60 \)\)/.exec(
+      runBody(gate.code),
+    )![1],
+  );
+
+  it("says the same ceiling in its timeout message", () => {
+    expect(runBody(gate.code)).toContain(
+      `Timed out after ${waitMinutes} minutes waiting`,
+    );
+  });
+
+  /**
+   * The longest chain of `needs:` a Dependabot pull request can start, in
+   * timeout-minutes, across every workflow with a pull_request trigger. The
+   * gate waits for every check on the head, path-filtered report-only ones
+   * included, so a ceiling below this chain gives up on a pull request whose
+   * checks are all still on their way to passing. That is what happened when
+   * Site checks arrived: image (25) then Lighthouse (55) against a 45-minute
+   * wait, on every root npm or Dockerfile bump.
+   */
+  function slowestPullRequestChain(): { minutes: number; path: string } {
+    const dir = path.join(process.cwd(), ".github", "workflows");
+    let slowest = { minutes: 0, path: "" };
+    for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
+      if (file === "dependabot-auto-merge.yml") continue;
+      const wf = readWorkflow(file);
+      if (!/^ {2}pull_request:/m.test(topLevel(wf, "on")?.body ?? "")) continue;
+      const jobs = jobsOf(wf);
+      const ctx: Ctx = {
+        github: {
+          event_name: "pull_request",
+          actor: "dependabot[bot]",
+          event: { pull_request: { user: { login: "dependabot[bot]" } } },
+        },
+        inputs: {},
+      };
+      const runs = (job: (typeof jobs)[number]) => {
+        if (job.condition === null) return true;
+        try {
+          return evaluate(job.condition, ctx);
+        } catch {
+          // A condition the evaluator cannot read counts as one that runs.
+          return true;
+        }
+      };
+      const memo = new Map<string, { minutes: number; path: string }>();
+      const chain = (id: string): { minutes: number; path: string } => {
+        const known = memo.get(id);
+        if (known) return known;
+        const job = jobs.find((j) => j.id === id)!;
+        expect(
+          job.timeoutMinutes,
+          `${file} ${id} sets timeout-minutes`,
+        ).not.toBeNull();
+        const own = Number(job.timeoutMinutes);
+        const needs = (job.needs ?? "")
+          .replace(/^\[|\]$/g, "")
+          .split(",")
+          .map((n) => n.trim())
+          .filter(Boolean);
+        let before = { minutes: 0, path: "" };
+        for (const n of needs) {
+          const c = chain(n);
+          if (c.minutes > before.minutes) before = c;
+        }
+        const result = {
+          minutes: before.minutes + own,
+          path: `${before.path ? `${before.path} -> ` : `${file}: `}${id} (${own})`,
+        };
+        memo.set(id, result);
+        return result;
+      };
+      for (const job of jobs.filter(runs)) {
+        const c = chain(job.id);
+        if (c.minutes > slowest.minutes) slowest = c;
+      }
+    }
+    return slowest;
+  }
+
+  it("waits longer than the slowest chain of jobs a pull request starts", () => {
+    const slowest = slowestPullRequestChain();
+    // The chain is Site checks' image build then Lighthouse today; a
+    // reader that found nothing would make this test pass vacuously.
+    expect(slowest.minutes).toBeGreaterThanOrEqual(80);
+    // Five minutes over the chain's own timeouts, for runner queueing.
+    expect(waitMinutes, slowest.path).toBeGreaterThanOrEqual(
+      slowest.minutes + 5,
+    );
+  });
+
   it("outlasts its own wait", () => {
     const job = jobsOf(dependabot).find((j) => j.id === "dependabot-merge")!;
-    expect(Number(job.timeoutMinutes)).toBeGreaterThan(45);
+    expect(Number(job.timeoutMinutes)).toBeGreaterThan(waitMinutes);
     expect(job.permissions).toEqual({
       contents: "write",
       "pull-requests": "write",
