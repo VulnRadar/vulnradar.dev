@@ -111,13 +111,26 @@ let turnstileSuccess = true;
 // How the siteverify call goes wrong, when it does: a timeout (what
 // AbortSignal.timeout raises), an HTML error page in place of JSON, or a 5xx.
 let turnstileFailure: "timeout" | "html" | "status" | null = null;
+// Matched on the parsed host, not a substring of the URL, so a request to some
+// other host that merely contains one of these names is never answered as it.
+const GRAVATAR_HOST = "www.gravatar.com";
+const TURNSTILE_HOST = "challenges.cloudflare.com";
+function hostOf(input: unknown): string {
+  try {
+    return new URL(input instanceof Request ? input.url : String(input))
+      .hostname;
+  } catch {
+    return "";
+  }
+}
+
 const mockFetch = vi.fn(
   async (input: RequestInfo | URL, _init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input.toString();
-    if (url.includes("gravatar.com")) {
+    const host = hostOf(input);
+    if (host === GRAVATAR_HOST) {
       return new Response(null, { status: 404 });
     }
-    if (url.includes("challenges.cloudflare.com")) {
+    if (host === TURNSTILE_HOST) {
       if (turnstileFailure === "timeout") {
         throw new DOMException(
           "The operation was aborted due to timeout",
@@ -811,8 +824,8 @@ describe("POST /api/v3/auth/signup", () => {
         }),
       );
 
-      const call = mockFetch.mock.calls.find(([input]) =>
-        String(input).includes("challenges.cloudflare.com"),
+      const call = mockFetch.mock.calls.find(
+        ([input]) => hostOf(input) === TURNSTILE_HOST,
       );
       expect(call?.[1]?.signal).toBeInstanceOf(AbortSignal);
     });
@@ -855,8 +868,8 @@ describe("POST /api/v3/auth/signup", () => {
     expect(res.status).toBe(200);
     await new Promise((resolve) => setImmediate(resolve));
 
-    const call = mockFetch.mock.calls.find(([input]) =>
-      String(input).includes("gravatar.com"),
+    const call = mockFetch.mock.calls.find(
+      ([input]) => hostOf(input) === GRAVATAR_HOST,
     );
     expect(call?.[1]?.signal).toBeInstanceOf(AbortSignal);
   }, 20_000);
