@@ -254,8 +254,9 @@ async function probeEscapedWrites(base, report) {
       },
     ],
     [404, "NOT_FOUND", { path: "/api%2Fv3%2Fhealth" }],
-    // Middleware caps the declared Content-Length, so two bytes of the
-    // declared two million are enough. An empty code accepts a 413 from
+    // Middleware caps the declared Content-Length, but the server copies the
+    // body for middleware and does not answer until that copy has ended, so
+    // the whole declared body is sent. An empty code accepts a 413 from
     // server.mjs's front server too.
     [
       413,
@@ -264,7 +265,7 @@ async function probeEscapedWrites(base, report) {
         method: "POST",
         path: "/%61pi/v3/scan",
         headers: { ...json, "Content-Length": "2000000" },
-        body: "{}",
+        body: " ".repeat(2_000_000),
       },
     ],
   ];
