@@ -87,10 +87,12 @@ jobs:
         #    (@next/swc-linux-*, @img/sharp-linux-*, @tailwindcss/oxide-linux-*,
         #    lightningcss-linux-*). `npm ci` then succeeds here and the app
         #    dies at next/font with "Cannot find native binding", breaking
-        #    CI and the Docker build at once. The lockfile has to be
-        #    repaired by grafting the entries back, not re-resolved, so
-        #    catching it at the PR is worth a lot more than catching it at
-        #    deploy.
+        #    CI and the Docker build at once. The musl entries are what the
+        #    Alpine images build with, and Turbopack has no WebAssembly
+        #    fallback, so a missing one fails the image build outright. The
+        #    lockfile has to be repaired by grafting the entries back, not
+        #    re-resolved, so catching it at the PR is worth a lot more than
+        #    catching it at deploy.
         run: |
           set -euo pipefail
           for f in pnpm-lock.yaml yarn.lock; do
@@ -100,7 +102,7 @@ jobs:
             fi
           done
           missing=""
-          for pkg in @next/swc-linux-x64-gnu @img/sharp-linux-x64 @tailwindcss/oxide-linux-x64-gnu lightningcss-linux-x64-gnu; do
+          for pkg in @next/swc-linux-x64-gnu @next/swc-linux-x64-musl @next/swc-linux-arm64-musl @img/sharp-linux-x64 @tailwindcss/oxide-linux-x64-gnu @tailwindcss/oxide-linux-x64-musl @tailwindcss/oxide-linux-arm64-musl lightningcss-linux-x64-gnu lightningcss-linux-x64-musl lightningcss-linux-arm64-musl; do
             grep -q "\"node_modules/${pkg}\"" package-lock.json || missing="${missing} ${pkg}"
           done
           if [ -n "${missing}" ]; then

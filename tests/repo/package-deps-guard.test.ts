@@ -166,12 +166,21 @@ describe("package-lock.json agrees with package.json", () => {
     ).toEqual([]);
   });
 
+  // The musl bindings are what the Alpine images build with. Turbopack, the
+  // default bundler since Next 16, has no WebAssembly fallback, so a lockfile
+  // that lost one breaks the image build outright.
   it("still carries the Linux native bindings a Windows regeneration strips", () => {
     for (const name of [
       "@next/swc-linux-x64-gnu",
+      "@next/swc-linux-x64-musl",
+      "@next/swc-linux-arm64-musl",
       "@img/sharp-linux-x64",
       "@tailwindcss/oxide-linux-x64-gnu",
+      "@tailwindcss/oxide-linux-x64-musl",
+      "@tailwindcss/oxide-linux-arm64-musl",
       "lightningcss-linux-x64-gnu",
+      "lightningcss-linux-x64-musl",
+      "lightningcss-linux-arm64-musl",
     ]) {
       expect(entries[`node_modules/${name}`], name).toBeDefined();
     }
