@@ -188,6 +188,15 @@ vi.mock("@/lib/scanner/remediation-store", () => ({
   getFalsePositiveIds: (...args: unknown[]) => mockGetFalsePositiveIds(...args),
 }));
 
+// The AI switch read behind the detached auto-tag suggestion. Left on the
+// shared pool it lands after the response, so the one a test starts can arrive
+// after the next test's reset and take that test's INSERT answer. AI off also
+// ends the suggestion there, before it reaches anything else.
+vi.mock("@/lib/ai/user-ai-config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/ai/user-ai-config")>()),
+  isAiDisabledForUser: async () => true,
+}));
+
 const { POST } = await import("@/app/api/v3/scan/authenticated/route");
 const { userAgentOf } = await import("@/tests/lib/scanner/_user-agent-of");
 const { SCANNER_UA_AUTHENTICATED } = await import("@/lib/scanner/user-agent");
@@ -851,8 +860,8 @@ describe("POST /api/v3/scan/authenticated", () => {
       ok: true,
       session: { lost: false, reason: null },
     });
-    // Answered by statement, not by call order: the post-scan AI switch read of
-    // the test before can still land on this pool after the reset.
+    // Answered by statement and found by its SQL, as the other team_id cases
+    // are, so a detached read cannot take the INSERT's place.
     mockQuery.mockImplementation(async (sql: string) =>
       String(sql).includes("INSERT INTO scan_history")
         ? { rows: [{ id: 128 }] }
