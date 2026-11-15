@@ -4111,6 +4111,12 @@ const CHANGELOG: Release[] = [
         desc: "A blocked host written with a trailing dot, such as blocked.com. or its percent-encoded form, read as a different host to the blocklist but was still fetched as blocked.com. The dot is now removed before the rules are checked, on every scan, crawl, bulk scan, discovery and AI verification.",
         category: "security",
       },
+      {
+        icon: Package,
+        label: "Next.js 16, and Every Dependency Brought Up to Date",
+        desc: "VulnRadar now runs on Next.js 16, and every package it depends on directly is on its newest release. The packages those pull in are on the newest version they accept. The one exception is TypeScript, which stays on 6 until the lint tooling can read 7. npm audit reports nothing at any severity, in the app and in the browser extension. If you build from source, builds now use Turbopack, Next.js's own compiler, which needs a platform Next.js ships a native build for: Linux on x64 or arm64, macOS, or Windows. Anywhere else the build stops with an error that names the --webpack flag. Running the Docker images works as before, and Node 22 is still the version to use.",
+        category: "selfhost",
+      },
     ],
   },
   {

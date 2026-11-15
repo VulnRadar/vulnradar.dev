@@ -1314,6 +1314,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   The gift subscription dialog now shows and saves the expiry in your local time zone instead of shifting it by your UTC offset each time you save. A gifted plan can no longer be given an expiry in the past, which used to end the active gift at once. The admin jump list also respects reduced motion.
 - [ShieldCheck] **[SECURITY]** **A Trailing Dot No Longer Slips Past the Blocklist**
   A blocked host written with a trailing dot, such as blocked.com. or its percent-encoded form, read as a different host to the blocklist but was still fetched as blocked.com. The dot is now removed before the rules are checked, on every scan, crawl, bulk scan, discovery and AI verification.
+- [Package] **[SELFHOST]** **Next.js 16, and Every Dependency Brought Up to Date**
+  VulnRadar now runs on Next.js 16, and every package it depends on directly is on its newest release. The packages those pull in are on the newest version they accept. The one exception is TypeScript, which stays on 6 until the lint tooling can read 7. npm audit reports nothing at any severity, in the app and in the browser extension. If you build from source, builds now use Turbopack, Next.js's own compiler, which needs a platform Next.js ships a native build for: Linux on x64 or arm64, macOS, or Windows. Anywhere else the build stops with an error that names the --webpack flag. Running the Docker images works as before, and Node 22 is still the version to use.
 
 ---
 
@@ -3622,6 +3624,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1503
+- **Total changes documented:** 1504
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

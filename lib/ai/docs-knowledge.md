@@ -2145,7 +2145,7 @@ config system is built from those constants. Edit there, not in random
 files.
 
 ### Notes
-- is a Next.js 15 App Router application with a single-process deployment. The runtime stack is deliberately small: one Next.js process + one PostgreSQL database. No Redis, no message broker, no separate API server. Everything you need to understand lives in this repository.
+- is a Next.js 16 App Router application with a single-process deployment. The runtime stack is deliberately small: one Next.js process + one PostgreSQL database. No Redis, no message broker, no separate API server. Everything you need to understand lives in this repository.
 - The top-level directories, then the folders inside lib/ and components/ , each with the page or file that covers it. At the root, instrumentation.ts is the Next.js startup hook that applies the schema, middleware.ts runs in front of every request except static files, and docker-compose.dev.yml builds the image from your checkout where docker-compose.yml pulls the published one.
 - See the Configuration page for full details. Flow:
 - The detection engine is split across per-category files:
