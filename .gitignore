@@ -48,6 +48,11 @@ CLAUDE.md
 *.tsbuildinfo
 tsconfig.tsbuildinfo
 
+# Written by next dev, next build and next typegen. Its contents differ
+# between dev (.next/dev/types) and build (.next/types), so it is not
+# tracked; Next's docs say the same. Prettier skips it through this file.
+next-env.d.ts
+
 # OS files
 Thumbs.db
 .DS_Store

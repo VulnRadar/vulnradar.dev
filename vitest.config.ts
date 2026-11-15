@@ -887,12 +887,13 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./"),
     },
   },
-  // Compile JSX for the tests. tsconfig.json says "jsx": "preserve", which is
-  // right for Next (it compiles JSX itself) and left every .tsx module
-  // unimportable here: Vite read the setting and handed raw JSX to the parser.
-  // With this, a test can import a server-side component and render it
-  // without a DOM, e.g. the social cards in app/_og through next/og. Anything
-  // that needs a DOM still has to opt into one.
+  // Compile JSX for the tests. tsconfig.json says "jsx": "react-jsx" now, the
+  // value Next 16 requires, but under the old "preserve" Vite read the setting
+  // and handed raw JSX to the parser, which left every .tsx module
+  // unimportable here. Saying it explicitly keeps the tests independent of how
+  // Vite reads tsconfig. With this, a test can import a server-side component
+  // and render it without a DOM, e.g. the social cards in app/_og through
+  // next/og. Anything that needs a DOM still has to opt into one.
   oxc: {
     jsx: { runtime: "automatic", importSource: "react" },
   },

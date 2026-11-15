@@ -180,6 +180,12 @@ jobs:
             fi
           done
 
+      - name: Generate Next's route types
+        # A fresh checkout has no next-env.d.ts (it is not tracked) and no
+        # .next/types. next build generates both before it type-checks, so
+        # this makes the check below see what the build checks.
+        run: npx next typegen
+
       - name: Run TypeScript typecheck
         # `continue-on-error: true` was removed here: any type error is a bug
         # and fails this job outright. See the enforcement note at the top.

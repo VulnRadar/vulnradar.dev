@@ -44,7 +44,6 @@ const KEPT_AT_ROOT: Record<string, string> = {
   "postcss.config.mjs": "the CSS pipeline reads it",
   "tailwind.config.mjs": "the CSS pipeline reads it",
   "globals.d.ts": "in tsconfig's include; next build typechecks it",
-  "next-env.d.ts": "next regenerates it, and typechecking wants it present",
   ".npmrc": "npm ci behaviour during the update",
   ".node-version": "hosts that pick a Node version from it",
   ".nvmrc": "hosts that pick a Node version from it",
