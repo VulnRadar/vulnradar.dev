@@ -19,7 +19,7 @@ export const CHECK_CATEGORY_LAST_MODIFIED: Record<string, string> = {
   "client-side": "2026-11-11",
   code: "2026-11-08",
   configuration: "2026-11-11",
-  content: "2026-11-11",
+  content: "2026-11-15",
   cookies: "2026-11-11",
   dns: "2026-11-11",
   email: "2026-11-11",
