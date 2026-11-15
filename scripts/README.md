@@ -84,6 +84,10 @@ scripts/
 │   ├── checks/                    # One module per SPIKE item
 │   └── lib/                       # HTTP, fixture, server and report helpers
 │
+├── ci/                            # Run by .github/workflows/ci.yml, never by hand
+│   ├── next16-build-checks.mjs    # Build job: Edge middleware and its compiled matchers in .next
+│   └── next16-runtime-probes.mjs  # Self-host job: script nonces, escaped API prefixes, route types
+│
 ├── backup-db.mjs                  # Full dump. Path pinned by lib/backup/run-backup.ts
 ├── restore-db.mjs                 # Restore a dump written by backup-db
 ├── vitest-completeness-reporter.mjs  # Vitest reporter, path pinned by vitest.config.ts

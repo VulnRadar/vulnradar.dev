@@ -527,6 +527,11 @@ jobs:
       - name: Build Next.js app
         run: npm run build
 
+      - name: Assert middleware still compiles for the Edge runtime and covers the API
+        # The bundler compiles the runtime and the matchers; the script says
+        # what it checks and why.
+        run: node scripts/ci/next16-build-checks.mjs .next
+
   # Builds the real image and boots it against an EMPTY Postgres, which is
   # exactly what a self-hoster does on first run. Nothing in CI did this
   # before, which is how three separate self-host-breaking defects shipped
@@ -769,6 +774,11 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Probe the running image for script nonces, escaped API writes and route types
+        # What Next takes part in at run time that no unit test sees; the
+        # script says what it checks and why.
+        run: node scripts/ci/next16-runtime-probes.mjs http://localhost:3000
 
       # VulnRadar must pass VulnRadar. Every route the sitemap publishes is
       # fetched from the container just booted and run through the same engine
