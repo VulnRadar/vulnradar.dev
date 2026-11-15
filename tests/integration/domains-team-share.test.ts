@@ -72,6 +72,10 @@ async function addMember(teamId: number, userId: number, role: string) {
  * U verified a domain and shared it, a schedule and a webhook with team T,
  * which X (a member, so allowed to scan under T) is also on.
  */
+// domain-reverify-rotation counts on every suite clearing its domains rows:
+// a verified row left here is due for re-checking and sorts ahead of its own.
+const createdDomainIds: number[] = [];
+
 async function sharedSetup() {
   const owner = await createUser();
   const u = await createUser();
@@ -88,6 +92,7 @@ async function sharedSetup() {
      RETURNING id`,
     [u.id, teamId, host, unique("tok").slice(-60)],
   );
+  createdDomainIds.push(d[0].id);
   const { rows: s } = await pool.query<{ id: number }>(
     `INSERT INTO scheduled_scans (user_id, team_id, url, frequency)
      VALUES ($1, $2, $3, 'weekly')
@@ -146,6 +151,9 @@ describeIntegration(
     });
 
     afterAll(async () => {
+      await pool.query(`DELETE FROM domains WHERE id = ANY($1)`, [
+        createdDomainIds,
+      ]);
       await clearSettings();
     });
 

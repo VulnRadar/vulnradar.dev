@@ -87,11 +87,25 @@ describeIntegration("ip rules match what a hostname resolves to", () => {
   });
 
   it("counts the hit against the rule that matched", async () => {
-    const before = await pool.query<{ hit_count: number }>(
-      `SELECT hit_count FROM access_rules
-        WHERE rule_type = 'blacklist' AND value_type = 'ip' AND value = $1`,
-      [RANGE],
-    );
+    // The blocks above each record a hit the same fire-and-forget way, and the
+    // last of them can still land after this test starts. Wait until the count
+    // stops moving so the baseline is not one short.
+    const hits = async () =>
+      (
+        await pool.query<{ hit_count: number }>(
+          `SELECT hit_count FROM access_rules
+            WHERE rule_type = 'blacklist' AND value_type = 'ip' AND value = $1`,
+          [RANGE],
+        )
+      ).rows[0].hit_count;
+    let settled = await hits();
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 200));
+      const now = await hits();
+      if (now === settled) break;
+      settled = now;
+    }
+    const before = { rows: [{ hit_count: settled }] };
 
     await checkAccessRules("https://c.example/", {
       resolvedAddresses: ["203.0.113.50"],
