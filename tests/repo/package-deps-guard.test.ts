@@ -46,8 +46,7 @@ const INSTALL_SCRIPTS = [
   "node_modules/@parcel/watcher",
   "node_modules/core-js",
   "node_modules/fsevents",
-  "node_modules/next-intl/node_modules/@swc/core",
-  "node_modules/unrs-resolver",
+  "node_modules/@swc/core",
 ];
 
 const TEST_TOOLS = ["vitest", "@vitest/coverage-v8", "vite"];

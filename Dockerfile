@@ -56,16 +56,15 @@ ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 # That turns out not to matter, for a different reason than the old comment
 # gave: nothing in the production tree needs an install script. sharp 0.35
 # ships its binaries as @img/* optional dependencies rather than building at
-# install time, and the Next SWC binaries are prebuilt the same way. Five
+# install time, and the Next SWC binaries are prebuilt the same way. Four
 # lockfile entries have hasInstallScript, and
 # tests/repo/package-deps-guard.test.ts fails when that list changes:
 #   @parcel/watcher (under next-intl): prebuilt binaries as optional
 #     dependencies; the script only compiles on request
-#   @swc/core (nested under next-intl): prebuilt the same way; the script
+#   @swc/core (a dependency of next-intl): prebuilt the same way; the script
 #     checks that a binding loads
 #   core-js: a donation banner
 #   fsevents: macOS only, optional
-#   unrs-resolver: dev only, for eslint, and this build never lints
 #
 # If a future dependency genuinely needs its install script, add a targeted
 # `npm rebuild <pkg>` after this line. Do not drop --ignore-scripts.
