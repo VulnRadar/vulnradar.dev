@@ -629,7 +629,9 @@ jobs:
         # found by a string only it contains, and finding no handler fails
         # the step instead of passing it. lib/config/client-constants.ts
         # still inlines the origin into APP_URL by design, which is why the
-        # whole tree is not searched.
+        # whole tree is not searched. grep exits 1 for searched and found
+        # nothing and 2 for could not search, so only a 1 passes: a holder
+        # path that splits on whitespace or cannot be read fails the step.
         run: |
           docker run --rm --entrypoint sh vulnradar:ci -c '
             set -eu
@@ -639,8 +641,14 @@ jobs:
             holders=$(find "$route" .next/server/chunks -type f -name "*.js" -exec grep -l "a reset link has been generated" {} + || true)
             test -n "$holders" || { echo "no file holds the forgot-password handler"; exit 1; }
             echo "handler code in: $holders"
-            if grep -l build.invalid $holders; then
+            rc=0
+            grep -l build.invalid $holders || rc=$?
+            if [ "$rc" -eq 0 ]; then
               echo "the build origin is inlined into the forgot-password handler"
+              exit 1
+            fi
+            if [ "$rc" -ne 1 ]; then
+              echo "could not search the handler files, grep exited $rc"
               exit 1
             fi
           '

@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { spawnSync } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import { readWorkflow, workflowSteps, stepNamed } from "./_workflow-steps";
 
@@ -269,5 +277,67 @@ describe("the self-host job proves all of it against the real image", () => {
       );
       expect(quickstart().index).toBeLessThan(boot.index);
     });
+  });
+});
+
+describe("the origin check's script, run against a fake build output", () => {
+  // The script runs inside the image under its sh. Here it runs under the
+  // host's sh against a .next tree made to order, so its verdict on each
+  // shape of output is tested rather than its wording.
+  const code = stepNamed(
+    workflowSteps(readWorkflow("ci.yml")),
+    "Assert the build's origin did not reach server code",
+  ).code;
+  const body = code.match(/ -c '\n([\s\S]*?)\n\s*'\s*$/)?.[1] ?? "";
+  const hasSh = !spawnSync("sh", ["-c", "true"]).error;
+  const handler = 'log("a reset link has been generated");';
+
+  function run(chunks: Record<string, string>) {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "origin-check-"));
+    try {
+      const route = path.join(
+        dir,
+        ".next/server/app/api/v3/auth/forgot-password",
+      );
+      mkdirSync(route, { recursive: true });
+      writeFileSync(path.join(route, "route.js"), "module.exports = {};\n");
+      mkdirSync(path.join(dir, ".next/server/chunks"), { recursive: true });
+      for (const [name, text] of Object.entries(chunks)) {
+        writeFileSync(path.join(dir, ".next/server/chunks", name), text);
+      }
+      const r = spawnSync("sh", ["-c", body], { cwd: dir, encoding: "utf8" });
+      return { status: r.status, out: `${r.stdout}${r.stderr}` };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("found the script body", () => {
+    expect(body).toContain("grep -l build.invalid");
+  });
+
+  it.skipIf(!hasSh)(
+    "passes when the handler reads the origin at run time",
+    () => {
+      const r = run({ "[root-of-the-server]__2934a0._.js": handler });
+      expect(r.status, r.out).toBe(0);
+    },
+  );
+
+  it.skipIf(!hasSh)("fails when the sentinel is in the handler's chunk", () => {
+    const r = run({
+      "[root-of-the-server]__2934a0._.js": `${handler}\nconst o = "https://build.invalid";`,
+    });
+    expect(r.status, r.out).toBe(1);
+    expect(r.out).toContain("inlined");
+  });
+
+  it.skipIf(!hasSh)("fails when a handler file cannot be searched", () => {
+    // A name with a space splits into two paths that do not exist, so grep
+    // exits 2. Treating that like "found nothing" passed a check that never
+    // looked at the file.
+    const r = run({ "split name.js": handler });
+    expect(r.status, r.out).toBe(1);
+    expect(r.out).toContain("could not search");
   });
 });
