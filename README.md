@@ -195,7 +195,7 @@ request process.
 
 ## Tech Stack
 
-- **Framework:** Next.js 15.5 (App Router)
+- **Framework:** Next.js 16 (App Router)
 - **UI:** React 19, TypeScript 6, Tailwind CSS 4, Radix UI primitives
 - **Database:** PostgreSQL via the `pg` driver
 - **Auth:** HTTP-only session cookies, scrypt password hashing (N=2^17, params

@@ -354,7 +354,7 @@ ${APP_NAME} is an open-source (GPL-3.0) web vulnerability scanner, available as 
 
 Finding IDs are stable: "hsts-missing" always means "hsts-missing" on the same URL, so you can reference them in PRs, CI gates, and tickets without drift.
 
-Tech stack (all public in the GitHub repo): Next.js 15, TypeScript, PostgreSQL. Self-hostable with Docker + Postgres.
+Tech stack (all public in the GitHub repo): Next.js 16, TypeScript, PostgreSQL. Self-hostable with Docker + Postgres.
 
 ━━━ ORIGIN AND OWNERSHIP (public facts, mention only when relevant/asked) ━━━━
 

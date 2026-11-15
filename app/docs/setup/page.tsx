@@ -105,7 +105,7 @@ export default function SetupPage() {
           {[
             {
               title: "Node.js 22 LTS",
-              desc: "JavaScript runtime. package.json pins engines.node to >=22.0.0 <23.0.0 and .npmrc makes that range a hard install failure, the Dockerfile builds on node:22.23.4-alpine, and CI runs on Node 22 only. See the Node Version Policy on the Developers page.",
+              desc: "JavaScript runtime. package.json pins engines.node to >=22.0.0 <23.0.0 and .npmrc makes that range a hard install failure, the Dockerfile builds on node:22.23.4-alpine, and CI runs on Node 22 only. See the Node Version Policy on the Developers page. Building from source also needs a platform Next.js ships a native compiler for: Linux on x64 or arm64 (glibc or musl), macOS, or Windows on x64 or arm64. Anywhere else the build stops with an error that names the --webpack flag.",
               link: "https://nodejs.org",
               cmd: "node --version",
             },

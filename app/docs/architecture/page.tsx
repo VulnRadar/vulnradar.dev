@@ -64,7 +64,7 @@ export default function ArchitecturePage() {
       <DocsSection id="overview" title="Overview">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           {APP_NAME} is a{" "}
-          <strong className="text-foreground">Next.js 15 App Router</strong>{" "}
+          <strong className="text-foreground">Next.js 16 App Router</strong>{" "}
           application with a single-process deployment. The runtime stack is
           deliberately small: one Next.js process + one PostgreSQL database. No
           Redis, no message broker, no separate API server. Everything you need
