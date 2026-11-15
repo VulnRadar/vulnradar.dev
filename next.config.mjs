@@ -46,8 +46,9 @@ const nextConfig = {
     // when it detects a coding agent and the installed Next has a published
     // advisory. Builds here run under unattended agents, where that turns a
     // passing gate into a failure addressed to someone who is not there.
-    // Next advisories already fail CI through `npm audit` and arrive as
-    // Dependabot pull requests.
+    // Next advisories rated high or critical fail CI through
+    // `npm audit --audit-level=high`, and every advisory, whatever its
+    // rating, arrives as a Dependabot pull request.
     agentUpgrade: false,
   },
   images: {
