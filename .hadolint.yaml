@@ -1,0 +1,7 @@
+# hadolint's configuration, run over Dockerfile, tests/spike/Dockerfile and
+# .github/tools/Dockerfile. Only an error fails the job. Warnings such as
+# DL3018 (apk packages not pinned to a version) are reported and do not fail,
+# so they need no entry here. An error that cannot be fixed is listed under
+# `ignored` with its reason on the line above.
+failure-threshold: error
+ignored: []

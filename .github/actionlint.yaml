@@ -1,0 +1,13 @@
+# actionlint's configuration (the pinned image in .github/tools/Dockerfile).
+# Every entry names what it ignores and why, and none turns a check off for a
+# file or a rule: a shellcheck finding is fixed, or annotated in the script
+# with a `# shellcheck disable=SCxxxx` and the reason beside it.
+paths:
+  .github/workflows/*.yml:
+    ignore:
+      # actionlint 1.7.12 predates the `cache-mode` key (generally available on
+      # 2026-09-10), which every job that signs or publishes sets to `none` so
+      # that it reads and writes no Actions cache. It reports the key as
+      # unknown. Drop this entry when a newer actionlint knows the key.
+      # tests/repo/workflow-hardening.test.ts requires the job-level key.
+      - 'unexpected key "cache-mode" for ".+" section.*'

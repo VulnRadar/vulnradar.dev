@@ -1,0 +1,13 @@
+# zizmor's configuration (the pinned image in .github/tools/Dockerfile), run
+# at --min-severity medium over .github/workflows and .github/actions. An
+# ignore names a file and a reason; there is no blanket disable.
+rules:
+  dangerous-triggers:
+    ignore:
+      # workflow_run is the trigger these two use on purpose: they run after
+      # docker-publish.yml, and only for a push to this repository, which each
+      # job's own `if:` and its "Resolve tag" step check before any write.
+      # tests/repo/workflow-trust.test.ts runs both against forks, renamed
+      # workflows, moved tags and branches named like tags.
+      - release.yml
+      - docker-publish-arm64.yml

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   readWorkflow,
@@ -874,5 +874,106 @@ describe("the Self-host smoke test's suites against the container", () => {
         expect(m[1], file).toMatch(/^(localhost|[a-z0-9-]+[.]invalid)$/);
       }
     }
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* The lint job, and the files that hold its exceptions.                     */
+/* ------------------------------------------------------------------------ */
+
+describe("the Workflow and Dockerfile lint job", () => {
+  const job = jobOf("ci.yml", "config-lint");
+
+  it("is the check named Workflow and Dockerfile lint, with no path filter", () => {
+    expect(job.name).toBe("Workflow and Dockerfile lint");
+    expect(job.condition).toBeNull();
+    const on = topLevel(readWorkflow("ci.yml"), "on")!.body;
+    expect(on).not.toMatch(/^\s+paths(-ignore)?:/m);
+  });
+
+  it("builds only stages of the tools Dockerfile, from the pinned context", () => {
+    const builds = [...job.code.matchAll(/docker build (.*)$/gm)].map(
+      (m) => m[1],
+    );
+    expect(builds.length).toBe(3);
+    for (const b of builds) {
+      expect(b).toMatch(/^--target (actionlint|zizmor|hadolint) -t vr-/);
+      expect(b).toMatch(/ [.]github\/tools$/);
+    }
+    for (const stage of ["actionlint", "zizmor", "hadolint"]) {
+      expect(TOOL_STAGES.has(stage), stage).toBe(true);
+    }
+  });
+
+  it("runs only images it built, and never a floating tag", () => {
+    expect(job.code).not.toMatch(/@latest|:latest/);
+    for (const m of job.code.matchAll(/docker run (.*)$/gm)) {
+      expect(m[1], m[0]).toMatch(/\bvr-(actionlint|zizmor|hadolint)\b/);
+    }
+  });
+
+  it("passes the token only through env, and only to zizmor", () => {
+    expect(job.code).toMatch(
+      /^\s+GH_TOKEN: \$\{\{ secrets[.]GITHUB_TOKEN \}\}$/m,
+    );
+    expect(job.code.match(/GH_TOKEN/g)?.length).toBe(2);
+    const zizmor = job.steps.find((s) => s.name?.includes("zizmor"))!;
+    expect(zizmor.code).toMatch(/^\s+env:\n\s+GH_TOKEN:/m);
+    expect(zizmor.code).toContain("docker run --rm -e GH_TOKEN ");
+  });
+
+  it("shellchecks the composite action's script, which actionlint does not read", () => {
+    const step = job.steps.find((s) => /extract-action-script/.test(s.code))!;
+    expect(step.code).toContain(
+      "node scripts/ci/extract-action-script.mjs .github/actions/scan-gate/action.yml",
+    );
+    expect(step.code).toMatch(/--entrypoint shellcheck .* -s bash -S warning /);
+  });
+
+  it("lints every Dockerfile in the repository", () => {
+    const step = job.steps.find((s) => s.name?.includes("hadolint"))!;
+    for (const d of [
+      "Dockerfile",
+      "tests/spike/Dockerfile",
+      ".github/tools/Dockerfile",
+    ]) {
+      expect(step.code, d).toContain(` ${d}`);
+      expect(existsSync(path.join(ROOT, d)), d).toBe(true);
+    }
+    expect(step.code).toContain("--failure-threshold error");
+  });
+});
+
+describe("the lint tools' exception files", () => {
+  const actionlint = readRepo(".github/actionlint.yaml");
+  const zizmor = readRepo(".github/zizmor.yml");
+  const hadolint = readRepo(".hadolint.yaml");
+  const image = (stage: string) => TOOL_STAGES.get(stage) ?? "";
+
+  it("ignore the cache-mode key by name, with the actionlint version that needed it", () => {
+    const version = /:(\d+[.]\d+[.]\d+)@/.exec(image("actionlint"))?.[1];
+    expect(version).toBeDefined();
+    expect(actionlint).toContain(`actionlint ${version} predates`);
+    const ignores = actionlint
+      .split("\n")
+      .filter((l) => /^\s+- '/.test(l))
+      .map((l) => l.trim());
+    expect(ignores).toEqual([
+      `- 'unexpected key "cache-mode" for ".+" section.*'`,
+    ]);
+  });
+
+  it("only ignore workflow_run where workflow-trust.test.ts covers it", () => {
+    const ignored = [...zizmor.matchAll(/^\s+- (\S+[.]yml)$/gm)].map(
+      (m) => m[1],
+    );
+    expect(ignored.sort()).toEqual([...WORKFLOW_RUN].sort());
+    expect(zizmor).toMatch(/^ {2}dangerous-triggers:$/m);
+    expect(zizmor.match(/^ {2}[a-z-]+:$/gm)).toEqual(["  dangerous-triggers:"]);
+  });
+
+  it("fail hadolint on an error only, with every ignore listed", () => {
+    expect(hadolint).toMatch(/^failure-threshold: error$/m);
+    expect(hadolint).toMatch(/^ignored: \[\]$|^ignored:$/m);
   });
 });
