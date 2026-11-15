@@ -73,6 +73,33 @@ describe("the nonce check", () => {
     });
   });
 
+  it("reads script tags and attributes in any case", () => {
+    expect(
+      checkPageScripts(page(nonced(), "<SCRIPT>alert(1)</SCRIPT>"), CSP),
+    ).toEqual({
+      ok: false,
+      message: "1 bare script tags, 0 of them the next-themes script",
+    });
+    const unnonced = checkPageScripts(
+      page(nonced(), '<Script SRC="/_next/static/chunks/x.js"></Script>'),
+      CSP,
+    );
+    expect(unnonced.ok).toBe(false);
+    expect(unnonced.message).toMatch(/^1 scripts carry no nonce/);
+    expect(
+      checkPageScripts(
+        page(nonced(), `<SCRIPT NONCE="${NONCE}" src="/a.js"></SCRIPT>`),
+        CSP,
+      ).ok,
+    ).toBe(true);
+    expect(
+      checkPageScripts(
+        page(nonced(), '<script TYPE="APPLICATION/JSON">{}</script>'),
+        CSP,
+      ).ok,
+    ).toBe(true);
+  });
+
   it("fails a script with attributes but no nonce", () => {
     const result = checkPageScripts(
       page(

@@ -57,8 +57,8 @@ export const NEXT_THEMES_CALL =
   '("class","theme","system",null,["light","dark"],null,true,true)</script>';
 
 const NONCE_RE = new RegExp("nonce-([A-Za-z0-9+/=_-]+)");
-const SCRIPT_TAG_RE = new RegExp("<script[^>]*>", "g");
-const NONCE_ATTR_RE = new RegExp('nonce="[^"]*"', "g");
+const SCRIPT_TAG_RE = new RegExp("<script\\b[^>]*>", "gi");
+const NONCE_ATTR_RE = new RegExp('nonce="([^"]*)"', "gi");
 const STATIC_ASSET_RE = new RegExp('(?:src|href)="(/_next/static/[^"]+)"', "g");
 
 /** The nonce a Content-Security-Policy header carries, or null. */
@@ -75,14 +75,19 @@ export function cspNonce(csp) {
 export function checkPageScripts(html, csp) {
   const nonce = cspNonce(csp);
   if (!nonce) return { ok: false, message: "no nonce in the CSP header" };
-  // JSON data blocks never execute, so CSP does not govern them.
-  const tags = (html.match(SCRIPT_TAG_RE) ?? []).filter(
-    (t) =>
-      !t.includes("application/ld+json") && !t.includes("application/json"),
-  );
+  // JSON data blocks never execute, so CSP does not govern them. HTML tag
+  // and attribute names are case-insensitive, so the checks are too.
+  const tags = (html.match(SCRIPT_TAG_RE) ?? []).filter((t) => {
+    const lower = t.toLowerCase();
+    return (
+      !lower.includes("application/ld+json") &&
+      !lower.includes("application/json")
+    );
+  });
+  const isBare = (t) => t.toLowerCase() === "<script>";
   if (tags.length === 0)
     return { ok: false, message: "no script tags to check" };
-  const bare = tags.filter((t) => t === "<script>").length;
+  const bare = tags.filter(isBare).length;
   const themes = html.split(NEXT_THEMES_CALL).length - 1;
   if (bare !== themes || themes > 1) {
     return {
@@ -91,7 +96,7 @@ export function checkPageScripts(html, csp) {
     };
   }
   const unnonced = tags.filter(
-    (t) => t !== "<script>" && !t.includes("nonce="),
+    (t) => !isBare(t) && !t.toLowerCase().includes("nonce="),
   );
   if (unnonced.length > 0) {
     return {
@@ -99,8 +104,10 @@ export function checkPageScripts(html, csp) {
       message: `${unnonced.length} scripts carry no nonce: ${unnonced.join(" ")}`,
     };
   }
-  const values = new Set(tags.flatMap((t) => t.match(NONCE_ATTR_RE) ?? []));
-  if (values.size !== 1 || !values.has(`nonce="${nonce}"`)) {
+  const values = new Set(
+    tags.flatMap((t) => [...t.matchAll(NONCE_ATTR_RE)].map((m) => m[1])),
+  );
+  if (values.size !== 1 || !values.has(nonce)) {
     return {
       ok: false,
       message: `script nonces differ from the header: ${[...values].join(" ")}`,
