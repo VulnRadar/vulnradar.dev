@@ -17,9 +17,13 @@
 // to the sitemap URL; no noindex; og:title, og:description, og:image, og:url
 // and twitter:card, with the og:image answering 200 and image/*; JSON-LD that
 // parses and names the page's own URL; exactly one <h1>. Every same-origin
-// link found is requested once, and a 404, 410 or 5xx fails. Static pages are
-// fetched a second time as Googlebot, which is how the regression where Next
-// streamed the title and canonical into <body> shows up. robots.txt and the
+// link found is requested once, and a 404, 410 or 5xx fails. Pages are
+// fetched as Googlebot, which is one of next.config's htmlLimitedBots and so
+// is served the metadata in <head>: the regression where Next streamed the
+// title and canonical into <body> for crawlers fails the head rules. A browser
+// is not one of them, and Next streams its copy of the metadata into <body>
+// on purpose, so static pages are fetched a second time as a browser only to
+// check they answer 200 with the same title and canonical. robots.txt and the
 // sitemap are checked as a whole.
 //
 // Known issues live in .github/site-checks/baseline.json as {page, rule,
@@ -186,6 +190,7 @@ export function parsePage(html) {
     descriptionsInBody: meta(bodyMetas, "description").length,
     canonicalsInHead: canonicalOf(links(headText)),
     canonicalsInBody: canonicalOf(links(bodyText)).length,
+    bodyCanonicals: canonicalOf(links(bodyText)),
     robots: meta(headMetas, "robots")
       .map((a) => (a.content ?? "").toLowerCase())
       .join(","),
@@ -527,7 +532,7 @@ export async function checkSite({ base, concurrency = 6, fetchImpl = fetch }) {
     let res;
     let body;
     try {
-      ({ res, body } = await text(pageUrl));
+      ({ res, body } = await text(pageUrl, { ua: GOOGLEBOT_UA }));
     } catch (error) {
       add(path, "status", `The request failed: ${error.message}`);
       return;
@@ -682,41 +687,37 @@ export async function checkSite({ base, concurrency = 6, fetchImpl = fetch }) {
 
     if (secondFetch.has(path)) {
       try {
-        const g = await text(pageUrl, { ua: GOOGLEBOT_UA });
-        if (g.res.status !== 200) {
+        const b = await text(pageUrl);
+        if (b.res.status !== 200) {
           add(
             path,
-            "googlebot",
-            `As Googlebot the page answered ${g.res.status}.`,
+            "browser",
+            `As a browser the page answered ${b.res.status}.`,
           );
         } else {
-          const gp = parsePage(g.body);
+          // A browser is not one of next.config's htmlLimitedBots, so Next
+          // streams its metadata into <body> and React moves it into the
+          // head. Where it sits is the crawler's concern, checked above;
+          // here only what it says has to match.
+          const bp = parsePage(b.body);
+          const title = [...bp.titlesInHead, ...bp.titlesInBody][0];
+          const canonical = [...bp.canonicalsInHead, ...bp.bodyCanonicals][0];
           if (
-            gp.titlesInHead.length !== 1 ||
-            gp.canonicalsInHead.length !== 1 ||
-            gp.descriptions.length !== 1
+            title !== page.titlesInHead[0] ||
+            canonical !== page.canonicalsInHead[0]
           ) {
             add(
               path,
-              "googlebot",
-              "As Googlebot, the title, canonical or description is not in <head> exactly once.",
-            );
-          } else if (
-            gp.titlesInHead[0] !== page.titlesInHead[0] ||
-            gp.canonicalsInHead[0] !== page.canonicalsInHead[0]
-          ) {
-            add(
-              path,
-              "googlebot",
-              "Googlebot is served a different title or canonical than a browser.",
+              "browser",
+              "A browser is served a different title or canonical than Googlebot.",
             );
           }
         }
       } catch (error) {
         add(
           path,
-          "googlebot",
-          `The request as Googlebot failed: ${error.message}`,
+          "browser",
+          `The request as a browser failed: ${error.message}`,
         );
       }
     }

@@ -9,6 +9,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  BROWSER_UA,
   GOOGLEBOT_UA,
   baseOriginOf,
   checkSite,
@@ -212,13 +213,15 @@ const has = (
 ) => findings.some((f) => f.page === page && f.rule === rule);
 
 describe("a site that is fine", () => {
-  it("has no findings, checks every sitemap page and fetches Googlebot's copy", async () => {
+  it("has no findings, checks every sitemap page as Googlebot and fetches a browser's copy", async () => {
     const { result, site } = await run(good());
     expect(result.findings).toEqual([]);
     expect(result.pages).toBe(3);
-    expect(
-      site.hits.some((h) => h.ua === GOOGLEBOT_UA && h.url === "/good"),
-    ).toBe(true);
+    for (const ua of [GOOGLEBOT_UA, BROWSER_UA]) {
+      expect(site.hits.some((h) => h.ua === ua && h.url === "/good")).toBe(
+        true,
+      );
+    }
   });
 });
 
@@ -299,8 +302,36 @@ describe("one bad page per rule", () => {
       }),
     };
     const { result } = await run(pages);
-    expect(has(result.findings, "/streamed", "googlebot")).toBe(true);
-    expect(has(result.findings, "/streamed", "title")).toBe(false);
+    expect(has(result.findings, "/streamed", "title")).toBe(true);
+    expect(has(result.findings, "/streamed", "head-metadata-in-body")).toBe(
+      true,
+    );
+  });
+
+  it("accepts the metadata Next streams into a browser's body, when it says the same", async () => {
+    const streamed = (title: string) =>
+      [
+        "<!doctype html><html><head></head><body>",
+        `<title>${title}</title>`,
+        `<link rel="canonical" href="${SITE}/streamed">`,
+        "<h1>Heading</h1></body></html>",
+      ].join("");
+    const pages = {
+      ...good(),
+      "/streamed": (req: IncomingMessage) => ({
+        body: String(req.headers["user-agent"]).includes("Googlebot")
+          ? page("/streamed")
+          : streamed("Page /streamed"),
+      }),
+      "/differs": (req: IncomingMessage) => ({
+        body: String(req.headers["user-agent"]).includes("Googlebot")
+          ? page("/differs")
+          : streamed("Something else"),
+      }),
+    };
+    const { result } = await run(pages);
+    expect(result.findings.filter((f) => f.page === "/streamed")).toEqual([]);
+    expect(has(result.findings, "/differs", "browser")).toBe(true);
   });
 
   it("reports a broken same-origin link once, by its target, and never fetches an external one", async () => {

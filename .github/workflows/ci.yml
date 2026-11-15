@@ -1121,10 +1121,11 @@ jobs:
             }
           "
 
-      # Every page the sitemap lists, fetched from the container just booted:
-      # a 200, one title in <head>, a description, a canonical equal to the
-      # sitemap URL, og tags with a working image, JSON-LD, one h1, no noindex,
-      # and the same head for Googlebot as for a browser. Then every same-origin
+      # Every page the sitemap lists, fetched as Googlebot from the container
+      # just booted: a 200, one title in <head>, a description, a canonical
+      # equal to the sitemap URL, og tags with a working image, JSON-LD, one
+      # h1, no noindex, and the same title and canonical for a browser, which
+      # Next serves streamed into <body>. Then every same-origin
       # link they carry. The script refuses any URL that is not
       # localhost:3000. Known problems are named, with a reason, in
       # .github/site-checks/baseline.json, which can only shrink: a finding
