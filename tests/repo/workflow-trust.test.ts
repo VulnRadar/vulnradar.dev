@@ -182,7 +182,13 @@ describe("the expression evaluator these tests rely on", () => {
   });
 });
 
-const RELEASE_JOBS = ["gate", "build", "release", "publish-npm"];
+const RELEASE_JOBS = [
+  "gate",
+  "build",
+  "lint-firefox",
+  "release",
+  "publish-npm",
+];
 
 describe.each(RELEASE_JOBS)(
   "release.yml job %s runs only for this repository's own tag pushes",

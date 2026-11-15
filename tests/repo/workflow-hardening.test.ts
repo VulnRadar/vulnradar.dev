@@ -609,6 +609,58 @@ describe("the jobs that publish or sign", () => {
   );
 });
 
+/* ------------------------------------------------------------------------ */
+/* The web-ext tool tree: third-party code, from its install to its lint.    */
+/* ------------------------------------------------------------------------ */
+
+/** The `name:` an upload-artifact or download-artifact step passes. */
+const artifactNameOf = (code: string) =>
+  /^ {10}name:\s*(\S+)\s*$/m.exec(code)?.[1];
+
+describe.each(WORKFLOWS)("%s and the web-ext tool tree", (file) => {
+  const jobs = jobsOf(readWorkflow(file));
+
+  it("installs it with its install scripts off", () => {
+    // Nothing in .github/tools/web-ext needs to run code to install
+    // (package-deps-guard.test.ts), so a flag that is missing is only a way
+    // in for a package that starts to.
+    for (const job of jobs) {
+      for (const step of job.steps) {
+        if (!/[.]github\/tools\/web-ext/.test(step.code)) continue;
+        for (const line of step.code.split("\n")) {
+          if (!/\bnpm (ci|install|i)\b/.test(line)) continue;
+          expect(line.trim(), `${job.id}: ${step.name}`).toMatch(
+            /--ignore-scripts/,
+          );
+        }
+      }
+    }
+  });
+
+  it("runs web-ext in no job whose artifacts another job of it takes", () => {
+    // The linter runs its whole tree whatever the install did, so anything
+    // a job that ran it hands on could have been rewritten by it.
+    const taken = new Set(
+      jobs.flatMap((j) =>
+        j.steps
+          .filter(
+            (s) =>
+              /uses:\s*actions\/download-artifact@/.test(s.code) &&
+              !/run-id:/.test(s.code),
+          )
+          .map((s) => artifactNameOf(s.code)),
+      ),
+    );
+    for (const job of jobs.filter((j) => /\bweb-ext lint\b/.test(j.code))) {
+      for (const step of job.steps) {
+        if (!/uses:\s*actions\/upload-artifact@/.test(step.code)) continue;
+        const name = artifactNameOf(step.code);
+        expect(taken.has(name), `${job.id} uploads ${name}`).toBe(false);
+      }
+    }
+  });
+});
+
 /**
  * Dependabot bumps the postgres and buildkit stages of .github/tools/Dockerfile
  * but cannot edit a workflow, so the first failure a bump hits is one of the

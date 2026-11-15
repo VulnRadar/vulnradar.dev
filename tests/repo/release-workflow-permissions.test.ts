@@ -34,11 +34,21 @@ const RUNS_PACKAGE_CODE = /\bnpm\s+(ci|run|install|i|exec|rebuild)\b|\bnpx\b/;
 const holdsCredential = (j: Job) =>
   j.permissions["id-token"] === "write" || j.permissions.contents === "write";
 
+/** The `name:` an upload-artifact or download-artifact step passes. */
+const artifactName = (code: string) =>
+  /^ {10}name:\s*(\S+)\s*$/m.exec(code)?.[1];
+
+const uploads = (j: Job) =>
+  j.steps.filter((s) => /actions\/upload-artifact@/.test(s.code));
+const downloads = (j: Job) =>
+  j.steps.filter((s) => /actions\/download-artifact@/.test(s.code));
+
 describe("release.yml separates package code from credentials", () => {
-  it("has the four jobs the split is written against", () => {
+  it("has the five jobs the split is written against", () => {
     expect(jobs.map((j) => j.id)).toEqual([
       "gate",
       "build",
+      "lint-firefox",
       "release",
       "publish-npm",
     ]);
@@ -142,11 +152,59 @@ describe("release.yml separates package code from credentials", () => {
     expect(job("build").code).not.toMatch(/cosign/);
   });
 
-  it("uploads the release from the signing job, after the build finished", () => {
+  it("uploads the release from the signing job, after the build and the lint finished", () => {
     expect(job("release").code).toMatch(/gh release (create|upload)/);
-    expect(job("release").code).toMatch(/^ {4}needs:\s*build\s*$/m);
+    expect(job("release").code).toMatch(
+      /^ {4}needs:\s*\[build, lint-firefox\]\s*$/m,
+    );
     expect(job("publish-npm").code).toMatch(/^ {4}needs:\s*release\s*$/m);
     expect(job("build").code).not.toMatch(/gh release/);
+  });
+
+  it("lints the Firefox package in a job of its own, which hands nothing on", () => {
+    // web-ext and its tree are third-party code, and they run when the
+    // linter does whatever the install did. In the build job they ran beside
+    // ARTIFACT_DIR, so they could rewrite what the release job signs.
+    const lint = job("lint-firefox");
+    expect(lint.needs).toBe("build");
+    expect(lint.permissions).toEqual({ contents: "read" });
+    expect(lint.code).not.toMatch(/\bsecrets[.]/);
+    expect(lint.code).not.toMatch(/GH_TOKEN|GITHUB_TOKEN/);
+    expect(uploads(lint)).toEqual([]);
+    expect(lint.code).toMatch(/npx --no-install web-ext lint /);
+    const installs = lint.code
+      .split("\n")
+      .filter((l) => RUNS_PACKAGE_CODE.test(l))
+      .map((l) => l.trim());
+    expect(installs).toEqual([
+      "npm ci --ignore-scripts --no-audit --no-fund",
+      "npx --no-install web-ext lint \\",
+    ]);
+  });
+
+  it("gives the lint the unpacked Firefox build and nothing the release signs", () => {
+    const fromBuild = uploads(job("build")).map((s) => artifactName(s.code));
+    expect(fromBuild).toEqual(["release-build", "firefox-build"]);
+    const firefox = uploads(job("build"))[1];
+    expect(firefox.code).toMatch(
+      /^ {10}path: \$\{\{ runner[.]temp \}\}\/extension-src\/extension\/dist-firefox\/$/m,
+    );
+    expect(firefox.code).toMatch(/if-no-files-found:\s*error/);
+    const taken = downloads(job("lint-firefox")).map((s) =>
+      artifactName(s.code),
+    );
+    expect(taken).toEqual(["firefox-build"]);
+    // The release job never downloads it, so nothing done to it reaches a
+    // release file.
+    for (const s of downloads(job("release"))) {
+      expect(artifactName(s.code), s.name ?? "").not.toBe("firefox-build");
+    }
+  });
+
+  it("runs no web-ext in the build job, whose npm ci keeps its scripts", () => {
+    expect(job("build").code).not.toMatch(
+      /web-ext lint|[.]github\/tools\/web-ext/,
+    );
   });
 
   it("hands the build's output over as one named artifact", () => {
@@ -159,8 +217,6 @@ describe("release.yml separates package code from credentials", () => {
     );
     expect(upload, "the build job uploads its output").toBeDefined();
     expect(download, "the signing job downloads it").toBeDefined();
-    const artifactName = (code: string) =>
-      /^ {10}name:\s*(\S+)\s*$/m.exec(code)?.[1];
     expect(artifactName(upload!.code)).toBeDefined();
     expect(artifactName(download!.code)).toBe(artifactName(upload!.code));
     expect(upload!.code).toMatch(/uses: actions\/upload-artifact@[0-9a-f]{40}/);

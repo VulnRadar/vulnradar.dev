@@ -21,7 +21,7 @@ name: Attach Release Artifacts
 #     publishing and provenance, for stable tags whose CLI version is not
 #     on the registry yet (the publish-npm job)
 #
-# security: four jobs, because `npm ci` runs third-party install scripts and
+# security: five jobs, because `npm ci` runs third-party install scripts and
 # Dependabot auto-merges patch bumps of the tree it installs. All of this used
 # to be one job holding contents: write and an OIDC token, so one poisoned
 # patch release could rewrite the source tarball before cosign signed it, and
@@ -29,6 +29,9 @@ name: Attach Release Artifacts
 #   - gate: waits for a green CI run on the commit the tag names, with
 #     contents: read and actions: read; installs nothing
 #   - build: runs the package code, with contents: read and no token
+#   - lint-firefox: runs web-ext over a copy of the Firefox build, with
+#     contents: read, no secret, and nothing uploaded; the release job waits
+#     for it and never takes anything from it
 #   - release: no package installs; makes the source tarball from git itself,
 #     signs, and uploads
 #   - publish-npm: no package installs but the pinned npm; publishes the
@@ -495,34 +498,6 @@ jobs:
         working-directory: ${{ runner.temp }}/extension-src/extension
         run: npm audit signatures
 
-      - name: Lint the Firefox package the way AMO does
-        # release: the package the stores receive, linted by the tool AMO's
-        # own review runs. web-ext is installed from the TAG's
-        # .github/tools/web-ext, with the report script, by git archive, the
-        # way the extension itself is, so the lint a release runs is the one
-        # the tag was reviewed with. An older tag has no such directory, and
-        # a release rebuilt from one is not held to a check it never had.
-        # Errors fail; warnings go to the job summary. No credential here.
-        env:
-          TAG: ${{ steps.vars.outputs.tag }}
-        run: |
-          set -euo pipefail
-          if ! git cat-file -e "${TAG}:.github/tools/web-ext/package-lock.json" 2> /dev/null; then
-            echo "::notice::${TAG} has no .github/tools/web-ext, so there is no web-ext lint for it."
-            exit 0
-          fi
-          TOOL_DIR="${RUNNER_TEMP}/web-ext-tool"
-          rm -rf "${TOOL_DIR}"
-          mkdir -p "${TOOL_DIR}"
-          git archive "${TAG}" -- .github/tools/web-ext scripts/ci/web-ext-lint-report.mjs | tar -x -C "${TOOL_DIR}"
-          cd "${TOOL_DIR}/.github/tools/web-ext"
-          npm ci --no-audit --no-fund
-          npx --no-install web-ext lint \
-            --source-dir "${RUNNER_TEMP}/extension-src/extension/dist-firefox" \
-            --output json > "${RUNNER_TEMP}/web-ext-lint.json" || true
-          node "${TOOL_DIR}/scripts/ci/web-ext-lint-report.mjs" \
-            "${RUNNER_TEMP}/web-ext-lint.json" lint-exceptions.json
-
       - name: Pack the CLI tarball
         # The release already ships the extension; the CLI was the one
         # first-party artifact you could not get from the release page, even
@@ -589,10 +564,11 @@ jobs:
           upload-artifact: false
 
       - name: Upload the built artifacts
-        # The only thing that leaves this job. The release job takes the five
-        # files it expects out of this by name, and derives every value it
-        # needs (the tag, the package versions) for itself rather than from
-        # an output of this job, which package code could have influenced.
+        # The only thing the release job takes from this job. It takes the
+        # five files it expects out of this by name, and derives every value
+        # it needs (the tag, the package versions) for itself rather than
+        # from an output of this job, which package code could have
+        # influenced.
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-build
@@ -604,9 +580,181 @@ jobs:
           # the name already being taken.
           overwrite: true
 
+      - name: Upload the Firefox build for the lint
+        # The unpacked Firefox build, as AMO's linter reads it, for the
+        # lint-firefox job and nothing else. The release job never downloads
+        # it, so nothing the linter's tree does to this copy reaches a
+        # release file.
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: firefox-build
+          path: ${{ runner.temp }}/extension-src/extension/dist-firefox/
+          if-no-files-found: error
+          # Every file of the build, dotfiles included, as the lint read the
+          # directory in place before it had a job of its own.
+          include-hidden-files: true
+          retention-days: 7
+          overwrite: true
+
+  # security: web-ext and its dependency tree are third-party code, and they
+  # run when the linter does, whatever the install did. In the build job they
+  # ran beside ARTIFACT_DIR, so a compromised package in that tree could have
+  # rewritten the zips or the CLI tarball before the release job signed them.
+  # Here they get a copy of the Firefox build and nothing else: no secret, no
+  # write scope and nothing uploaded, and the release job, which needs this
+  # one, takes nothing from it.
+  lint-firefox:
+    name: Lint the Firefox package the way AMO does
+    needs: build
+    if: >-
+      github.event_name == 'release' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # security: no Actions cache in any job of this workflow. It runs on
+    # workflow_run with the default branch's cache scope, so a write here
+    # would be read by the next CI run, and a read would put whatever an
+    # earlier job saved next to a credential.
+    cache-mode: none
+    permissions:
+      # The checkout, which the tag's tool tree is read from.
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          # security: nothing here pushes with git, so no token stays behind in
+          # .git/config for a later step to read.
+          persist-credentials: false
+
+      - name: Resolve tag
+        id: vars
+        env:
+          # security: pass untrusted event fields in via env, never
+          # interpolate ${{ }} directly into the script body below --
+          # head_branch/tag_name reach here from the triggering event and
+          # a value containing shell metacharacters could otherwise break
+          # out of string context and execute as code (CodeQL
+          # actions/code-injection/critical). env-var substitution can't
+          # do that: the value is only ever read as a plain string.
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_RUN_PATH: ${{ github.event.workflow_run.path }}
+        run: |
+          set -euo pipefail
+          # workflow_run.head_branch is the tag for tag pushes -- NOT
+          # GITHUB_REF_NAME, which on a workflow_run-triggered job
+          # reflects this workflow file's own ref (the default branch,
+          # e.g. "main"), not the ref that triggered the upstream
+          # workflow. For the release: published trigger, the tag is
+          # in the event payload.
+          if [ "$EVENT_NAME" = "release" ]; then
+            TAG="$RELEASE_TAG_NAME"
+          else
+            TAG="$WORKFLOW_RUN_HEAD_BRANCH"
+          fi
+
+          # security: TAG names the release, the tarball and the artifacts,
+          # and is written to GITHUB_ENV and GITHUB_OUTPUT below. Both checks
+          # run before any of that. The pattern is anchored at both ends and
+          # its suffix class has no whitespace, quote or newline, so the value
+          # cannot add a line to either file (CodeQL actions/envvar-injection,
+          # actions/output-clobbering). The rev-parse makes it a tag that
+          # exists here, not a branch name that merely looks like one. The
+          # value is not printed until it has matched the pattern.
+          TAG_PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+          if [[ ! "$TAG" =~ $TAG_PATTERN ]]; then
+            echo "::error::The triggering ref is not a version tag (vX.Y.Z or vX.Y.Z-suffix); refusing to release it."
+            exit 1
+          fi
+          if ! git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::Tag ${TAG} does not exist in this repository; refusing to release it."
+            exit 1
+          fi
+
+          # security: on the workflow_run path, the tag must name the commit the
+          # Docker publish built, in the Docker publish workflow. workflow_run
+          # matches the upstream run by NAME, so a workflow file of another name
+          # on a branch of this repository called like a tag completes a
+          # matching push run; and a tag moved after its publish points at a
+          # commit no CI or publish run checked (v3.8.4 was published from two
+          # commits 30 minutes apart). The run's path can carry an @ref suffix,
+          # so only the part before it is compared. The checkout above is a
+          # snapshot, so every later `git archive "${TAG}"` reads the ref
+          # verified here.
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            if [ "${WORKFLOW_RUN_PATH%%@*}" != ".github/workflows/docker-publish.yml" ]; then
+              echo "::error::The triggering run is not .github/workflows/docker-publish.yml; refusing to release from it."
+              exit 1
+            fi
+            TAG_COMMIT=$(git rev-parse "refs/tags/${TAG}^{commit}")
+            if [ "$TAG_COMMIT" != "$WORKFLOW_RUN_HEAD_SHA" ]; then
+              echo "::error::Tag ${TAG} points at ${TAG_COMMIT}, but the Docker publish built ${WORKFLOW_RUN_HEAD_SHA}: the tag moved after it was published. Refusing to release it."
+              exit 1
+            fi
+          fi
+
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Workflow: $EVENT_NAME"
+
+      - name: Setup Node.js
+        # Same pin as ci.yml, read from the same file.
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          # security: see the same line in the publish-npm job. Nothing is
+          # restored here, and nothing is saved.
+          package-manager-cache: false
+
+      - name: Download the Firefox build
+        # The one thing this job takes from the build job, and an artifact
+        # the release job never downloads.
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: firefox-build
+          path: ${{ runner.temp }}/dist-firefox
+
+      - name: Lint the Firefox package the way AMO does
+        # release: the package the stores receive, linted by the tool AMO's
+        # own review runs. web-ext is installed from the TAG's
+        # .github/tools/web-ext, with the report script, by git archive, the
+        # way the extension itself is, so the lint a release runs is the one
+        # the tag was reviewed with. An older tag has no such directory, and
+        # a release rebuilt from one is not held to a check it never had.
+        # --ignore-scripts, as in ci.yml: nothing in that tree needs to run
+        # code to install (tests/repo/package-deps-guard.test.ts). Errors
+        # fail, and the release job waits for this one; warnings go to the
+        # job summary.
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "${TAG}:.github/tools/web-ext/package-lock.json" 2> /dev/null; then
+            echo "::notice::${TAG} has no .github/tools/web-ext, so there is no web-ext lint for it."
+            exit 0
+          fi
+          TOOL_DIR="${RUNNER_TEMP}/web-ext-tool"
+          rm -rf "${TOOL_DIR}"
+          mkdir -p "${TOOL_DIR}"
+          git archive "${TAG}" -- .github/tools/web-ext scripts/ci/web-ext-lint-report.mjs | tar -x -C "${TOOL_DIR}"
+          cd "${TOOL_DIR}/.github/tools/web-ext"
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx --no-install web-ext lint \
+            --source-dir "${RUNNER_TEMP}/dist-firefox" \
+            --output json > "${RUNNER_TEMP}/web-ext-lint.json" || true
+          node "${TOOL_DIR}/scripts/ci/web-ext-lint-report.mjs" \
+            "${RUNNER_TEMP}/web-ext-lint.json" lint-exceptions.json
+
   release:
     name: Sign and attach the release
-    needs: build
+    needs: [build, lint-firefox]
     if: >-
       github.event_name == 'release' ||
       (github.event.workflow_run.conclusion == 'success' &&

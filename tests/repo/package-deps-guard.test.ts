@@ -109,9 +109,10 @@ describe("the lockfile's install scripts", () => {
 /**
  * The two other trees CI installs. `npm ci` in extension/ keeps its scripts
  * (owner decision D8), so the list is the control, as above. The web-ext tools
- * package is installed with --ignore-scripts in CI, and its lockfile is held
- * to the same rule so that installing it without that flag, as the release
- * build does, runs nothing either.
+ * package is installed with --ignore-scripts by every workflow that installs
+ * it, the release's lint job included (workflow-hardening.test.ts), and its
+ * lockfile is held to the same rule, so a package in it that starts to need
+ * an install script fails here rather than installing without one.
  */
 describe("the extension and web-ext lockfiles' install scripts", () => {
   const withScripts = (rel: string) =>
