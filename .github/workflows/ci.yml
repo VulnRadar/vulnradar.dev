@@ -294,11 +294,13 @@ jobs:
         #
         # This said 16.4 while both compose files had moved to 16.15, so the
         # claim above was false and the tests proved things about a version no
-        # self-hoster was running. Nothing would have caught it: dependabot's
-        # docker-compose ecosystem reads compose files and its docker ecosystem
-        # reads Dockerfiles, and neither one looks inside a workflow's
-        # `services:` block, so this pin only ever moves when a human notices.
-        image: postgres:16.15-alpine
+        # self-hoster was running. Dependabot cannot see inside a workflow's
+        # `services:` block, so the reference is repeated, digest and all, in
+        # the postgres stage of .github/tools/Dockerfile, which it does watch.
+        # tests/repo/workflow-hardening.test.ts fails until this line, that
+        # stage and docker-compose.yml's tag agree, so a bump on either side
+        # is impossible to miss.
+        image: postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
         env:
           POSTGRES_USER: vulnradar
           POSTGRES_PASSWORD: ci_integration_password
@@ -585,7 +587,8 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16.15-alpine
+        # The same reference as the Integration job above.
+        image: postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
         env:
           POSTGRES_USER: vulnradar
           POSTGRES_PASSWORD: ci_smoke_test_password

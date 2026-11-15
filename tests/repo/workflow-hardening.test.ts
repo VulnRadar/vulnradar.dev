@@ -539,3 +539,124 @@ it("ci.yml names every required check exactly once", () => {
     ).toHaveLength(1);
   }
 });
+
+/* ------------------------------------------------------------------------ */
+/* Publish jobs read no cache, and the tools they run are pinned once.       */
+/* ------------------------------------------------------------------------ */
+
+const toolsDockerfile = readRepo(".github/tools/Dockerfile");
+
+/** Each `FROM <ref> AS <stage>` of the tools Dockerfile, by stage. */
+const TOOL_STAGES = new Map(
+  toolsDockerfile
+    .split("\n")
+    .filter((l) => l.startsWith("FROM "))
+    .map((l) => {
+      const m = /^FROM (\S+) AS ([a-z0-9-]+)$/.exec(l);
+      return [m?.[2] ?? l, m?.[1] ?? ""] as const;
+    }),
+);
+
+describe("the jobs that publish or sign", () => {
+  const credentialed = files.flatMap(({ file, jobs }) =>
+    jobs
+      .filter(
+        (j) =>
+          j.permissions.packages === "write" ||
+          j.permissions["id-token"] === "write",
+      )
+      .map((j) => ({ file, job: j })),
+  );
+
+  it("are found", () => {
+    expect(credentialed.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it.each(credentialed.map(({ file, job }) => [`${file} ${job.id}`, job]))(
+    "%s reads and writes no Actions cache",
+    (_, job) => {
+      // A cache entry is whatever the last job with a write token to that
+      // scope saved. Built on, or installed from, in the job that signs, it
+      // becomes part of what is signed.
+      expect(job.cacheMode).toBe("none");
+      expect(job.code).not.toMatch(/type=gha/);
+      expect(job.code).not.toMatch(/uses:\s*actions\/cache/);
+      for (const step of job.steps) {
+        if (!/uses:\s*actions\/setup-node@/.test(step.code)) continue;
+        expect(step.code, step.name ?? "").toMatch(
+          /^\s+package-manager-cache:\s*false\s*$/m,
+        );
+      }
+    },
+  );
+});
+
+describe(".github/tools/Dockerfile", () => {
+  it("pins every stage to a tag and a digest", () => {
+    const froms = toolsDockerfile
+      .split("\n")
+      .filter((l) => l.startsWith("FROM "));
+    expect(froms.length).toBe(TOOL_STAGES.size);
+    for (const line of froms) {
+      expect(line).toMatch(
+        /^FROM [a-z0-9./-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64} AS [a-z0-9-]+$/,
+      );
+    }
+  });
+
+  it("has every stage a workflow builds", () => {
+    for (const { file, text } of files) {
+      for (const m of text.matchAll(/--target ([a-z0-9-]+)/g)) {
+        expect(TOOL_STAGES.has(m[1]), `${file} builds --target ${m[1]}`).toBe(
+          true,
+        );
+      }
+    }
+  });
+
+  it("is the reference ci.yml's Postgres services use, at compose's tag", () => {
+    const pg = TOOL_STAGES.get("postgres");
+    expect(pg).toBeDefined();
+    const ci = readWorkflow("ci.yml");
+    const services = [...ci.matchAll(/^ {8}image:\s*(\S+)\s*$/gm)].map(
+      (m) => m[1],
+    );
+    expect(services.length).toBeGreaterThanOrEqual(2);
+    for (const image of services) expect(image).toBe(pg);
+    const compose = /^ {4}image:\s*(postgres:\S+)\s*$/m.exec(
+      readRepo("docker-compose.yml"),
+    );
+    expect(compose, "docker-compose.yml names a postgres image").not.toBeNull();
+    expect(pg!.split("@")[0]).toBe(compose![1]);
+  });
+
+  it("is the BuildKit both publish jobs run", () => {
+    const buildkit = TOOL_STAGES.get("buildkit");
+    expect(buildkit).toBeDefined();
+    for (const file of ["docker-publish.yml", "docker-publish-arm64.yml"]) {
+      const setups = workflowSteps(readWorkflow(file)).filter((s) =>
+        /uses:\s*docker\/setup-buildx-action@/.test(s.code),
+      );
+      expect(setups.length, file).toBe(1);
+      expect(setups[0].code).toMatch(
+        new RegExp(
+          `^ +driver-opts: image=${buildkit!.replace(/[.]/g, "[.]")}$`,
+          "m",
+        ),
+      );
+    }
+  });
+
+  it("is watched by Dependabot, as are the composite actions", () => {
+    const dependabot = readRepo(".github/dependabot.yml");
+    const block = (ecosystem: string) =>
+      dependabot
+        .split(/^ {2}- package-ecosystem:/m)
+        .find((b) => b.startsWith(` "${ecosystem}"`)) ?? "";
+    expect(block("docker")).toMatch(/^ {6}- "\/[.]github\/tools"$/m);
+    expect(block("github-actions")).toMatch(/^ {6}- "\/"$/m);
+    expect(block("github-actions")).toMatch(
+      /^ {6}- "\/[.]github\/actions\/[*]"$/m,
+    );
+  });
+});

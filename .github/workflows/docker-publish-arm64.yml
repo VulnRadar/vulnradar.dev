@@ -81,6 +81,11 @@ jobs:
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
+    # security: this job holds packages: write and an OIDC token and signs
+    # what it builds, so it reads no Actions cache and writes none. A cache
+    # entry is whatever the last job with a write token to that scope put
+    # there, and BuildKit would have built the signed image on top of it.
+    cache-mode: none
     permissions:
       contents: read
       packages: write
@@ -145,6 +150,12 @@ jobs:
       - name: Set up Docker Buildx
         if: steps.vars.outputs.skip != 'true'
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          # Pinned by digest, the same reference as the buildkit stage of
+          # .github/tools/Dockerfile, which Dependabot keeps current. The
+          # default is the floating buildx-stable-1 tag, resolved at release
+          # time inside the job that signs.
+          driver-opts: image=moby/buildkit:v0.35.0@sha256:aa632b921ef07411d2cb77292cd34213d4f7b384001d6fceef1e1f25bf9752bb
 
       - name: Log in to GitHub Container Registry
         if: steps.vars.outputs.skip != 'true'
@@ -177,13 +188,8 @@ jobs:
           # :VERSION would replace the amd64 image already published there and
           # leave amd64 users unable to pull, for the whole build.
           tags: ${{ steps.image.outputs.ref }}:${{ steps.vars.outputs.tag }}-arm64
-          # Scoped separately from amd64: one shared scope makes the two legs
-          # evict each other and neither ever hits. mode=max stores the
-          # intermediate `npm ci` layer, which is the expensive one and which
-          # mode=min would not keep. This is what stops the next arm64 build
-          # repeating the 40 minutes.
-          cache-from: type=gha,scope=buildkit-arm64
-          cache-to: type=gha,mode=max,scope=buildkit-arm64
+          # No layer cache (cache-mode: none above). A native arm64 build
+          # takes about 6 minutes without one.
           provenance: mode=max
           # security: empty on purpose, as in docker-publish.yml.
           build-args: |

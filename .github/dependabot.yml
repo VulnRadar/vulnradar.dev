@@ -192,6 +192,11 @@ updates:
     directories:
       - "/"
       - "/tests/spike"
+      # The CI tools (actionlint, zizmor, hadolint, gitleaks, grype, ZAP) and
+      # the two references workflows repeat: the services Postgres and the
+      # publish jobs' BuildKit. A workflow names an image Dependabot cannot
+      # see, so .github/tools/Dockerfile names it where it can.
+      - "/.github/tools"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -222,9 +227,12 @@ updates:
       - dependency-name: "postgres"
         update-types: ["version-update:semver-major"]
 
-  # GitHub Actions themselves
+  # GitHub Actions themselves: the workflows, and any composite action under
+  # .github/actions (scan-gate has no `uses:` today; this watches for one).
   - package-ecosystem: "github-actions"
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: "weekly"
       day: "monday"

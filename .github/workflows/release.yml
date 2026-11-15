@@ -116,6 +116,11 @@ jobs:
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # security: no Actions cache in any job of this workflow. It runs on
+    # workflow_run with the default branch's cache scope, so a write here
+    # would be read by the next CI run, and a read would put whatever an
+    # earlier job saved next to a credential.
+    cache-mode: none
     permissions:
       contents: read
 
@@ -324,6 +329,11 @@ jobs:
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # security: no Actions cache in any job of this workflow. It runs on
+    # workflow_run with the default branch's cache scope, so a write here
+    # would be read by the next CI run, and a read would put whatever an
+    # earlier job saved next to a credential.
+    cache-mode: none
     permissions:
       contents: write
       # Required for cosign keyless signing of the source tarball
@@ -672,6 +682,11 @@ jobs:
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # security: no Actions cache in any job of this workflow. It runs on
+    # workflow_run with the default branch's cache scope, so a write here
+    # would be read by the next CI run, and a read would put whatever an
+    # earlier job saved next to a credential.
+    cache-mode: none
     permissions:
       contents: read
       # The only credential trusted publishing uses.

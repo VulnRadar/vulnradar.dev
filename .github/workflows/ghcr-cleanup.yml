@@ -50,6 +50,9 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Holds packages: write, so it reads and writes no Actions cache, like
+    # every job that can change the registry.
+    cache-mode: none
     permissions:
       packages: write
 
