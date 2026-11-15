@@ -810,3 +810,69 @@ describe("every boot of the image is the same boot", () => {
     );
   });
 });
+
+/* ------------------------------------------------------------------------ */
+/* The suites run against the booted image.                                  */
+/* ------------------------------------------------------------------------ */
+
+describe("the Self-host smoke test's suites against the container", () => {
+  const steps = jobOf("ci.yml", "selfhost").steps;
+  const at = (name: string) => {
+    const s = steps.find((st) => st.name === name);
+    expect(s, name).toBeDefined();
+    return s!;
+  };
+
+  it.each([
+    [
+      "Self-scan every published route",
+      "Assert the self-scan actually ran",
+      "VULNRADAR_SELF_SCAN_URL",
+      "tests/selfscan",
+      "selfscan-results.json",
+    ],
+    [
+      "Attack the booted app (cross-site writes)",
+      "Assert the attack suite actually ran",
+      "VULNRADAR_ATTACK_URL",
+      "tests/attack",
+      "attack-results.json",
+    ],
+  ])(
+    "%s points at the container only, and %s right after it",
+    (run, assertion, variable, suite, report) => {
+      const r = at(run);
+      const a = at(assertion);
+      expect(a.index).toBe(r.index + 1);
+      expect(r.code).toMatch(
+        new RegExp(`^ +${variable}: http://localhost:3000$`, "m"),
+      );
+      expect(r.code).toContain(`npx vitest run ${suite}`);
+      expect(r.code).toContain(`--outputFile.json="$RUNNER_TEMP/${report}"`);
+      expect(a.code).toContain(`process.env.RUNNER_TEMP + '/${report}'`);
+      expect(a.code).toContain("if (skipped > 0 || passed === 0) {");
+    },
+  );
+
+  it("runs the attack after the self-scan, on the same booted container", () => {
+    expect(at("Attack the booted app (cross-site writes)").index).toBe(
+      at("Assert the self-scan actually ran").index + 1,
+    );
+  });
+
+  it("tests/attack contacts nothing but the URL it is given", () => {
+    const dir = path.join(ROOT, "tests", "attack");
+    for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts"))) {
+      const text = readRepo(path.join("tests", "attack", file));
+      // Every fetch goes to BASE, the address the job passes.
+      for (const call of text.matchAll(/fetch\(([^,]+),/g)) {
+        expect(call[1].trim(), file).toMatch(/^`\$\{BASE\}/);
+      }
+      // Any other host named is .invalid, which never resolves: data, sent
+      // as an Origin header, never a destination.
+      for (const m of text.matchAll(/https?:\/\/([A-Za-z0-9.-]+)/g)) {
+        expect(m[1], file).toMatch(/^(localhost|[a-z0-9-]+[.]invalid)$/);
+      }
+    }
+  });
+});

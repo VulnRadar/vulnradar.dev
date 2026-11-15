@@ -639,7 +639,9 @@ jobs:
   selfhost:
     name: Self-host smoke test
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 30 before the cross-site attack suite joined the self-scan against the
+    # booted container.
+    timeout-minutes: 40
     permissions:
       contents: read
 
@@ -902,7 +904,52 @@ jobs:
         env:
           VULNRADAR_SELF_SCAN_URL: http://localhost:3000
           VULNRADAR_SELF_SCAN_BEHIND_TLS: "1"
-        run: npx vitest run tests/selfscan
+        run: >-
+          npx vitest run tests/selfscan
+          --reporter=default --reporter=json
+          --outputFile.json="$RUNNER_TEMP/selfscan-results.json"
+
+      # The suite skips itself when VULNRADAR_SELF_SCAN_URL is unset, so a
+      # renamed variable on either side turned this step into a green run
+      # that scanned nothing. The same check the Integration job makes.
+      - name: Assert the self-scan actually ran
+        run: |
+          node -e "
+            const r = require(process.env.RUNNER_TEMP + '/selfscan-results.json');
+            const passed = r.numPassedTests ?? 0;
+            const skipped = r.numPendingTests ?? 0;
+            console.log('passed=' + passed + ' skipped=' + skipped);
+            if (skipped > 0 || passed === 0) {
+              console.log('::error::the self-scan did not really run (' + passed + ' passed, ' + skipped + ' skipped). VULNRADAR_SELF_SCAN_URL did not reach it.');
+              process.exit(1);
+            }
+          "
+
+      # Black-box: every state-changing route of the container just booted
+      # refuses a request from another site's Origin, a cross-site fetch
+      # with no Origin, and the session cookie alone, while a Bearer API
+      # call and a same-origin request get past the check. Only
+      # localhost:3000 is contacted. See tests/attack/cross-site.test.ts.
+      - name: Attack the booted app (cross-site writes)
+        env:
+          VULNRADAR_ATTACK_URL: http://localhost:3000
+        run: >-
+          npx vitest run tests/attack
+          --reporter=default --reporter=json
+          --outputFile.json="$RUNNER_TEMP/attack-results.json"
+
+      - name: Assert the attack suite actually ran
+        run: |
+          node -e "
+            const r = require(process.env.RUNNER_TEMP + '/attack-results.json');
+            const passed = r.numPassedTests ?? 0;
+            const skipped = r.numPendingTests ?? 0;
+            console.log('passed=' + passed + ' skipped=' + skipped);
+            if (skipped > 0 || passed === 0) {
+              console.log('::error::the attack suite did not really run (' + passed + ' passed, ' + skipped + ' skipped). VULNRADAR_ATTACK_URL did not reach it.');
+              process.exit(1);
+            }
+          "
 
       - name: Stop the smoke container and assert a clean shutdown
         # SIGTERM runs lib/database/boot/graceful-shutdown.ts, which stops the

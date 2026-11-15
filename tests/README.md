@@ -125,6 +125,19 @@ environment variable and the bootstrap prints what to set. And the CI job
 re-reads the run's own JSON to fail if everything skipped, so a job that
 proved nothing cannot pass quietly.
 
+**Against the booted image (`tests/selfscan`, `tests/attack`): black box.**
+Two suites send real requests to the container CI's Self-host smoke test
+builds and boots, and to nothing else. `tests/selfscan` runs every published
+page through the scanner's own checks; `tests/attack` sends every
+state-changing API route a cross-site write (another site's Origin, a
+cross-site fetch with no Origin, the session cookie alone) and expects
+middleware to refuse it, with a Bearer call and a same-origin request as the
+controls that must get through. Each skips unless its variable names the
+container (`VULNRADAR_SELF_SCAN_URL`, `VULNRADAR_ATTACK_URL`), the same
+sanctioned exception as the integration tier, and the job re-reads each run's
+JSON in the same way, so a renamed variable fails the job instead of passing
+it.
+
 ## Prefer the real thing over a mock
 
 The same instinct applies below the database boundary too, and it is worth one

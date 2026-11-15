@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 /**
  * Where the route files are, for the tests that read route sources or walk the
@@ -125,4 +126,78 @@ export function routeSource(oldTail: string): string {
     throw new Error(`No route file at ${file} (old tail "${oldTail}")`);
   }
   return readFileSync(abs, "utf8");
+}
+
+const HTTP_METHODS = [
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "OPTIONS",
+] as const;
+export type RouteMethod = (typeof HTTP_METHODS)[number];
+
+/** The methods that change state, the ones the Origin check applies to. */
+export const MUTATING_METHODS: readonly RouteMethod[] = [
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+];
+
+/**
+ * The HTTP methods a route file exports, read from its syntax tree the same
+ * way scripts/maintenance/snapshot-api-routes.mjs reads them for the frozen
+ * inventory: `export function POST`, `export const POST = ...` and
+ * `export { handler as POST }` all count.
+ */
+export function exportedHttpMethods(abs: string): RouteMethod[] {
+  const source = ts.createSourceFile(
+    abs,
+    readFileSync(abs, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const names = new Set<string>();
+  for (const statement of source.statements) {
+    if (ts.isExportDeclaration(statement)) {
+      if (statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+        for (const element of statement.exportClause.elements) {
+          names.add(element.name.text);
+        }
+      }
+      continue;
+    }
+    const exported = ts
+      .getModifiers(statement as ts.HasModifiers)
+      ?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
+    if (!exported) continue;
+    if (ts.isFunctionDeclaration(statement) && statement.name) {
+      names.add(statement.name.text);
+    } else if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name)) names.add(declaration.name.text);
+      }
+    }
+  }
+  return HTTP_METHODS.filter((method) => names.has(method));
+}
+
+export interface MutatingHandler {
+  route: ApiRouteFile;
+  method: RouteMethod;
+}
+
+/** Every exported POST, PUT, PATCH and DELETE handler under app/api. */
+export function mutatingHandlers(
+  options: { spaces?: readonly ApiSpace[] } = {},
+): MutatingHandler[] {
+  return listApiRouteFiles(options).flatMap((route) =>
+    exportedHttpMethods(route.abs)
+      .filter((method) => MUTATING_METHODS.includes(method))
+      .map((method) => ({ route, method })),
+  );
 }

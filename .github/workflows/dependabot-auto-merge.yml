@@ -54,7 +54,7 @@ jobs:
     name: Auto-merge patch updates
     runs-on: ubuntu-latest
     # Longer than the wait loop's own 45-minute ceiling, which outlasts the
-    # slowest check on a pull request (the self-host smoke test allows 30
+    # slowest check on a pull request (the self-host smoke test allows 40
     # minutes, and the image checks build an image before they start).
     timeout-minutes: 55
     # The pull request's author, GitHub's documented check for Dependabot.

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
@@ -16,8 +17,11 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 import {
+  MUTATING_METHODS,
   REPO_ROOT,
+  exportedHttpMethods,
   listApiRouteFiles,
+  mutatingHandlers,
   readPre40Routes,
   readRouteMoves,
   routeFile,
@@ -152,5 +156,53 @@ describe("readPre40Routes", () => {
         methods: expect.any(Array),
       }),
     );
+  });
+});
+
+describe("exportedHttpMethods", () => {
+  // A second, plain-text reading of each file. The two disagree only on an
+  // export form one of them does not know, which is what this is for.
+  const textMethods = (source: string) =>
+    ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"].filter(
+      (m) =>
+        new RegExp(
+          `^export\\s+(?:async\\s+function|function|const|let)\\s+${m}\\b`,
+          "m",
+        ).test(source) ||
+        new RegExp(
+          `^export\\s*\\{[^}]*\\b(?:as\\s+)?${m}\\b[^}]*\\}`,
+          "m",
+        ).test(source),
+    );
+
+  it("agrees with a plain-text reading of every route file", () => {
+    const routes = listApiRouteFiles();
+    expect(routes.length).toBeGreaterThan(100);
+    for (const route of routes) {
+      expect(exportedHttpMethods(route.abs), route.file).toEqual(
+        textMethods(readFileSync(route.abs, "utf8")),
+      );
+    }
+  });
+
+  it("finds the health check's GET and nothing else", () => {
+    expect(exportedHttpMethods(routeAt("v3", "health"))).toEqual(["GET"]);
+  });
+});
+
+describe("mutatingHandlers", () => {
+  it("is every exported POST, PUT, PATCH and DELETE, one row per method", () => {
+    const handlers = mutatingHandlers();
+    expect(handlers.length).toBeGreaterThan(100);
+    for (const h of handlers) expect(MUTATING_METHODS).toContain(h.method);
+    const expected = listApiRouteFiles().reduce(
+      (n, route) =>
+        n +
+        exportedHttpMethods(route.abs).filter((m) =>
+          MUTATING_METHODS.includes(m),
+        ).length,
+      0,
+    );
+    expect(handlers).toHaveLength(expected);
   });
 });
