@@ -873,7 +873,8 @@ describe("executeCrawlScan: notifications", () => {
       if (sql.includes("FROM webhooks w")) {
         return { rows, rowCount: rows.length };
       }
-      if (sql.includes("SELECT findings FROM scan_history")) {
+      // No previous scan (lib/scanner/previous-scan.ts's lookup).
+      if (sql.includes("SELECT id, url, findings FROM scan_history")) {
         return { rows: [] };
       }
       return base(sql, params);

@@ -113,10 +113,12 @@ function installQueryMock(
     if (sql.includes("FROM webhooks")) {
       return { rows: webhooks, rowCount: webhooks.length };
     }
-    if (sql.includes("SELECT findings FROM scan_history")) {
+    // The previous-scan lookup the alert and the stored diff share
+    // (lib/scanner/previous-scan.ts).
+    if (sql.includes("SELECT id, url, findings FROM scan_history")) {
       return previousFindings === null
         ? { rows: [] }
-        : { rows: [{ findings: JSON.stringify(previousFindings) }] };
+        : { rows: [{ id: 1, findings: JSON.stringify(previousFindings) }] };
     }
     if (
       sql.includes("scan_finding_feedback") ||
