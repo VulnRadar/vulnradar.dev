@@ -13,9 +13,16 @@ updates:
       - "dependabot"
       - "dependencies"
     groups:
+      # A next major is a migration, not a bump: Next 17 makes Cache Components
+      # the default, and the move from 15 to 16 changed the bundler, the
+      # config keys and the build checks. Review a next-stack PR like
+      # that migration, and never merge one on a green run alone. next-intl
+      # rides with it because its peer range and its Turbopack alias move with
+      # next.
       next-stack:
         patterns:
           - "next"
+          - "next-intl"
           - "react"
           - "react-dom"
           - "@types/react"
@@ -53,9 +60,9 @@ updates:
           - "server-only"
       # No "bcrypt" pattern here: only bcryptjs is a dependency, so the bare
       # name matched nothing and made the group look wider than it was. `jose`
-      # is in its place because it IS on the auth path (session and OAuth
-      # state token signing) and was the one real security dependency this
-      # group did not cover.
+      # is in its place because it IS on the auth path (it verifies the ID
+      # token on staff single sign-on) and was the one real security
+      # dependency this group did not cover.
       security:
         patterns:
           - "bcryptjs"
@@ -92,7 +99,8 @@ updates:
           - "@types/*"
           - "tslib"
       # vitest and @vitest/coverage-v8 pin each other exactly: the coverage
-      # plugin's peer range is the single version "4.1.11", not a caret range.
+      # plugin's peer range is the one version of vitest it was released with,
+      # not a caret range.
       # Ungrouped, dependabot opened one PR per package, and each was the
       # other's missing half: the vitest PR left coverage-v8 behind and the
       # coverage-v8 PR left vitest behind, so BOTH died on the same ERESOLVE
@@ -104,12 +112,11 @@ updates:
           - "vitest"
           - "@vitest/*"
     ignore:
-      # Only get major Next.js updates as PRs you manually review
-      - dependency-name: "next"
-        update-types: ["version-update:semver-major"]
-      # TypeScript majors are held until @typescript-eslint supports them
-      # (its peer range caps at <6.1.0, so TS 7 breaks lint + typecheck).
-      # Revisit when typescript-eslint ships TS 7 support.
+      # TypeScript majors are held until typescript-eslint supports them.
+      # typescript-eslint 8.72.x declares typescript >=4.8.4 <6.1.0, and TS 7
+      # no longer ships the compiler API that typescript-eslint and `next
+      # build`'s type check load. Revisit when typescript-eslint ships TS 7
+      # support.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
 
@@ -125,7 +132,7 @@ updates:
   # The other half of that separation, and the one that bites silently: npm
   # `overrides` are scoped to the manifest that declares them and to that
   # install tree only. The root package.json `overrides` block (postcss,
-  # sharp, brace-expansion, @typescript-eslint/*) does NOT reach
+  # brace-expansion, minimatch, @typescript-eslint/*) does NOT reach
   # extension/package-lock.json, and the two trees have already diverged on
   # exactly that entry: postcss is 8.5.26 at the root, the pinned value, and
   # 8.5.23 in the extension, which still runs postcss on every build.
@@ -155,7 +162,8 @@ updates:
           - "patch"
     ignore:
       # The same hold the root block puts on TypeScript majors, and for the
-      # same reason: root eslint parses `extension/src` too, because
+      # same reason (typescript-eslint caps typescript below 6.1.0): root
+      # eslint parses `extension/src` too, because
       # `extension/**` is not in eslint.config.mjs's ignore list the way
       # `cli/**` is. Without this the two packages drift, and they already
       # did. Listing only minor and patch under `groups` does not ignore
