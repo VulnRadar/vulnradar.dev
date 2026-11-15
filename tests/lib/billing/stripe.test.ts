@@ -10,7 +10,7 @@ import {
 } from "vitest";
 
 // "server-only" is a Next.js bundler marker package that unconditionally
-// throws when loaded outside webpack's react-server condition (which is
+// throws when loaded outside the bundler's react-server condition (which is
 // what makes it a build-time guard against client-bundling server code).
 // Under plain Node (vitest) it must be neutralized to load the real module.
 vi.mock("server-only", () => ({}));

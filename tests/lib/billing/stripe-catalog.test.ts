@@ -3,7 +3,7 @@ import type Stripe from "stripe";
 import type { Product } from "@/lib/billing/catalog";
 
 // "server-only" is a Next.js bundler marker package that unconditionally
-// throws when loaded outside webpack's react-server condition. Under plain
+// throws when loaded outside the bundler's react-server condition. Under plain
 // Node (vitest) it must be neutralized to load the real module.
 vi.mock("server-only", () => ({}));
 

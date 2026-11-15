@@ -791,7 +791,7 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
   // table silently.
   // TextEncoder rather than Buffer.byteLength: this module is bundled for the
   // browser (the scan menu generates reports client side), and the first
-  // reference to Buffer makes webpack ship a polyfill for it.
+  // reference to Buffer makes the bundler ship a polyfill for it.
   const utf8 = new TextEncoder();
   let pdf = "%PDF-1.4\n";
   let byteLength = utf8.encode(pdf).length;
