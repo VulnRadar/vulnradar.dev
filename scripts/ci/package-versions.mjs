@@ -214,6 +214,8 @@ function touches(pkg, files, cwd, ref) {
 /**
  * Runs the check and returns what to print and the exit code, so the test
  * can drive it without a process.
+ *
+ * @param {{ cwd: string, mode: string, ref: string, base?: string }} options
  */
 export function run({ cwd, mode, ref, base }) {
   const lines = [];
