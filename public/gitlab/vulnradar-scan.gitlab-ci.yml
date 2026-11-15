@@ -153,9 +153,18 @@ vulnradar_scan:
         *[!A-Za-z0-9_-]*) echo "The API returned a scan id that cannot be used in a URL."; exit 2 ;;
       esac
       # A query string or a user:password@ in the URL can carry a token for
-      # the site being scanned, so the log shows neither.
-      url_shown=$(printf '%s' "${VR_URL%%[?#]*}" | sed -E 's#//[^/@]*@#//#')
-      printf '%s\n' "Started scan $scan_id for $(log_safe "$url_shown")"
+      # the site being scanned, so the log shows neither. The same commands
+      # as the GitHub Action's: log_safe first, so sed reads one line, then
+      # leading space, then everything up to the LAST @ before the first
+      # slash, since a password can hold an @, a # or a ?. Where a ? or #
+      # comes before that @, the @ can as well be in a query, so only the
+      # scheme is shown. The query and the fragment go last.
+      url_shown=$(log_safe "$VR_URL" | sed -E \
+        -e 's/^[[:space:]]+//' \
+        -e 's|^(([A-Za-z][A-Za-z0-9+.-]*://)?)[^/]*[?#][^/]*@.*|\1|' \
+        -e 's|^(([A-Za-z][A-Za-z0-9+.-]*://)?)[^/]*@|\1|' \
+        -e 's|[?#].*||')
+      printf '%s\n' "Started scan $scan_id for $url_shown"
 
       # Poll until it completes, against the wall clock: every poll also
       # spends however long its request took.

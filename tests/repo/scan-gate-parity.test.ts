@@ -14,7 +14,7 @@
  * real `jq` and compares the answer with the CLI's. It skips where there is no
  * jq (CI runners have it).
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
@@ -1245,8 +1245,8 @@ describe.each([
       /^echo "VR_URL is empty[.] Set it to the URL you want scanned[.]"; exit 2$/,
       // The request body, built by jq.
       /^[a-z_]+=\$\(jq -n --arg url "\$VR_URL" '\{url: \$url\}'\)$/,
-      // The one copy that is printed.
-      /^url_shown=\$\(printf '%s' "\$\{VR_URL%%\[\?#\]\*\}" \| sed -E 's#\/\/\[\^\/@\]\*@#\/\/#'\)$/,
+      // The one copy that is printed, through log_safe before sed reads it.
+      /^url_shown=\$\(log_safe "\$VR_URL" \| sed -E \x5c$/,
     ];
     const uses = script
       .split("\n")
@@ -1260,7 +1260,146 @@ describe.each([
         use,
       ).toBe(true);
     }
-    expect(script).toMatch(/log_safe "\$url_shown"/);
+    // Assigned once, by that command, so nothing printed later as
+    // url_shown has skipped the filter.
+    const assigned = script
+      .split("\n")
+      .filter((l) => /^\s*url_shown=/.test(l))
+      .map((l) => l.trim());
+    expect(assigned).toEqual(['url_shown=$(log_safe "$VR_URL" | sed -E \\']);
+  });
+});
+
+/**
+ * The `url_shown=` commands of a gate script, trimmed, with their
+ * continuation lines: the one run of assignments that computes the address
+ * the log shows.
+ */
+function redactionOf(script: string): string[] {
+  const backslash = String.fromCharCode(92);
+  const lines = script.split(NL);
+  const start = lines.findIndex((l) => l.trim().startsWith("url_shown="));
+  expect(start, "the script computes url_shown").toBeGreaterThan(-1);
+  const commands: string[] = [];
+  for (const line of lines.slice(start)) {
+    const continues =
+      commands.length > 0 && commands[commands.length - 1].endsWith(backslash);
+    if (!continues && !line.trim().startsWith("url_shown=")) break;
+    commands.push(line.trim());
+  }
+  return commands;
+}
+
+/**
+ * What a gate script's own redaction makes of each input: its log_safe
+ * function and its url_shown commands, run by `shell` in one process, one
+ * output line per input.
+ */
+function shownBy(script: string, shell: string, inputs: string[]): string[] {
+  const filter = /^\s*(log_safe\(\) \{.*\})\s*$/m.exec(script);
+  expect(filter, "a log_safe function").not.toBeNull();
+  // Single-quoted, so the shell reads each input as it is, a line break
+  // included.
+  const quote = (s: string) => `'${s.split("'").join(`'"'"'`)}'`;
+  const body = [
+    filter![1],
+    ...inputs.flatMap((input) => [
+      `VR_URL=${quote(input)}`,
+      ...redactionOf(script),
+      `printf '%s' "$url_shown"; echo`,
+    ]),
+  ].join(NL);
+  const dir = mkdtempSync(path.join(tmpdir(), "scan-gate-url-"));
+  try {
+    const file = path
+      .join(dir, "shown.sh")
+      .split(String.fromCharCode(92))
+      .join("/");
+    writeFileSync(file, `${body}${NL}`);
+    const run = spawnSync(shell, [file], { encoding: "utf8" });
+    expect(run.status, run.stderr).toBe(0);
+    return run.stdout.split(NL).slice(0, inputs.length);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+describe.skipIf(!shellAvailable)("the address the log shows", () => {
+  /**
+   * The input, what the log shows of it, and what must not appear. The
+   * first five are the review's: a password with an @ in it, one with a #
+   * in it, a bare user, an @ in the path, and a port with a query.
+   *
+   * After them, the shapes the greedy strip alone gets wrong or the API also
+   * accepts. A query whose value holds an @, with no path before it: the
+   * text after that @ is the tail of the query, and printing it as the host
+   * printed the token. A bare host, which the API gives https:// to, and
+   * one with space in front, which it trims. A line break, which the URL
+   * parser drops, so a password split by one is still a password.
+   */
+  const CASES: { input: string; shown: string; hidden: string[] }[] = [
+    {
+      input: "https://u:p@ss@host/path?q#f",
+      shown: "https://host/path",
+      hidden: ["u:p", "p@ss", "ss@", "?q", "#f"],
+    },
+    {
+      input: "https://u:p#x@host/",
+      shown: "https://",
+      hidden: ["u:p", "#x", "x@"],
+    },
+    { input: "https://u@host", shown: "https://host", hidden: ["u@"] },
+    { input: "https://host/p@th", shown: "https://host/p@th", hidden: [] },
+    {
+      input: "https://host:8443/x?k=v",
+      shown: "https://host:8443/x",
+      hidden: ["?", "k=v"],
+    },
+    {
+      input: "https://host?email=a@b.test&token=t0ps3cret",
+      shown: "https://",
+      hidden: ["t0ps3cret", "b.test", "email"],
+    },
+    { input: "u:p@host/x", shown: "host/x", hidden: ["u:p"] },
+    { input: " https://u:p@host/", shown: "https://host/", hidden: ["u:p"] },
+    {
+      input: `https://u:p${NL}@host/`,
+      shown: "https://host/",
+      hidden: ["u:p"],
+    },
+  ];
+
+  it("is the same commands in both files", () => {
+    expect(redactionOf(GITLAB_SH)).toEqual(redactionOf(ACTION_SH));
+  });
+
+  describe.each([
+    ["action.yml", "sh", ACTION_SH],
+    ["action.yml", "bash", ACTION_SH],
+    ["the GitLab template", "sh", GITLAB_SH],
+  ])("%s, run by %s", (_name, shell, script) => {
+    let shown: string[] = [];
+    beforeAll(() => {
+      shown = shownBy(
+        script,
+        shell,
+        CASES.map((c) => c.input),
+      );
+    }, 60_000);
+
+    it.each(CASES.map((c, i) => [JSON.stringify(c.input), c, i] as const))(
+      "shows %s without its userinfo, query or fragment",
+      (_label, c, i) => {
+        expect(shown[i]).toBe(c.shown);
+        for (const secret of c.hidden) {
+          expect(shown[i], secret).not.toContain(secret);
+        }
+        // Nothing before the first slash after the scheme ends in an @.
+        expect(shown[i]).not.toMatch(
+          /^([A-Za-z][A-Za-z0-9+.-]*:[/][/])?[^/]*@/,
+        );
+      },
+    );
   });
 });
 
