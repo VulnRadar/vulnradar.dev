@@ -60,8 +60,8 @@ export const STRIP_PREFIXES = [
   ".github",
   ".claude",
   "audits",
-  // Developer tooling. `next build` skips ESLint entirely (see next.config's
-  // eslint.ignoreDuringBuilds) and nothing at runtime reads any of these.
+  // Developer tooling. `next build` does not lint at all since Next 16, and
+  // nothing at runtime reads any of these.
   "eslint.config.mjs",
   ".oxlintrc.json",
   ".prettierignore",

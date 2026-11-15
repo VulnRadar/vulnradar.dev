@@ -60,7 +60,9 @@ function generateNonce(): string {
  *     (Turnstile's loader in signup-form.tsx, contact-form.tsx,
  *     browser-login.ts): Next.js automatically reads the nonce out of this
  *     header and stamps it on these itself (documented Next.js behavior,
- *     confirmed on 15.5.22) -- no nonce prop-threading needed anywhere else.
+ *     which the Self-host CI job's nonce probe,
+ *     scripts/ci/next16-runtime-probes.mjs, checks on every build) -- no
+ *     nonce prop-threading needed anywhere else.
  *   - Stripe.js (@stripe/stripe-js's loadStripe() in stripe-checkout.tsx):
  *     injected via document.createElement from our own nonce'd bundle, so
  *     'strict-dynamic' propagates trust to it -- exactly the case
@@ -283,8 +285,8 @@ function registryMaintenanceOn(event: NextFetchEvent | undefined): boolean {
 }
 
 function buildSecurityHeaders(nonce: string): Record<string, string> {
-  // next dev's webpack runtime (hot reload / fast refresh module loading)
-  // calls eval() to evaluate updated modules -- a next-dev-only mechanism,
+  // next dev's bundler runtime (hot reload / fast refresh module loading)
+  // may call eval() to evaluate updated modules -- a next-dev-only mechanism,
   // never used by a production build. Without 'unsafe-eval' here, that
   // eval() call is blocked by CSP, main-app.js never finishes initializing,
   // and React never hydrates -- every click on the page silently does
@@ -843,7 +845,9 @@ export function middleware(request: NextRequest, event?: NextFetchEvent) {
   // Verified against https://vulnradar.dev/landing, 73 of 77 script tags
   // nonced; the four without are two ld+json blocks, the app's own inline
   // script, and Cloudflare's edge-injected email-decode.js (the case the
-  // sha256 entry in scriptSrc exists for).
+  // sha256 entry in scriptSrc exists for). The Self-host CI job's nonce probe
+  // (scripts/ci/next16-runtime-probes.mjs) now fails the build if Next ever
+  // stops copying this response CSP onto the request.
 
   // app/layout.tsx reads this back to decide whether the database-backed
   // maintenance gate applies to the page being rendered. For an alias it is

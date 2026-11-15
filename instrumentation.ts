@@ -65,12 +65,13 @@ export const onRequestError: Instrumentation.onRequestError = async (
 export async function register() {
   // `if (...) { everything }` and NOT an early `return`, which is the shape
   // this obviously wants to be. Next.js compiles instrumentation.ts for the
-  // EDGE runtime as well as for Node, and in that build webpack's DefinePlugin
-  // replaces process.env.NEXT_RUNTIME with the literal "edge". A constant-false
-  // `if` makes its whole body dead code, so every `await import()` below is
-  // dropped from the edge bundle along with the module graph behind it. An
-  // early return leaves those statements reachable in the AST, webpack follows
-  // the imports, and the edge build fails on the first Node builtin it reaches
+  // EDGE runtime as well as for Node, and in that build the bundler defines
+  // process.env.NEXT_RUNTIME as the literal "edge". A constant-false `if`
+  // makes its whole body dead code, so every `await import()` below is
+  // dropped from the edge bundle along with the module graph behind it
+  // (Turbopack drops them the same way webpack did). An early return leaves
+  // those statements reachable, the bundler follows the imports, and the
+  // edge build fails on the first Node builtin it reaches
   // (`Can't resolve 'crypto'`, via lib/domains/verification.ts). None of this
   // shows up in `npx tsc --noEmit`; only `npm run build` sees it.
   if (process.env.NEXT_RUNTIME === "nodejs") {

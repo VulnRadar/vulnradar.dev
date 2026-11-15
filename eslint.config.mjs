@@ -5,9 +5,9 @@
 // the @eslint/eslintrc FlatCompat shim that older eslint-config-next
 // releases needed.
 //
-// `next build`'s internal linter is disabled in next.config.mjs
-// (eslint.ignoreDuringBuilds: true). We run `npm run lint` in CI instead,
-// which runs Oxlint first and then this file.
+// `next build` does not lint at all since Next 16, and next.config.mjs has no
+// eslint key. We run `npm run lint` in CI instead, which runs Oxlint first
+// and then this file.
 //
 // Oxlint owns every rule it implements (.oxlintrc.json). The last block below
 // reads that file and switches the same rules off here, so nothing runs
@@ -15,38 +15,26 @@
 // promise rules on the auth and billing surface, the React Compiler readiness
 // rules, the no-restricted-syntax selector, and the scripts block.
 //
-// TWO DELIBERATE VERSION MISMATCHES, recorded here rather than in
-// package.json (which is JSON and cannot carry a comment), because both look
-// like mistakes to anyone reading the manifest and "fixing" either one breaks
-// this file.
+// ONE DELIBERATE VERSION MISMATCH, recorded here rather than in package.json
+// (which is JSON and cannot carry a comment), because it looks like a mistake
+// to anyone reading the manifest and "fixing" it breaks this file.
 //
-// 1. eslint-config-next is 16.x while next is 15.x (AUDIT-013#deps-13).
-//    eslint-config-next 16 is the first release with native flat config,
-//    which is what let this file drop the @eslint/eslintrc FlatCompat shim.
-//    The cost is that the @next/eslint-plugin-next rule set being enforced
-//    targets Next 16 conventions against a Next 15 codebase: a rule added
-//    for 16 may flag an idiom the app cannot adopt yet, and a rule dropped
-//    in 16 no longer catches the Next 15 anti-pattern it was written for.
-//    Accepted, not overlooked. Realign when the Next 16 upgrade lands, and
-//    note that .github/dependabot.yml ignores `next` majors, so the two do
-//    not move as a unit on their own.
-//
-// 2. The root package.json `overrides` block forces `eslint: $eslint`
-//    (currently ^10) into eslint-plugin-import, eslint-plugin-jsx-a11y and
-//    eslint-plugin-react, whose own peer ranges all stop at ESLint 9
-//    (AUDIT-013#deps-04). Without those three nested overrides `npm ci`
-//    fails with ERESOLVE. With them, the plugins run on a major upstream
-//    does not claim to support, and the failure mode is a crash rather than
-//    a finding: the `settings.react.version` workaround further down this
-//    file exists because exactly that happened once already. Two known
-//    unguarded uses of removed ESLint 10 context APIs remain in
-//    eslint-plugin-react (forward-ref-uses-ref, jsx-filename-extension);
-//    both rules are off in core-web-vitals today, so they are latent. If a
-//    future ESLint 10 patch aborts the lint run again, the two ways out are
-//    dropping `eslint` back to ^9 (and deleting the three nested overrides)
-//    or replacing eslint-config-next/core-web-vitals below with
-//    @next/eslint-plugin-next plus eslint-plugin-react-hooks, which is the
-//    one plugin in the set that already declares ESLint 10 support.
+// The root package.json `overrides` block forces `eslint: $eslint`
+// (currently ^10) into eslint-plugin-import, eslint-plugin-jsx-a11y and
+// eslint-plugin-react, whose own peer ranges all stop at ESLint 9
+// (AUDIT-013#deps-04). Without those three nested overrides `npm ci`
+// fails with ERESOLVE. With them, the plugins run on a major upstream
+// does not claim to support, and the failure mode is a crash rather than
+// a finding: the `settings.react.version` workaround further down this
+// file exists because exactly that happened once already. Two known
+// unguarded uses of removed ESLint 10 context APIs remain in
+// eslint-plugin-react (forward-ref-uses-ref, jsx-filename-extension);
+// both rules are off in core-web-vitals today, so they are latent. If a
+// future ESLint 10 patch aborts the lint run again, the two ways out are
+// dropping `eslint` back to ^9 (and deleting the three nested overrides)
+// or replacing eslint-config-next/core-web-vitals below with
+// @next/eslint-plugin-next plus eslint-plugin-react-hooks, which is the
+// one plugin in the set that already declares ESLint 10 support.
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -152,7 +140,7 @@ export default [
     // "detect" for reliability.
     settings: {
       react: {
-        version: "19.2.8",
+        version: "19.3.1",
       },
     },
     rules: {
