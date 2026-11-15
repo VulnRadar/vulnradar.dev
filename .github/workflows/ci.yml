@@ -287,6 +287,115 @@ jobs:
         run: npm test
         working-directory: cli
 
+  # The CLI claims every Node from the engines floor up and ships for three
+  # operating systems, and until this job it was only ever run on Linux, on
+  # the one Node the image carries. Each leg runs the suite, then installs the
+  # tarball `npm pack` produces into an empty project and runs the binary the
+  # way a user does, so a file missing from `files` or a Windows shim that
+  # cannot start Node fails here and not on a user's machine. The suite's
+  # server is a stand-in on 127.0.0.1, so nothing leaves the runner.
+  #
+  # The `pinned` leg reads .nvmrc (an empty `version` falls back to it), the
+  # `floor` leg is the lowest Node cli/package.json promises, and `lts` is
+  # whatever the newest long-term-support line is today, which changes about
+  # once a year and is the point of it. tests/repo/ci-node-pin.test.ts lets
+  # this job, and only this one, name a Node version, and tests/repo/
+  # cli-package.test.ts holds `floor` equal to the package's engines.
+  cli-matrix:
+    name: CLI on ${{ matrix.os }}, Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    # The suite took 146 s on a loaded Windows machine.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [pinned, floor, lts]
+        include:
+          - node: pinned
+            version: ""
+          - node: floor
+            version: "22.12.0"
+          - node: lts
+            version: "lts/*"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          node-version: ${{ matrix.version }}
+          # The CLI has no dependencies and no lockfile to key a cache on.
+          package-manager-cache: false
+
+      - name: Run the CLI tests
+        run: npm test
+        working-directory: cli
+
+      - name: Install the packed CLI and run it
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./cli/package.json').version")
+
+          cd cli
+          # The tarball holds exactly what `files` lists, plus package.json.
+          npm pack --dry-run --json --ignore-scripts | node -e "
+            const fs = require('node:fs');
+            const packed = JSON.parse(fs.readFileSync(0, 'utf8'))[0].files.map((f) => f.path).sort();
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            const wanted = [...pkg.files, 'package.json'].sort();
+            if (JSON.stringify(packed) !== JSON.stringify(wanted)) {
+              console.log('::error::npm pack lists ' + packed.join(', ') + ' but package.json files plus package.json is ' + wanted.join(', '));
+              process.exit(1);
+            }
+            console.log('the tarball holds ' + packed.join(', '));
+          "
+
+          tarball=$(npm pack --ignore-scripts --json --pack-destination "$RUNNER_TEMP" | node -p "JSON.parse(require('node:fs').readFileSync(0, 'utf8'))[0].filename")
+          consumer="$RUNNER_TEMP/vr-cli-consumer"
+          rm -rf "$consumer"
+          mkdir -p "$consumer"
+          cd "$consumer"
+          npm init -y > /dev/null
+          npm install --ignore-scripts --no-audit --no-fund "../$tarball"
+
+          # Through npx, so the Windows .cmd shim is what starts Node.
+          got=$(npx --no-install vulnradar --version | tr -d '[:cntrl:]')
+          if [ "$got" != "$version" ]; then
+            echo "::error::The installed CLI printed '$got' for --version, cli/package.json says '$version'."
+            exit 1
+          fi
+          npx --no-install vulnradar --help > /dev/null
+          echo "The installed CLI ${got} starts and prints its help."
+
+  # The one check name the ruleset can require. Matrix leg names change
+  # whenever the matrix does; this one does not.
+  cli:
+    name: CLI
+    needs: [cli-matrix]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+
+    steps:
+      - name: Every leg passed
+        env:
+          NEEDS_RESULT: ${{ needs.cli-matrix.result }}
+        run: |
+          if [ "$NEEDS_RESULT" != "success" ]; then
+            echo "::error::The CLI did not pass on every platform and Node version: ${NEEDS_RESULT}."
+            exit 1
+          fi
+
   # The only job that executes real SQL. tests/integration/ is excluded from
   # the root vitest config so `npm test` stays green without a database, which
   # means this job is the ONLY thing that runs it: nothing else in the repo

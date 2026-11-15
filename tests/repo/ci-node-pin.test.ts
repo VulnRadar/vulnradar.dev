@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { readWorkflow, workflowSteps, stepNamed } from "./_workflow-steps";
+import {
+  readWorkflow,
+  workflowSteps,
+  stepNamed,
+  jobsOf,
+} from "./_workflow-steps";
 
 /**
  * The Node patch is one number kept in three kinds of place: .nvmrc and
@@ -110,9 +115,36 @@ describe.each(NODE_WORKFLOWS)("%s", (file) => {
       expect(step.code, step.name ?? "unnamed step").toMatch(
         /^\s+node-version-file:\s*\.nvmrc\s*$/m,
       );
-      expect(step.code, step.name ?? "unnamed step").not.toMatch(
-        /^\s+node-version:/m,
-      );
+    }
+  });
+
+  it("names a Node version only in the CLI matrix, the one place that proves a range", () => {
+    // The CLI job tests the range the package publishes, not the image's
+    // runtime, so it needs more than one Node. Its `pinned` leg leaves the
+    // version empty so setup-node falls back to .nvmrc, and the `floor` leg
+    // is the engines floor, so the range it proves is the range
+    // cli/package.json claims. Every other job keeps .nvmrc and nothing else.
+    for (const job of jobsOf(workflow)) {
+      for (const step of job.steps) {
+        if (!/uses:\s*actions\/setup-node@/.test(step.code)) continue;
+        const named = /^\s+node-version:\s*(.+?)\s*$/m.exec(step.code)?.[1];
+        if (job.id !== "cli-matrix") {
+          expect(named, `${file} ${job.id} names a Node version`).toBe(
+            undefined,
+          );
+          continue;
+        }
+        expect(named).toBe("${{ matrix.version }}");
+        const floor = /^>=(\d+[.]\d+[.]\d+)$/.exec(
+          JSON.parse(read("cli/package.json")).engines.node,
+        )?.[1];
+        expect(
+          floor,
+          "cli/package.json engines.node is >=<exact patch>",
+        ).toEqual(expect.any(String));
+        expect(job.strategy).toMatch(/^\s+version: ""\s*$/m);
+        expect(job.strategy).toContain(`version: "${floor}"`);
+      }
     }
   });
 });
