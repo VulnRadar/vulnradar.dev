@@ -617,11 +617,28 @@ jobs:
           done
 
       - name: Assert the build's origin did not reach server code
-        # grep exits 1 for "searched and found nothing" and 2 for "could not
-        # search", so a route that moved fails here instead of passing.
+        # The forgot-password handler writes reset links, so its own code
+        # must read the origin at run time. webpack put that code in the
+        # route's route.js; Turbopack makes route.js a loader and puts the
+        # code in shared chunks. Both places are searched, the handler is
+        # found by a string only it contains, and finding no handler fails
+        # the step instead of passing it. lib/config/client-constants.ts
+        # still inlines the origin into APP_URL by design, which is why the
+        # whole tree is not searched.
         run: |
-          docker run --rm --entrypoint sh vulnradar:ci -c \
-            'grep -rl build.invalid .next/server/app/api/v3/auth/forgot-password; test $? -eq 1'
+          docker run --rm --entrypoint sh vulnradar:ci -c '
+            set -eu
+            set -f
+            route=.next/server/app/api/v3/auth/forgot-password
+            test -s "$route/route.js" || { echo "no route entry at $route/route.js"; exit 1; }
+            holders=$(find "$route" .next/server/chunks -type f -name "*.js" -exec grep -l "a reset link has been generated" {} + || true)
+            test -n "$holders" || { echo "no file holds the forgot-password handler"; exit 1; }
+            echo "handler code in: $holders"
+            if grep -l build.invalid $holders; then
+              echo "the build origin is inlined into the forgot-password handler"
+              exit 1
+            fi
+          '
 
       - name: Assert the server cannot rewrite its own code
         # security: these run as the image's default user, the uid the server

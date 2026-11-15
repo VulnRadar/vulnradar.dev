@@ -104,7 +104,7 @@ describe("the runner stage's code is not writable by the server", () => {
     ]);
   });
 
-  it("leaves the build's webpack cache behind", () => {
+  it("leaves the build cache behind", () => {
     // The chown below rewrites every file in .next/cache into a new layer, so
     // anything still in there at that point is stored in the image twice.
     const builder = instructions.slice(0, runnerStart);
@@ -187,8 +187,28 @@ describe("the self-host job proves all of it against the real image", () => {
   });
 
   it("fails if the sentinel is inlined into the forgot-password route", () => {
-    expect(all).toContain(
-      "grep -rl build.invalid .next/server/app/api/v3/auth/forgot-password",
+    // Turbopack makes route.js a loader and puts the handler in shared
+    // chunks, so a search of the route folder alone passes whatever the code
+    // does. The step finds the handler by its message, wherever it landed.
+    const check = stepNamed(
+      steps,
+      "Assert the build's origin did not reach server code",
+    ).code;
+    for (const part of [
+      ".next/server/app/api/v3/auth/forgot-password",
+      ".next/server/chunks",
+      "a reset link has been generated",
+      "grep -l build.invalid",
+    ]) {
+      expect(check, part).toContain(part);
+    }
+  });
+
+  it("finds the forgot-password handler by a string the handler still holds", () => {
+    // Rewording the message would leave the step finding no handler; this
+    // fails first, in a unit test rather than in the image job.
+    expect(read("app/api/v3/auth/forgot-password/route.ts")).toContain(
+      "a reset link has been generated",
     );
   });
 

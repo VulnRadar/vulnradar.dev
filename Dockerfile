@@ -104,9 +104,10 @@ ENV STRIPE_PUBLISHABLE_KEY="placeholder"
 
 RUN npm run build
 
-# The webpack cache is the build's own working state and the largest thing in
-# .next. Nothing at run time reads it, and the runner's chown of .next/cache
-# below would otherwise store a second copy of it in the image.
+# The build cache (Turbopack's, like webpack's before it) is the build's own
+# working state and the largest thing in .next. Nothing at run time reads it,
+# and the runner's chown of .next/cache below would otherwise store a second
+# copy of it in the image.
 RUN rm -rf .next/cache
 
 # infra: drop the build-only tree before the runner stage copies node_modules.
