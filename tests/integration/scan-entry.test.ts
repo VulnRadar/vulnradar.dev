@@ -114,6 +114,12 @@ describeIntegration("scan entry routes", () => {
     const bare = await createScan(
       post("/api/v3/scan", { url: host, isPublic: false }),
     );
+    // The executor is faked, so the first scan never leaves 'pending' and
+    // holds the account's one concurrent slot. Finish it the way a run would.
+    await pool.query(
+      "UPDATE scan_history SET status = 'completed' WHERE user_id = $1",
+      [user.id],
+    );
     const full = await createScan(
       post("/api/v3/scan", { url: `https://${host}/`, isPublic: false }),
     );

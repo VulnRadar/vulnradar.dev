@@ -47,6 +47,14 @@ vi.mock("@/lib/email/email", async (importOriginal) => {
   };
 });
 
+// A password-less account used to pass re-auth on its session alone; it now
+// needs the mailed step-up, which has no request scope here. Re-auth has its
+// own suite (reauth-fresh-session), so it is stubbed like staff-invites does.
+vi.mock("@/lib/auth/reauth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/reauth")>();
+  return { ...actual, verifyReauthPassword: async () => ({ ok: true }) };
+});
+
 const { getUserByEmail } = await import("@/lib/database/db-utils");
 const { POST: sendInvite } =
   await import("@/app/api/v3/admin/staff-invites/route");
@@ -71,16 +79,14 @@ async function createLegacyUser(role = "user") {
 }
 
 /**
- * An admin the route accepts: a session, two-factor on (so ENFORCE_STAFF_2FA
- * cannot lock it out), and no password hash, which the re-auth gate treats as
- * an OAuth-created account whose session is the re-auth.
+ * An admin the route accepts: a session and two-factor on, so
+ * ENFORCE_STAFF_2FA cannot lock it out. The re-auth step is stubbed above.
  */
 async function signInAsAdmin(): Promise<number> {
   const admin = await createUser({ role: "admin" });
-  await pool.query(
-    "UPDATE users SET password_hash = NULL, totp_enabled = true WHERE id = $1",
-    [admin.id],
-  );
+  await pool.query("UPDATE users SET totp_enabled = true WHERE id = $1", [
+    admin.id,
+  ]);
   sessionUserId = admin.id;
   return admin.id;
 }
