@@ -13,7 +13,7 @@
 # Dependabot's docker ecosystem moves the tag and the digest together
 # (.github/dependabot.yml); tests/repo/dockerfile-pins.test.ts fails on a FROM
 # line without one.
-FROM node:22.23.4-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202 AS builder
+FROM node:22.23.5-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS builder
 
 WORKDIR /app
 
@@ -126,7 +126,7 @@ RUN rm -rf .next/cache
 RUN npm prune --omit=dev --ignore-scripts
 
 # ── Production stage ───────────────────────────────────────────
-FROM node:22.23.4-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202 AS runner
+FROM node:22.23.5-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS runner
 
 LABEL org.opencontainers.image.source="https://github.com/VulnRadar/vulnradar.dev"
 LABEL org.opencontainers.image.description="VulnRadar - Website Security Scanner"
