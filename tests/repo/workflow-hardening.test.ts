@@ -1124,3 +1124,14 @@ describe("the sitemap check in the Self-host smoke test", () => {
     ).toBe(true);
   });
 });
+
+describe("the scheduled report's issue lookup", () => {
+  const text = readWorkflow("scheduled.yml");
+  const lookup = text.match(/gh issue list[^\n]*\n[^\n]*/)?.[0] ?? "";
+
+  it("only considers issues the bot opened, so a stranger's issue with the same title is never edited", () => {
+    expect(lookup).toContain("--author app/github-actions");
+    expect(lookup).toContain("--json number,title,author");
+    expect(lookup).toMatch(/\.author\.login/);
+  });
+});
