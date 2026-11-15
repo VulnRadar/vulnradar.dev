@@ -277,6 +277,13 @@ const WRITE_GRANTS: {
     scope: "pull-requests",
     reason: "merges and deletes the pull request branch",
   },
+  {
+    file: "dependabot-auto-merge.yml",
+    job: "dependabot-merge",
+    scope: "actions",
+    reason:
+      "starts ci.yml on main for the merge commit, which a GITHUB_TOKEN push never triggers",
+  },
 ];
 
 describe.each(WORKFLOWS)("%s states its permissions job by job", (file) => {

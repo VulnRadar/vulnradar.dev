@@ -14,6 +14,7 @@ import {
   workflowSteps,
   stepNamed,
   jobsOf,
+  topLevel,
 } from "./_workflow-steps";
 
 /**
@@ -806,5 +807,98 @@ describe("dependabot-auto-merge.yml trusts the pull request's author", () => {
 
   it("does not read github.actor", () => {
     expect(cond).not.toMatch(/github\.actor/);
+  });
+});
+
+describe("dependabot-auto-merge.yml merges only the head CI checked", () => {
+  const steps = jobSteps(dependabot, "dependabot-merge");
+  const gate = stepNamed(steps, "Wait for CI to pass");
+  const merge = stepNamed(steps, "Merge");
+  const dispatch = stepNamed(steps, "Run CI on the commit it merged");
+  const runBody = (code: string) => code.slice(code.search(/^\s+run:/m));
+
+  it("keeps one run per pull request, and a newer push cancels the older wait", () => {
+    const c = topLevel(dependabot, "concurrency");
+    expect(c).not.toBeNull();
+    expect(c!.body).toMatch(
+      /^ {2}group: dependabot-merge-\$\{\{ github\.event\.pull_request\.number \}\}$/m,
+    );
+    expect(c!.body).toMatch(/^ {2}cancel-in-progress: true$/m);
+  });
+
+  it("takes the head sha from the event, through env only", () => {
+    for (const step of [gate, merge]) {
+      expect(step.code).toMatch(
+        /^\s+HEAD_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \}\}$/m,
+      );
+      expect(runBody(step.code)).not.toMatch(/\$\{\{/);
+    }
+  });
+
+  it("reads the check runs and statuses of that sha, not the pull request's current head", () => {
+    const body = runBody(gate.code);
+    expect(body).not.toMatch(/gh pr checks/);
+    expect(body).toContain(
+      '"repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100"',
+    );
+    expect(body).toContain(
+      '"repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/status?per_page=100"',
+    );
+    // A failed read retries rather than counting as an empty list.
+    expect(body).toMatch(/if ! runs=\$\(gh api --paginate /);
+    expect(body).toMatch(/! statuses=\$\(gh api --paginate /);
+  });
+
+  it("fails closed: every completed check run that is not success, neutral or skipped fails", () => {
+    const body = runBody(gate.code);
+    expect(body).toContain(
+      'if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" else "fail" end',
+    );
+    expect(body).toContain(
+      'if .state == "success" then "pass" elif .state == "pending" then "pending" else "fail" end',
+    );
+    expect(body).toMatch(
+      /if \[ "\$pending" -eq 0 \] && \[ "\$passed" -gt 0 \]; then/,
+    );
+    expect(body).toMatch(/deadline=\$\(\( \$\(date \+%s\) \+ 45 \* 60 \)\)/);
+  });
+
+  it("still excludes only itself, by its job name", () => {
+    const self = /^\s+SELF_CHECK: "([^"]+)"$/m.exec(gate.code);
+    expect(self).not.toBeNull();
+    const job = jobsOf(dependabot).find((j) => j.id === "dependabot-merge");
+    expect(self![1]).toBe(job!.name);
+  });
+
+  it("merges that sha and nothing newer", () => {
+    expect(merge.code).toMatch(
+      /^\s+run: gh pr merge --squash --delete-branch --match-head-commit "\$HEAD_SHA" "\$PR_URL"$/m,
+    );
+    expect(merge.code).toMatch(/^\s+if: steps\.gate\.outcome == 'success'$/m);
+    expect(merge.code).toMatch(/^\s+id: merge$/m);
+  });
+
+  it("starts CI on main only after a merge that succeeded", () => {
+    expect(dispatch.index).toBe(merge.index + 1);
+    expect(dispatch.code).toMatch(
+      /^\s+if: steps\.merge\.outcome == 'success'$/m,
+    );
+    expect(dispatch.code).toMatch(
+      /^\s+run: gh workflow run ci\.yml --ref main$/m,
+    );
+    // ci.yml has to accept the dispatch for this to start anything.
+    expect(topLevel(readWorkflow("ci.yml"), "on")!.body).toMatch(
+      /^ {2}workflow_dispatch:/m,
+    );
+  });
+
+  it("outlasts its own wait", () => {
+    const job = jobsOf(dependabot).find((j) => j.id === "dependabot-merge")!;
+    expect(Number(job.timeoutMinutes)).toBeGreaterThan(45);
+    expect(job.permissions).toEqual({
+      contents: "write",
+      "pull-requests": "write",
+      actions: "write",
+    });
   });
 });

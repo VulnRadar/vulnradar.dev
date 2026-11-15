@@ -21,6 +21,18 @@ name: Auto-merge Dependabot PRs
 # When required status checks DO get configured on `main`, this gate stays
 # correct: it is strictly stronger than what protection would enforce.
 #
+# security: the gate reads the checks of the head this run was started for,
+# and the merge names that same head. `gh pr checks` read whatever the pull
+# request's head was at each poll, and `gh pr merge` merged whatever it was
+# at the end, so a push that turned a patch bump into a minor or major one
+# while the wait ran could be merged on the strength of the patch's checks.
+# A newer push now also cancels this run (the concurrency group below).
+#
+# A merge made with this job's token starts no workflow on main, so the merge
+# commit never got a CI run, and a tag on it failed docker-publish's CI gate
+# after its 45-minute wait (#460, #465, #463 and #453 have none). The last
+# step asks for one by workflow_dispatch, which a GITHUB_TOKEN may start.
+#
 # Override with the `dependabot-merge-ignore` label.
 
 on:
@@ -41,10 +53,10 @@ jobs:
   dependabot-merge:
     name: Auto-merge patch updates
     runs-on: ubuntu-latest
-    # Long enough to outlast the whole CI matrix (the Build job alone allows
-    # 15 minutes and the self-host smoke test 20), plus the wait loop's own
-    # 30-minute ceiling.
-    timeout-minutes: 40
+    # Longer than the wait loop's own 45-minute ceiling, which outlasts the
+    # slowest check on a pull request (the self-host smoke test allows 30
+    # minutes, and the image checks build an image before they start).
+    timeout-minutes: 55
     # The pull request's author, GitHub's documented check for Dependabot.
     # github.actor is whoever caused this particular event, which is not the
     # same question: Dependabot is the actor when it pushes to the branch of a
@@ -55,6 +67,8 @@ jobs:
       # Squash-merge and delete the branch.
       contents: write
       pull-requests: write
+      # Start ci.yml on main for the merge commit (the last step).
+      actions: write
     steps:
       - name: Fetch metadata
         id: metadata
@@ -68,27 +82,48 @@ jobs:
           steps.metadata.outputs.update-type == 'version-update:semver-patch' &&
           !contains(github.event.pull_request.labels.*.name, 'dependabot-merge-ignore')
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
+          # The head this run was started for, which fetch-metadata read. The
+          # checks are read for this commit, and the merge below names it, so
+          # nothing pushed while the wait runs can be merged on these results.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # This job runs as a pull_request workflow, so it is itself one of
-          # the checks on the PR. Watching every check without excluding it
+          # the checks on the head. Watching every check without excluding it
           # would be waiting on itself: it can only finish after the wait
           # finishes.
           SELF_CHECK: "Auto-merge patch updates"
         run: |
           set -euo pipefail
 
-          deadline=$(( $(date +%s) + 1800 ))
+          deadline=$(( $(date +%s) + 45 * 60 ))
+
+          # Each check as {name, bucket}. Check runs: pass on success, neutral
+          # or skipped; pending until completed; anything else completed
+          # (failure, cancelled, timed_out, action_required, stale, or a value
+          # GitHub adds later) fails. Commit statuses: pass on success,
+          # pending on pending, fail on failure or error.
+          runs_filter='.check_runs[] | {name, bucket: (if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" else "fail" end)}'
+          statuses_filter='.statuses[] | {name: .context, bucket: (if .state == "success" then "pass" elif .state == "pending" then "pending" else "fail" end)}'
 
           while :; do
-            # `gh pr checks` exits non-zero both when a check has failed and
-            # when no check run exists yet, which is the normal state for the
-            # first seconds after a PR opens. Fall back to an empty list and
-            # let the buckets below decide, rather than reading the exit code.
-            checks=$(gh pr checks "$PR_URL" --json name,bucket 2>/dev/null || echo '[]')
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Timed out after 45 minutes waiting for CI to report on ${HEAD_SHA}."
+              exit 1
+            fi
+
+            # A failed read is not an empty list: with the check runs missing,
+            # a commit status alone could look like "everything passed". Wait
+            # and read both again instead.
+            if ! runs=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" --jq "$runs_filter") ||
+              ! statuses=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/status?per_page=100" --jq "$statuses_filter"); then
+              echo "Could not read the checks of ${HEAD_SHA}; trying again."
+              sleep 30
+              continue
+            fi
+            checks=$(printf '%s\n%s\n' "$runs" "$statuses" | jq -s '.')
 
             failed=$(echo "$checks" | jq --arg self "$SELF_CHECK" \
-              '[.[] | select(.name != $self and (.bucket == "fail" or .bucket == "cancel"))] | length')
+              '[.[] | select(.name != $self and .bucket == "fail")] | length')
             pending=$(echo "$checks" | jq --arg self "$SELF_CHECK" \
               '[.[] | select(.name != $self and .bucket == "pending")] | length')
             passed=$(echo "$checks" | jq --arg self "$SELF_CHECK" \
@@ -96,8 +131,8 @@ jobs:
 
             if [ "$failed" -gt 0 ]; then
               echo "$checks" | jq -r --arg self "$SELF_CHECK" \
-                '.[] | select(.name != $self and (.bucket == "fail" or .bucket == "cancel")) | "  \(.name): \(.bucket)"'
-              echo "::error::CI did not pass on this dependabot PR, so it will not be auto-merged. Review it by hand."
+                '.[] | select(.name != $self and .bucket == "fail") | "  \(.name): \(.bucket)"'
+              echo "::error::CI did not pass on ${HEAD_SHA}, so this dependabot PR will not be auto-merged. Review it by hand."
               exit 1
             fi
 
@@ -106,25 +141,37 @@ jobs:
             # "everything passed" is exactly the `--auto` behaviour this
             # replaces.
             if [ "$pending" -eq 0 ] && [ "$passed" -gt 0 ]; then
-              echo "All $passed check(s) passed."
+              echo "All $passed check(s) passed on ${HEAD_SHA}."
               break
             fi
 
-            if [ "$(date +%s)" -ge "$deadline" ]; then
-              echo "::error::Timed out after 30 minutes waiting for CI to report on this PR."
-              exit 1
-            fi
-
-            echo "waiting: $pending pending, $passed passed"
+            echo "waiting on ${HEAD_SHA}: $pending pending, $passed passed"
             sleep 30
           done
 
       - name: Merge
+        id: merge
         # `steps.gate.outcome` is 'skipped' when the gate did not run (not a
         # patch bump, or the ignore label is set), so this one condition
         # covers both "CI passed" and "this PR is not eligible".
+        #
+        # --match-head-commit makes GitHub refuse the merge if the branch no
+        # longer ends at the commit whose checks the gate read.
         if: steps.gate.outcome == 'success'
-        run: gh pr merge --squash --delete-branch "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --squash --delete-branch --match-head-commit "$HEAD_SHA" "$PR_URL"
+
+      # A push made with GITHUB_TOKEN starts no workflow, so the merge commit
+      # would get no CI run, and a tag on it would fail docker-publish's CI
+      # gate after its 45-minute wait. workflow_dispatch is the one event this
+      # token may start. If another commit lands on main between the merge and
+      # this dispatch, CI runs on that newer head, which contains the merge;
+      # the merge commit itself then has no run of its own, which is accepted.
+      - name: Run CI on the commit it merged
+        if: steps.merge.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run ci.yml --ref main
