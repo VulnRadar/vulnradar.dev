@@ -2,9 +2,10 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { CONFIG_APP_VERSION } from "@/lib/config/config-values";
+import { CHANGELOG } from "@/lib/changelog/data";
 
 /**
- * The app version is written out by hand in four places, and nothing tied
+ * The app version is written out by hand in five places, and nothing tied
  * them together.
  *
  *   package.json                 what the build and the release workflow use
@@ -12,6 +13,7 @@ import { CONFIG_APP_VERSION } from "@/lib/config/config-values";
  *                                panel and GET /api/version report
  *   docker-compose.yml           the image tag a self-hoster pulls
  *   SECURITY.md                  the supported-versions table, by major.minor
+ *   lib/changelog/data.ts        the newest entry, which /changelog shows
  *
  * A release that bumps one and forgets another does not fail anything. It
  * ships code from the new version while telling every reader it is the old
@@ -48,6 +50,14 @@ describe("app version is the same fact everywhere it is written", () => {
 
   it("CONFIG_APP_VERSION matches package.json", () => {
     expect(CONFIG_APP_VERSION).toBe(packageVersion);
+  });
+
+  // The changelog's first entry is the release this tree becomes: /changelog,
+  // the AI's knowledge and the release notes all read it. docker-publish also
+  // refuses a tag whose version has no entry. The date is not checked here:
+  // it is taken from the GitHub release after it ships (release-dates.test.ts).
+  it("the newest changelog entry is this version", () => {
+    expect(CHANGELOG[0]?.version).toBe(packageVersion);
   });
 
   // The pin once sat at v3.8.0 while v3.8.1 was the published release, so

@@ -637,7 +637,8 @@ instrumentation.ts (server startup only)
   ├── Integration (tests/integration against a real PostgreSQL)
   ├── Extension (typecheck, format check, build and package)
   ├── Build (next build)
-  └── Self-host smoke test (builds the image, boots it on an empty database, self-scans every published route)
+  ├── Self-host smoke test (builds the image, boots it on an empty database, self-scans every published route)
+  └── Package versions (pull requests only, report-only: a CLI or extension change without a version bump)
 
 On tag v*
   └── Docker publish (ghcr.io/${`<owner>`}/${`<repo>`})

@@ -871,3 +871,37 @@ jobs:
       - name: Container logs on failure
         if: failure()
         run: docker logs vr-smoke || true
+
+  # Report-only, and not in the ruleset: every pull request that touches the
+  # CLI would warn until the CLI is bumped. It names the package, so the bump
+  # happens in the pull request that makes it necessary rather than when the
+  # release build fails on it.
+  package-versions:
+    name: Package versions
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Every tag and both sides of the pull request: the previous release
+          # is found with git describe, and the diff is the pull request's own.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          # Nothing is installed: the script has no dependencies.
+          package-manager-cache: false
+
+      - name: Report packages changed without a version bump
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci/package-versions.mjs --mode pr --ref "$HEAD_SHA" --base "$BASE_SHA"

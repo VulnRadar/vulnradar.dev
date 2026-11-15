@@ -252,3 +252,46 @@ describe("release.yml marks only the highest stable tag as Latest", () => {
     expect(decided).toBeLessThan(attach.code.indexOf("gh release create"));
   });
 });
+
+describe("release.yml checks each package against what already shipped", () => {
+  const steps = job("build").steps;
+  const check = stepNamed(
+    steps,
+    "Check each package's version against what already shipped",
+  );
+
+  it("runs in the build job, after Node is set up and before anything is built", () => {
+    const setup = steps.findIndex((s) => /actions\/setup-node@/.test(s.code));
+    const build = stepNamed(steps, "Build + package browser extension");
+    expect(setup).toBeGreaterThan(-1);
+    expect(check.index).toBeGreaterThan(steps[setup].index);
+    expect(check.index).toBeLessThan(build.index);
+  });
+
+  it("fails on a version problem and on npm bytes that differ from the tag", () => {
+    expect(check.code).toContain(
+      'node scripts/ci/package-versions.mjs --mode release --ref "${TAG}"',
+    );
+    expect(check.code).toContain(
+      'npm pack "vulnradar@${CLI_VERSION}" --pack-destination',
+    );
+    expect(check.code).toContain("--compare-npm");
+    expect(check.code).toContain("set -euo pipefail");
+  });
+
+  it("treats only a 404 as absent, as publish-npm does", () => {
+    expect(check.code).toContain("E404");
+    expect(check.code).toMatch(/Could not tell whether[^]*?exit 1/);
+  });
+
+  it("skips the npm check for exactly the tags publish-npm never publishes", () => {
+    expect(check.code).toMatch(/^\s+\*-\*\|v1\.\*\|v2\.\*\|v3\.\*\)\s*$/m);
+    const publish = stepNamed(
+      job("publish-npm").steps,
+      "Publish the CLI to npm",
+    );
+    for (const skip of ["'-'", "'v1.'", "'v2.'", "'v3.'"]) {
+      expect(publish.code).toContain(skip);
+    }
+  });
+});

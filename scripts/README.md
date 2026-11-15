@@ -75,6 +75,9 @@ scripts/
 ├── ai/
 │   └── run-verify-eval.mjs        # npm run eval:verify: the AI verification eval, against .env.local
 │
+├── ci/                            # Run by the workflows in .github/workflows
+│   └── package-versions.mjs       # Each package's version against the last stable tag (release.yml fails, ci.yml warns)
+│
 ├── spike/                         # Routing spike for the v4 alias design (.github/workflows/spike-api-rewrite.yml, or by hand)
 │   ├── run.mjs                    # Builds tests/spike/fixture and runs the checks of SPIKE 1 to 6 against dev, start and the image
 │   ├── summarise.mjs              # Merges the result files into one pass or fail table per SPIKE item

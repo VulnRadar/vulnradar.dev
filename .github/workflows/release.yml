@@ -366,6 +366,56 @@ jobs:
           # keeps a run that executed package code from saving a cache.
           package-manager-cache: false
 
+      - name: Check each package's version against what already shipped
+        # release: the CLI and the extension ship on their own version lines,
+        # and nothing checked that a package whose shipped files changed was
+        # bumped. cli/ changed in every shipped file between v3.9.1 and main
+        # while cli/package.json stayed 0.2.0, so the next release would have
+        # attached a tarball and offered an npm version that named different
+        # bytes than the 0.2.0 already out there. scripts/ci/package-versions.mjs
+        # compares each package with the last stable tag and fails on a change
+        # without a bump, a version that went down, or one that is not semver.
+        #
+        # Then, for a tag publish-npm would publish, the npm content check: if
+        # this CLI version is already on npm, the bytes npm serves must be the
+        # tag's cli/. Without it, publish-npm says "already on npm; nothing to
+        # publish" and the release page and npm carry different bytes under
+        # one version. Only a 404 counts as absent, as in publish-npm. This job
+        # holds no credential, so a registry read here costs nothing.
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node scripts/ci/package-versions.mjs --mode release --ref "${TAG}"
+
+          case "${TAG}" in
+            *-*|v1.*|v2.*|v3.*)
+              echo "${TAG} is not published to npm, so the npm content check does not apply."
+              exit 0
+              ;;
+          esac
+          CLI_VERSION=$(git show "${TAG}:cli/package.json" | jq -r .version)
+          VIEW_ERR=$(mktemp)
+          VIEW=$(npm view "vulnradar@${CLI_VERSION}" version 2>"${VIEW_ERR}") && STATUS=0 || STATUS=$?
+          if [ "${STATUS}" -ne 0 ] && ! grep -q "E404" "${VIEW_ERR}"; then
+            echo "::error::Could not tell whether vulnradar@${CLI_VERSION} is on npm: $(tr '\n' ' ' < "${VIEW_ERR}")"
+            exit 1
+          fi
+          if [ "${STATUS}" -ne 0 ] || [ "${VIEW}" != "${CLI_VERSION}" ]; then
+            echo "vulnradar@${CLI_VERSION} is not on npm yet; publish-npm will publish the tag's cli/."
+            exit 0
+          fi
+          PACK_DIR="${RUNNER_TEMP}/npm-cli"
+          rm -rf "${PACK_DIR}"
+          mkdir -p "${PACK_DIR}/npm" "${PACK_DIR}/tag"
+          # A registry spec: npm runs pack scripts only for a directory, so
+          # nothing from the package runs here, and the job keeps the build
+          # job's rule of no --ignore-scripts anywhere (owner decision D8).
+          npm pack "vulnradar@${CLI_VERSION}" --pack-destination "${PACK_DIR}"
+          tar -xzf "${PACK_DIR}/vulnradar-${CLI_VERSION}.tgz" -C "${PACK_DIR}/npm"
+          git archive "${TAG}" -- cli | tar -x -C "${PACK_DIR}/tag"
+          node scripts/ci/package-versions.mjs --compare-npm "${PACK_DIR}/npm/package" "${PACK_DIR}/tag/cli"
+
       - name: Build + package browser extension
         # release: the workflow_run trigger does NOT check out the tagged
         # commit (actions/checkout on a workflow_run event defaults to the
