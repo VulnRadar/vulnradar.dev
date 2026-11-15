@@ -472,7 +472,7 @@ describe("scheduled.yml", () => {
   it("edits one open issue per report by exact title and creates no labels", () => {
     const report = job("report");
     expect(report.code).toContain("Scheduled report: ");
-    expect(report.code).toContain("select(.title == $t)");
+    expect(report.code).toContain("select(.title == $t and");
     expect(report.code).toContain("gh issue edit");
     expect(report.code).toContain("gh issue create --title");
     expect(report.code).not.toMatch(/--label|gh label/);
