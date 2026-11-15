@@ -33,6 +33,19 @@ describe("isStaleChunkError", () => {
     ).toBe(true);
   });
 
+  it("recognises Turbopack's chunk errors, named or rethrown without the name", () => {
+    // Next 16 builds with Turbopack, whose browser runtime throws this text
+    // with the name ChunkLoadError, for CSS chunks too.
+    const message =
+      "Failed to load chunk /_next/static/chunks/0abc12._.js from module 4321: Error: 404";
+    expect(
+      isStaleChunkError(
+        Object.assign(new Error(message), { name: "ChunkLoadError" }),
+      ),
+    ).toBe(true);
+    expect(isStaleChunkError(new Error(message))).toBe(true);
+  });
+
   it("leaves every other error alone", () => {
     expect(
       isStaleChunkError(new Error("Cannot read properties of undefined")),

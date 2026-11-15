@@ -18,14 +18,18 @@ const RELOAD_KEY = "vr_stale_chunk_reload";
 const RELOAD_GUARD_MS = 30_000;
 const MAX_RELOADS_PER_SESSION = 3;
 
-/** True for the errors webpack and the browser raise for a chunk that is gone. */
+/**
+ * True for the errors webpack, Turbopack and the browser raise for a chunk
+ * that is gone. Turbopack's browser runtime names its error ChunkLoadError
+ * too; the message match covers a wrapper that rethrows it without the name.
+ */
 export function isStaleChunkError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const { name, message } = error as { name?: unknown; message?: unknown };
   if (name === "ChunkLoadError") return true;
   return (
     typeof message === "string" &&
-    /Loading (CSS )?chunk [\w-]+ failed|Failed to fetch dynamically imported module|error loading dynamically imported module/i.test(
+    /Loading (CSS )?chunk [\w-]+ failed|Failed to fetch dynamically imported module|error loading dynamically imported module|Failed to load chunk/i.test(
       message,
     )
   );
