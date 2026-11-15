@@ -61,6 +61,17 @@ concurrency:
 # Nothing at the top level: each job states its own scopes.
 permissions: {}
 
+# release: the identity a user's `cosign verify` accepts, the same string as
+# docker-publish.yml's and SECURITY.md's (tests/repo/release-identities.test.ts
+# holds them equal). This workflow signs the merged index on workflow_run,
+# whose ref is the default branch, so its certificate names
+# docker-publish-arm64.yml@refs/heads/main, and a dispatch from any other
+# branch fails the verify below rather than publishing a signature users
+# cannot check.
+env:
+  IMAGE_SIGNER_IDENTITY: "^https://github[.]com/VulnRadar/vulnradar[.]dev/[.]github/workflows/(docker-publish[.]yml@refs/tags/v[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?|docker-publish-arm64[.]yml@refs/heads/main)$"
+  SIGNER_OIDC_ISSUER: https://token.actions.githubusercontent.com
+
 jobs:
   arm64:
     # Only when the amd64 publish actually succeeded. A failed or cancelled
@@ -284,6 +295,34 @@ jobs:
           # By digest, so the signature covers the index itself and survives
           # any later tag move, exactly as docker-publish.yml signs.
           cosign sign --yes "${REF}@${DIGEST}"
+
+      # release: the index this job signs is what every multi-arch pull
+      # resolves to, and its only signature is this one. SECURITY.md's
+      # command used to name docker-publish.yml alone, which this
+      # certificate never matches, so it failed for every multi-arch
+      # release. Verify the merged digest the way users are told to.
+      - name: Verify the signature the way SECURITY.md tells users to
+        if: steps.vars.outputs.skip != 'true'
+        env:
+          REF: ${{ steps.image.outputs.ref }}
+          DIGEST: ${{ steps.merge.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if cosign verify \
+              --certificate-identity-regexp "$IMAGE_SIGNER_IDENTITY" \
+              --certificate-oidc-issuer "$SIGNER_OIDC_ISSUER" \
+              "${REF}@${DIGEST}" > /dev/null; then
+              echo "Verified ${REF}@${DIGEST} with the identity SECURITY.md documents."
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Verification attempt ${attempt} failed; retrying in 15 seconds."
+              sleep 15
+            fi
+          done
+          echo "::error::cosign verify with the identity SECURITY.md documents failed for ${REF}@${DIGEST}, so a user following SECURITY.md could not verify this image."
+          exit 1
 
       - name: Summary
         if: steps.vars.outputs.skip != 'true'

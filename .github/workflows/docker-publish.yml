@@ -16,6 +16,16 @@ concurrency:
 # Nothing at the top level: each job states its own scopes.
 permissions: {}
 
+# release: the identity a user's `cosign verify` accepts for the image,
+# defined once. SECURITY.md "Verifying a Release" quotes it exactly, and
+# docker-publish-arm64.yml carries the same string, because the multi-arch
+# index is re-signed there from the default branch.
+# tests/repo/release-identities.test.ts holds every copy equal. Dots are
+# written [.] so the string has no backslash in any file it is copied into.
+env:
+  IMAGE_SIGNER_IDENTITY: "^https://github[.]com/VulnRadar/vulnradar[.]dev/[.]github/workflows/(docker-publish[.]yml@refs/tags/v[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?|docker-publish-arm64[.]yml@refs/heads/main)$"
+  SIGNER_OIDC_ISSUER: https://token.actions.githubusercontent.com
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -268,6 +278,35 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           cosign sign --yes "${IMAGE}@${DIGEST}"
+
+      # release: nothing used to run the command SECURITY.md gives users, so
+      # a documented identity that no signature carried went unnoticed: the
+      # multi-arch index is signed by docker-publish-arm64.yml from the
+      # default branch, which the documented docker-publish.yml regexp never
+      # matched. Verify the digest just signed with the same identity and
+      # issuer users are told to pass. A few attempts absorb the registry and
+      # Rekor catching up with the signature.
+      - name: Verify the signature the way SECURITY.md tells users to
+        env:
+          IMAGE: ${{ steps.tags.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if cosign verify \
+              --certificate-identity-regexp "$IMAGE_SIGNER_IDENTITY" \
+              --certificate-oidc-issuer "$SIGNER_OIDC_ISSUER" \
+              "${IMAGE}@${DIGEST}" > /dev/null; then
+              echo "Verified ${IMAGE}@${DIGEST} with the identity SECURITY.md documents."
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Verification attempt ${attempt} failed; retrying in 15 seconds."
+              sleep 15
+            fi
+          done
+          echo "::error::cosign verify with the identity SECURITY.md documents failed for ${IMAGE}@${DIGEST}, so a user following SECURITY.md could not verify this image."
+          exit 1
 
       - name: Generate SBOM (CycloneDX, JSON)
         # release: CycloneDX SBOM is the most widely consumed format.

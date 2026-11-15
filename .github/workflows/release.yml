@@ -38,35 +38,39 @@ name: Attach Release Artifacts
 # that this workflow attached them. Nothing it produces can reach the source
 # tarball or the npm package.
 #
-# Self-hosters verifying a release can do:
+# Self-hosters verifying a release can do what SECURITY.md "Verifying a
+# Release" gives, with the same identities this workflow and the two image
+# workflows verify against (tests/repo/release-identities.test.ts holds every
+# copy equal). The sums file and the tarball are signed by this workflow, on
+# workflow_run (the default branch) or on a release published by hand (the
+# tag), and the image by docker-publish.yml on the tag or by
+# docker-publish-arm64.yml on the default branch:
 #
 #   # Verify the sums file itself FIRST, then the hashes in it. The sums
 #   # file and the artifacts it describes come from the same host, so on
 #   # its own it proves nothing; the cosign bundle is what anchors it.
 #   cosign verify-blob \
 #     --bundle sha256sums.txt.cert \
-#     --certificate-identity-regexp 'https://github.com/<owner>/vulnradar.dev' \
+#     --certificate-identity-regexp '^https://github[.]com/VulnRadar/vulnradar[.]dev/[.]github/workflows/release[.]yml@refs/(heads/main|tags/v[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?)$' \
 #     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
 #     sha256sums.txt
 #
-#   # Verify the source tarball (and the extension zips + SBOMs, which are
-#   # covered by the signed sums file rather than signed individually)
-#   curl -sL https://github.com/<owner>/vulnradar.dev/releases/download/vX.Y.Z/sha256sums.txt | \
-#     sha256sum -c -
+#   # Then the hashes, which cover the source tarball, the extension zips,
+#   # the CLI package and the SBOMs
+#   sha256sum --ignore-missing -c sha256sums.txt
 #
-#   # Verify the cosign signature (keyless, tied to GitHub Actions OIDC)
+#   # The tarball's own bundle (keyless, tied to GitHub Actions OIDC)
 #   cosign verify-blob \
 #     --bundle vulnradar-vX.Y.Z.tar.gz.cert \
-#     --signature vulnradar-vX.Y.Z.tar.gz.sig \
-#     --certificate-identity-regexp 'https://github.com/<owner>/vulnradar.dev' \
+#     --certificate-identity-regexp '^https://github[.]com/VulnRadar/vulnradar[.]dev/[.]github/workflows/release[.]yml@refs/(heads/main|tags/v[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?)$' \
 #     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
 #     vulnradar-vX.Y.Z.tar.gz
 #
-#   # Verify the Docker image
+#   # The Docker image
 #   cosign verify \
-#     --certificate-identity-regexp 'https://github.com/<owner>/vulnradar.dev/.github/workflows/docker-publish.yml' \
+#     --certificate-identity-regexp '^https://github[.]com/VulnRadar/vulnradar[.]dev/[.]github/workflows/(docker-publish[.]yml@refs/tags/v[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?|docker-publish-arm64[.]yml@refs/heads/main)$' \
 #     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-#     ghcr.io/<owner>/vulnradar:vX.Y.Z
+#     ghcr.io/vulnradar/vulnradar:vX.Y.Z
 
 on:
   workflow_run:
@@ -94,6 +98,15 @@ concurrency:
 
 # Nothing at the top level: each job states its own scopes.
 permissions: {}
+
+# release: the identity a user's `cosign verify-blob` accepts for the sums
+# file and the source tarball, defined once and quoted exactly in SECURITY.md
+# and in the header above. The release job verifies both bundles with it
+# right after signing them. Dots are written [.] so no copy needs a
+# backslash.
+env:
+  BLOB_SIGNER_IDENTITY: "^https://github[.]com/VulnRadar/vulnradar[.]dev/[.]github/workflows/release[.]yml@refs/(heads/main|tags/v[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?)$"
+  SIGNER_OIDC_ISSUER: https://token.actions.githubusercontent.com
 
 jobs:
   # security: a release is built only from a commit CI passed. docker-publish
@@ -805,6 +818,27 @@ jobs:
 
           # Move to workspace for the upload step.
           cp -v ./* "${GITHUB_WORKSPACE}/"
+
+      # release: nothing used to run the commands SECURITY.md gives users, so
+      # an identity no certificate carried would have gone unnoticed until a
+      # user tried it. Verify both bundles just made, in the workspace the
+      # upload step reads, with the documented identity and issuer.
+      - name: Verify both signatures the way SECURITY.md tells users to
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cosign verify-blob \
+            --bundle sha256sums.txt.cert \
+            --certificate-identity-regexp "$BLOB_SIGNER_IDENTITY" \
+            --certificate-oidc-issuer "$SIGNER_OIDC_ISSUER" \
+            sha256sums.txt
+          cosign verify-blob \
+            --bundle "vulnradar-${TAG}.tar.gz.cert" \
+            --certificate-identity-regexp "$BLOB_SIGNER_IDENTITY" \
+            --certificate-oidc-issuer "$SIGNER_OIDC_ISSUER" \
+            "vulnradar-${TAG}.tar.gz"
+          echo "Both bundles verify with the identity SECURITY.md documents."
 
       - name: Build artifact list
         id: files

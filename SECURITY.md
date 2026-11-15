@@ -132,7 +132,13 @@ You can publish the release either way:
 - **Manual:** create + publish the release first, then push the tag
   (release.yml will attach artifacts as docker-publish completes).
 
-To verify a release:
+To verify a release, run the commands below as written. The identities are
+anchored regular expressions that name the exact workflow and ref that
+signs each artifact: a looser one such as the repository URL alone also
+accepts a signature from any other workflow in the repository, on any
+branch. The release pipeline runs these same commands, with these same
+identities, right after it signs, and stops when they refuse a signature it
+just made.
 
 ```bash
 # 1. Verify sha256sums.txt itself, FIRST. Skipping this step leaves you
@@ -142,7 +148,7 @@ curl -sLO https://github.com/VulnRadar/vulnradar.dev/releases/download/vX.Y.Z/sh
 curl -sLO https://github.com/VulnRadar/vulnradar.dev/releases/download/vX.Y.Z/sha256sums.txt.cert
 cosign verify-blob \
   --bundle sha256sums.txt.cert \
-  --certificate-identity-regexp 'https://github.com/VulnRadar/vulnradar.dev' \
+  --certificate-identity-regexp '^https://github[.]com/VulnRadar/vulnradar[.]dev/[.]github/workflows/release[.]yml@refs/(heads/main|tags/v[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?)$' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   sha256sums.txt
 
@@ -159,13 +165,16 @@ sha256sum --ignore-missing -c sha256sums.txt
 # belt and braces rather than a second requirement.
 cosign verify-blob \
   --bundle vulnradar-vX.Y.Z.tar.gz.cert \
-  --certificate-identity-regexp 'https://github.com/VulnRadar/vulnradar.dev' \
+  --certificate-identity-regexp '^https://github[.]com/VulnRadar/vulnradar[.]dev/[.]github/workflows/release[.]yml@refs/(heads/main|tags/v[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?)$' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   vulnradar-vX.Y.Z.tar.gz
 
-# 4. Verify the Docker image
+# 4. Verify the Docker image. The amd64 image is signed by
+# docker-publish.yml on the tag; the multi-arch index every tag resolves to
+# once arm64 is merged in is signed by docker-publish-arm64.yml, which runs
+# from the default branch. The identity accepts exactly those two.
 cosign verify \
-  --certificate-identity-regexp 'https://github.com/VulnRadar/vulnradar.dev/.github/workflows/docker-publish.yml' \
+  --certificate-identity-regexp '^https://github[.]com/VulnRadar/vulnradar[.]dev/[.]github/workflows/(docker-publish[.]yml@refs/tags/v[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z.-]+)?|docker-publish-arm64[.]yml@refs/heads/main)$' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   ghcr.io/vulnradar/vulnradar:vX.Y.Z
 ```
