@@ -71,3 +71,40 @@ describe("the Self-host job's runtime probes", () => {
     }
   });
 });
+
+describe("the Self-host job's shutdown check", () => {
+  // The worker stop path calls members of dynamically imported modules, the
+  // pattern Turbopack's export-name mangling can break, and a failure there
+  // is caught and only logged. So the step stops the real container and
+  // reads both its exit code and its log.
+  const stop = stepNamed(
+    steps,
+    "Stop the smoke container and assert a clean shutdown",
+  );
+
+  it("stops the booted image after the self-scan, before its logs are collected", () => {
+    expect(stop.index).toBe(
+      stepNamed(steps, "Self-scan every published route").index + 1,
+    );
+    expect(stop.index).toBe(
+      stepNamed(steps, "Container logs on failure").index - 1,
+    );
+    expect(stop.code).toContain("docker stop -t 60 vr-smoke");
+    expect(stop.code).toContain("{{.State.ExitCode}}");
+  });
+
+  it("fails on each message the shutdown logs when a step of it fails", () => {
+    const messages: Array<[string, string]> = [
+      [
+        "lib/database/boot/graceful-shutdown.ts",
+        "Shutdown: stopping workers failed",
+      ],
+      ["lib/database/boot/workers.ts", "Failed to stop a background worker"],
+      ["lib/database/boot/graceful-shutdown.ts", "Error closing database pool"],
+    ];
+    for (const [file, message] of messages) {
+      expect(read(file), `${file} still logs it`).toContain(message);
+      expect(stop.code, message).toContain(message);
+    }
+  });
+});

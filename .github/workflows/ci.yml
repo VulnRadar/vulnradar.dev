@@ -792,6 +792,28 @@ jobs:
           VULNRADAR_SELF_SCAN_BEHIND_TLS: "1"
         run: npx vitest run tests/selfscan
 
+      - name: Stop the smoke container and assert a clean shutdown
+        # SIGTERM runs lib/database/boot/graceful-shutdown.ts, which stops the
+        # workers through member calls on dynamic imports
+        # (lib/database/boot/workers.ts, stopBackgroundWorkers). Turbopack
+        # mangles export names in production builds since 16.4, and nothing
+        # else in CI runs this path. A failed stop is caught and logged, so
+        # the log is searched for it. The handler always ends in exit(0), so
+        # any other code means the process died or was killed at the
+        # deadline. -t 60 covers the 30s drain budget plus the 5s pool budget.
+        run: |
+          set -euo pipefail
+          docker stop -t 60 vr-smoke
+          code=$(docker inspect -f '{{.State.ExitCode}}' vr-smoke)
+          log="$RUNNER_TEMP/vr-smoke.log"
+          docker logs vr-smoke > "$log" 2>&1
+          rc=0
+          grep -E 'Shutdown: stopping workers failed|Failed to stop a background worker|Error closing database pool' "$log" || rc=$?
+          if [ "$rc" -eq 0 ]; then echo "the shutdown logged a failure"; exit 1; fi
+          if [ "$rc" -ne 1 ]; then echo "could not search the container log"; exit 1; fi
+          [ "$code" = "0" ] || { echo "exit code $code"; tail -n 50 "$log"; exit 1; }
+          echo "clean shutdown, exit code 0"
+
       - name: Container logs on failure
         if: failure()
         run: docker logs vr-smoke || true
