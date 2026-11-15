@@ -681,6 +681,43 @@ describe("docker-publish-arm64.yml anchors its tag check", () => {
 /* Dependabot auto-merge.                                                    */
 /* ------------------------------------------------------------------------ */
 
+interface RequiredCheck {
+  context: string;
+  integration_id: number;
+}
+
+/** The checks .github/rulesets/main.json requires, as it lists them. */
+function rulesetRequiredChecks(): RequiredCheck[] {
+  const ruleset = JSON.parse(
+    readFileSync(
+      path.join(process.cwd(), ".github", "rulesets", "main.json"),
+      "utf8",
+    ),
+  ) as {
+    rules: {
+      type: string;
+      parameters?: { required_status_checks?: RequiredCheck[] };
+    }[];
+  };
+  const rule = ruleset.rules.find((r) => r.type === "required_status_checks");
+  expect(rule, "the ruleset requires status checks").toBeDefined();
+  return rule!.parameters!.required_status_checks!;
+}
+
+/** The lines of a `key: |` block scalar in a step, as they are. */
+function blockValue(raw: string, key: string): string {
+  const lines = raw.split("\n");
+  const at = lines.findIndex((l) => l.trim() === `${key}: |`);
+  expect(at, `${key}: | in the step`).toBeGreaterThan(-1);
+  const indent = lines[at].search(/\S/);
+  const body: string[] = [];
+  for (const line of lines.slice(at + 1)) {
+    if (line.trim() !== "" && line.search(/\S/) <= indent) break;
+    body.push(line);
+  }
+  return body.join("\n");
+}
+
 describe("dependabot-auto-merge.yml trusts the pull request's author", () => {
   const cond = jobCondition(dependabot, "dependabot-merge");
   const pr = (author: string, actor: string): Ctx => ({
@@ -733,18 +770,25 @@ describe("dependabot-auto-merge.yml merges only the head CI checked", () => {
     }
   });
 
-  it("reads the check runs and statuses of that sha, not the pull request's current head", () => {
+  it("reads CI's run, the check runs and the statuses of that sha, not the pull request's current head", () => {
     const body = runBody(gate.code);
     expect(body).not.toMatch(/gh pr checks/);
-    expect(body).toContain(
-      '"repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100"',
-    );
+    const ciRuns =
+      '"repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${HEAD_SHA}&event=pull_request&per_page=100"';
+    const checkRuns =
+      '"repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100"';
+    expect(body).toContain(ciRuns);
+    expect(body).toContain(checkRuns);
     expect(body).toContain(
       '"repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/status?per_page=100"',
     );
     // A failed read retries rather than counting as an empty list.
-    expect(body).toMatch(/if ! runs=\$\(gh api --paginate /);
+    expect(body).toMatch(/if ! ci_run=\$\(gh api "/);
+    expect(body).toMatch(/! runs=\$\(gh api --paginate /);
     expect(body).toMatch(/! statuses=\$\(gh api --paginate /);
+    // CI's run first: once it has finished, every check it makes exists
+    // already, so the reads after it cannot miss one.
+    expect(body.indexOf(ciRuns)).toBeLessThan(body.indexOf(checkRuns));
   });
 
   it("fails closed: every completed check run that is not success, neutral or skipped fails", () => {
@@ -755,10 +799,57 @@ describe("dependabot-auto-merge.yml merges only the head CI checked", () => {
     expect(body).toContain(
       'if .state == "success" then "pass" elif .state == "pending" then "pending" else "fail" end',
     );
-    expect(body).toMatch(
+    expect(body).toMatch(/deadline=\$\(\( \$\(date \+%s\) \+ \d+ \* 60 \)\)/);
+  });
+
+  it("merges only once CI's run finished green and every check the ruleset requires succeeded", () => {
+    const body = runBody(gate.code);
+    // Nothing pending and something passed is what a fast check gives
+    // before CI has registered a single job.
+    expect(body).not.toMatch(
       /if \[ "\$pending" -eq 0 \] && \[ "\$passed" -gt 0 \]; then/,
     );
-    expect(body).toMatch(/deadline=\$\(\( \$\(date \+%s\) \+ \d+ \* 60 \)\)/);
+    const lines = body.split("\n").map((l) => l.trim());
+    const merges = lines.indexOf(
+      'if [ "$pending" -eq 0 ] && [ "$ci_run" = "completed/success" ] && [ -z "$missing" ]; then',
+    );
+    expect(merges).toBeGreaterThan(-1);
+    // The one way out of the wait that is not a failure is inside that if.
+    expect(lines.filter((l) => l === "break")).toHaveLength(1);
+    const breaks = lines.indexOf("break");
+    expect(breaks).toBeGreaterThan(merges);
+    expect(lines.slice(merges + 1, breaks)).not.toContain("fi");
+  });
+
+  it("requires the checks the ruleset requires, by name and app, exactly as it lists them", () => {
+    const listed = JSON.parse(blockValue(gate.raw, "REQUIRED_CHECKS"));
+    expect(listed).toEqual(rulesetRequiredChecks());
+    expect(listed).toHaveLength(12);
+    const body = runBody(gate.code);
+    expect(body).toContain('--argjson required "$REQUIRED_CHECKS"');
+    // A successful check run of that name from that app; a commit status
+    // has no app, so it never stands in for one.
+    expect(body).toContain(
+      "any($checks[]; .name == $r.context and .app == $r.integration_id and .success)",
+    );
+    expect(body).toContain('app: .app.id, success: (.conclusion == "success")');
+    expect(body).toContain(
+      '{name: .context, app: null, success: (.state == "success")',
+    );
+  });
+
+  it("fails at once when CI's run ended any other way, or finished a required check short", () => {
+    const body = runBody(gate.code);
+    expect(body).toContain(
+      'if [ "${ci_run%%/*}" = "completed" ] && [ "$ci_run" != "completed/success" ]; then',
+    );
+    const lines = body.split("\n").map((l) => l.trim());
+    const short = lines.indexOf(
+      'if [ "$pending" -eq 0 ] && [ "$ci_run" = "completed/success" ]; then',
+    );
+    expect(short).toBeGreaterThan(-1);
+    expect(lines[short + 1]).toMatch(/^echo "::error::CI finished on /);
+    expect(lines[short + 2]).toBe("exit 1");
   });
 
   it("still excludes only itself, by its job name", () => {
@@ -892,6 +983,167 @@ describe("dependabot-auto-merge.yml merges only the head CI checked", () => {
     });
   });
 });
+
+/** bash, and a jq that bash finds, which is the one the step would run. */
+const gateRunnable = spawnSync("bash", ["-c", "command -v jq"]).status === 0;
+
+/**
+ * The wait itself, run by bash against canned API answers. gh answers each
+ * read from a file through the real jq, sleep returns at once, and every
+ * date is half an hour after the one before, so a wait that would never end
+ * gives up after a few rounds. Skipped where there is no jq; CI has it.
+ */
+describe.skipIf(!gateRunnable)(
+  "dependabot-auto-merge.yml's wait, run against canned API answers",
+  { timeout: 120_000 },
+  () => {
+    const step = stepNamed(
+      jobSteps(dependabot, "dependabot-merge"),
+      "Wait for CI to pass",
+    );
+    const script = runScript(step.raw);
+    const self = /^\s+SELF_CHECK: "([^"]+)"$/m.exec(step.code)![1];
+    const required = rulesetRequiredChecks();
+    const SHA = "3333333333333333333333333333333333333333";
+    const STAND_INS = [
+      "gh() {",
+      '  [ "$1" = api ] || return 90',
+      "  shift",
+      '  if [ "$1" = --paginate ]; then shift; fi',
+      '  [ "$2" = --jq ] || return 91',
+      '  case "$1" in',
+      '    *"/commits/$HEAD_SHA/check-runs?"*) file=check-runs.json ;;',
+      '    *"/commits/$HEAD_SHA/status?"*) file=statuses.json ;;',
+      '    *"/actions/workflows/ci.yml/runs?head_sha=$HEAD_SHA&"*) file=ci-runs.json ;;',
+      '    *) echo "unexpected: gh api $1" >&2; return 92 ;;',
+      "  esac",
+      '  jq -rc "$3" "$FAKE_DIR/$file"',
+      "}",
+      "sleep() { :; }",
+      "date() {",
+      '  now=$(cat "$FAKE_DIR/clock")',
+      '  echo $((now + 1800)) > "$FAKE_DIR/clock"',
+      '  echo "$now"',
+      "}",
+    ].join("\n");
+
+    function runGate(answers: {
+      checkRuns: object[];
+      statuses?: object[];
+      ciRuns: object[];
+    }) {
+      const dir = mkdtempSync(path.join(tmpdir(), "vr-merge-gate-"));
+      const slash = (p: string) => p.split(String.fromCharCode(92)).join("/");
+      const write = (name: string, value: unknown) =>
+        writeFileSync(path.join(dir, name), JSON.stringify(value));
+      try {
+        write("check-runs.json", {
+          total_count: answers.checkRuns.length,
+          check_runs: answers.checkRuns,
+        });
+        write("statuses.json", {
+          state: "pending",
+          statuses: answers.statuses ?? [],
+        });
+        write("ci-runs.json", {
+          total_count: answers.ciRuns.length,
+          workflow_runs: answers.ciRuns,
+        });
+        writeFileSync(path.join(dir, "clock"), "1800000000");
+        const file = path.join(dir, "gate.sh");
+        writeFileSync(file, [STAND_INS, script].join("\n"));
+        const r = spawnSync("bash", [slash(file)], {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            FAKE_DIR: slash(dir),
+            HEAD_SHA: SHA,
+            GH_TOKEN: "not-a-token",
+            GITHUB_REPOSITORY: REPO,
+            SELF_CHECK: self,
+            REQUIRED_CHECKS: JSON.stringify(required),
+          },
+        });
+        return { status: r.status, out: `${r.stdout}${r.stderr}` };
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+
+    const checkRun = (name: string, extra: Record<string, unknown> = {}) => ({
+      name,
+      status: "completed",
+      conclusion: "success",
+      app: { id: 15368, slug: "github-actions" },
+      ...extra,
+    });
+    const requiredRuns = required.map((c) =>
+      checkRun(c.context, { app: { id: c.integration_id } }),
+    );
+    const itself = checkRun(self, { status: "in_progress", conclusion: null });
+    const labels = checkRun("Apply labels");
+    const ciRun = (id: number, status: string, conclusion: string | null) => ({
+      id,
+      status,
+      conclusion,
+      event: "pull_request",
+      head_sha: SHA,
+    });
+
+    it("does not merge on a fast check that passed before CI registered a job", () => {
+      const r = runGate({ checkRuns: [labels, itself], ciRuns: [] });
+      expect(r.status, r.out).toBe(1);
+      expect(r.out).toContain("Timed out after 85 minutes");
+    });
+
+    it("does not merge while CI's newest run is still going, whatever has passed so far", () => {
+      const r = runGate({
+        checkRuns: [checkRun("Lint"), checkRun("Typecheck"), labels, itself],
+        ciRuns: [
+          ciRun(6, "completed", "success"),
+          ciRun(7, "in_progress", null),
+        ],
+      });
+      expect(r.status, r.out).toBe(1);
+      expect(r.out).toContain("Timed out after 85 minutes");
+    });
+
+    it("merges once CI's run finished green with every required check among the passes", () => {
+      const r = runGate({
+        checkRuns: [...requiredRuns, labels, checkRun("Lighthouse"), itself],
+        ciRuns: [ciRun(7, "completed", "success")],
+      });
+      expect(r.status, r.out).toBe(0);
+      expect(r.out).toContain(`CI passed on ${SHA}`);
+    });
+
+    it("does not count a required check that is a commit status, or a check run from another app", () => {
+      const r = runGate({
+        checkRuns: [
+          ...requiredRuns.filter((c) => c.name !== "Build"),
+          checkRun("Build", { app: { id: 99999 } }),
+          labels,
+          itself,
+        ],
+        statuses: [{ context: "Build", state: "success" }],
+        ciRuns: [ciRun(7, "completed", "success")],
+      });
+      expect(r.status, r.out).toBe(1);
+      expect(r.out).toContain(
+        `CI finished on ${SHA} without a successful Build`,
+      );
+    });
+
+    it("refuses as soon as CI's run ended any way but success", () => {
+      const r = runGate({
+        checkRuns: [...requiredRuns, labels, itself],
+        ciRuns: [ciRun(7, "completed", "failure")],
+      });
+      expect(r.status, r.out).toBe(1);
+      expect(r.out).toContain(`CI's run on ${SHA} ended failure`);
+    });
+  },
+);
 
 /* ------------------------------------------------------------------------ */
 /* Dependency review and the secret scan on every change.                    */

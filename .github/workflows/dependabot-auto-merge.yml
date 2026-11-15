@@ -18,6 +18,13 @@ name: Auto-merge Dependabot PRs
 # merge unless they all passed, so the promise in this header holds on its own
 # rather than depending on repository settings nobody has configured yet.
 #
+# Finished is not the same as all there. A check CI has not registered yet is
+# absent, not pending, so the wait used to merge once the checks visible so
+# far were done: a fast one (Apply labels) that passed before CI queued its
+# jobs read as "everything passed". The gate now also waits for CI's own run
+# on the head to finish green, and for every check .github/rulesets/main.json
+# requires to be among the checks that succeeded.
+#
 # When required status checks DO get configured on `main`, this gate stays
 # correct: it is strictly stronger than what protection would enforce.
 #
@@ -109,18 +116,42 @@ jobs:
           # would be waiting on itself: it can only finish after the wait
           # finishes.
           SELF_CHECK: "Auto-merge patch updates"
+          # The checks .github/rulesets/main.json requires, as it lists them:
+          # each has to be on the head as a check run from that app, and have
+          # succeeded. tests/repo/workflow-trust.test.ts fails when this list
+          # and the ruleset's differ.
+          REQUIRED_CHECKS: |
+            [
+              { "context": "Lint", "integration_id": 15368 },
+              { "context": "Typecheck", "integration_id": 15368 },
+              { "context": "Test", "integration_id": 15368 },
+              { "context": "Extension", "integration_id": 15368 },
+              { "context": "Build", "integration_id": 15368 },
+              { "context": "Self-host smoke test", "integration_id": 15368 },
+              { "context": "Integration", "integration_id": 15368 },
+              { "context": "Dependency review", "integration_id": 15368 },
+              { "context": "Secret scan", "integration_id": 15368 },
+              { "context": "Workflow and Dockerfile lint", "integration_id": 15368 },
+              { "context": "CLI", "integration_id": 15368 },
+              { "context": "Scan gate action", "integration_id": 15368 }
+            ]
         run: |
           set -euo pipefail
 
           deadline=$(( $(date +%s) + 85 * 60 ))
 
-          # Each check as {name, bucket}. Check runs: pass on success, neutral
-          # or skipped; pending until completed; anything else completed
-          # (failure, cancelled, timed_out, action_required, stale, or a value
-          # GitHub adds later) fails. Commit statuses: pass on success,
-          # pending on pending, fail on failure or error.
-          runs_filter='.check_runs[] | {name, bucket: (if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" else "fail" end)}'
-          statuses_filter='.statuses[] | {name: .context, bucket: (if .state == "success" then "pass" elif .state == "pending" then "pending" else "fail" end)}'
+          # Each check as {name, app, success, bucket}. Check runs: pass on
+          # success, neutral or skipped; pending until completed; anything
+          # else completed (failure, cancelled, timed_out, action_required,
+          # stale, or a value GitHub adds later) fails. Commit statuses: pass
+          # on success, pending on pending, fail on failure or error. A
+          # required check is held to `success`, the stricter test, and a
+          # status has no app, so it never stands in for one.
+          runs_filter='.check_runs[] | {name, app: .app.id, success: (.conclusion == "success"), bucket: (if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" else "fail" end)}'
+          statuses_filter='.statuses[] | {name: .context, app: null, success: (.state == "success"), bucket: (if .state == "success" then "pass" elif .state == "pending" then "pending" else "fail" end)}'
+          # CI's newest pull_request run on this head as status/conclusion,
+          # or "none" before CI has started one.
+          ci_filter='[.workflow_runs[] | {id, status, conclusion}] | max_by(.id) | if . == null then "none" else "\(.status)/\(.conclusion)" end'
 
           while :; do
             if [ "$(date +%s)" -ge "$deadline" ]; then
@@ -130,8 +161,11 @@ jobs:
 
             # A failed read is not an empty list: with the check runs missing,
             # a commit status alone could look like "everything passed". Wait
-            # and read both again instead.
-            if ! runs=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" --jq "$runs_filter") ||
+            # and read them all again instead. CI's run is read first: once it
+            # has finished, every check it makes exists already, so the two
+            # reads after it cannot miss one.
+            if ! ci_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${HEAD_SHA}&event=pull_request&per_page=100" --jq "$ci_filter") ||
+              ! runs=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" --jq "$runs_filter") ||
               ! statuses=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/status?per_page=100" --jq "$statuses_filter"); then
               echo "Could not read the checks of ${HEAD_SHA}; trying again."
               sleep 30
@@ -145,6 +179,10 @@ jobs:
               '[.[] | select(.name != $self and .bucket == "pending")] | length')
             passed=$(echo "$checks" | jq --arg self "$SELF_CHECK" \
               '[.[] | select(.name != $self and .bucket == "pass")] | length')
+            # The required checks with no successful check run of their name
+            # from their app on this head, comma-separated.
+            missing=$(echo "$checks" | jq -r --argjson required "$REQUIRED_CHECKS" \
+              '. as $checks | [$required[] | select(. as $r | any($checks[]; .name == $r.context and .app == $r.integration_id and .success) | not) | .context] | join(", ")')
 
             if [ "$failed" -gt 0 ]; then
               echo "$checks" | jq -r --arg self "$SELF_CHECK" \
@@ -152,17 +190,30 @@ jobs:
               echo "::error::CI did not pass on ${HEAD_SHA}, so this dependabot PR will not be auto-merged. Review it by hand."
               exit 1
             fi
-
-            # `passed > 0` matters as much as `pending == 0`: before any check
-            # has been created both counts are zero, and treating that as
-            # "everything passed" is exactly the `--auto` behaviour this
-            # replaces.
-            if [ "$pending" -eq 0 ] && [ "$passed" -gt 0 ]; then
-              echo "All $passed check(s) passed on ${HEAD_SHA}."
-              break
+            # A run that ended any other way is CI not passing, whatever the
+            # checks read so far say.
+            if [ "${ci_run%%/*}" = "completed" ] && [ "$ci_run" != "completed/success" ]; then
+              echo "::error::CI's run on ${HEAD_SHA} ended ${ci_run#completed/}, so this dependabot PR will not be auto-merged. Review it by hand."
+              exit 1
             fi
 
-            echo "waiting on ${HEAD_SHA}: $pending pending, $passed passed"
+            # Nothing pending is not enough on its own: before CI registers
+            # its jobs nothing is pending either, and the one check that has
+            # passed may be a fast one of another workflow. CI's run has to
+            # have finished green, and every check the ruleset requires has to
+            # have succeeded.
+            if [ "$pending" -eq 0 ] && [ "$ci_run" = "completed/success" ] && [ -z "$missing" ]; then
+              echo "CI passed on ${HEAD_SHA}: its run finished green, every check the ruleset requires succeeded, and all $passed check(s) passed."
+              break
+            fi
+            # Finished green with nothing left to report and still short of a
+            # required check: it is not coming, so there is no waiting for it.
+            if [ "$pending" -eq 0 ] && [ "$ci_run" = "completed/success" ]; then
+              echo "::error::CI finished on ${HEAD_SHA} without a successful ${missing}, which .github/rulesets/main.json requires. Review it by hand."
+              exit 1
+            fi
+
+            echo "waiting on ${HEAD_SHA}: CI ${ci_run}, $pending pending, $passed passed, required still to pass: ${missing:-none}"
             sleep 30
           done
 
