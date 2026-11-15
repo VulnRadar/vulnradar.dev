@@ -1,0 +1,71 @@
+# gitleaks configuration for the Secret scan job in .github/workflows/ci.yml
+# (the commits a pull request or push adds) and the weekly full-history scan.
+#
+# gitleaks' own rules, plus two for VulnRadar's own secret shapes. Every
+# allowlist below says why it exists. tests/repo/no-committed-secrets.test.ts
+# runs the two VulnRadar rules over every tracked file, the allowlisted paths
+# included, and fails if its patterns stop matching the ones written here.
+#
+# Patterns use [.] and POSIX classes rather than backslash escapes, so this
+# file reads the same in every tool that copies it.
+
+title = "VulnRadar"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Detector code and fixtures: the scanner looks for leaked secrets in other people's sites, so its patterns, its tests and the findings in audits/ quote fake ones on purpose."
+paths = [
+  '''^lib/scanner/''',
+  '''^tests/lib/''',
+  '''^audits/''',
+]
+
+[[allowlists]]
+description = "Generated AI knowledge files, compiled from the docs and the scanner's check data above, so they quote the same placeholders."
+paths = [
+  '''^lib/ai/[^/]+[.]md$''',
+]
+
+[[allowlists]]
+description = "Documented placeholders a self-hoster replaces: the example environment file and the self-hosting docs page."
+paths = [
+  '''^[.]env[.]example$''',
+  '''^app/docs/self-hosting/page[.]tsx$''',
+]
+
+[[allowlists]]
+description = "Values CI sets on purpose. Two fixed encryption keys the smoke tests and the build use, the Build job's sentinels that the client-bundle check searches for, and the fixed string the scan-gate stand-in API accepts. None is a credential anywhere."
+regexes = [
+  '''^0{64}$''',
+  '''^(00112233445566778899aabbccddeeff){2}$''',
+  '''^(5e){32}$''',
+  '''^vrci-sentinel-[a-z-]+$''',
+  '''^vr-ci-not-a-key$''',
+]
+
+[[rules]]
+id = "vulnradar-api-key"
+description = "A VulnRadar API key."
+regex = '''vr_live_[a-f0-9]{64}'''
+keywords = ["vr_live_"]
+
+[[rules]]
+id = "vulnradar-hex-secret"
+description = "A 64-hex value assigned to one of VulnRadar's server secrets."
+regex = '''(API_KEY_ENCRYPTION_KEY|PREVIOUS_API_KEY_ENCRYPTION_KEY|BACKUP_ENCRYPTION_KEY|AUTH_SECRET)["']?[[:space:]]*[:=][[:space:]]*["']?[A-Fa-f0-9]{64}'''
+keywords = [
+  "API_KEY_ENCRYPTION_KEY",
+  "BACKUP_ENCRYPTION_KEY",
+  "AUTH_SECRET",
+]
+
+[[rules.allowlists]]
+description = "The documented CI values above, which CI sets on purpose."
+regexTarget = "match"
+regexes = [
+  '''[:=][[:space:]]*["']?0{64}$''',
+  '''[:=][[:space:]]*["']?(00112233445566778899aabbccddeeff){2}$''',
+  '''[:=][[:space:]]*["']?(5e){32}$''',
+]

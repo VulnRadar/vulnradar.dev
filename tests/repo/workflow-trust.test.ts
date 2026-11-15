@@ -902,3 +902,153 @@ describe("dependabot-auto-merge.yml merges only the head CI checked", () => {
     });
   });
 });
+
+/* ------------------------------------------------------------------------ */
+/* Dependency review and the secret scan on every change.                    */
+/* ------------------------------------------------------------------------ */
+
+describe("ci.yml reviews dependencies and scans for secrets", () => {
+  const ci = readWorkflow("ci.yml");
+  const jobs = jobsOf(ci);
+  const job = (id: string) => {
+    const found = jobs.find((j) => j.id === id);
+    expect(found, `ci.yml has a ${id} job`).toBeDefined();
+    return found!;
+  };
+  const runOf = (code: string) => code.slice(code.search(/^\s+run:/m));
+
+  describe("Dependency review", () => {
+    const review = job("dependency-review");
+
+    it("runs on pull requests only, and is skipped (which passes) otherwise", () => {
+      expect(review.name).toBe("Dependency review");
+      const on = (event_name: string): Ctx => ({ github: { event_name } });
+      expect(evaluate(review.condition!, on("pull_request"))).toBe(true);
+      for (const e of [
+        "push",
+        "merge_group",
+        "workflow_dispatch",
+        "schedule",
+      ]) {
+        expect(evaluate(review.condition!, on(e)), e).toBe(false);
+      }
+    });
+
+    it("holds contents: read and nothing else, and checks nothing out", () => {
+      expect(review.permissions).toEqual({ contents: "read" });
+      expect(review.code).not.toMatch(/actions\/checkout@/);
+    });
+
+    it("runs the pinned action at the bar both audits use, on both scopes, without commenting", () => {
+      expect(review.steps).toHaveLength(1);
+      const step = review.steps[0].code;
+      expect(step).toMatch(
+        /uses: actions\/dependency-review-action@[0-9a-f]{40} # v[0-9]+[.][0-9]+[.][0-9]+$/m,
+      );
+      expect(step).toMatch(/^\s+fail-on-severity: high$/m);
+      expect(step).toMatch(/^\s+fail-on-scopes: runtime, development$/m);
+      expect(step).toMatch(/^\s+comment-summary-in-pr: never$/m);
+    });
+  });
+
+  describe("Secret scan", () => {
+    const scan = job("secret-scan");
+    const step = scan.steps.find(
+      (s) => s.name === "Scan the commits this event adds",
+    )!;
+
+    it("holds contents: read only", () => {
+      expect(scan.name).toBe("Secret scan");
+      expect(scan.permissions).toEqual({ contents: "read" });
+      expect(step).toBeDefined();
+    });
+
+    it("builds the digest-pinned tools stage and pulls nothing by a floating tag", () => {
+      expect(scan.code).toMatch(
+        /^\s+run: docker build --target gitleaks -t vr-gitleaks [.]github\/tools$/m,
+      );
+      expect(scan.code).not.toMatch(/:latest\b/);
+      expect(scan.code).not.toMatch(/zricethezav|gitleaks\/gitleaks:/);
+    });
+
+    it("takes the range only from env, as commit ids", () => {
+      const run = runOf(step.code);
+      expect(run).not.toMatch(/\$\{\{/);
+      for (const v of [
+        "EVENT_NAME",
+        "PR_BASE",
+        "PR_HEAD",
+        "PUSH_BEFORE",
+        "PUSH_AFTER",
+        "MQ_BASE",
+        "MQ_HEAD",
+      ]) {
+        expect(step.code).toMatch(
+          new RegExp(`^\\s+${v}: \\$\\{\\{ [^}]+ \\}\\}$`, "m"),
+        );
+      }
+      expect(run).toMatch(
+        /is_sha\(\) \{ \[\[ "\$1" =~ \^\[0-9a-f\]\{40\}\$ \]\]; \}/,
+      );
+      expect(run).toMatch(/--log-opts "\$RANGE"/);
+    });
+
+    it("redacts, fails on a finding, and reads the repository's config", () => {
+      const run = runOf(step.code);
+      expect(run).toMatch(
+        / git --redact --no-banner --exit-code 1 --config [.]gitleaks[.]toml /,
+      );
+      // A finding prints rule, file, line and commit; never the match.
+      expect(run).not.toMatch(/[.]Match\b|[.]Secret\b/);
+    });
+
+    it("uploads nothing", () => {
+      expect(scan.code).not.toMatch(/upload-artifact/);
+    });
+
+    it("skips with a notice where there is no range, rather than scanning nothing quietly", () => {
+      expect(runOf(step.code)).toMatch(
+        /::notice::A \$EVENT_NAME run scans no range: scheduled[.]yml scans the whole history weekly[.]/,
+      );
+    });
+  });
+
+  describe("Build", () => {
+    const build = job("build");
+    const sentinels = [
+      'STRIPE_SECRET_KEY: "vrci-sentinel-stripe-secret"',
+      'STRIPE_WEBHOOK_SECRET: "vrci-sentinel-stripe-webhook"',
+      'DATABASE_URL: "postgresql://placeholder:vrci-sentinel-db-password@localhost:5432/placeholder"',
+      `API_KEY_ENCRYPTION_KEY: "${"5e".repeat(32)}"`,
+    ];
+
+    it("builds with a unique sentinel for each server secret", () => {
+      for (const line of sentinels) expect(build.code).toContain(line);
+    });
+
+    it("searches the client bundle for every one of them after the build", () => {
+      const names = build.steps.map((s) => s.name);
+      const at = names.indexOf("No server secret reached the client bundle");
+      const built = names.indexOf("Build Next.js app");
+      expect(at).toBeGreaterThan(built);
+      // Nothing between the build and the search but the read-only check of
+      // the build's middleware manifest, which ci-next-guards.test.ts keeps
+      // directly after the build.
+      expect(names.slice(built + 1, at)).toEqual([
+        "Assert middleware still compiles for the Edge runtime and covers the API",
+      ]);
+      const run = runOf(build.steps[at].code);
+      for (const ref of [
+        '"$STRIPE_SECRET_KEY"',
+        '"$STRIPE_WEBHOOK_SECRET"',
+        "vrci-sentinel-db-password",
+        '"$API_KEY_ENCRYPTION_KEY"',
+      ]) {
+        expect(run).toContain(ref);
+      }
+      expect(run).toContain('grep -rIl -e "$sentinel" .next/static');
+      // grep's "could not search" is a failure, not a clean result.
+      expect(run).toMatch(/\*\)\n\s+echo "::error::grep could not search/);
+    });
+  });
+});

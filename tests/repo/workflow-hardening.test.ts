@@ -766,7 +766,9 @@ describe("every boot of the image is the same boot", () => {
   it("builds the CI images with the build.invalid sentinel and the published ones with it empty", () => {
     for (const file of ["ci.yml", "image-arm64.yml"]) {
       const builds = workflowSteps(readWorkflow(file)).filter((s) =>
-        /^\s+run: docker build /m.test(s.code),
+        // The app image: the repository root as the context. The tools
+        // stages build from .github/tools.
+        /^\s+run: docker build .* [.]$/m.test(s.code),
       );
       expect(builds.length, file).toBeGreaterThanOrEqual(1);
       for (const b of builds) {

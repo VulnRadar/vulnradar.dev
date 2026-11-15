@@ -539,15 +539,21 @@ jobs:
       contents: read
     needs: [lint, typecheck]
 
+    # security: the server secrets are unique sentinels rather than
+    # "placeholder", so the step after the build can search the client bundle
+    # for each one: a server value that reached .next/static is shipped to
+    # every browser. Each is a value the build accepts. The variables that
+    # are empty stay empty, since setting one can switch a feature on at
+    # build time. The encryption key is a CI value .gitleaks.toml allowlists.
     env:
       NEXT_TELEMETRY_DISABLED: "1"
-      DATABASE_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+      DATABASE_URL: "postgresql://placeholder:vrci-sentinel-db-password@localhost:5432/placeholder"
       DATABASE_SSL: "false"
-      STRIPE_SECRET_KEY: "placeholder"
-      STRIPE_WEBHOOK_SECRET: "placeholder"
+      STRIPE_SECRET_KEY: "vrci-sentinel-stripe-secret"
+      STRIPE_WEBHOOK_SECRET: "vrci-sentinel-stripe-webhook"
       STRIPE_PUBLISHABLE_KEY: "placeholder"
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "placeholder"
-      API_KEY_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      API_KEY_ENCRYPTION_KEY: "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
       NEXT_PUBLIC_APP_URL: "http://localhost:3000"
       NEXT_PUBLIC_TURNSTILE_SITE_KEY: ""
       TURNSTILE_SECRET_KEY: ""
@@ -587,6 +593,41 @@ jobs:
         # The bundler compiles the runtime and the matchers; the script says
         # what it checks and why.
         run: node scripts/ci/next16-build-checks.mjs .next
+
+      # grep exits 1 for "searched and found nothing" and 2 for "could not
+      # search", so a moved output directory fails here instead of passing.
+      - name: No server secret reached the client bundle
+        run: |
+          set -euo pipefail
+          if [ ! -d .next/static ]; then
+            echo "::error::.next/static does not exist, so the client bundle could not be searched."
+            exit 1
+          fi
+          leaked=false
+          for sentinel in \
+            "$STRIPE_SECRET_KEY" \
+            "$STRIPE_WEBHOOK_SECRET" \
+            vrci-sentinel-db-password \
+            "$API_KEY_ENCRYPTION_KEY"; do
+            set +e
+            hits=$(grep -rIl -e "$sentinel" .next/static)
+            rc=$?
+            set -e
+            case "$rc" in
+              0)
+                echo "::error::A server secret's sentinel ($sentinel) is in the client bundle:"
+                echo "$hits"
+                leaked=true
+                ;;
+              1) ;;
+              *)
+                echo "::error::grep could not search .next/static (exit $rc)."
+                exit 1
+                ;;
+            esac
+          done
+          if [ "$leaked" = "true" ]; then exit 1; fi
+          echo "No server secret's sentinel is in .next/static."
 
   # Builds the real image and boots it against an EMPTY Postgres, which is
   # exactly what a self-hoster does on first run. Nothing in CI did this
@@ -1059,3 +1100,133 @@ jobs:
             echo "::error::The scan gate action did not pass on every runner: ${NEEDS_RESULT}."
             exit 1
           fi
+
+  # Only the dependencies a pull request adds or changes, against GitHub's
+  # advisory database, at the bar both npm audit steps use. Runtime and
+  # development scopes both: the extension's dev tree is the tree that emits
+  # content.js, and the root dev tree runs `next build`. No comment on the
+  # pull request, so it needs no write scope and works on forks. Skipped
+  # outside pull requests, which reports success to a required check.
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - name: Review the dependencies this pull request changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          fail-on-scopes: runtime, development
+          comment-summary-in-pr: never
+
+  # gitleaks over the commits this event adds, from the digest-pinned stage
+  # of .github/tools/Dockerfile, offline. --redact is not optional: this
+  # repository's Actions logs are public, so a finding prints its rule, file,
+  # line and commit and never the match, and the report is not uploaded.
+  # scheduled.yml scans the whole history weekly.
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Both ends of every range below have to be in the clone.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build the pinned gitleaks image
+        run: docker build --target gitleaks -t vr-gitleaks .github/tools
+
+      - name: Scan the commits this event adds
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+          MQ_BASE: ${{ github.event.merge_group.base_sha }}
+          MQ_HEAD: ${{ github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          is_sha() { [[ "$1" =~ ^[0-9a-f]{40}$ ]]; }
+          zero=0000000000000000000000000000000000000000
+          case "$EVENT_NAME" in
+            pull_request)
+              FROM="$PR_BASE"
+              TO="$PR_HEAD"
+              ;;
+            push)
+              TO="$PUSH_AFTER"
+              # A new branch has no before, and a force push's before can be
+              # gone from history: scan what the branch adds to main instead.
+              if is_sha "$PUSH_BEFORE" && [ "$PUSH_BEFORE" != "$zero" ] &&
+                git cat-file -e "${PUSH_BEFORE}^{commit}" 2> /dev/null; then
+                FROM="$PUSH_BEFORE"
+              else
+                FROM=origin/main
+              fi
+              ;;
+            merge_group)
+              FROM="$MQ_BASE"
+              TO="$MQ_HEAD"
+              ;;
+            *)
+              echo "::notice::A $EVENT_NAME run scans no range: scheduled.yml scans the whole history weekly."
+              exit 0
+              ;;
+          esac
+          # The range becomes git log arguments inside gitleaks, so each end
+          # has to be a commit id (or main itself), never an option.
+          if ! is_sha "$TO" || { [ "$FROM" != origin/main ] && ! is_sha "$FROM"; }; then
+            echo "::error::The event did not give two commit ids to scan between."
+            exit 1
+          fi
+          RANGE="${FROM}..${TO}"
+          echo "Scanning ${RANGE}"
+
+          report_dir="$RUNNER_TEMP/gitleaks"
+          mkdir -p "$report_dir"
+          status=0
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
+            -v "$PWD:/repo" -v "$report_dir:/report" -w /repo \
+            vr-gitleaks git --redact --no-banner --exit-code 1 --config .gitleaks.toml \
+            --log-opts "$RANGE" --report-format json --report-path /report/gitleaks.json ||
+            status=$?
+
+          case "$status" in
+            0)
+              echo "No secrets in ${RANGE}."
+              echo "Secret scan: nothing found in \`${RANGE}\`." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            1)
+              # Rule, file, line and commit only. The report holds the
+              # redacted match too, and stays on the runner. A file name is a
+              # pull request author's choice, so anything but plain path
+              # characters becomes _ before it reaches a workflow command.
+              jq -r '.[] | "::error file=\(.File | gsub("[^A-Za-z0-9._/+@-]"; "_")),line=\(.StartLine)::\(.RuleID) in commit \(.Commit)"' "$report_dir/gitleaks.json"
+              {
+                echo "### Secret scan found something in \`${RANGE}\`"
+                echo ""
+                echo "| Rule | File | Line | Commit |"
+                echo "|---|---|---|---|"
+                jq -r '.[] | "| \(.RuleID) | \(.File | gsub("[^A-Za-z0-9._/+@-]"; "_")) | \(.StartLine) | \(.Commit) |"' "$report_dir/gitleaks.json"
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::gitleaks found a secret in ${RANGE}. Remove it from the history, rotate it, or list its fingerprint in .gitleaksignore with the reason above it."
+              exit 1
+              ;;
+            *)
+              echo "::error::gitleaks could not run (exit $status)."
+              exit 1
+              ;;
+          esac

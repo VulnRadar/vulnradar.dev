@@ -639,7 +639,9 @@ instrumentation.ts (server startup only)
   ├── Build (next build)
   ├── Self-host smoke test (builds the image, boots it on an empty database, self-scans every published route)
   ├── Package versions (pull requests only, report-only: a CLI or extension change without a version bump)
-  └── Scan gate action (runs .github/actions/scan-gate on Linux, macOS and Windows against a stand-in API on loopback)
+  ├── Scan gate action (runs .github/actions/scan-gate on Linux, macOS and Windows against a stand-in API on loopback)
+  ├── Dependency review (pull requests only: a dependency the change adds with a high or critical advisory)
+  └── Secret scan (gitleaks over the commits the change adds, redacted)
 
 On tag v*
   └── Docker publish (ghcr.io/${`<owner>`}/${`<repo>`})
