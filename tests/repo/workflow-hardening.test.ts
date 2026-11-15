@@ -107,6 +107,8 @@ it("finds the workflows and the composite actions", () => {
       "image-arm64.yml",
       "label.yml",
       "release.yml",
+      "scheduled.yml",
+      "site-checks.yml",
       "spike-api-rewrite.yml",
       "stale.yml",
     ]),
@@ -266,6 +268,13 @@ const WRITE_GRANTS: {
     reason: "marks and closes stale pull requests",
   },
   {
+    file: "scheduled.yml",
+    job: "report",
+    scope: "issues",
+    reason:
+      "edits the one open issue per scheduled report, and creates it the first time",
+  },
+  {
     file: "dependabot-auto-merge.yml",
     job: "dependabot-merge",
     scope: "contents",
@@ -359,6 +368,7 @@ const NEVER_CANCEL = [
   "docker-publish-arm64.yml",
   "release.yml",
   "ghcr-cleanup.yml",
+  "scheduled.yml",
 ];
 
 describe.each(WORKFLOWS)("%s bounds every run", (file) => {

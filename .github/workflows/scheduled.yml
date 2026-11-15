@@ -1,0 +1,594 @@
+name: Scheduled checks
+
+# What nothing that runs on a pull request can see: an advisory published
+# against a dependency that has not changed, a base image that gained a fix, a
+# certificate that is about to lapse, a pull request nobody has looked at.
+#
+# Daily: the dependency audit. Weekly (Monday): the audit again, the outdated
+# and waiting-pull-request report, the live header and TLS check of
+# vulnradar.dev, the vulnerability scan of the published image, and the secret
+# scan of the whole history.
+#
+# Each job writes a markdown report. One last job, the only one that can write
+# anything, puts each report in a single open issue titled "Scheduled report:
+# <name>", edited in place and created once, so a week of results is one issue
+# and not fifty. A job that fails without a report is named in its issue with
+# a link to the run. GitHub emails whoever last edited a cron here when a
+# scheduled run fails, and a chat or webhook alert needs a secret only the
+# owner can create.
+#
+# The live check reads one HEAD response and one TLS handshake from
+# vulnradar.dev and nothing else. Every other job analyses VulnRadar's own
+# repository, its published image or the public registries on the runner.
+# tests/repo/external-targets.test.ts holds all of that to what is written
+# here.
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+    - cron: "47 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      which:
+        description: "Which checks to run"
+        type: choice
+        options:
+          - all
+          - daily
+          - weekly
+        default: all
+
+# A run is never cancelled: the audit and the issue edits are quick, and a
+# half-finished report is worse than a late one.
+concurrency:
+  group: scheduled-checks-${{ github.event.schedule || inputs.which }}
+  cancel-in-progress: false
+
+# Nothing at the top level: each job states the scope it uses. Only `report`
+# holds a write scope.
+permissions: {}
+
+jobs:
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          # security: nothing is cached or restored in a job that installs.
+          package-manager-cache: false
+
+      - name: Install every tree, without running install scripts
+        # An audit needs the tree and not the install scripts, and a scheduled
+        # job has no reason to run package code.
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          (cd extension && npm ci --ignore-scripts --no-audit --no-fund)
+          (cd .github/tools/web-ext && npm ci --ignore-scripts --no-audit --no-fund)
+
+      - name: Audit every tree, dev dependencies included
+        # No --omit=dev: the other jobs audit only what the app ships, and the
+        # root dev tree runs `next build` while the extension's dev tree is
+        # the one that emits content.js. A high or critical advisory fails
+        # unless .github/audit-exceptions.json names it with a reason and a
+        # date to revisit; everything below high goes to the report.
+        run: |
+          set -uo pipefail
+          # Every command below is checked on purpose, so one that fails must not
+          # end the step before the report is written.
+          set +e
+          out="$RUNNER_TEMP/audit"
+          mkdir -p "$out" "$RUNNER_TEMP/report"
+          npm audit --json > "$out/root.json" || true
+          (cd extension && npm audit --json > "$out/extension.json") || true
+          (cd .github/tools/web-ext && npm audit --json > "$out/web-ext.json") || true
+          node scripts/ci/audit-report.mjs \
+            --exceptions .github/audit-exceptions.json \
+            --tree "root=$out/root.json" \
+            --tree "extension=$out/extension.json" \
+            --tree "web-ext=$out/web-ext.json" \
+            --report "$RUNNER_TEMP/report/report.md"
+
+      - name: Check the registry signatures of every tree
+        if: always()
+        run: |
+          set -uo pipefail
+          # Every command below is checked on purpose, so one that fails must not
+          # end the step before the report is written.
+          set +e
+          mkdir -p "$RUNNER_TEMP/report"
+          status=0
+          {
+            echo ""
+            echo "### Registry signatures"
+            echo ""
+          } >> "$RUNNER_TEMP/report/report.md"
+          for tree in . extension .github/tools/web-ext; do
+            if summary=$(cd "$tree" && npm audit signatures 2>&1); then
+              echo "- ${tree}: every package has a verified signature." >> "$RUNNER_TEMP/report/report.md"
+            else
+              status=1
+              echo "::error::npm audit signatures failed in ${tree}"
+              echo "- ${tree}: FAILED" >> "$RUNNER_TEMP/report/report.md"
+              printf '%s\n' "$summary" | head -20 | tr -cd '[:print:]\n' | sed 's/^/    /' >> "$RUNNER_TEMP/report/report.md"
+            fi
+          done
+          exit "$status"
+
+      - name: The CLI still has no dependencies
+        if: always()
+        run: |
+          set -euo pipefail
+          node -e "
+            const p = require('./cli/package.json');
+            const kinds = ['dependencies', 'optionalDependencies', 'peerDependencies'];
+            const bad = kinds.filter((k) => p[k] && Object.keys(p[k]).length > 0);
+            if (bad.length > 0) {
+              console.log('::error::cli/package.json declares ' + bad.join(', ') + '; the CLI ships with none.');
+              process.exit(1);
+            }
+            console.log('cli/package.json declares no dependencies.');
+          "
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: report-audit
+          path: ${{ runner.temp }}/report/report.md
+          retention-days: 3
+          if-no-files-found: warn
+
+  outdated:
+    name: Outdated packages and waiting pull requests
+    if: github.event.schedule == '47 6 * * 1' || (github.event_name == 'workflow_dispatch' && inputs.which != 'daily')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+      statuses: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Install both trees, without running install scripts
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          (cd extension && npm ci --ignore-scripts --no-audit --no-fund)
+
+      - name: Read what is newest, and what is waiting
+        # Everything this job reads from outside is a read-only GET of a
+        # public version list: the npm registry, nodejs.org's release index
+        # and Docker Hub's tag list for the official Postgres image. The
+        # script that writes the report reads only the files these leave.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          # Every command below is checked on purpose, so one that fails must not
+          # end the step before the report is written.
+          set +e
+          out="$RUNNER_TEMP/outdated"
+          mkdir -p "$out" "$RUNNER_TEMP/report"
+
+          # `npm outdated` exits 1 when anything is outdated, which is the
+          # normal case, so its status says nothing.
+          npm outdated --json > "$out/root.json" || true
+          (cd extension && npm outdated --json > "$out/extension.json") || true
+
+          npm_major=$(grep -oE 'npm@[0-9]+' .github/workflows/release.yml | head -1 | cut -d@ -f2)
+          pg_major=$(grep -oE '^FROM postgres:[0-9]+' .github/tools/Dockerfile | head -1 | cut -d: -f2)
+          npm view "npm@^${npm_major}" version --json > "$out/npm.json" || echo '[]' > "$out/npm.json"
+          curl -sS --max-time 30 --proto '=https' -o "$out/node-index.json" https://nodejs.org/dist/index.json || echo '[]' > "$out/node-index.json"
+          curl -sS --max-time 30 --proto '=https' -o "$out/postgres-tags.json" "https://hub.docker.com/v2/repositories/library/postgres/tags?name=${pg_major}.&page_size=100" || echo '{}' > "$out/postgres-tags.json"
+          gh pr list --state open --limit 200 \
+            --json number,title,author,createdAt,updatedAt,labels,isDraft,reviewDecision,statusCheckRollup \
+            > "$out/prs.json" || echo '[]' > "$out/prs.json"
+
+          node scripts/ci/outdated-report.mjs --root . \
+            --npm-root "$out/root.json" \
+            --npm-extension "$out/extension.json" \
+            --npm-versions "$out/npm.json" \
+            --node-index "$out/node-index.json" \
+            --postgres-tags "$out/postgres-tags.json" \
+            --prs "$out/prs.json" \
+            > "$RUNNER_TEMP/report/report.md"
+          cat "$RUNNER_TEMP/report/report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: report-outdated
+          path: ${{ runner.temp }}/report/report.md
+          retention-days: 3
+          if-no-files-found: warn
+
+  live:
+    name: Live headers and TLS (vulnradar.dev)
+    if: github.event.schedule == '47 6 * * 1' || (github.event_name == 'workflow_dispatch' && inputs.which != 'daily')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      report: ${{ steps.live.outputs.report }}
+
+    # No checkout and no action: the expectations are written here, so no
+    # repository code runs, and the report leaves as a job output.
+    steps:
+      - name: One HEAD request and one TLS handshake
+        id: live
+        run: |
+          set -uo pipefail
+          # Every command below is checked on purpose, so one that fails must not
+          # end the step before the report is written.
+          set +e
+          report="$RUNNER_TEMP/live.md"
+          failures=0
+          fail() {
+            failures=$((failures + 1))
+            echo "::error::$1"
+            echo "- FAIL: $1" >> "$report"
+          }
+          pass() {
+            echo "- ok: $1" >> "$report"
+          }
+
+          {
+            echo "### Response headers of https://vulnradar.dev/"
+            echo ""
+            echo "One HEAD request, redirects not followed."
+            echo ""
+          } > "$report"
+
+          headers=$(curl -sS -I --max-time 20 --proto '=https' --max-redirs 0 -A 'VulnRadar-CI-live-check (+https://github.com/VulnRadar/vulnradar.dev)' https://vulnradar.dev/ | tr -d '\r') || headers=""
+          if [ -z "$headers" ]; then
+            fail "https://vulnradar.dev/ gave no response"
+          fi
+          status=$(printf '%s\n' "$headers" | head -1 | awk '{print $2}')
+          echo "- status: ${status:-none}" >> "$report"
+
+          # The home page redirects, and the check reads that response as it
+          # is. A redirect is fine when it stays on this site.
+          case "${status:-000}" in
+            3*)
+              location=$(printf '%s\n' "$headers" | grep -i '^location:' | head -1 | cut -d: -f2- | sed 's/^ *//')
+              case "$location" in
+                /* | https://vulnradar.dev/*) pass "the redirect stays on the site (${location})" ;;
+                *) fail "the redirect leaves the site (${location})" ;;
+              esac
+              ;;
+            2*) ;;
+            *) fail "the status is ${status:-none}, not a page or a redirect" ;;
+          esac
+
+          header() {
+            printf '%s\n' "$headers" | grep -i "^$1:" | head -1 | cut -d: -f2- | sed 's/^ *//'
+          }
+
+          hsts=$(header strict-transport-security)
+          max_age=$(printf '%s' "$hsts" | grep -oE 'max-age=[0-9]+' | cut -d= -f2)
+          if [ "${max_age:-0}" -ge 31536000 ] && printf '%s' "$hsts" | grep -qi 'includeSubDomains' && printf '%s' "$hsts" | grep -qi 'preload'; then
+            pass "HSTS: max-age ${max_age}, includeSubDomains, preload"
+          else
+            fail "HSTS is not max-age>=31536000 with includeSubDomains and preload"
+          fi
+
+          csp=$(header content-security-policy)
+          csp_ok=true
+          for needle in "nonce-" "'strict-dynamic'" "frame-ancestors 'none'" "object-src 'none'" "base-uri 'self'"; do
+            if ! printf '%s' "$csp" | grep -qF -- "$needle"; then
+              csp_ok=false
+              fail "the CSP lacks ${needle}"
+            fi
+          done
+          if [ "$csp_ok" = "true" ]; then pass "CSP: nonce, strict-dynamic, frame-ancestors, object-src and base-uri"; fi
+
+          expect() {
+            local name="$1" want="$2" got
+            got=$(header "$name")
+            if [ "$(printf '%s' "$got" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$want" | tr '[:upper:]' '[:lower:]')" ]; then
+              pass "${name}: ${want}"
+            else
+              fail "${name} is not ${want}"
+            fi
+          }
+          expect x-frame-options DENY
+          expect x-content-type-options nosniff
+          expect referrer-policy strict-origin-when-cross-origin
+          expect cross-origin-opener-policy same-origin
+          expect cross-origin-resource-policy same-origin
+
+          if [ -n "$(header permissions-policy)" ]; then
+            pass "Permissions-Policy is present"
+          else
+            fail "Permissions-Policy is missing"
+          fi
+          if [ -z "$(header x-powered-by)" ]; then
+            pass "no X-Powered-By"
+          else
+            fail "X-Powered-By is set"
+          fi
+
+          {
+            echo ""
+            echo "### TLS certificate of vulnradar.dev:443"
+            echo ""
+            echo "One normal handshake."
+            echo ""
+          } >> "$report"
+
+          tls=$(openssl s_client -connect vulnradar.dev:443 -servername vulnradar.dev -verify_return_error -verify_hostname vulnradar.dev < /dev/null 2>&1) || true
+          if printf '%s\n' "$tls" | grep -q 'Verify return code: 0 (ok)'; then
+            pass "the certificate chain verifies for vulnradar.dev"
+          else
+            fail "the certificate chain does not verify for vulnradar.dev"
+          fi
+          if printf '%s\n' "$tls" | grep -qE '(Protocol *: *TLSv1[.][23]|New, TLSv1[.][23],)'; then
+            pass "negotiated TLS 1.2 or 1.3"
+          else
+            fail "the negotiated protocol is not TLS 1.2 or 1.3"
+          fi
+          end=$(printf '%s\n' "$tls" | openssl x509 -noout -enddate 2> /dev/null | cut -d= -f2)
+          issuer=$(printf '%s\n' "$tls" | openssl x509 -noout -issuer 2> /dev/null | sed 's/^issuer= *//')
+          echo "- issuer: ${issuer:-unknown}" >> "$report"
+          echo "- expires: ${end:-unknown}" >> "$report"
+          if printf '%s\n' "$tls" | openssl x509 -noout -checkend 1209600 > /dev/null 2>&1; then
+            if printf '%s\n' "$tls" | openssl x509 -noout -checkend 1814400 > /dev/null 2>&1; then
+              pass "more than 21 days left"
+            else
+              echo "::warning::the certificate expires within 21 days"
+              echo "- warning: the certificate expires within 21 days" >> "$report"
+            fi
+          else
+            fail "the certificate expires within 14 days, or could not be read"
+          fi
+
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          delimiter="VR_REPORT_$(cat /proc/sys/kernel/random/uuid)"
+          {
+            echo "report<<${delimiter}"
+            tr -cd '[:print:]\n' < "$report"
+            echo "${delimiter}"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ "$failures" -gt 0 ]; then
+            echo "::error::${failures} live check(s) failed"
+            exit 1
+          fi
+
+  image-scan:
+    name: Published image vulnerabilities
+    if: github.event.schedule == '47 6 * * 1' || (github.event_name == 'workflow_dispatch' && inputs.which != 'daily')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the pinned vulnerability scanner
+        run: docker build --target grype -t vr-grype .github/tools
+
+      - name: Scan the published image, amd64 and arm64
+        # VulnRadar's own public image, pulled and analysed on the runner.
+        # Only findings with a fix fail: a high or critical one that a base
+        # image bump or a dependency update would clear. The exceptions are
+        # in .grype.yaml, each with its reason.
+        run: |
+          set -uo pipefail
+          # Every command below is checked on purpose, so one that fails must not
+          # end the step before the report is written.
+          set +e
+          mkdir -p "$RUNNER_TEMP/report"
+          report="$RUNNER_TEMP/report/report.md"
+          status=0
+          {
+            echo "### ghcr.io/vulnradar/vulnradar:latest"
+            echo ""
+            echo "Findings with a fix available. Fails on high or critical."
+          } > "$report"
+          for platform in linux/amd64 linux/arm64; do
+            scan="$RUNNER_TEMP/grype-${platform#linux/}.txt"
+            code=0
+            docker run --rm -v "$PWD:/repo:ro" vr-grype \
+              registry:ghcr.io/vulnradar/vulnradar:latest \
+              --platform "$platform" --only-fixed --fail-on high \
+              -c /repo/.grype.yaml -o table > "$scan" 2>&1 || code=$?
+            echo "${platform}: grype exited ${code}"
+            {
+              echo ""
+              echo "#### ${platform} (grype exit ${code})"
+              echo ""
+              echo '```'
+              head -c 25000 "$scan" | tr -cd '[:print:]\n'
+              echo '```'
+            } >> "$report"
+            if [ "$code" -ne 0 ]; then
+              status=1
+              echo "::error::grype found a fixed high or critical vulnerability in the ${platform} image, or could not run (exit ${code})"
+            fi
+          done
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: report-image-scan
+          path: ${{ runner.temp }}/report/report.md
+          retention-days: 3
+          if-no-files-found: warn
+
+  secrets-history:
+    name: Secret scan (full history)
+    if: github.event.schedule == '47 6 * * 1' || (github.event_name == 'workflow_dispatch' && inputs.which != 'daily')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build the pinned gitleaks image
+        run: docker build --target gitleaks -t vr-gitleaks .github/tools
+
+      - name: Scan every commit
+        # --redact is not optional: this repository's Actions logs are public,
+        # so a finding prints its rule, file, line and commit and never the
+        # match. The raw report stays on the runner. .gitleaksignore lists
+        # fingerprints that were reviewed, each with its reason above it.
+        run: |
+          set -uo pipefail
+          # Every command below is checked on purpose, so one that fails must not
+          # end the step before the report is written.
+          set +e
+          mkdir -p "$RUNNER_TEMP/report" "$RUNNER_TEMP/gitleaks"
+          report="$RUNNER_TEMP/report/report.md"
+          status=0
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
+            -v "$PWD:/repo" -v "$RUNNER_TEMP/gitleaks:/report" -w /repo \
+            vr-gitleaks git --redact --no-banner --exit-code 1 --config .gitleaks.toml \
+            --report-format json --report-path /report/gitleaks.json || status=$?
+          commits=$(git rev-list --all --count)
+          case "$status" in
+            0)
+              echo "No secrets in ${commits} commits."
+              echo "No findings in the whole history (${commits} commits)." > "$report"
+              ;;
+            1)
+              {
+                echo "### Findings in the whole history"
+                echo ""
+                echo "| Rule | File | Line | Commit |"
+                echo "|---|---|---|---|"
+                jq -r '.[] | "| \(.RuleID) | \(.File | gsub("[^A-Za-z0-9._/+@-]"; "_")) | \(.StartLine) | \(.Commit) |"' "$RUNNER_TEMP/gitleaks/gitleaks.json"
+              } > "$report"
+              jq -r '.[] | "::error file=\(.File | gsub("[^A-Za-z0-9._/+@-]"; "_")),line=\(.StartLine)::\(.RuleID) in commit \(.Commit)"' "$RUNNER_TEMP/gitleaks/gitleaks.json"
+              echo "::error::gitleaks found a secret in the history. Rotate it, and list its fingerprint in .gitleaksignore with the reason above it."
+              ;;
+            *)
+              echo "gitleaks could not run (exit ${status})." > "$report"
+              echo "::error::gitleaks could not run (exit ${status})."
+              ;;
+          esac
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: report-secrets-history
+          path: ${{ runner.temp }}/report/report.md
+          retention-days: 3
+          if-no-files-found: warn
+
+  report:
+    name: Update the report issues
+    needs: [audit, outdated, live, image-scan, secrets-history]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+
+    # No checkout, so no repository code runs next to the write token. The
+    # script below is all there is, and it reads only the reports.
+    steps:
+      - name: Download the reports
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: report-*
+          path: ${{ runner.temp }}/reports
+
+      - name: Edit each report's issue, or create it once
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          NEEDS: ${{ toJSON(needs) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          title_of() {
+            case "$1" in
+              audit) echo "Dependency audit" ;;
+              outdated) echo "Outdated packages and waiting pull requests" ;;
+              live) echo "Live headers and TLS (vulnradar.dev)" ;;
+              image-scan) echo "Published image vulnerabilities" ;;
+              secrets-history) echo "Secret scan (full history)" ;;
+            esac
+          }
+
+          for id in audit outdated live image-scan secrets-history; do
+            result=$(jq -r --arg id "$id" '.[$id].result // "skipped"' <<< "$NEEDS")
+            if [ "$result" = "skipped" ]; then
+              echo "${id}: skipped in this run, its issue is left as it is."
+              continue
+            fi
+            title="Scheduled report: $(title_of "$id")"
+
+            full_file="$RUNNER_TEMP/full-${id}.md"
+            body_file="$RUNNER_TEMP/body-${id}.md"
+            {
+              echo "**Last run:** $(date -u +%Y-%m-%d) UTC, ${result}. [Run log](${RUN_URL})"
+              echo ""
+              if [ "$id" = "live" ]; then
+                jq -r '.live.outputs.report // ""' <<< "$NEEDS" | tr -cd '[:print:]\n'
+              elif [ -s "$RUNNER_TEMP/reports/report-${id}/report.md" ]; then
+                cat "$RUNNER_TEMP/reports/report-${id}/report.md"
+              else
+                echo "This job ended ${result} before it wrote a report. The run log has the reason."
+              fi
+            } > "$full_file"
+            head -c 60000 "$full_file" > "$body_file"
+
+            number=$(gh issue list --state open --search "\"${title}\" in:title" --json number,title --limit 30 \
+              | jq -r --arg t "$title" '[.[] | select(.title == $t)] | .[0].number // empty')
+            if [ -n "$number" ]; then
+              gh issue edit "$number" --body-file "$body_file"
+              echo "${id}: updated issue #${number}"
+            else
+              gh issue create --title "$title" --body-file "$body_file"
+              echo "${id}: created the issue"
+            fi
+          done

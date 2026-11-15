@@ -348,3 +348,138 @@ describe("the hosts the workflows and the composite action name", () => {
     }
   });
 });
+
+/* ------------------------------------------------------------------------ */
+/* The weekly live check, and the report job that holds the write scope.     */
+/* ------------------------------------------------------------------------ */
+
+describe("scheduled.yml", () => {
+  const scheduled = files.find((f) => f.file === "scheduled.yml")!;
+  const job = (id: string) => scheduled.jobs.find((j) => j.id === id)!;
+
+  it("has the six jobs the report issues are made from", () => {
+    expect(scheduled.jobs.map((j) => j.id)).toEqual([
+      "audit",
+      "outdated",
+      "live",
+      "image-scan",
+      "secrets-history",
+      "report",
+    ]);
+  });
+
+  describe("the live check", () => {
+    const live = job("live");
+    const lines = live.code.split("\n");
+
+    it("runs no repository code: no checkout, no action, no permissions", () => {
+      expect(live.code).not.toMatch(/^\s+-?\s*uses:/m);
+      expect(live.code).not.toMatch(/actions\/checkout/);
+      expect(live.permissionsDeclared).toBe("{}");
+    });
+
+    it("makes exactly one request: a HEAD of the home page, redirects not followed", () => {
+      const curls = lines.filter((l) => /\bcurl\b/.test(l));
+      expect(curls).toHaveLength(1);
+      expect(curls[0]).toContain(" -I ");
+      expect(curls[0]).toContain("https://vulnradar.dev/");
+      expect(curls[0]).toContain("--max-redirs 0");
+      expect(curls[0]).toContain("--proto '=https'");
+      // The request itself, up to where its answer is piped on.
+      const request = curls[0].split(/ [|]{1,2} /)[0];
+      expect(request).not.toMatch(
+        / -X | --data| -d | -L | --location|-o |--output/,
+      );
+      expect(live.code).not.toMatch(/\b(wget|nmap|nikto|sslscan|testssl)\b/);
+    });
+
+    it("makes exactly one TLS handshake, to vulnradar.dev:443, and never probes a protocol version", () => {
+      const handshakes = lines.filter((l) => /\bopenssl s_client\b/.test(l));
+      expect(handshakes).toHaveLength(1);
+      expect(handshakes[0]).toContain("-connect vulnradar.dev:443");
+      expect(handshakes[0]).toContain("-servername vulnradar.dev");
+      expect(handshakes[0]).toContain("-verify_return_error");
+      expect(handshakes[0]).not.toMatch(
+        /-(tls1|tls1_1|ssl3|cipher|starttls)\b/,
+      );
+      // Every other openssl call reads the certificate from text, not a socket.
+      for (const l of lines.filter((l) => /\bopenssl\b/.test(l))) {
+        if (!/s_client/.test(l)) expect(l).toMatch(/openssl x509 /);
+      }
+    });
+
+    it("asserts the headers and the certificate the security posture documents", () => {
+      for (const needle of [
+        "strict-transport-security",
+        "includeSubDomains",
+        "preload",
+        "'strict-dynamic'",
+        "frame-ancestors 'none'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "x-frame-options DENY",
+        "x-content-type-options nosniff",
+        "referrer-policy strict-origin-when-cross-origin",
+        "cross-origin-opener-policy same-origin",
+        "cross-origin-resource-policy same-origin",
+        "permissions-policy",
+        "x-powered-by",
+        "Verify return code: 0 (ok)",
+        "-checkend 1209600",
+        "-checkend 1814400",
+      ]) {
+        expect(live.code, needle).toContain(needle);
+      }
+    });
+
+    it("hands its report to the report job as an output, not an artifact", () => {
+      expect(live.raw).toMatch(
+        /^ {4}outputs:\n {6}report: \$\{\{ steps\.live\.outputs\.report \}\}$/m,
+      );
+    });
+  });
+
+  it("gives the report job the only write scope in the file, and no checkout", () => {
+    for (const j of scheduled.jobs) {
+      const writes = Object.values(j.permissions).filter((v) => v === "write");
+      if (j.id === "report") {
+        expect(j.permissions).toEqual({ issues: "write" });
+      } else {
+        expect(writes, j.id).toEqual([]);
+      }
+    }
+    const report = job("report");
+    expect(report.code).not.toMatch(/actions\/checkout/);
+    expect(report.code).not.toMatch(/^\s+-?\s*run:.*\b(npm|npx|node)\b/m);
+  });
+
+  it("edits one open issue per report by exact title and creates no labels", () => {
+    const report = job("report");
+    expect(report.code).toContain("Scheduled report: ");
+    expect(report.code).toContain("select(.title == $t)");
+    expect(report.code).toContain("gh issue edit");
+    expect(report.code).toContain("gh issue create --title");
+    expect(report.code).not.toMatch(/--label|gh label/);
+  });
+
+  it("never installs with scripts on, in any job", () => {
+    for (const j of scheduled.jobs) {
+      for (const c of commandsOf(j.code)) {
+        if (/\bnpm (ci|install|i)\b/.test(c)) {
+          expect(c, `${j.id}: ${c.trim()}`).toContain("--ignore-scripts");
+        }
+      }
+    }
+  });
+
+  it("scans only VulnRadar's own image and repository, and reads the registries read-only", () => {
+    const code = scheduled.jobs.map((j) => j.code).join("\n");
+    expect(code).toContain("registry:ghcr.io/vulnradar/vulnradar:latest");
+    // Version lookups are GETs of public lists; nothing is posted anywhere.
+    for (const c of commandsOf(code).filter((c) => /\bcurl\b/.test(c))) {
+      expect(c.split(/ [|]{1,2} /)[0]).not.toMatch(
+        / -X | --data| -d | -F | --form/,
+      );
+    }
+  });
+});

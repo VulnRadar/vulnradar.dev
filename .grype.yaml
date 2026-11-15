@@ -1,0 +1,7 @@
+# grype's configuration for the weekly scan of the published image
+# (scheduled.yml, "Published image vulnerabilities"), which fails on a high or
+# critical finding that has a fix. An entry below is a finding that cannot be
+# fixed by a base image or dependency bump, and each one carries its reason on
+# the line above it and the date to look at it again. Empty until a first run
+# finds one.
+ignore: []

@@ -1,0 +1,5 @@
+# Reviewed gitleaks fingerprints for the full-history scan (scheduled.yml) and
+# the pull request scan (ci.yml), one per line, with the reason on the line
+# above it. A fingerprint is <commit>:<file>:<rule>:<line>, as gitleaks prints it.
+# Empty until a finding is reviewed: nothing here is a way to silence a secret
+# that is still live, so rotate first and list it second.

@@ -59,3 +59,19 @@ describe("ci.yml triggers", () => {
     expect(ci).not.toMatch(/^\s+if:.*github\.(ref|ref_name)\b/m);
   });
 });
+
+describe("ci.yml's weekly run", () => {
+  it("runs on a schedule, so a quiet week still proves main", () => {
+    const block = onBlock(ci)
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("#"))
+      .join("\n");
+    expect(block).toMatch(/^ {2}schedule:\n {4}- cron: "\d+ \d+ \* \* 1"$/m);
+  });
+
+  it("is not cancelled by a newer push, since only pull request runs are", () => {
+    expect(ci).toContain(
+      "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+    );
+  });
+});

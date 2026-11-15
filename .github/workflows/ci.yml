@@ -38,6 +38,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  # A quiet week still proves main: an advisory, a base image or a runner image
+  # can break the build without a commit. Only pull request runs are cancelled,
+  # so this one always finishes.
+  schedule:
+    - cron: "17 5 * * 1"
 
 # Only a pull request's superseded run is worth cancelling. docker-publish
 # refuses a commit without a green run here, so a push to main that cancelled
