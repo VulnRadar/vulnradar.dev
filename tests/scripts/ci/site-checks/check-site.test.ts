@@ -465,7 +465,7 @@ describe("the command", () => {
     try {
       const code = await main(
         ["--base", site.base, "--baseline", file, "--concurrency", "2"],
-        {},
+        {} as NodeJS.ProcessEnv,
       );
       return { code, lines };
     } finally {
