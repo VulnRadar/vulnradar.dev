@@ -87,10 +87,19 @@ export function attributesOf(tag) {
   return attrs;
 }
 
+// Repeated until nothing changes, so a tag split around another one cannot
+// survive a single pass. An end tag may carry whitespace and junk before its
+// ">", which browsers still accept as the end of the element.
 function withoutScriptsAndStyles(html) {
-  return html
-    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, "")
-    .replace(/<style\b[\s\S]*?<\/style\s*>/gi, "");
+  let out = html;
+  let previous;
+  do {
+    previous = out;
+    out = out
+      .replace(/<script\b[\s\S]*?<\/script\b[^>]*>/gi, "")
+      .replace(/<style\b[\s\S]*?<\/style\b[^>]*>/gi, "");
+  } while (out !== previous);
+  return out;
 }
 
 /** What the checks need from one HTML document. */
