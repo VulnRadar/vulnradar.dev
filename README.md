@@ -175,7 +175,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 | ------------------------- | ------------------------------------------------------------ |
 | `npm run dev`             | Development server                                           |
 | `npm run build`           | Production build                                             |
-| `npm run typecheck`       | `tsc --noEmit`                                               |
+| `npm run typecheck`       | `next typegen` for the route types, then `tsc --noEmit`      |
 | `npm run lint`            | Oxlint, then ESLint with type-aware rules on auth code       |
 | `npm run format`          | Prettier                                                     |
 | `npm run format:check`    | Prettier in check mode. CI gates on this                     |

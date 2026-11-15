@@ -36,7 +36,7 @@ do intentionally change dependencies, check the diff for removed
 | `npm run build`           | Production build                                   |
 | `npm run lint`            | Run Oxlint, then ESLint                            |
 | `npm run lint:fix`        | The same two with `--fix`                          |
-| `npm run typecheck`       | Run `tsc --noEmit`                                 |
+| `npm run typecheck`       | Generate route types, then run `tsc --noEmit`      |
 | `npm run format`          | Format with Prettier                               |
 | `npm run format:check`    | Check formatting without writing. CI runs this one |
 | `npm test`                | Vitest suite                                       |
