@@ -100,6 +100,7 @@ jobs:
           # into the script body. Same rule as release.yml.
           EVENT_NAME: ${{ github.event_name }}
           RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_PATH: ${{ github.event.workflow_run.path }}
           INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
@@ -121,6 +122,16 @@ jobs:
             echo "::notice::${TAG:-<empty>} is not a version tag; nothing to publish."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
+          fi
+          # security: only a run of docker-publish.yml itself. workflow_run
+          # matches the upstream run by NAME, so another workflow file with
+          # that name on a branch of this repository called like a tag
+          # completes a matching run. The path can carry an @ref suffix, so
+          # only the part before it is compared. The step after the checkout
+          # makes the tag's commit the one that run built.
+          if [ "$EVENT_NAME" = "workflow_run" ] && [ "${RUN_PATH%%@*}" != ".github/workflows/docker-publish.yml" ]; then
+            echo "::error::The triggering run is not .github/workflows/docker-publish.yml; refusing to publish from it."
+            exit 1
           fi
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
@@ -146,6 +157,21 @@ jobs:
           # docker-publish only fires on a tag push to this repository, which a
           # fork cannot do. This closes the credential half regardless.
           persist-credentials: false
+
+      # security: the tag must still name the commit docker-publish built. A
+      # tag moved after the amd64 publish would otherwise get an arm64 image
+      # of different code merged into the same release tags and signed.
+      - name: Check the tag is the commit the Docker publish built
+        if: steps.vars.outputs.skip != 'true' && github.event_name == 'workflow_run'
+        env:
+          RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          HEAD_SHA=$(git rev-parse HEAD)
+          if [ "$HEAD_SHA" != "$RUN_HEAD_SHA" ]; then
+            echo "::error::The tag points at ${HEAD_SHA}, but the Docker publish built ${RUN_HEAD_SHA}: the tag moved after it was published. Refusing to publish arm64 for it."
+            exit 1
+          fi
 
       - name: Set up Docker Buildx
         if: steps.vars.outputs.skip != 'true'

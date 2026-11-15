@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   readWorkflow,
   workflowSteps,
+  stepNamed,
   jobsOf,
   type WorkflowJob as Job,
 } from "./_workflow-steps";
@@ -34,8 +35,33 @@ const holdsCredential = (j: Job) =>
   j.permissions["id-token"] === "write" || j.permissions.contents === "write";
 
 describe("release.yml separates package code from credentials", () => {
-  it("has the three jobs the split is written against", () => {
-    expect(jobs.map((j) => j.id)).toEqual(["build", "release", "publish-npm"]);
+  it("has the four jobs the split is written against", () => {
+    expect(jobs.map((j) => j.id)).toEqual([
+      "gate",
+      "build",
+      "release",
+      "publish-npm",
+    ]);
+  });
+
+  it("waits for CI in a job that reads Actions and runs no package code", () => {
+    // Its own job, so the token that reads Actions never shares a runner
+    // with npm ci, and build stays at contents: read.
+    const gate = job("gate");
+    expect(gate.permissions).toEqual({ contents: "read", actions: "read" });
+    expect(gate.code).not.toMatch(RUNS_PACKAGE_CODE);
+    expect(gate.code).not.toMatch(/actions\/setup-node@/);
+    expect(gate.code).toContain(
+      'gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${sha}',
+    );
+  });
+
+  it("builds only after the gate passed", () => {
+    expect(job("build").needs).toBe("gate");
+  });
+
+  it("reads and writes no Actions cache in any job", () => {
+    for (const j of jobs) expect(j.cacheMode, j.id).toBe("none");
   });
 
   it("states every job's permissions instead of inheriting the default", () => {
@@ -185,5 +211,44 @@ describe("release.yml separates package code from credentials", () => {
     for (const step of checkouts) {
       expect(step.code).toMatch(/^\s+persist-credentials:\s*false\s*$/m);
     }
+  });
+});
+
+describe("release.yml marks only the highest stable tag as Latest", () => {
+  // app/api/version/route.ts polls the repository's Latest release. GitHub
+  // picks it by date unless told, so a 3.9.x patch published after 4.0.1
+  // would become Latest and 4.0.x instances would stop hearing about updates.
+  const attach = stepNamed(
+    job("release").steps,
+    "Find or create GitHub release",
+  );
+  const highest = (code: string) =>
+    code
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.startsWith("HIGHEST=$("));
+
+  it("decides it with docker-publish's own pipeline, byte for byte", () => {
+    const docker = highest(readWorkflow("docker-publish.yml"));
+    expect(docker).toHaveLength(1);
+    expect(highest(attach.code)).toEqual(docker);
+  });
+
+  it("passes the decision on both the create and the edit path", () => {
+    expect(attach.code).toMatch(
+      /gh release create "\$\{TAG\}"[^]*?--latest="\$\{LATEST\}"/,
+    );
+    expect(attach.code).toContain(
+      'gh release edit "${TAG}" --latest="${LATEST}"',
+    );
+    expect(attach.code).toMatch(/^\s+LATEST=false\s*$/m);
+    expect(attach.code).toContain('if [ "${TAG}" = "${HIGHEST}" ]; then');
+  });
+
+  it("decides before it uploads or creates anything", () => {
+    const decided = attach.code.indexOf("HIGHEST=$(");
+    expect(decided).toBeGreaterThan(-1);
+    expect(decided).toBeLessThan(attach.code.indexOf("gh release upload"));
+    expect(decided).toBeLessThan(attach.code.indexOf("gh release create"));
   });
 });

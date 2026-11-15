@@ -21,11 +21,13 @@ name: Attach Release Artifacts
 #     publishing and provenance, for stable tags whose CLI version is not
 #     on the registry yet (the publish-npm job)
 #
-# security: three jobs, because `npm ci` runs third-party install scripts and
+# security: four jobs, because `npm ci` runs third-party install scripts and
 # Dependabot auto-merges patch bumps of the tree it installs. All of this used
 # to be one job holding contents: write and an OIDC token, so one poisoned
 # patch release could rewrite the source tarball before cosign signed it, and
 # the in-app updater installs that tarball.
+#   - gate: waits for a green CI run on the commit the tag names, with
+#     contents: read and actions: read; installs nothing
 #   - build: runs the package code, with contents: read and no token
 #   - release: no package installs; makes the source tarball from git itself,
 #     signs, and uploads
@@ -94,8 +96,151 @@ concurrency:
 permissions: {}
 
 jobs:
+  # security: a release is built only from a commit CI passed. docker-publish
+  # already refuses to publish an image for a red commit, but a `release:
+  # published` run never went through it, so a release made by hand built,
+  # signed, attached and npm-published a tag whose CI may have been red. A job
+  # of its own, so the build job stays at contents: read and the token that
+  # reads Actions never shares a runner with `npm ci`.
+  gate:
+    name: Require a green CI run for the tag
+    if: >-
+      github.event_name == 'release' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    # The same 45-minute wait as docker-publish's gate, and a little more.
+    timeout-minutes: 50
+    # security: no Actions cache in any job of this workflow, as below.
+    cache-mode: none
+    permissions:
+      contents: read
+      # Read CI's runs for the tagged commit.
+      actions: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          # security: nothing here pushes with git, so no token stays behind in
+          # .git/config for a later step to read.
+          persist-credentials: false
+
+      - name: Resolve tag
+        id: vars
+        env:
+          # security: pass untrusted event fields in via env, never
+          # interpolate ${{ }} directly into the script body below --
+          # head_branch/tag_name reach here from the triggering event and
+          # a value containing shell metacharacters could otherwise break
+          # out of string context and execute as code (CodeQL
+          # actions/code-injection/critical). env-var substitution can't
+          # do that: the value is only ever read as a plain string.
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_RUN_PATH: ${{ github.event.workflow_run.path }}
+        run: |
+          set -euo pipefail
+          # workflow_run.head_branch is the tag for tag pushes -- NOT
+          # GITHUB_REF_NAME, which on a workflow_run-triggered job
+          # reflects this workflow file's own ref (the default branch,
+          # e.g. "main"), not the ref that triggered the upstream
+          # workflow. For the release: published trigger, the tag is
+          # in the event payload.
+          if [ "$EVENT_NAME" = "release" ]; then
+            TAG="$RELEASE_TAG_NAME"
+          else
+            TAG="$WORKFLOW_RUN_HEAD_BRANCH"
+          fi
+
+          # security: TAG names the release, the tarball and the artifacts,
+          # and is written to GITHUB_ENV and GITHUB_OUTPUT below. Both checks
+          # run before any of that. The pattern is anchored at both ends and
+          # its suffix class has no whitespace, quote or newline, so the value
+          # cannot add a line to either file (CodeQL actions/envvar-injection,
+          # actions/output-clobbering). The rev-parse makes it a tag that
+          # exists here, not a branch name that merely looks like one. The
+          # value is not printed until it has matched the pattern.
+          TAG_PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+          if [[ ! "$TAG" =~ $TAG_PATTERN ]]; then
+            echo "::error::The triggering ref is not a version tag (vX.Y.Z or vX.Y.Z-suffix); refusing to release it."
+            exit 1
+          fi
+          if ! git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::Tag ${TAG} does not exist in this repository; refusing to release it."
+            exit 1
+          fi
+
+          # security: on the workflow_run path, the tag must name the commit the
+          # Docker publish built, in the Docker publish workflow. workflow_run
+          # matches the upstream run by NAME, so a workflow file of another name
+          # on a branch of this repository called like a tag completes a
+          # matching push run; and a tag moved after its publish points at a
+          # commit no CI or publish run checked (v3.8.4 was published from two
+          # commits 30 minutes apart). The run's path can carry an @ref suffix,
+          # so only the part before it is compared. The checkout above is a
+          # snapshot, so every later `git archive "${TAG}"` reads the ref
+          # verified here.
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            if [ "${WORKFLOW_RUN_PATH%%@*}" != ".github/workflows/docker-publish.yml" ]; then
+              echo "::error::The triggering run is not .github/workflows/docker-publish.yml; refusing to release from it."
+              exit 1
+            fi
+            TAG_COMMIT=$(git rev-parse "refs/tags/${TAG}^{commit}")
+            if [ "$TAG_COMMIT" != "$WORKFLOW_RUN_HEAD_SHA" ]; then
+              echo "::error::Tag ${TAG} points at ${TAG_COMMIT}, but the Docker publish built ${WORKFLOW_RUN_HEAD_SHA}: the tag moved after it was published. Refusing to release it."
+              exit 1
+            fi
+          fi
+
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Workflow: $EVENT_NAME"
+
+      # The same loop as docker-publish's "Require a green CI run for the
+      # tagged commit", on the commit the tag names. tests/repo/ci-concurrency
+      # holds both copies to the same rules.
+      - name: Require a green CI run for the tagged commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse "refs/tags/${TAG}^{commit}")"
+          # CI takes about fifteen minutes; a release published right after its
+          # tag has to wait for it rather than fail.
+          deadline=$(( $(date +%s) + 45 * 60 ))
+          while :; do
+            runs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${sha}&per_page=20" \
+              --jq '[.workflow_runs[] | {status, conclusion}]')
+            if echo "$runs" | jq -e 'any(.[]; .conclusion == "success")' > /dev/null; then
+              echo "CI passed for ${sha}."
+              break
+            fi
+            if echo "$runs" | jq -e 'length > 0 and all(.[]; .status == "completed")' > /dev/null; then
+              # A stopped run says nothing about the code.
+              if echo "$runs" | jq -e 'all(.[]; .conclusion == "cancelled")' > /dev/null; then
+                echo "::error::CI was cancelled for ${sha}, so it never reported on this commit: rerun CI for this sha, then re-run this workflow."
+                exit 1
+              fi
+              echo "::error::CI did not pass for ${sha}: ${runs}. Fix main, then tag the fixed commit."
+              exit 1
+            fi
+            if [ "$(date +%s)" -ge "${deadline}" ]; then
+              echo "::error::No successful CI run for ${sha} within 45 minutes. Push the commit to main, let CI finish, then re-run this workflow."
+              exit 1
+            fi
+            echo "Waiting for CI on ${sha}: ${runs}"
+            sleep 30
+          done
+
   build:
     name: Build release artifacts
+    needs: gate
     # release: only build the GitHub release when the upstream Docker
     # publish succeeded (workflow_run path) OR the release was
     # published by a human (release: published path).
@@ -150,6 +295,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
           WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_RUN_PATH: ${{ github.event.workflow_run.path }}
         run: |
           set -euo pipefail
           # workflow_run.head_branch is the tag for tag pushes -- NOT
@@ -180,6 +327,28 @@ jobs:
           if ! git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
             echo "::error::Tag ${TAG} does not exist in this repository; refusing to release it."
             exit 1
+          fi
+
+          # security: on the workflow_run path, the tag must name the commit the
+          # Docker publish built, in the Docker publish workflow. workflow_run
+          # matches the upstream run by NAME, so a workflow file of another name
+          # on a branch of this repository called like a tag completes a
+          # matching push run; and a tag moved after its publish points at a
+          # commit no CI or publish run checked (v3.8.4 was published from two
+          # commits 30 minutes apart). The run's path can carry an @ref suffix,
+          # so only the part before it is compared. The checkout above is a
+          # snapshot, so every later `git archive "${TAG}"` reads the ref
+          # verified here.
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            if [ "${WORKFLOW_RUN_PATH%%@*}" != ".github/workflows/docker-publish.yml" ]; then
+              echo "::error::The triggering run is not .github/workflows/docker-publish.yml; refusing to release from it."
+              exit 1
+            fi
+            TAG_COMMIT=$(git rev-parse "refs/tags/${TAG}^{commit}")
+            if [ "$TAG_COMMIT" != "$WORKFLOW_RUN_HEAD_SHA" ]; then
+              echo "::error::Tag ${TAG} points at ${TAG_COMMIT}, but the Docker publish built ${WORKFLOW_RUN_HEAD_SHA}: the tag moved after it was published. Refusing to release it."
+              exit 1
+            fi
           fi
 
           echo "TAG=${TAG}" >> "$GITHUB_ENV"
@@ -365,6 +534,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
           WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_RUN_PATH: ${{ github.event.workflow_run.path }}
         run: |
           set -euo pipefail
           # workflow_run.head_branch is the tag for tag pushes -- NOT
@@ -395,6 +566,28 @@ jobs:
           if ! git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
             echo "::error::Tag ${TAG} does not exist in this repository; refusing to release it."
             exit 1
+          fi
+
+          # security: on the workflow_run path, the tag must name the commit the
+          # Docker publish built, in the Docker publish workflow. workflow_run
+          # matches the upstream run by NAME, so a workflow file of another name
+          # on a branch of this repository called like a tag completes a
+          # matching push run; and a tag moved after its publish points at a
+          # commit no CI or publish run checked (v3.8.4 was published from two
+          # commits 30 minutes apart). The run's path can carry an @ref suffix,
+          # so only the part before it is compared. The checkout above is a
+          # snapshot, so every later `git archive "${TAG}"` reads the ref
+          # verified here.
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            if [ "${WORKFLOW_RUN_PATH%%@*}" != ".github/workflows/docker-publish.yml" ]; then
+              echo "::error::The triggering run is not .github/workflows/docker-publish.yml; refusing to release from it."
+              exit 1
+            fi
+            TAG_COMMIT=$(git rev-parse "refs/tags/${TAG}^{commit}")
+            if [ "$TAG_COMMIT" != "$WORKFLOW_RUN_HEAD_SHA" ]; then
+              echo "::error::Tag ${TAG} points at ${TAG_COMMIT}, but the Docker publish built ${WORKFLOW_RUN_HEAD_SHA}: the tag moved after it was published. Refusing to release it."
+              exit 1
+            fi
           fi
 
           echo "TAG=${TAG}" >> "$GITHUB_ENV"
@@ -622,9 +815,23 @@ jobs:
           ARTIFACTS: ${{ steps.files.outputs.files }}
         run: |
           set -euo pipefail
+          # release: only the highest stable tag becomes the repository's
+          # Latest release, which is what app/api/version/route.ts polls.
+          # GitHub marks the newest release Latest by date, so a 3.9.x patch
+          # published after 4.0.1 would become Latest and every 4.0.x
+          # instance would stop hearing about updates. The same pipeline
+          # docker-publish uses to decide :latest, so the image and the
+          # release agree.
+          HIGHEST=$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          LATEST=false
+          if [ "${TAG}" = "${HIGHEST}" ]; then
+            LATEST=true
+          fi
+          echo "Latest release: ${LATEST} (highest stable tag ${HIGHEST})"
           if gh release view "${TAG}" >/dev/null 2>&1; then
             echo "Release ${TAG} already exists; will upload assets."
             gh release upload "${TAG}" ${ARTIFACTS} --clobber
+            gh release edit "${TAG}" --latest="${LATEST}"
           else
             echo "Creating release ${TAG}."
             NOTES=$(mktemp)
@@ -647,6 +854,7 @@ jobs:
             gh release create "${TAG}" \
               --title "${TAG}" \
               --notes-file "${NOTES}" \
+              --latest="${LATEST}" \
               ${PRERELEASE} \
               ${ARTIFACTS}
             rm -f "${NOTES}"
@@ -714,6 +922,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
           WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_RUN_PATH: ${{ github.event.workflow_run.path }}
         run: |
           set -euo pipefail
           # workflow_run.head_branch is the tag for tag pushes -- NOT
@@ -744,6 +954,28 @@ jobs:
           if ! git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
             echo "::error::Tag ${TAG} does not exist in this repository; refusing to release it."
             exit 1
+          fi
+
+          # security: on the workflow_run path, the tag must name the commit the
+          # Docker publish built, in the Docker publish workflow. workflow_run
+          # matches the upstream run by NAME, so a workflow file of another name
+          # on a branch of this repository called like a tag completes a
+          # matching push run; and a tag moved after its publish points at a
+          # commit no CI or publish run checked (v3.8.4 was published from two
+          # commits 30 minutes apart). The run's path can carry an @ref suffix,
+          # so only the part before it is compared. The checkout above is a
+          # snapshot, so every later `git archive "${TAG}"` reads the ref
+          # verified here.
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            if [ "${WORKFLOW_RUN_PATH%%@*}" != ".github/workflows/docker-publish.yml" ]; then
+              echo "::error::The triggering run is not .github/workflows/docker-publish.yml; refusing to release from it."
+              exit 1
+            fi
+            TAG_COMMIT=$(git rev-parse "refs/tags/${TAG}^{commit}")
+            if [ "$TAG_COMMIT" != "$WORKFLOW_RUN_HEAD_SHA" ]; then
+              echo "::error::Tag ${TAG} points at ${TAG_COMMIT}, but the Docker publish built ${WORKFLOW_RUN_HEAD_SHA}: the tag moved after it was published. Refusing to release it."
+              exit 1
+            fi
           fi
 
           echo "TAG=${TAG}" >> "$GITHUB_ENV"
@@ -855,4 +1087,7 @@ jobs:
             echo "::error::Could not tell whether vulnradar@${CLI_VERSION} is on npm: $(tr '\n' ' ' < "${VIEW_ERR}")"
             exit 1
           fi
-          npm publish --provenance --access public
+          # --ignore-scripts: cli/ declares no lifecycle scripts
+          # (tests/repo/release-npm-publish.test.ts), and none may run in the
+          # job that holds the OIDC token.
+          npm publish --ignore-scripts --provenance --access public

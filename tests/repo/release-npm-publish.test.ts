@@ -67,10 +67,14 @@ describe("release.yml npm publishing", () => {
     expect(install.code).toMatch(/exit 1/);
   });
 
-  it("publishes exactly once, with provenance and public access", () => {
+  it("publishes exactly once, with no scripts, provenance and public access", () => {
     const publishes = steps.filter((s) => /\bnpm publish\b/.test(s.code));
     expect(publishes.map((s) => s.name)).toEqual([PUBLISH]);
-    expect(publish.code).toContain("npm publish --provenance --access public");
+    // --ignore-scripts: no lifecycle script may run in the job that holds the
+    // OIDC token, whatever a later cli/package.json declares.
+    expect(publish.code).toContain(
+      "npm publish --ignore-scripts --provenance --access public",
+    );
   });
 
   it("installs npm before the step that publishes", () => {
@@ -128,10 +132,31 @@ describe("release.yml npm publishing", () => {
 describe("the CLI package npm publishes", () => {
   const cli = JSON.parse(
     readFileSync(path.resolve(__dirname, "../../cli/package.json"), "utf8"),
-  ) as { name: string; repository: { url: string } };
+  ) as {
+    name: string;
+    repository: { url: string };
+    scripts?: Record<string, string>;
+  };
 
   it("is the package the release publishes", () => {
     expect(cli.name).toBe("vulnradar");
+  });
+
+  it("declares no script that npm runs on pack or publish", () => {
+    // The publish passes --ignore-scripts, and the tarball the release attaches
+    // comes from npm pack in the build job, which would run prepack and
+    // postpack. Neither path should depend on a script, so there are none.
+    for (const hook of [
+      "prepublish",
+      "prepublishOnly",
+      "prepack",
+      "prepare",
+      "postpack",
+      "publish",
+      "postpublish",
+    ]) {
+      expect(cli.scripts?.[hook], hook).toBeUndefined();
+    }
   });
 
   it("names this repository, which provenance checks against the workflow's", () => {

@@ -1,5 +1,20 @@
-import { describe, it, expect } from "vitest";
-import { readWorkflow, workflowSteps, stepNamed } from "./_workflow-steps";
+import { describe, it, expect, afterAll, beforeAll } from "vitest";
+import { spawnSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import {
+  readWorkflow,
+  workflowSteps,
+  stepNamed,
+  jobsOf,
+} from "./_workflow-steps";
 
 /**
  * Who can make the release workflows run, and with what tag.
@@ -181,10 +196,18 @@ function concurrencyGroup(workflow: string, ctx: Ctx): string {
 
 let runId = 1000;
 
+/** The commit the tag in these contexts names. */
+const TAG_SHA = "1111111111111111111111111111111111111111";
+const OTHER_SHA = "2222222222222222222222222222222222222222";
+const DOCKER_PUBLISH = ".github/workflows/docker-publish.yml";
+
 function workflowRun(run: {
   conclusion: string;
   event: string;
   headRepo: string;
+  headBranch?: string;
+  headSha?: string;
+  path?: string;
 }): Ctx {
   return {
     github: {
@@ -195,7 +218,9 @@ function workflowRun(run: {
         workflow_run: {
           conclusion: run.conclusion,
           event: run.event,
-          head_branch: "v4.0.0",
+          head_branch: run.headBranch ?? "v4.0.0",
+          head_sha: run.headSha ?? TAG_SHA,
+          path: run.path ?? DOCKER_PUBLISH,
           head_repository: { full_name: run.headRepo },
         },
       },
@@ -228,6 +253,24 @@ const FAILED_PUSH = workflowRun({
   event: "push",
   headRepo: REPO,
 });
+/** A tag moved after the Docker publish built it. */
+const TAG_MOVED = workflowRun({
+  conclusion: "success",
+  event: "push",
+  headRepo: REPO,
+  headSha: OTHER_SHA,
+});
+/**
+ * A push to a branch of this repository named like a release tag, in another
+ * workflow file that carries the Docker publish workflow's name.
+ */
+const SAME_REPO_BRANCH_NAMED_LIKE_TAG = workflowRun({
+  conclusion: "success",
+  event: "push",
+  headRepo: REPO,
+  headBranch: "v3.9.1",
+  path: ".github/workflows/evil.yml",
+});
 
 describe("the expression evaluator these tests rely on", () => {
   it("handles the operators the conditions use", () => {
@@ -240,7 +283,7 @@ describe("the expression evaluator these tests rely on", () => {
   });
 });
 
-const RELEASE_JOBS = ["build", "release", "publish-npm"];
+const RELEASE_JOBS = ["gate", "build", "release", "publish-npm"];
 
 describe.each(RELEASE_JOBS)(
   "release.yml job %s runs only for this repository's own tag pushes",
@@ -271,6 +314,14 @@ describe.each(RELEASE_JOBS)(
 
     it("does not run when the Docker publish failed", () => {
       expect(evaluate(cond, FAILED_PUSH)).toBe(false);
+    });
+
+    it("lets a moved tag and a tag-named branch through, so Resolve tag has to refuse them", () => {
+      // Both are pushes to this repository that succeeded. Nothing in the
+      // event a condition can read tells them apart from a real release; the
+      // script below compares the run's path and commit with the tag's.
+      expect(evaluate(cond, TAG_MOVED)).toBe(true);
+      expect(evaluate(cond, SAME_REPO_BRANCH_NAMED_LIKE_TAG)).toBe(true);
     });
   },
 );
@@ -450,8 +501,225 @@ describe.each(RELEASE_JOBS)(
       );
       expect(resolve.code).toBe(first.code);
     });
+
+    it("takes the run's commit and workflow path through env", () => {
+      expect(resolve.code).toMatch(
+        /^\s+WORKFLOW_RUN_HEAD_SHA:\s*\$\{\{\s*github\.event\.workflow_run\.head_sha\s*\}\}\s*$/m,
+      );
+      expect(resolve.code).toMatch(
+        /^\s+WORKFLOW_RUN_PATH:\s*\$\{\{\s*github\.event\.workflow_run\.path\s*\}\}\s*$/m,
+      );
+    });
+
+    it("on workflow_run, requires the Docker publish workflow and the commit it built", () => {
+      const path = resolve.code.indexOf(
+        '"${WORKFLOW_RUN_PATH%%@*}" != ".github/workflows/docker-publish.yml"',
+      );
+      const commit = resolve.code.indexOf(
+        'TAG_COMMIT=$(git rev-parse "refs/tags/${TAG}^{commit}")',
+      );
+      const compare = resolve.code.indexOf(
+        '[ "$TAG_COMMIT" != "$WORKFLOW_RUN_HEAD_SHA" ]',
+      );
+      const gate = resolve.code.indexOf(
+        'if [ "$EVENT_NAME" = "workflow_run" ]',
+      );
+      for (const [what, at] of Object.entries({
+        path,
+        commit,
+        compare,
+        gate,
+      })) {
+        expect(at, what).toBeGreaterThan(-1);
+      }
+      expect(gate).toBeLessThan(path);
+      expect(commit).toBeLessThan(compare);
+      const write = firstWrite(resolve.code);
+      expect(write).toBeGreaterThan(path);
+      expect(write).toBeGreaterThan(compare);
+      const checks = resolve.code.slice(gate, write);
+      expect(checks.match(/exit 1/g)?.length ?? 0).toBe(2);
+    });
   },
 );
+
+/* ------------------------------------------------------------------------ */
+/* The Resolve tag script itself, run against a real repository.            */
+/* ------------------------------------------------------------------------ */
+
+/** The dedented body of a step's `run: |`. */
+function runScript(raw: string): string {
+  const lines = raw.split("\n");
+  const at = lines.findIndex((l) => /^\s+run:\s*\|\s*$/.test(l));
+  expect(at, "the step has a run: | body").toBeGreaterThan(-1);
+  const body = lines.slice(at + 1);
+  const indent = Math.min(
+    ...body.filter((l) => l.trim() !== "").map((l) => l.search(/\S/)),
+  );
+  return body.map((l) => l.slice(indent)).join("\n") + "\n";
+}
+
+const toolsAvailable =
+  spawnSync("bash", ["--version"]).status === 0 &&
+  spawnSync("git", ["--version"]).status === 0;
+
+// Every case spawns git and bash, which can take seconds per process on a
+// busy Windows machine; the default 10 s hook and test timeouts did not fit.
+describe.skipIf(!toolsAvailable)(
+  "release.yml's Resolve tag, run against a throwaway repository",
+  { timeout: 120_000 },
+  () => {
+    const script = runScript(
+      stepNamed(jobSteps(release, "gate"), "Resolve tag").raw,
+    );
+    let dir = "";
+    let repo = "";
+    // An empty global config: no signing, no hooks and no identity from the
+    // machine running the test leak into the throwaway repository.
+    const gitEnv = (): NodeJS.ProcessEnv => ({
+      ...process.env,
+      GIT_CONFIG_GLOBAL: path.join(dir, "gitconfig"),
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_AUTHOR_NAME: "test",
+      GIT_AUTHOR_EMAIL: "test@example.invalid",
+      GIT_COMMITTER_NAME: "test",
+      GIT_COMMITTER_EMAIL: "test@example.invalid",
+    });
+    const git = (...args: string[]) => {
+      const r = spawnSync("git", args, {
+        cwd: repo,
+        env: gitEnv(),
+        encoding: "utf8",
+      });
+      if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
+      return r.stdout.trim();
+    };
+    let scriptFile = "";
+    let tagged = "";
+    let later = "";
+
+    beforeAll(() => {
+      dir = mkdtempSync(path.join(tmpdir(), "vr-resolve-tag-"));
+      repo = path.join(dir, "repo");
+      scriptFile = path.join(dir, "resolve.sh");
+      writeFileSync(path.join(dir, "gitconfig"), "");
+      mkdirSync(repo);
+      git("init", "-q");
+      writeFileSync(path.join(repo, "a.txt"), "a\n");
+      git("add", "a.txt");
+      git("commit", "-q", "-m", "first");
+      git("tag", "-a", "v4.0.0", "-m", "v4.0.0");
+      tagged = git("rev-parse", "HEAD");
+      writeFileSync(path.join(repo, "a.txt"), "b\n");
+      git("commit", "-q", "-am", "second");
+      later = git("rev-parse", "HEAD");
+      writeFileSync(scriptFile, script);
+    }, 120_000);
+
+    afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+    function resolveTag(env: Record<string, string>) {
+      const envFile = path.join(dir, "env");
+      const outFile = path.join(dir, "out");
+      writeFileSync(envFile, "");
+      writeFileSync(outFile, "");
+      const r = spawnSync("bash", [scriptFile], {
+        cwd: repo,
+        encoding: "utf8",
+        env: {
+          ...gitEnv(),
+          GITHUB_ENV: envFile,
+          GITHUB_OUTPUT: outFile,
+          RELEASE_TAG_NAME: "",
+          WORKFLOW_RUN_HEAD_BRANCH: "",
+          WORKFLOW_RUN_HEAD_SHA: "",
+          WORKFLOW_RUN_PATH: "",
+          ...env,
+        },
+      });
+      return {
+        status: r.status,
+        written: readFileSync(envFile, "utf8") + readFileSync(outFile, "utf8"),
+      };
+    }
+
+    const fromRun = (sha: string, runPath: string) => ({
+      EVENT_NAME: "workflow_run",
+      WORKFLOW_RUN_HEAD_BRANCH: "v4.0.0",
+      WORKFLOW_RUN_HEAD_SHA: sha,
+      WORKFLOW_RUN_PATH: runPath,
+    });
+
+    it("accepts the Docker publish run that built the tagged commit", () => {
+      const r = resolveTag(fromRun(tagged, DOCKER_PUBLISH));
+      expect(r.status).toBe(0);
+      expect(r.written).toContain("TAG=v4.0.0");
+    });
+
+    it("accepts the run's path with an @ref suffix", () => {
+      const r = resolveTag(
+        fromRun(tagged, `${DOCKER_PUBLISH}@refs/tags/v4.0.0`),
+      );
+      expect(r.status).toBe(0);
+    });
+
+    it("refuses a tag that no longer names the commit the publish built", () => {
+      const r = resolveTag(fromRun(later, DOCKER_PUBLISH));
+      expect(r.status).toBe(1);
+      expect(r.written).toBe("");
+    });
+
+    it("refuses a run of any other workflow file", () => {
+      for (const p of [
+        ".github/workflows/evil.yml",
+        `${DOCKER_PUBLISH}.evil`,
+        "",
+      ]) {
+        const r = resolveTag(fromRun(tagged, p));
+        expect(r.status, p).toBe(1);
+        expect(r.written, p).toBe("");
+      }
+    });
+
+    it("still releases a release published by hand, which has no run to compare", () => {
+      const r = resolveTag({
+        EVENT_NAME: "release",
+        RELEASE_TAG_NAME: "v4.0.0",
+      });
+      expect(r.status).toBe(0);
+      expect(r.written).toContain("tag=v4.0.0");
+    });
+
+    it("refuses a tag that does not exist", () => {
+      const r = resolveTag({
+        EVENT_NAME: "release",
+        RELEASE_TAG_NAME: "v9.9.9",
+      });
+      expect(r.status).toBe(1);
+      expect(r.written).toBe("");
+    });
+  },
+);
+
+describe("docker-publish.yml checks the tag's shape first", () => {
+  // The job's steps: read over the whole file, the trigger list's "- v*"
+  // item sits at the step indent too.
+  const steps = jobsOf(readWorkflow("docker-publish.yml"))[0].steps;
+  const shape = stepNamed(steps, "Check the tag's shape");
+
+  it("uses the same strict pattern as release.yml, on the pushed ref", () => {
+    expectStrict(tagPattern(shape.code));
+    expect(shape.code).toMatch(/^\s+TAG="\$\{GITHUB_REF_NAME\}"\s*$/m);
+    expect(shape.code).toMatch(/\[\[ ! "\$TAG" =~ \$TAG_PATTERN \]\]/);
+    expect(shape.code).toMatch(/exit 1/);
+  });
+
+  it("is the first step after the checkout, before any login or push", () => {
+    const checkout = steps.findIndex((s) => /actions\/checkout@/.test(s.code));
+    expect(checkout).toBe(0);
+    expect(shape.index).toBe(checkout + 1);
+  });
+});
 
 describe("docker-publish-arm64.yml anchors its tag check", () => {
   const steps = workflowSteps(arm64);
@@ -475,6 +743,38 @@ describe("docker-publish-arm64.yml anchors its tag check", () => {
     expect(checkout.code).toMatch(
       /^\s+ref:\s*refs\/tags\/\$\{\{\s*steps\.vars\.outputs\.tag\s*\}\}\s*$/m,
     );
+  });
+
+  it("on workflow_run, refuses a run of any workflow but docker-publish.yml before writing", () => {
+    expect(resolve.code).toMatch(
+      /^\s+RUN_PATH:\s*\$\{\{\s*github\.event\.workflow_run\.path\s*\}\}\s*$/m,
+    );
+    const check = resolve.code.indexOf(
+      '[ "$EVENT_NAME" = "workflow_run" ] && [ "${RUN_PATH%%@*}" != ".github/workflows/docker-publish.yml" ]',
+    );
+    expect(check).toBeGreaterThan(-1);
+    expect(resolve.code.indexOf('echo "skip=false"')).toBeGreaterThan(check);
+    expect(resolve.code.indexOf('echo "tag=${TAG}"')).toBeGreaterThan(check);
+  });
+
+  it("builds only the commit the Docker publish built", () => {
+    const checkout = stepNamed(steps, "Checkout repository");
+    const same = stepNamed(
+      steps,
+      "Check the tag is the commit the Docker publish built",
+    );
+    expect(same.index).toBe(checkout.index + 1);
+    expect(same.code).toMatch(
+      /^\s+RUN_HEAD_SHA:\s*\$\{\{\s*github\.event\.workflow_run\.head_sha\s*\}\}\s*$/m,
+    );
+    expect(same.code).toContain("HEAD_SHA=$(git rev-parse HEAD)");
+    expect(same.code).toContain('[ "$HEAD_SHA" != "$RUN_HEAD_SHA" ]');
+    expect(same.code).toMatch(/exit 1/);
+    expect(same.code).toMatch(
+      /^\s+if: steps\.vars\.outputs\.skip != 'true' && github\.event_name == 'workflow_run'\s*$/m,
+    );
+    const build = stepNamed(steps, "Build and push the arm64 image");
+    expect(same.index).toBeLessThan(build.index);
   });
 });
 

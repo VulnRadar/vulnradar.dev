@@ -49,6 +49,20 @@ jobs:
           # the Docker build of this tree or a later step to find.
           persist-credentials: false
 
+      # security: the same anchored pattern release.yml applies, before
+      # anything logs in or pushes. `v*` matched v4.0.0-rc_1, which got an
+      # amd64 image pushed and signed that release.yml then refused to
+      # release.
+      - name: Check the tag's shape
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          TAG_PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+          if [[ ! "$TAG" =~ $TAG_PATTERN ]]; then
+            echo "::error::The pushed tag is not a version tag (vX.Y.Z or vX.Y.Z-suffix); refusing to publish it."
+            exit 1
+          fi
+
       # release: nothing required the commit being published to have passed
       # CI. A tag pushed on a red commit, or pushed seconds after the commit
       # while CI was still running, built, signed and published an image, then
