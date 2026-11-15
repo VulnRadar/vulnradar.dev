@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { readWorkflow, workflowSteps, stepNamed } from "./_workflow-steps";
+import {
+  readWorkflow,
+  workflowSteps,
+  stepNamed,
+  jobsOf,
+  jobNamed,
+} from "./_workflow-steps";
 
 /**
  * The CI steps that prove what Next and its bundler take part in: the Edge
@@ -82,10 +88,21 @@ describe("the Self-host job's shutdown check", () => {
     "Stop the smoke container and assert a clean shutdown",
   );
 
-  it("stops the booted image after the self-scan, before its logs are collected", () => {
-    expect(stop.index).toBe(
-      stepNamed(steps, "Self-scan every published route").index + 1,
+  it("stops the booted image after every step that uses it, before its logs are collected", () => {
+    for (const name of [
+      "Self-scan every published route",
+      "Attack the booted app (cross-site writes)",
+      "Check every sitemap page (SEO and links)",
+    ]) {
+      expect(stop.index, name).toBeGreaterThan(stepNamed(steps, name).index);
+    }
+    // Nothing after it reaches the container but the failure log.
+    const job = jobNamed(jobsOf(readWorkflow("ci.yml")), "selfhost").steps;
+    const at = stepNamed(job, stop.name!).index;
+    const selfhost = job.filter(
+      (s) => s.index > at && /localhost:3000|vr-smoke/.test(s.code),
     );
+    expect(selfhost.map((s) => s.name)).toEqual(["Container logs on failure"]);
     expect(stop.index).toBe(
       stepNamed(steps, "Container logs on failure").index - 1,
     );

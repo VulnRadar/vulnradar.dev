@@ -977,3 +977,28 @@ describe("the lint tools' exception files", () => {
     expect(hadolint).toMatch(/^ignored: \[\]$|^ignored:$/m);
   });
 });
+
+describe("the sitemap check in the Self-host smoke test", () => {
+  const steps = jobOf("ci.yml", "selfhost").steps;
+  const step = steps.find(
+    (s) => s.name === "Check every sitemap page (SEO and links)",
+  );
+
+  it("runs after the attack suite, on the same booted container", () => {
+    expect(step).toBeDefined();
+    const attack = steps.find(
+      (s) => s.name === "Assert the attack suite actually ran",
+    )!;
+    expect(step!.index).toBe(attack.index + 1);
+  });
+
+  it("is pointed at the container only, with the committed baseline", () => {
+    expect(step!.code).toContain("--base http://localhost:3000");
+    expect(step!.code).toContain(
+      "--baseline .github/site-checks/baseline.json",
+    );
+    expect(
+      existsSync(path.join(ROOT, ".github", "site-checks", "baseline.json")),
+    ).toBe(true);
+  });
+});
