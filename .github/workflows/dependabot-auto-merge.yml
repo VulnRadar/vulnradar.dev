@@ -21,6 +21,16 @@ name: Auto-merge Dependabot PRs
 # When required status checks DO get configured on `main`, this gate stays
 # correct: it is strictly stronger than what protection would enforce.
 #
+# The review rule is a different matter. .github/rulesets/main.json requires
+# one approving code-owner review and has no bypass actors, and this job
+# approves nothing (the token's bot is not a code owner anyway). Once that
+# ruleset is imported, GitHub refuses the merge below, so a green patch bump
+# waits for a code owner's approval like any other pull request and this
+# job only reports that its checks passed. Keeping auto-merge after the
+# import is an owner decision: a bypass actor, or an approval path, in the
+# ruleset. tests/repo/rulesets.test.ts fails if the ruleset and this note
+# stop agreeing.
+#
 # security: the gate reads the checks of the head this run was started for,
 # and the merge names that same head. `gh pr checks` read whatever the pull
 # request's head was at each poll, and `gh pr merge` merged whatever it was

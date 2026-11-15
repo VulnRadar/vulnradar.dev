@@ -221,7 +221,9 @@ A patch bump from Dependabot is merged by `dependabot-auto-merge.yml` only after
 every check on its exact head commit is green, and it then starts CI on `main`
 for the merge commit, which a push made with the workflow token never does.
 Minor and major bumps wait for a person, and the `dependabot-merge-ignore`
-label opts a pull request out.
+label opts a pull request out. Once `.github/rulesets/main.json` is imported,
+its code-owner review rule applies to Dependabot too: the job cannot approve,
+so a green patch bump also waits for a code owner's approval.
 
 Two of Dependabot's pull requests always need a commit from a person before
 they can pass. `.github/tools/Dockerfile` names the Postgres image the CI

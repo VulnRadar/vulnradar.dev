@@ -112,6 +112,31 @@ describe(".github/rulesets/main.json", () => {
     });
   });
 
+  it("says in the auto-merge workflow that its review rule stops Dependabot merging on its own", () => {
+    const review = main.rules.find(
+      (r) => r.type === "pull_request",
+    )!.parameters!;
+    const header = readWorkflow("dependabot-auto-merge.yml").split(/^on:$/m)[0];
+    const merge = /gh pr merge/.test(readWorkflow("dependabot-auto-merge.yml"));
+    const blocks =
+      Number(review.required_approving_review_count) > 0 &&
+      main.bypass_actors.length === 0;
+    // The job merges with its own token and approves nothing, so a review
+    // rule with no bypass refuses every merge it attempts.
+    expect(merge).toBe(true);
+    expect(readWorkflow("dependabot-auto-merge.yml")).not.toMatch(
+      /gh pr review/,
+    );
+    expect(blocks).toBe(true);
+    expect(header).toContain(
+      "one approving code-owner review and has no bypass actors",
+    );
+    expect(header).toContain("GitHub refuses the merge below");
+    expect(readFileSync(path.join(ROOT, "CONTRIBUTING.md"), "utf8")).toContain(
+      "so a green patch bump also waits for a code owner's approval",
+    );
+  });
+
   it("is a branch ruleset on the default branch, with no bypass", () => {
     expect(main.target).toBe("branch");
     expect(main.enforcement).toBe("active");
