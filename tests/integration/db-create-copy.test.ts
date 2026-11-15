@@ -8,6 +8,7 @@ import { getForeignKeys } from "../../scripts/_lib/_lib.schema-introspect.mjs";
 import { moduleStepStatements } from "../../scripts/_lib/_lib.schema-parity.mjs";
 import { planTableCopy } from "../../scripts/_lib/_lib.table-copy.mjs";
 import {
+  carryLegacyTriageMark,
   copyTableData,
   verifyCopiedCounts,
 } from "../../scripts/create-fresh-db/copy-table-data.mjs";
@@ -274,5 +275,33 @@ describeIntegration("db:create clones a 3.x database", () => {
       { sql_null: false, kind: "null" },
       { sql_null: true, kind: null },
     ]);
+  });
+
+  // The triage tables came across as they were, so a source that had already
+  // carried its triage over to the new finding ids must not have the clone do
+  // it again: a second pass copies legacy statuses back over findings that
+  // were reopened since (carryOverLegacyTriage in lib/database/boot/backfills.ts).
+  it("keeps the record that the source already carried its triage over", async () => {
+    for (const pool of [source, target]) {
+      await db(pool).query(
+        `INSERT INTO vulnradar_schema_meta (id, schema_version, app_version)
+         VALUES (1, '3.0.0', '4.0.0')
+         ON CONFLICT (id) DO NOTHING`,
+      );
+    }
+    await db(source).query(
+      `UPDATE vulnradar_schema_meta
+          SET legacy_triage_done_at = '2026-11-14T22:18:45.123456Z'
+        WHERE id = 1`,
+    );
+
+    await expect(carryLegacyTriageMark(source, target)).resolves.toBe(true);
+
+    const [row] = await rows(
+      target,
+      `SELECT legacy_triage_done_at = '2026-11-14T22:18:45.123456Z'::timestamptz AS same
+         FROM vulnradar_schema_meta WHERE id = 1`,
+    );
+    expect(row.same).toBe(true);
   });
 });

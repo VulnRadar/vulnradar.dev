@@ -293,3 +293,47 @@ export async function verifyCopiedCounts(originalPool, newPool, copied) {
   }
   return shortfalls;
 }
+
+/**
+ * Carry the source's record that the one-time triage carry-over has run
+ * (vulnradar_schema_meta.legacy_triage_done_at, see carryOverLegacyTriage in
+ * lib/database/boot/backfills.ts) onto the new database's meta row.
+ *
+ * The clone copies both triage tables as they are but writes a meta row of its
+ * own, so the copy of a database that had already finished the carry-over ran
+ * it again on its first boot. A second pass undoes triage given under the new
+ * finding ids since: a finding set back to open got its legacy accepted_risk
+ * row copied back over it. A source that never ran it (anything before 4.0.0)
+ * has nothing to carry, and the new database runs it once, as the source
+ * would have. A target built at an older schema has no column to keep it in,
+ * and runs the carry-over when it is upgraded, as the source would.
+ *
+ * Read through to_jsonb so a source meta table without the column reads as
+ * "never ran" instead of failing. Call after the new meta row is written.
+ * Returns whether the record was carried.
+ */
+export async function carryLegacyTriageMark(originalPool, newPool) {
+  let doneAt;
+  try {
+    const res = await originalPool.query(
+      `SELECT to_jsonb(m) ->> 'legacy_triage_done_at' AS done_at
+         FROM vulnradar_schema_meta m WHERE id = 1`,
+    );
+    doneAt = res.rows[0]?.done_at ?? null;
+  } catch {
+    // No meta table: a database from before the migrator, which never ran it.
+    return false;
+  }
+  if (!doneAt) return false;
+  try {
+    const res = await newPool.query(
+      `UPDATE vulnradar_schema_meta SET legacy_triage_done_at = $1 WHERE id = 1`,
+      [doneAt],
+    );
+    return (res.rowCount ?? 0) > 0;
+  } catch (err) {
+    // 42703 undefined_column: a target at an older schema.
+    if (err?.code === "42703") return false;
+    throw err;
+  }
+}

@@ -61,7 +61,11 @@ import {
 import { pgPoolOptions } from "../_lib/_lib.db.mjs";
 import { getForeignKeys } from "../_lib/_lib.schema-introspect.mjs";
 import { planTableCopy } from "../_lib/_lib.table-copy.mjs";
-import { copyTableData, verifyCopiedCounts } from "./copy-table-data.mjs";
+import {
+  carryLegacyTriageMark,
+  copyTableData,
+  verifyCopiedCounts,
+} from "./copy-table-data.mjs";
 import {
   applySchema,
   META_TABLE_SQL,
@@ -794,6 +798,19 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
   // ── Step 4: write the meta row so the migrator sees the new schema version
   section("Step 4: Schema metadata");
   await writeInitialMetaRow(newPool, targetVersion, meta.version);
+  // The triage tables came across as they were, so the record that their
+  // one-time carry-over to the new finding ids already ran has to as well.
+  if (copied.length > 0) {
+    try {
+      if (await carryLegacyTriageMark(sourcePool, newPool)) {
+        success("  Kept the record that triage was carried over to new ids.");
+      }
+    } catch (err) {
+      warn(
+        `  Could not keep the triage carry-over record: ${err.message}. The new database will run the carry-over again on its first boot.`,
+      );
+    }
+  }
 
   // ── Summary ─────────────────────────────────────────────────────────────
   log("");

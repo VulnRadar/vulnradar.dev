@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import pg from "pg";
 import {
+  carryLegacyTriageMark,
   copyTableData,
   verifyCopiedCounts,
 } from "../../../scripts/create-fresh-db/copy-table-data.mjs";
@@ -271,5 +272,80 @@ describe("verifyCopiedCounts", () => {
       { table: "t", count: 1 },
     ]);
     expect(shortfall).toMatchObject({ table: "t", got: "error: boom" });
+  });
+});
+
+/**
+ * The clone copies both triage tables but writes its own meta row, so the
+ * copy of a database that had already run the one-time triage carry-over ran
+ * it again on its first boot, and a second pass brings back legacy statuses
+ * over findings that were reopened since.
+ */
+describe("carryLegacyTriageMark", () => {
+  function metaPool(answer: () => Promise<unknown>) {
+    return {
+      query: vi.fn((_sql: string, _values?: unknown[]) => answer()),
+    };
+  }
+  const doneAt = "2026-11-14T22:18:45.123+00:00";
+
+  it("writes the source's finished carry-over onto the new meta row", async () => {
+    const source = metaPool(async () => ({ rows: [{ done_at: doneAt }] }));
+    const target = metaPool(async () => ({ rowCount: 1, rows: [] }));
+    await expect(carryLegacyTriageMark(source, target)).resolves.toBe(true);
+    expect(source.query.mock.calls[0][0]).toMatch(
+      /to_jsonb\(m\) ->> 'legacy_triage_done_at'/,
+    );
+    const [sql, values] = target.query.mock.calls[0];
+    expect(sql).toMatch(
+      /UPDATE vulnradar_schema_meta SET legacy_triage_done_at = \$1 WHERE id = 1/,
+    );
+    expect(values).toEqual([doneAt]);
+  });
+
+  it("leaves the target alone when the source never finished one", async () => {
+    for (const rows of [[{ done_at: null }], []]) {
+      const source = metaPool(async () => ({ rows }));
+      const target = metaPool(async () => ({ rowCount: 1, rows: [] }));
+      await expect(carryLegacyTriageMark(source, target)).resolves.toBe(false);
+      expect(target.query).not.toHaveBeenCalled();
+    }
+  });
+
+  it("reads a source with no meta table as one that never ran it", async () => {
+    const source = metaPool(async () => {
+      throw Object.assign(new Error("relation does not exist"), {
+        code: "42P01",
+      });
+    });
+    const target = metaPool(async () => ({ rowCount: 1, rows: [] }));
+    await expect(carryLegacyTriageMark(source, target)).resolves.toBe(false);
+    expect(target.query).not.toHaveBeenCalled();
+  });
+
+  it("skips a target built at an older schema, without the column", async () => {
+    const source = metaPool(async () => ({ rows: [{ done_at: doneAt }] }));
+    const target = metaPool(async () => {
+      throw Object.assign(new Error("column does not exist"), {
+        code: "42703",
+      });
+    });
+    await expect(carryLegacyTriageMark(source, target)).resolves.toBe(false);
+  });
+
+  it("reports a target with no meta row as not carried", async () => {
+    const source = metaPool(async () => ({ rows: [{ done_at: doneAt }] }));
+    const target = metaPool(async () => ({ rowCount: 0, rows: [] }));
+    await expect(carryLegacyTriageMark(source, target)).resolves.toBe(false);
+  });
+
+  it("passes any other target failure to the caller", async () => {
+    const source = metaPool(async () => ({ rows: [{ done_at: doneAt }] }));
+    const target = metaPool(async () => {
+      throw new Error("connection reset");
+    });
+    await expect(carryLegacyTriageMark(source, target)).rejects.toThrow(
+      "connection reset",
+    );
   });
 });
