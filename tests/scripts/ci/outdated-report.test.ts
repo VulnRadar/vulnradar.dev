@@ -204,7 +204,7 @@ describe("the report", () => {
   it("lists each outdated package, each pin against its source and each open pull request", () => {
     const { dir, files } = fixture();
     const md = buildReport({ root: dir, files, now: NOW });
-    expect(md).toContain("| left | 1.0.0 | 1.0.1 | 2.0.0 | major |");
+    expect(md).toContain("| `left` | 1.0.0 | 1.0.1 | 2.0.0 | major |");
     expect(md).toContain("Everything is current.");
     expect(md).toContain(
       "| npm in release.yml (11.x) | 11.21.1 | 11.21.2 | behind |",
@@ -215,8 +215,31 @@ describe("the report", () => {
     expect(md).toContain(
       "| Postgres tag (16.x-alpine) | 16.15-alpine | 16.16-alpine | behind |",
     );
-    expect(md).toContain("| #7 Fix _ pipe | 10 days | someone |");
+    expect(md).toContain("| #7 `Fix _ pipe` | 10 days | someone |");
     expect(md).toContain("| passing | ready | 27 days |");
+  });
+
+  it("puts a pull request title in a code span, so it cannot mention anyone or link anywhere", () => {
+    const { dir, files } = fixture();
+    writeFileSync(
+      files.prs,
+      JSON.stringify([
+        pr({
+          number: 9,
+          title: "fix @someone @org/team [click](https://example.com) `x` *y*",
+        }),
+      ]),
+    );
+    const md = buildReport({ root: dir, files, now: NOW });
+    const row = md.split(/\r?\n/).find((l) => l.startsWith("| #9 "));
+    expect(row).toBeDefined();
+    const title = /^\| #9 (`[^`]*`) \|/.exec(row!);
+    expect(title, row).not.toBeNull();
+    // A backtick in the title cannot close the span early.
+    expect(title![1]).toBe(
+      "`fix @someone @org/team [click](https://example.com) 'x' *y*`",
+    );
+    expect(row!.replace(title![1], "")).not.toMatch(/@|\]\(/);
   });
 
   it("says so when a source could not be read, instead of calling the pin current", () => {

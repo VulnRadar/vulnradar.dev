@@ -47,6 +47,18 @@ function cell(text) {
     .replace(/[|]/g, "_");
 }
 
+/**
+ * Text someone else wrote, as a code span: a pull request's title comes from
+ * anyone who can open one, forks included, and in the issue body `@name`,
+ * `@org/team` and `[text](url)` would render as live mentions and links,
+ * notifying again on every weekly edit. Nothing inside a code span renders,
+ * and a backtick cannot close it early.
+ */
+function literal(text, max) {
+  const inner = cell(text).replace(/`/g, "'").slice(0, max);
+  return inner === "" ? "" : `\`${inner}\``;
+}
+
 /** What kind of step it is from `from` to `to`. */
 export function bumpKind(from, to) {
   const [a, b] = [semver(from), semver(to)];
@@ -79,7 +91,7 @@ export function outdatedTable(label, outdated) {
     "|---|---|---|---|---|",
     ...rows.map(
       (r) =>
-        `| ${cell(r.name)} | ${cell(r.current)} | ${cell(r.wanted)} | ${cell(r.latest)} | ${cell(r.kind)} |`,
+        `| ${literal(r.name)} | ${cell(r.current)} | ${cell(r.wanted)} | ${cell(r.latest)} | ${cell(r.kind)} |`,
     ),
     "",
   ];
@@ -214,7 +226,7 @@ export function prTable(prs, stale, now) {
     .map((pr) => {
       const age = Math.floor((now - Date.parse(pr.createdAt)) / DAY);
       const reasons = waitingReasons(pr);
-      return `| #${pr.number} ${cell(pr.title).slice(0, 70)} | ${age} days | ${cell(pr.author?.login)} | ${cell((pr.labels ?? []).map((l) => l.name).join(", "))} | ${checkState(pr.statusCheckRollup)} | ${cell(reasons.join("; ") || "ready")} | ${daysUntilStale(pr, stale, now)} |`;
+      return `| #${pr.number} ${literal(pr.title, 70)} | ${age} days | ${cell(pr.author?.login)} | ${cell((pr.labels ?? []).map((l) => l.name).join(", "))} | ${checkState(pr.statusCheckRollup)} | ${cell(reasons.join("; ") || "ready")} | ${daysUntilStale(pr, stale, now)} |`;
     });
   return [
     "### Open pull requests",
