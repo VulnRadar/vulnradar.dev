@@ -95,11 +95,14 @@ jobs:
         #    lightningcss-linux-*). `npm ci` then succeeds here and the app
         #    dies at next/font with "Cannot find native binding", breaking
         #    CI and the Docker build at once. The musl entries are what the
-        #    Alpine images build with, and Turbopack has no WebAssembly
-        #    fallback, so a missing one fails the image build outright. The
-        #    lockfile has to be repaired by grafting the entries back, not
-        #    re-resolved, so catching it at the PR is worth a lot more than
-        #    catching it at deploy.
+        #    Alpine images build with, for amd64 and arm64 both, and Turbopack
+        #    has no WebAssembly fallback, so a missing one fails the image
+        #    build outright. A lockfile that kept the glibc entries and lost
+        #    the musl ones passes `npm ci` here and breaks only the image,
+        #    and the arm64 one only after the release. The lockfile has to
+        #    be repaired by grafting the entries back, not re-resolved, so
+        #    catching it at the PR is worth a lot more than catching it at
+        #    deploy.
         run: |
           set -euo pipefail
           for f in pnpm-lock.yaml yarn.lock; do
@@ -116,7 +119,21 @@ jobs:
             echo "::error::package-lock.json is missing Linux native bindings:${missing}. It was almost certainly regenerated on Windows. Graft the entries back rather than re-resolving."
             exit 1
           fi
-          echo "Lockfile carries the Linux native bindings."
+          missing_musl=""
+          musl=(
+            @next/swc-linux-x64-musl @next/swc-linux-arm64-musl
+            @img/sharp-linuxmusl-x64 @img/sharp-linuxmusl-arm64
+            lightningcss-linux-x64-musl lightningcss-linux-arm64-musl
+            @tailwindcss/oxide-linux-x64-musl @tailwindcss/oxide-linux-arm64-musl
+          )
+          for pkg in "${musl[@]}"; do
+            grep -q "\"node_modules/${pkg}\"" package-lock.json || missing_musl="${missing_musl} ${pkg}"
+          done
+          if [ -n "${missing_musl}" ]; then
+            echo "::error::package-lock.json is missing the musl native bindings the Alpine image installs (amd64 and arm64):${missing_musl}. The image build, and the arm64 one only after a release, would fail at next/font. Graft the entries back rather than re-resolving."
+            exit 1
+          fi
+          echo "Lockfile carries the Linux native bindings, glibc and musl, amd64 and arm64."
 
       - name: Install dependencies
         run: npm ci

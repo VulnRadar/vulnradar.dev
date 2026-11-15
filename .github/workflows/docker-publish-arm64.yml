@@ -28,8 +28,9 @@ name: Publish ARM64 Image
 # and bring the build back to roughly amd64 speed. timeout-minutes below is the
 # backstop for anything else that ever wedges: successful builds under QEMU
 # took 22 to 28 minutes, and a native build should be a fraction of that, so
-# 45 minutes is generous and still fails visibly instead of silently burning a
-# runner for a quarter of a day.
+# 45 minutes was generous and still failed visibly instead of silently burning
+# a runner for a quarter of a day. It is 60 now that the job also boots the
+# image against a database before merging it, which can take up to 10.
 
 on:
   # Primary path: the amd64 publish succeeded, so there is an index to add to.
@@ -91,7 +92,7 @@ jobs:
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    timeout-minutes: 60
     # security: this job holds packages: write and an OIDC token and signs
     # what it builds, so it reads no Actions cache and writes none. A cache
     # entry is whatever the last job with a write token to that scope put
@@ -102,6 +103,24 @@ jobs:
       packages: write
       # cosign keyless needs the ambient OIDC token, same as docker-publish.
       id-token: write
+
+    # The empty database the boot step below starts the image against. The
+    # same reference and settings as ci.yml's Self-host smoke test, whose boot
+    # this job repeats on arm64 (postgres:16.15-alpine is published for it).
+    services:
+      postgres:
+        image: postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
+        env:
+          POSTGRES_USER: vulnradar
+          POSTGRES_PASSWORD: ci_smoke_test_password
+          POSTGRES_DB: vulnradar
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Resolve tag
@@ -231,6 +250,65 @@ jobs:
           # security: empty on purpose, as in docker-publish.yml.
           build-args: |
             NEXT_PUBLIC_APP_URL=
+
+      # release: the arm64 image joined the release tags without ever having
+      # started. ci.yml boots only the amd64 image, so an arm64-only failure
+      # (a missing musl binding, a native module built for the wrong
+      # architecture) would reach every Pi and Ampere install through the
+      # release tag. Boot it the way the Self-host smoke test boots amd64,
+      # against an empty database: a 200 from the health endpoint, the full
+      # schema, and the image's own HEALTHCHECK. A failure stops the job
+      # before the merge, so the release tags stay amd64-only, the documented
+      # "arm64 appears a little after the release" state, and nothing is
+      # re-signed.
+      - name: Boot the arm64 image before it joins the release tags
+        if: steps.vars.outputs.skip != 'true'
+        env:
+          REF: ${{ steps.image.outputs.ref }}
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          set -euo pipefail
+          IMAGE="${REF}:${TAG}-arm64"
+          docker pull "$IMAGE"
+          fail() {
+            echo "::error::$1"
+            docker logs vr-smoke || true
+            exit 1
+          }
+
+          docker run -d --name vr-smoke --network host \
+            -e NODE_ENV=production \
+            -e DATABASE_URL='postgresql://vulnradar:ci_smoke_test_password@localhost:5432/vulnradar' \
+            -e DATABASE_SSL=false \
+            -e APP_URL=http://localhost:3000 \
+            -e API_KEY_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff \
+            "$IMAGE"
+
+          healthy=false
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:3000/api/v3/health 2>/dev/null || true)
+            if [ "$code" = "200" ]; then
+              echo "healthy after ${i}0s"
+              healthy=true
+              break
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' vr-smoke)" != "true" ]; then
+              fail "The arm64 image exited before becoming healthy."
+            fi
+            sleep 10
+          done
+          [ "$healthy" = "true" ] || fail "The arm64 image never answered 200 on /api/v3/health within 10 minutes."
+
+          count=$(docker exec "$(docker ps -qf name=postgres)" \
+            psql -U vulnradar -d vulnradar -tAc \
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'" \
+            2>/dev/null || echo 0)
+          echo "tables created: $count"
+          test "$count" -gt 40 || fail "The arm64 image booted without the full schema: $count tables."
+
+          docker exec vr-smoke wget --no-verbose --tries=1 --spider http://localhost:3000/api/v3/health \
+            || fail "The arm64 image's own HEALTHCHECK fails."
+          echo "The arm64 image boots, creates the schema and passes its HEALTHCHECK."
 
       - name: Merge both architectures into the release tags
         if: steps.vars.outputs.skip != 'true'

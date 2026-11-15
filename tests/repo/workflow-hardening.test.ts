@@ -104,6 +104,7 @@ it("finds the workflows and the composite actions", () => {
       "docker-publish.yml",
       "docker-publish-arm64.yml",
       "ghcr-cleanup.yml",
+      "image-arm64.yml",
       "label.yml",
       "release.yml",
       "spike-api-rewrite.yml",
@@ -657,6 +658,146 @@ describe(".github/tools/Dockerfile", () => {
     expect(block("github-actions")).toMatch(/^ {6}- "\/"$/m);
     expect(block("github-actions")).toMatch(
       /^ {6}- "\/[.]github\/actions\/[*]"$/m,
+    );
+  });
+});
+
+describe("every Postgres service", () => {
+  it("is the tools postgres stage, in every workflow that runs one", () => {
+    const pg = TOOL_STAGES.get("postgres");
+    const found = files.flatMap(({ file, text }) =>
+      [...text.matchAll(/^ {8}image:\s*(\S+)\s*$/gm)].map((m) => ({
+        file,
+        image: m[1],
+      })),
+    );
+    expect(found.map((f) => f.file)).toEqual(
+      expect.arrayContaining([
+        "ci.yml",
+        "docker-publish-arm64.yml",
+        "image-arm64.yml",
+      ]),
+    );
+    for (const { file, image } of found) expect(image, file).toBe(pg);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* Booting the image. ci.yml's Self-host smoke test boots amd64; the arm64    */
+/* image is booted by the publish job before it joins the release tags, and   */
+/* by image-arm64.yml on pull requests. One boot that drifted from the others */
+/* (a looser health probe, a smaller schema, a different origin) would pass   */
+/* an image the others refuse.                                                */
+/* ------------------------------------------------------------------------ */
+
+const BOOTS = [
+  { file: "ci.yml", job: "selfhost" },
+  { file: "docker-publish-arm64.yml", job: "arm64" },
+  { file: "image-arm64.yml", job: "arm64" },
+] as const;
+
+/** The `-e` flags of the job's `docker run -d --name vr-smoke` command. */
+function bootEnv(job: WorkflowJob): string[] {
+  const lines = job.code.split("\n");
+  const at = lines.findIndex((l) =>
+    /^\s+docker run -d --name vr-smoke --network host \x5c$/.test(l),
+  );
+  expect(at, `${job.id} boots vr-smoke on the host network`).not.toBe(-1);
+  const flags: string[] = [];
+  for (let i = at + 1; i < lines.length; i++) {
+    const m = /^\s+-e (\S+)( \x5c)?$/.exec(lines[i]);
+    if (m) flags.push(m[1]);
+    if (!lines[i].endsWith("\\")) break;
+  }
+  return flags.sort();
+}
+
+/** The `env:` block of the job's postgres service, as lines. */
+function serviceEnv(job: WorkflowJob): string {
+  const m = /^ {8}env:\n((?: {10}\S.*\n)+)/m.exec(job.raw);
+  expect(m, `${job.id} has a postgres service env`).not.toBeNull();
+  return m![1];
+}
+
+describe("every boot of the image is the same boot", () => {
+  const boots = BOOTS.map(({ file, job }) => ({
+    label: `${file} ${job}`,
+    job: jobOf(file, job),
+  }));
+  const reference = boots[0].job;
+
+  it.each(boots.map((b) => [b.label, b.job]))(
+    "%s starts it with the Self-host smoke test's environment",
+    (_, job) => {
+      expect(bootEnv(job)).toEqual(bootEnv(reference));
+      expect(serviceEnv(job)).toBe(serviceEnv(reference));
+      // The origin is the one the container serves, never a build-time value.
+      expect(bootEnv(job)).toContain("APP_URL=http://localhost:3000");
+      expect(job.code).not.toMatch(/-e NEXT_PUBLIC_APP_URL/);
+    },
+  );
+
+  it.each(boots.map((b) => [b.label, b.job]))(
+    "%s waits for a 200 from the health endpoint, checks the schema and the HEALTHCHECK",
+    (_, job) => {
+      expect(job.code).toContain(
+        "code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:3000/api/v3/health 2>/dev/null || true)",
+      );
+      expect(job.code).toMatch(/if \[ "\$code" = "200" \]; then/);
+      expect(job.code).toMatch(/for i in \$\(seq 1 60\); do/);
+      expect(job.code).toMatch(/^\s+sleep 10$/m);
+      expect(job.code).toContain(
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'",
+      );
+      expect(job.code).toMatch(/test "\$count" -gt 40 \|\|/);
+      expect(job.code).toContain(
+        "docker exec vr-smoke wget --no-verbose --tries=1 --spider http://localhost:3000/api/v3/health",
+      );
+    },
+  );
+
+  it("builds the CI images with the build.invalid sentinel and the published ones with it empty", () => {
+    for (const file of ["ci.yml", "image-arm64.yml"]) {
+      const builds = workflowSteps(readWorkflow(file)).filter((s) =>
+        /^\s+run: docker build /m.test(s.code),
+      );
+      expect(builds.length, file).toBeGreaterThanOrEqual(1);
+      for (const b of builds) {
+        expect(b.code, file).toContain(
+          "--build-arg NEXT_PUBLIC_APP_URL=https://build.invalid",
+        );
+      }
+    }
+    for (const file of ["docker-publish.yml", "docker-publish-arm64.yml"]) {
+      const builds = workflowSteps(readWorkflow(file)).filter((s) =>
+        /uses:\s*docker\/build-push-action@/.test(s.code),
+      );
+      expect(builds.length, file).toBe(1);
+      expect(builds[0].code, file).toMatch(
+        /build-args: \|\n\s+NEXT_PUBLIC_APP_URL=$/m,
+      );
+    }
+  });
+
+  it("boots the arm64 release image after it is built and before it is merged", () => {
+    const steps = jobOf("docker-publish-arm64.yml", "arm64").steps;
+    const index = (name: string) => {
+      const s = steps.find((st) => st.name === name);
+      expect(s, name).toBeDefined();
+      return s!.index;
+    };
+    const build = index("Build and push the arm64 image");
+    const boot = index("Boot the arm64 image before it joins the release tags");
+    const merge = index("Merge both architectures into the release tags");
+    expect(boot).toBe(build + 1);
+    expect(merge).toBe(boot + 1);
+    const code = steps.find((s) => s.index === boot)!.code;
+    // The image the build just pushed under its own arch tag, not a release
+    // tag, which still holds the amd64-only index at this point.
+    expect(code).toContain('IMAGE="${REF}:${TAG}-arm64"');
+    expect(code).toMatch(/^\s+set -euo pipefail$/m);
+    expect(code).toMatch(
+      /fail\(\) \{\n\s+echo "::error::\$1"\n\s+docker logs vr-smoke \|\| true\n\s+exit 1\n/,
     );
   });
 });

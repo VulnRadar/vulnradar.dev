@@ -1,0 +1,134 @@
+name: ARM64 image
+
+# The published arm64 image is built only after a release, by
+# docker-publish-arm64.yml, so a change that builds and boots on amd64 but not
+# on arm64 (a native module, a musl binding the lockfile lost, a base image
+# tag with no arm64 build) used to be found by that run, on a release tag.
+# This builds and boots the arm64 image on a native ARM runner, the way the
+# Self-host smoke test does for amd64, on every pull request that changes what
+# goes into the image, and weekly, since the base image and the runner move
+# under the repository even when nothing here does.
+#
+# Not a required check: it is path-filtered, so most pull requests never run
+# it, and a required check that does not run blocks the merge. Plain
+# `docker build`, with no cache to read and nothing pushed.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - package.json
+      - package-lock.json
+      - next.config.mjs
+      - server.mjs
+      - "lib/server/**"
+      - .github/workflows/image-arm64.yml
+  schedule:
+    - cron: "41 5 * * 2"
+  workflow_dispatch:
+
+# Only a pull request's superseded run is worth cancelling; the weekly and
+# manual runs report on main and always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Nothing at the top level: the job states its own scope.
+permissions: {}
+
+jobs:
+  arm64:
+    name: ARM64 image builds and boots
+    runs-on: ubuntu-24.04-arm
+    # The build takes about 6 minutes natively and the boot up to 10.
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    # The same database reference and settings as ci.yml's Self-host smoke
+    # test and docker-publish-arm64.yml's boot.
+    services:
+      postgres:
+        image: postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
+        env:
+          POSTGRES_USER: vulnradar
+          POSTGRES_PASSWORD: ci_smoke_test_password
+          POSTGRES_DB: vulnradar
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # security: nothing in this job pushes with git, so no token stays
+          # behind in .git/config for the Docker build or a later step.
+          persist-credentials: false
+
+      - name: Build the arm64 image
+        # build.invalid is the same sentinel the Self-host smoke test builds
+        # with: it can never resolve.
+        run: docker build --build-arg NEXT_PUBLIC_APP_URL=https://build.invalid -t vulnradar:arm64 .
+
+      - name: Boot against an empty database and wait for health
+        # APP_URL is the origin this container serves: the build above baked
+        # in build.invalid, and server code must not be reading that. It is
+        # the only URL set, which is also the plain `docker run` the docs give.
+        run: |
+          set -euo pipefail
+          docker run -d --name vr-smoke --network host \
+            -e NODE_ENV=production \
+            -e DATABASE_URL='postgresql://vulnradar:ci_smoke_test_password@localhost:5432/vulnradar' \
+            -e DATABASE_SSL=false \
+            -e APP_URL=http://localhost:3000 \
+            -e API_KEY_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff \
+            vulnradar:arm64
+
+          # A 200 from the health endpoint, not merely a non-error: curl -f
+          # treats a 301 as success, and the app's plain-HTTP redirect answered
+          # this probe with one, so the job reported "healthy" on a redirect
+          # while the image's own HEALTHCHECK (wget, which follows it into an
+          # https port nothing serves) was failing on every install.
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:3000/api/v3/health 2>/dev/null || true)
+            if [ "$code" = "200" ]; then
+              echo "healthy after ${i}0s"
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' vr-smoke)" != "true" ]; then
+              echo "container exited before becoming healthy:"
+              docker logs vr-smoke
+              exit 1
+            fi
+            sleep 10
+          done
+
+          echo "never became healthy within 10 minutes:"
+          docker logs vr-smoke
+          exit 1
+
+      - name: Assert the schema was actually created
+        run: |
+          set -euo pipefail
+          count=$(docker exec "$(docker ps -qf name=postgres)" \
+            psql -U vulnradar -d vulnradar -tAc \
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'" \
+            2>/dev/null || echo 0)
+          echo "tables created: $count"
+          test "$count" -gt 40 || { echo "expected the full schema, got $count tables"; exit 1; }
+
+      - name: Assert the image's own HEALTHCHECK passes
+        run: |
+          set -euo pipefail
+          docker exec vr-smoke wget --no-verbose --tries=1 --spider http://localhost:3000/api/v3/health
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs vr-smoke || true

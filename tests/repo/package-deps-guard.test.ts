@@ -184,6 +184,24 @@ describe("package-lock.json agrees with package.json", () => {
       expect(entries[`node_modules/${name}`], name).toBeDefined();
     }
   });
+
+  // The image is Alpine, so `npm ci` inside it installs the musl builds, for
+  // amd64 and for arm64. A lockfile that lost them still installs here and
+  // breaks only the image, and the arm64 image only after a release.
+  it("still carries the musl native bindings the Alpine image installs, both architectures", () => {
+    for (const name of [
+      "@next/swc-linux-x64-musl",
+      "@next/swc-linux-arm64-musl",
+      "@img/sharp-linuxmusl-x64",
+      "@img/sharp-linuxmusl-arm64",
+      "lightningcss-linux-x64-musl",
+      "lightningcss-linux-arm64-musl",
+      "@tailwindcss/oxide-linux-x64-musl",
+      "@tailwindcss/oxide-linux-arm64-musl",
+    ]) {
+      expect(entries[`node_modules/${name}`], name).toBeDefined();
+    }
+  });
 });
 
 describe("package.json scripts", () => {
