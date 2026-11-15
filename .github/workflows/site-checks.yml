@@ -218,6 +218,26 @@ jobs:
               ;;
           esac
 
+      - name: Fail on a missing CSP
+        # Rule 10038 raises both "CSP Header Not Set" and "CSP Report-Only
+        # Header Found", and zap-baseline.py's rules file only knows rule ids.
+        # The app sends a report-only Trusted Types policy next to its
+        # enforced CSP on purpose, so baseline.conf holds 10038 at WARN and
+        # this step fails on every 10038 alert except that one (10038-3).
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/zap/zap.json"
+          if [ ! -s "$report" ]; then
+            echo "::error::ZAP wrote no report, so the CSP could not be checked"
+            exit 1
+          fi
+          found=$(jq -r '[.site[].alerts[] | select(.pluginid == "10038" and .alertRef != "10038-3") | .name] | unique | join(", ")' "$report")
+          if [ -n "$found" ]; then
+            echo "::error::ZAP rule 10038: ${found}"
+            exit 1
+          fi
+          echo "Every page sent an enforced CSP."
+
       - name: Summarise the alerts
         if: always()
         run: |
@@ -439,6 +459,14 @@ jobs:
         # Lighthouse drives the runner's own Chrome, and a page on localhost
         # counts as a secure context, so the image is served on the host
         # network the way the Self-host smoke test serves it.
+        #
+        # ALLOW_INSECURE_HTTP=1, as the docker-compose quick start sets it:
+        # Chrome cannot add the X-Forwarded-Proto header a TLS terminator
+        # would, so without it every page answers with a redirect to
+        # https://localhost:3000, where nothing listens, and the CSP's
+        # upgrade-insecure-requests would send every asset there too. It only
+        # drops the HTTPS redirect, HSTS and that directive; Lighthouse's
+        # categories score none of them, and the ZAP jobs check them.
         run: |
           set -euo pipefail
           gunzip -c "$RUNNER_TEMP/site-image/site-image.tar.gz" | docker load
@@ -447,6 +475,7 @@ jobs:
             -e DATABASE_URL='postgresql://vulnradar:ci_smoke_test_password@localhost:5432/vulnradar' \
             -e DATABASE_SSL=false \
             -e APP_URL=http://localhost:3000 \
+            -e ALLOW_INSECURE_HTTP=1 \
             -e API_KEY_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff \
             vulnradar:site
           for i in $(seq 1 60); do
