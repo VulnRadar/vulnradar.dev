@@ -4117,6 +4117,13 @@ const CHANGELOG: Release[] = [
         desc: "VulnRadar now runs on Next.js 16, and every package it depends on directly is on its newest release. The packages those pull in are on the newest version they accept. The one exception is TypeScript, which stays on 6 until the lint tooling can read 7. npm audit reports nothing at any severity, in the app and in the browser extension. If you build from source, builds now use Turbopack, Next.js's own compiler, which needs a platform Next.js ships a native build for: Linux on x64 or arm64, macOS, or Windows. Anywhere else the build stops with an error that names the --webpack flag. Running the Docker images works as before, and Node 22 is still the version to use.",
         category: "selfhost",
       },
+      {
+        icon: ShieldCheck,
+        label:
+          "Releases Are Checked Before They Ship, and the Image Verify Command Works",
+        desc: "The command in our security policy for verifying a release's Docker image failed on every release that includes the ARM64 build, because it looked for the wrong signer. It now names the signer correctly, and our release process runs the same command right after signing, so a signature that would not verify stops the release. A release is also built only from a commit whose tests passed, and each package's version is checked against what was already published before it can ship. The command-line tool is now tested on Windows, macOS and Linux, on the oldest and newest Node versions it supports, and installed from the packed download the way you install it. The GitHub Action that gates your pipeline on scan findings now stops waiting after a set time on every request, keeps your API key out of its log and out of the command line, and warns if the API address you give it is not encrypted.",
+        category: "security",
+      },
     ],
   },
   {

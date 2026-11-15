@@ -80,6 +80,59 @@ live credentials or personal data in the report body.
 Our machine-readable policy is at:
 https://vulnradar.dev/.well-known/security.txt
 
+## How the code and the releases are checked
+
+What runs on every change, and what a release has to pass, so you can judge
+the process and not only the result. The checks are in the repository, the
+tests that hold them to what is written here are in `tests/repo`, and
+`CONTRIBUTING.md` lists each one with what fails it.
+
+- **CodeQL** runs as GitHub's default setup for JavaScript, TypeScript and
+  GitHub Actions, with the extended query suite.
+- **Dependabot** covers the app and extension npm trees, the package that pins
+  the extension linter, the Dockerfiles (including the pinned CI tool images), the compose
+  files and every GitHub Action, weekly.
+- **Dependency review** blocks a pull request that adds or bumps a dependency
+  with a known high advisory. A daily audit also covers every dependency tree
+  with its dev dependencies, which a pull request check does not see, and
+  checks the registry signatures of each.
+- **Secret scanning** is GitHub's push protection, plus gitleaks over the
+  commits of every pull request and push (redacted, because this repository's
+  logs are public), a repository test for VulnRadar's own key shapes, and a
+  weekly scan of the whole history.
+- **Workflow rules**, enforced by `tests/repo/workflow-hardening.test.ts` over
+  every workflow file: no permissions at the top level and each job's own, a
+  timeout and a concurrency group on every workflow, every action pinned to a
+  full commit and named by its exact release, no checkout that keeps its token,
+  no expression pasted into a script, no `pull_request_target`, and no cache
+  read or written by a job that signs or publishes. actionlint, shellcheck,
+  zizmor and hadolint run on every pull request.
+- **Attack suites.** Unit tests cover SSRF, CSRF and authorization. A
+  cross-tenant suite runs against a real PostgreSQL. A black-box suite sends
+  every state-changing route of the booted image a cross-site request and
+  expects a refusal, and the application scans its own public pages with its
+  own scanner and fails on any finding it has not accepted with a reason.
+- **ZAP** runs a passive baseline on pull requests and an active scan weekly,
+  against the image the job builds and nothing else, on a Docker network with no
+  route out. A step proves the network has no egress before the scan starts.
+- **Image scans.** Fixed vulnerabilities in the image are reported on pull
+  requests, and the published image is scanned weekly for amd64 and arm64.
+- **Live check.** Weekly, one request to https://vulnradar.dev/ and one TLS
+  handshake check the response headers, the certificate chain, the negotiated
+  protocol and the days left before expiry. It reads no page and probes no
+  protocol version.
+- **Release gates.** A release is built only from a commit whose CI passed,
+  for every way it can be started. Each package's version is checked against
+  what shipped before it, and the CLI against the bytes already on npm. Every
+  signature is verified in the pipeline, with the identities in the next
+  section, right after it is made. The publish jobs read no cache, run on a
+  pinned BuildKit, and the arm64 image has to boot before it joins a release
+  tag.
+- **Rulesets.** The branch and tag rulesets are committed in
+  `.github/rulesets`, but a ruleset is repository configuration, so it
+  protects `main` and the release tags only once an owner has imported it. Until
+  then these checks report and do not block.
+
 ## Verifying a Release
 
 Every tagged release on GitHub is accompanied by:

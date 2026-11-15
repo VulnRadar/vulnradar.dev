@@ -1718,13 +1718,22 @@ Remove a webhook so it stops being called.
 
 ### Code examples
 ```yaml
-- uses: <value>/.github/actions/scan-gate@v<value>
-  with:
-    url: https://your-staging-url.com
-    api-key: \<value>}
-    # Optional, both default to 0:
-    max-critical: 0
-    max-high: 0
+jobs:
+  vulnradar:
+    runs-on: ubuntu-latest
+    # A scan finishes in minutes; this stops a stuck one holding a runner.
+    timeout-minutes: 15
+    # The gate reads nothing from the repository and writes nothing to it.
+    permissions:
+      contents: read
+    steps:
+      - uses: <value>/.github/actions/scan-gate@v<value>
+        with:
+          url: https://your-staging-url.com
+          api-key: \<value>}
+          # Optional, both default to 0:
+          max-critical: 0
+          max-high: 0
 ```
 
 ```yaml
@@ -2198,7 +2207,11 @@ On push to main / PR (.github/workflows/ci.yml)
   ├── Integration (tests/integration against a real PostgreSQL)
   ├── Extension (typecheck, format check, build and package)
   ├── Build (next build)
-  └── Self-host smoke test (builds the image, boots it on an empty database, self-scans every published route)
+  ├── Self-host smoke test (builds the image, boots it on an empty database, self-scans every published route)
+  ├── Package versions (pull requests only, report-only: a CLI or extension change without a version bump)
+  ├── Scan gate action (runs .github/actions/scan-gate on Linux, macOS and Windows against a stand-in API on loopback)
+  ├── Dependency review (pull requests only: a dependency the change adds with a high or critical advisory)
+  └── Secret scan (gitleaks over the commits the change adds, redacted)
 
 On tag v*
   └── Docker publish (ghcr.io/<value>/${`<repo>
@@ -2837,19 +2850,28 @@ report says exactly this in a disclaimer at the top of its output.
 
 ### Code examples
 ```yaml
-- name: Scan with <value>
-  id: vulnradar
-  uses: <value>/.github/actions/scan-gate@v<value> # pinned to this release
-  with:
-    url: https://your-staging-url.com
-    api-key: \<value>}
+jobs:
+  vulnradar:
+    runs-on: ubuntu-latest
+    # A scan finishes in minutes; this stops a stuck one holding a runner.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write # only for the upload step
+    steps:
+      - name: Scan with <value>
+        id: vulnradar
+        uses: <value>/.github/actions/scan-gate@v<value> # pinned to this release
+        with:
+          url: https://your-staging-url.com
+          api-key: \<value>}
 
-- name: Upload to code scanning
-  # always(), so the findings still arrive when the gate fails the job.
-  if: \<value>}
-  uses: github/codeql-action/upload-sarif@v3
-  with:
-    sarif_file: \<value>}
+      - name: Upload to code scanning
+        # always(), so the findings still arrive when the gate fails the job.
+        if: \<value>}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: \<value>}
 ```
 
 ```bash

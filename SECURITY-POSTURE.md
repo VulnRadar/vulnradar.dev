@@ -32,9 +32,15 @@ itself (dogfood it) and read the `dns`, `email`, `headers`, `ssl`, `tls`, and
 | MTA-STS policy file                                 | `public/.well-known/mta-sts.txt`     | Served, but **not yet effective** until the DNS record + subdomain in part B exist. Currently `mode: testing`; flip to `enforce` once you trust it. |
 | robots.txt, canonical URLs, no secrets in responses | `app/robots.ts`, `lib/seo/`          |                                                                                                                                                     |
 
-TLS itself (1.2/1.3 only, valid chain, OCSP stapling) is handled by the hosting
-platform and Cloudflare, not this repo. Confirm Cloudflare SSL/TLS mode is
-**Full (strict)** and the minimum TLS version is **1.2**.
+TLS itself (1.2/1.3 only, valid chain) is handled by the hosting platform and
+Cloudflare, not this repo. Confirm Cloudflare SSL/TLS mode is **Full (strict)**
+and the minimum TLS version is **1.2**. A weekly CI job, "Live headers and TLS
+(vulnradar.dev)", checks the certificate chain, the days left before expiry and
+the protocol a normal client negotiates, and reports them in the open issue
+titled "Scheduled report: Live headers and TLS (vulnradar.dev)". It does not
+probe older protocol versions, so the minimum-version setting is confirmed by
+hand at Cloudflare. Let's Encrypt ended OCSP, and the current certificate names
+no OCSP responder, so there is no stapling to check.
 
 ---
 
