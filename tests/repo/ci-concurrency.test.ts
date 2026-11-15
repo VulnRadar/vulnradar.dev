@@ -109,6 +109,17 @@ describe.each(GATES)("the CI gate in %s", (_, gate) => {
     expect(gate.code).toContain('.conclusion == "success"');
   });
 
+  it("counts only runs that checked out the tagged commit itself", () => {
+    // A pull_request run's head_sha is the pull request head, but it tests
+    // the merge with main, so it says nothing about the tagged commit.
+    const query = /--jq '(\[\.workflow_runs\[\] [^']+)'/.exec(gate.code);
+    expect(query, "the gate filters the runs it reads").not.toBeNull();
+    expect(query![1]).toBe(
+      '[.workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch" or .event == "schedule" or .event == "merge_group") | {status, conclusion}]',
+    );
+    expect(query![1]).not.toContain("pull_request");
+  });
+
   it("tells a cancelled CI run apart from a failed one", () => {
     const cancelled = gate.code.indexOf('.conclusion == "cancelled"');
     const failed = gate.code.indexOf("CI did not pass for");
