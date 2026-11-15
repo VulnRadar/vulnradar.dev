@@ -468,6 +468,11 @@ jobs:
           # had to build it locally, off whatever their tree happened to be.
           npm run build
           EXT_VERSION=$(node -p "require('./package.json').version")
+          VERSION_PATTERN='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+          if [[ ! "$EXT_VERSION" =~ $VERSION_PATTERN ]]; then
+            echo "::error::extension/package.json's version is not a plain version number."
+            exit 1
+          fi
           echo "EXT_VERSION=${EXT_VERSION}" >> "$GITHUB_ENV"
           # package.mjs and package-source.mjs write into the extension root.
           mv "vulnradar-chrome-v${EXT_VERSION}.zip" \
@@ -543,6 +548,11 @@ jobs:
           cd "${CLI_DIR}/cli"
 
           CLI_VERSION=$(node -p "require('./package.json').version")
+          VERSION_PATTERN='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+          if [[ ! "$CLI_VERSION" =~ $VERSION_PATTERN ]]; then
+            echo "::error::cli/package.json's version is not a plain version number."
+            exit 1
+          fi
           echo "CLI_VERSION=${CLI_VERSION}" >> "$GITHUB_ENV"
 
           # --pack-destination writes straight into ARTIFACT_DIR. npm names

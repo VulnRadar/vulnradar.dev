@@ -977,10 +977,46 @@ describe("the lint tools' exception files", () => {
     const ignored = [...zizmor.matchAll(/^\s+- (\S+[.]yml)$/gm)].map(
       (m) => m[1],
     );
-    expect(ignored.sort()).toEqual([...WORKFLOW_RUN].sort());
-    expect(zizmor).toMatch(/^ {2}dangerous-triggers:$/m);
-    expect(zizmor.match(/^ {2}[a-z-]+:$/gm)).toEqual(["  dangerous-triggers:"]);
+    expect(ignored.sort()).toEqual([...WORKFLOW_RUN, ...WORKFLOW_RUN].sort());
+    expect(zizmor.match(/^ {2}[a-z-]+:$/gm)).toEqual([
+      "  dangerous-triggers:",
+      "  github-env:",
+    ]);
   });
+
+  it.each(WORKFLOW_RUN)(
+    "%s writes to GITHUB_ENV only a value its step matched against an anchored pattern",
+    (file) => {
+      const writes = workflowSteps(readWorkflow(file)).filter((s) =>
+        s.code.includes('>> "$GITHUB_ENV"'),
+      );
+      expect(writes.length).toBeGreaterThan(0);
+      for (const step of writes) {
+        const lines = step.code
+          .split("\n")
+          .filter((l) => l.includes('>> "$GITHUB_ENV"'));
+        for (const line of lines) {
+          const name =
+            /echo "([A-Z_]+)=\$\{([A-Z_]+)\}" >> "\$GITHUB_ENV"/.exec(
+              line.trim(),
+            );
+          expect(name, `${file} ${step.name}: ${line.trim()}`).not.toBeNull();
+          expect(name![1]).toBe(name![2]);
+          const checked =
+            step.code.includes(`[[ ! "$${name![1]}" =~ $`) ||
+            ((step.code.includes(`for v in "\${${name![1]}}"`) ||
+              step.code.includes(` "\${${name![1]}}"; do`)) &&
+              step.code.includes(`[[ ! "$v" =~ $`));
+          expect(checked, `${file} ${step.name}: ${name![1]}`).toBe(true);
+        }
+        const patterns = [...step.code.matchAll(/_PATTERN='([^']*)'/g)];
+        expect(patterns.length, `${file} ${step.name}`).toBeGreaterThan(0);
+        for (const p of patterns) {
+          expect(p[1].startsWith("^") && p[1].endsWith("$"), p[1]).toBe(true);
+        }
+      }
+    },
+  );
 
   it("fail hadolint on an error only, with every ignore listed", () => {
     expect(hadolint).toMatch(/^failure-threshold: error$/m);

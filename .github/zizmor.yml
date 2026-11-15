@@ -11,3 +11,13 @@ rules:
       # workflows, moved tags and branches named like tags.
       - release.yml
       - docker-publish-arm64.yml
+  github-env:
+    ignore:
+      # The same two files, and the finding follows from the trigger above:
+      # zizmor flags every GITHUB_ENV write in a workflow_run workflow. Each
+      # write here is a tag or a package version that the same step matched
+      # against an anchored pattern with no whitespace, quote or newline in
+      # it, so it cannot add a line to the file.
+      # tests/repo/workflow-hardening.test.ts fails on a write without one.
+      - release.yml
+      - docker-publish-arm64.yml
