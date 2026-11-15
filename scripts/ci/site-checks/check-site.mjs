@@ -209,6 +209,19 @@ export function parsePage(html) {
   };
 }
 
+/**
+ * Whether two absolute URLs name the same resource, as a crawler parses them:
+ * an origin with no path is its root, so https://x and https://x/ match. Any
+ * other difference, a trailing slash on a deeper path included, does not.
+ */
+export function sameUrl(a, b) {
+  try {
+    return new URL(a).href === new URL(b).href;
+  } catch {
+    return false;
+  }
+}
+
 function stringsIn(value, out = []) {
   if (typeof value === "string") out.push(value);
   else if (Array.isArray(value)) for (const v of value) stringsIn(v, out);
@@ -601,7 +614,7 @@ export async function checkSite({ base, concurrency = 6, fetchImpl = fetch }) {
           "canonical",
           `The canonical ${canonical.slice(0, 80)} is not absolute.`,
         );
-      } else if (canonical !== loc) {
+      } else if (!sameUrl(canonical, loc)) {
         add(
           path,
           "canonical",

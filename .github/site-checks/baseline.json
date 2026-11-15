@@ -1,1 +1,42 @@
-[]
+[
+  {
+    "page": "/demo",
+    "rule": "json-ld",
+    "reason": "None of this page's JSON-LD names its own URL: what it carries is site-wide, such as the root layout's Organization block, which names the home page. A page-level block naming this URL is search-pass work, tracked with the seo/search-pass branch. Remove this entry when it lands."
+  },
+  {
+    "page": "/pricing",
+    "rule": "json-ld",
+    "reason": "None of this page's JSON-LD names its own URL: what it carries is site-wide, such as the root layout's Organization block, which names the home page. A page-level block naming this URL is search-pass work, tracked with the seo/search-pass branch. Remove this entry when it lands."
+  },
+  {
+    "page": "/contact",
+    "rule": "json-ld",
+    "reason": "None of this page's JSON-LD names its own URL: what it carries is site-wide, such as the root layout's Organization block, which names the home page. A page-level block naming this URL is search-pass work, tracked with the seo/search-pass branch. Remove this entry when it lands."
+  },
+  {
+    "page": "/donate",
+    "rule": "json-ld",
+    "reason": "None of this page's JSON-LD names its own URL: what it carries is site-wide, such as the root layout's Organization block, which names the home page. A page-level block naming this URL is search-pass work, tracked with the seo/search-pass branch. Remove this entry when it lands."
+  },
+  {
+    "page": "/signup",
+    "rule": "json-ld",
+    "reason": "None of this page's JSON-LD names its own URL: what it carries is site-wide, such as the root layout's Organization block, which names the home page. A page-level block naming this URL is search-pass work, tracked with the seo/search-pass branch. Remove this entry when it lands."
+  },
+  {
+    "page": "/login",
+    "rule": "json-ld",
+    "reason": "None of this page's JSON-LD names its own URL: what it carries is site-wide, such as the root layout's Organization block, which names the home page. A page-level block naming this URL is search-pass work, tracked with the seo/search-pass branch. Remove this entry when it lands."
+  },
+  {
+    "page": "/docs",
+    "rule": "json-ld",
+    "reason": "None of this page's JSON-LD names its own URL: what it carries is site-wide, such as the root layout's Organization block, which names the home page. A page-level block naming this URL is search-pass work, tracked with the seo/search-pass branch. Remove this entry when it lands."
+  },
+  {
+    "page": "/changelog",
+    "rule": "json-ld",
+    "reason": "None of this page's JSON-LD names its own URL: what it carries is site-wide, such as the root layout's Organization block, which names the home page. A page-level block naming this URL is search-pass work, tracked with the seo/search-pass branch. Remove this entry when it lands."
+  }
+]

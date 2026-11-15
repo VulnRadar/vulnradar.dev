@@ -15,6 +15,7 @@ import {
   checkSite,
   decodeEntities,
   judge,
+  sameUrl,
   main,
   parsePage,
   parseRobots,
@@ -584,5 +585,15 @@ describe("the committed baseline", () => {
     );
     expect(Array.isArray(baseline)).toBe(true);
     expect(judge([], baseline).problems).toEqual([]);
+  });
+});
+
+describe("sameUrl", () => {
+  it("reads an origin with no path as its root, and nothing else as equal", () => {
+    expect(sameUrl("https://x.test", "https://x.test/")).toBe(true);
+    expect(sameUrl("https://x.test/a", "https://x.test/a")).toBe(true);
+    expect(sameUrl("https://x.test/a/", "https://x.test/a")).toBe(false);
+    expect(sameUrl("http://x.test/", "https://x.test/")).toBe(false);
+    expect(sameUrl("not a url", "not a url")).toBe(false);
   });
 });
