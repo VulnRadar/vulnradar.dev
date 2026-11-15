@@ -153,14 +153,18 @@ vulnradar_scan:
         *[!A-Za-z0-9_-]*) echo "The API returned a scan id that cannot be used in a URL."; exit 2 ;;
       esac
       # A query string or a user:password@ in the URL can carry a token for
-      # the site being scanned, so the log shows neither. The same commands
-      # as the GitHub Action's: log_safe first, so sed reads one line, then
-      # leading space, then everything up to the LAST @ before the first
-      # slash, since a password can hold an @, a # or a ?. Where a ? or #
-      # comes before that @, the @ can as well be in a query, so only the
-      # scheme is shown. The query and the fragment go last.
-      url_shown=$(log_safe "$VR_URL" | sed -E \
-        -e 's/^[[:space:]]+//' \
+      # the site being scanned, so the log shows neither, however a URL
+      # parser reads the text. The same commands as the GitHub Action's,
+      # which says why each one is there: log_safe first, so sed reads one
+      # line of bytes; then whatever comes before the first letter, digit or
+      # [; then the run of / and \ after a scheme becomes //, as the WHATWG
+      # parser reads https:///u:p@host/; then everything up to the LAST @
+      # before the first slash, since a password can hold an @, a # or a ?.
+      # Where a ? or # comes before that @, the @ can as well be in a query,
+      # so only the scheme is shown. The query and the fragment go last.
+      url_shown=$(log_safe "$VR_URL" | LC_ALL=C sed -E \
+        -e 's/^[^A-Za-z0-9[]+//' \
+        -e 's|^([A-Za-z][A-Za-z0-9+.-]*:)[/\\]+|\1//|' \
         -e 's|^(([A-Za-z][A-Za-z0-9+.-]*://)?)[^/]*[?#][^/]*@.*|\1|' \
         -e 's|^(([A-Za-z][A-Za-z0-9+.-]*://)?)[^/]*@|\1|' \
         -e 's|[?#].*||')

@@ -29,6 +29,7 @@ import path from "node:path";
 import { INCOMPLETE_LABELS as APP_INCOMPLETE_LABELS } from "@/lib/scanner/incomplete-labels";
 import { BOT_CHALLENGE_INCOMPLETE } from "@/lib/scanner/bot-challenge";
 import { PAGE_UNREACHABLE_INCOMPLETE } from "@/lib/scanner/target-failure";
+import { canonicalScanUrl } from "@/lib/scanner/scan-identity";
 import {
   BLOCKING_INCOMPLETE,
   EXIT,
@@ -1246,7 +1247,7 @@ describe.each([
       // The request body, built by jq.
       /^[a-z_]+=\$\(jq -n --arg url "\$VR_URL" '\{url: \$url\}'\)$/,
       // The one copy that is printed, through log_safe before sed reads it.
-      /^url_shown=\$\(log_safe "\$VR_URL" \| sed -E \x5c$/,
+      /^url_shown=\$\(log_safe "\$VR_URL" \| LC_ALL=C sed -E \x5c$/,
     ];
     const uses = script
       .split("\n")
@@ -1266,7 +1267,9 @@ describe.each([
       .split("\n")
       .filter((l) => /^\s*url_shown=/.test(l))
       .map((l) => l.trim());
-    expect(assigned).toEqual(['url_shown=$(log_safe "$VR_URL" | sed -E \\']);
+    expect(assigned).toEqual([
+      'url_shown=$(log_safe "$VR_URL" | LC_ALL=C sed -E \\',
+    ]);
   });
 });
 
@@ -1325,6 +1328,9 @@ function shownBy(script: string, shell: string, inputs: string[]): string[] {
 }
 
 describe.skipIf(!shellAvailable)("the address the log shows", () => {
+  const BS = String.fromCharCode(92);
+  const NBSP = String.fromCharCode(160);
+
   /**
    * The input, what the log shows of it, and what must not appear. The
    * first five are the review's: a password with an @ in it, one with a #
@@ -1336,6 +1342,14 @@ describe.skipIf(!shellAvailable)("the address the log shows", () => {
    * printed the token. A bare host, which the API gives https:// to, and
    * one with space in front, which it trims. A line break, which the URL
    * parser drops, so a password split by one is still a password.
+   *
+   * Then the second review's, where a parser reads userinfo the text does
+   * not show at once. After https: the WHATWG parser skips any run of / and
+   * \, so https:///u:p@host/ and https:/\u:p@host/ carry u:p, and the API
+   * reads //u:p@host/ the same way once it has given it https://. A
+   * no-break space in front, which the API trims and [[:space:]] did not.
+   * A backslash after the host, and one between two @, which ends the
+   * WHATWG authority but not every parser's.
    */
   const CASES: { input: string; shown: string; hidden: string[] }[] = [
     {
@@ -1367,7 +1381,72 @@ describe.skipIf(!shellAvailable)("the address the log shows", () => {
       shown: "https://host/",
       hidden: ["u:p"],
     },
+    { input: "https:///u:p@host/", shown: "https://host/", hidden: ["u:p"] },
+    {
+      input: `https:/${BS}u:p@host/`,
+      shown: "https://host/",
+      hidden: ["u:p"],
+    },
+    {
+      input: `https:${BS}${BS}u:p@host/`,
+      shown: "https://host/",
+      hidden: ["u:p"],
+    },
+    // The API reads http as the username here, and WHATWG as the scheme.
+    { input: "http:u:p@host/", shown: "host/", hidden: ["u:p", "http"] },
+    { input: "HTTPS://U:P@HOST/", shown: "HTTPS://HOST/", hidden: ["U:P"] },
+    {
+      input: " https:///u:p@host/",
+      shown: "https://host/",
+      hidden: ["u:p"],
+    },
+    {
+      input: `${NBSP}https://u:p@host/`,
+      shown: "https://host/",
+      hidden: ["u:p"],
+    },
+    { input: "//u:p@host/", shown: "host/", hidden: ["u:p"] },
+    {
+      input: `https://u:p@host${BS}x`,
+      shown: `https://host${BS}x`,
+      hidden: ["u:p"],
+    },
+    {
+      input: `https://h${BS}@u:p@host`,
+      shown: "https://host",
+      hidden: ["u:p", `h${BS}@`],
+    },
   ];
+
+  /**
+   * Every username and password a parser reads out of `text`, decoded: the
+   * WHATWG parser on the text as it is, and on what the API scans
+   * (canonicalScanUrl: trimmed, given https:// when it names no scheme, and
+   * refused with a control character in it).
+   */
+  function credentialsIn(text: string): string[] {
+    const found: string[] = [];
+    for (const href of [text, canonicalScanUrl(text)]) {
+      if (href === null) continue;
+      let url: URL;
+      try {
+        url = new URL(href);
+      } catch {
+        continue;
+      }
+      for (const part of [url.username, url.password]) {
+        if (part !== "") found.push(decodeURIComponent(part));
+      }
+    }
+    return found;
+  }
+
+  it("has inputs both parsers read credentials out of", () => {
+    const withCredentials = CASES.filter(
+      (c) => credentialsIn(c.input).length > 0,
+    );
+    expect(withCredentials.length).toBeGreaterThanOrEqual(14);
+  });
 
   it("is the same commands in both files", () => {
     expect(redactionOf(GITLAB_SH)).toEqual(redactionOf(ACTION_SH));
@@ -1398,6 +1477,18 @@ describe.skipIf(!shellAvailable)("the address the log shows", () => {
         expect(shown[i]).not.toMatch(
           /^([A-Za-z][A-Za-z0-9+.-]*:[/][/])?[^/]*@/,
         );
+        // No username or password either parser reads out of the input,
+        // after the scheme the log keeps: a one-letter password such as p
+        // is in "https" itself.
+        const afterScheme = shown[i].replace(
+          /^[A-Za-z][A-Za-z0-9+.-]*:[/][/]/,
+          "",
+        );
+        for (const credential of credentialsIn(c.input)) {
+          expect(afterScheme, credential).not.toContain(credential);
+        }
+        // And what the log shows carries none for either parser to read.
+        expect(credentialsIn(shown[i])).toEqual([]);
       },
     );
   });

@@ -200,19 +200,30 @@ runs:
 
         # The URL as the log shows it. A user:password@ or a query string in
         # it can carry a token for the site being scanned, and the log is
-        # often public, so neither is shown. The GitLab template runs the same
-        # commands. log_safe goes first, so sed reads one line, as the URL
-        # parser does once it has dropped line breaks. Then leading space,
-        # which the API trims. The userinfo is everything up to the LAST @
-        # before the first slash, after the scheme or from the start (the API
-        # gives a bare host https://): a password can hold an @, a # or a ?,
-        # and cutting the query first, or stopping at the first @, printed the
-        # rest of it. Where a ? or # comes before that @, the @ can as well be
-        # in a query (?email=a@b&token=...), what follows it is no host either
-        # way, and only the scheme is shown. The query and the fragment go
-        # last.
-        url_shown=$(log_safe "$VR_URL" | sed -E \
-          -e 's/^[[:space:]]+//' \
+        # often public, so neither is shown, however a URL parser reads the
+        # text. The GitLab template runs the same commands.
+        #
+        # log_safe goes first, so sed reads one line, as the URL parser does
+        # once it has dropped line breaks, and sed reads bytes (LC_ALL=C).
+        # Then whatever comes before the first letter, digit or [: the space
+        # and no-break space the API trims, and the // of an address it gives
+        # https:// to. Then the run of / and \ after a scheme becomes //: the
+        # WHATWG parser skips any such run after https:, so https:///u:p@host/
+        # and https:/\u:p@host/ carry u:p as https://u:p@host/ does.
+        #
+        # The userinfo is everything up to the LAST @ before the first slash,
+        # after the scheme or from the start (the API gives a bare host
+        # https://). A password can hold an @, a # or a ?, and cutting the
+        # query first, or stopping at the first @, printed the rest of it. A
+        # backslash does not end it, though it ends the WHATWG authority, so
+        # https://h\@u:p@host, which other parsers read as userinfo h\@u:p,
+        # shows neither. Where a ? or # comes before that @, the @ can as well
+        # be in a query (?email=a@b&token=...), what follows it is no host
+        # either way, and only the scheme is shown. The query and the fragment
+        # go last.
+        url_shown=$(log_safe "$VR_URL" | LC_ALL=C sed -E \
+          -e 's/^[^A-Za-z0-9[]+//' \
+          -e 's|^([A-Za-z][A-Za-z0-9+.-]*:)[/\\]+|\1//|' \
           -e 's|^(([A-Za-z][A-Za-z0-9+.-]*://)?)[^/]*[?#][^/]*@.*|\1|' \
           -e 's|^(([A-Za-z][A-Za-z0-9+.-]*://)?)[^/]*@|\1|' \
           -e 's|[?#].*||')
