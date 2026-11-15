@@ -851,11 +851,19 @@ describe("POST /api/v3/scan/authenticated", () => {
       ok: true,
       session: { lost: false, reason: null },
     });
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 128 }] });
+    // Answered by statement, not by call order: the post-scan AI switch read of
+    // the test before can still land on this pool after the reset.
+    mockQuery.mockImplementation(async (sql: string) =>
+      String(sql).includes("INSERT INTO scan_history")
+        ? { rows: [{ id: 128 }] }
+        : { rows: [] },
+    );
 
     await POST(postRequest(FORM_AUTH_BODY));
 
-    const insertCall = mockQuery.mock.calls[0];
+    const insertCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    )!;
     expect(insertCall[0]).toContain("team_id");
     expect(insertCall[1].at(-1)).toBeNull();
     const membershipCalls = mockQuery.mock.calls.filter(([sql]) =>
