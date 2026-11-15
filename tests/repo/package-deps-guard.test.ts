@@ -106,6 +106,33 @@ describe("the lockfile's install scripts", () => {
   });
 });
 
+/**
+ * The two other trees CI installs. `npm ci` in extension/ keeps its scripts
+ * (owner decision D8), so the list is the control, as above. The web-ext tools
+ * package is installed with --ignore-scripts in CI, and its lockfile is held
+ * to the same rule so that installing it without that flag, as the release
+ * build does, runs nothing either.
+ */
+describe("the extension and web-ext lockfiles' install scripts", () => {
+  const withScripts = (rel: string) =>
+    Object.entries(
+      (readJson(rel) as { packages: Record<string, LockEntry> }).packages,
+    )
+      .filter(([, e]) => e.hasInstallScript)
+      .map(([location]) => location)
+      .sort();
+
+  it("are exactly [node_modules/fsevents] in extension/, a macOS-only package never installed on Linux", () => {
+    expect(withScripts("extension/package-lock.json")).toEqual([
+      "node_modules/fsevents",
+    ]);
+  });
+
+  it("are exactly [] in .github/tools/web-ext/", () => {
+    expect(withScripts(".github/tools/web-ext/package-lock.json")).toEqual([]);
+  });
+});
+
 describe("test tooling stays out of a production install", () => {
   it("is not declared in dependencies", () => {
     for (const name of TEST_TOOLS) {

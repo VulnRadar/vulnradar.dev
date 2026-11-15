@@ -538,7 +538,8 @@ jobs:
   extension:
     name: Extension
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 10 before web-ext was installed and run.
+    timeout-minutes: 15
     permissions:
       contents: read
 
@@ -639,6 +640,45 @@ jobs:
             echo "ok: $zip (manifest $manifest)"
           done
         working-directory: extension
+
+      - name: Check what the built extension asks for
+        # The permissions, the CSP, the icons, the two background shapes and
+        # the size of each store zip, read from what the build above emitted
+        # rather than from the templates. Any permission the built manifests
+        # request that extension/manifest/permissions.allowlist.json does not
+        # record fails here, and that file is CODEOWNERS-reviewed, so a new
+        # permission cannot arrive as a side effect of a feature. It also
+        # fails on a VulnRadar API key anywhere in either dist.
+        run: node scripts/verify-dist.mjs
+        working-directory: extension
+
+      - name: Lint the Firefox package the way AMO does
+        # web-ext is AMO's own linter. It runs from .github/tools/web-ext, a
+        # package of its own, so its tree never joins the one that emits
+        # content.js, and with --ignore-scripts because nothing in it needs to
+        # run code to install. Its exit code is not read: the report decides.
+        # Errors fail, warnings and notices go to the job summary, and a name
+        # in lint-exceptions.json that no longer matches an error fails too.
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx --no-install web-ext lint \
+            --source-dir "$GITHUB_WORKSPACE/extension/dist-firefox" \
+            --output json > "$RUNNER_TEMP/web-ext-lint.json" || true
+          node "$GITHUB_WORKSPACE/scripts/ci/web-ext-lint-report.mjs" \
+            "$RUNNER_TEMP/web-ext-lint.json" lint-exceptions.json
+        working-directory: .github/tools/web-ext
+
+      - name: Upload the store packages for review
+        # The exact zips this run built, for whoever reviews the pull request
+        # or submits to the stores: the Chrome and Firefox packages and the
+        # source archive AMO asks for.
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: extension-packages
+          path: extension/vulnradar-*.zip
+          retention-days: 7
+          if-no-files-found: error
 
   build:
     name: Build

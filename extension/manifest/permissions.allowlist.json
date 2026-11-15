@@ -1,0 +1,23 @@
+{
+  "permissions": [
+    "storage",
+    "alarms",
+    "notifications",
+    "tabs",
+    "contextMenus",
+    "downloads"
+  ],
+  "host_permissions": ["__API_HOST__/*"],
+  "optional_permissions": [],
+  "optional_host_permissions": [],
+  "content_scripts_matches": ["http://*/*", "https://*/*"],
+  "content_security_policy": {
+    "extension_pages": {
+      "script-src": ["'self'"],
+      "object-src": ["'self'"],
+      "connect-src": ["__API_HOST__"]
+    }
+  },
+  "zipBudgetBytes": 417956,
+  "zipBudgetReason": "Four times the larger of the two 0.2.3 store zips (104,489 bytes, the Firefox one), measured from a local npm run build on 2026-11-15. A zip that grows past this is a dependency or an asset nobody meant to ship; raise it here, with the reason, when growth is intended."
+}

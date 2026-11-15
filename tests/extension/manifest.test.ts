@@ -8,6 +8,11 @@ import {
   normalizeApiHost,
   resolveManifest,
 } from "../../extension/scripts/manifest.mjs";
+import {
+  checkAgainstAllowlist,
+  HOST_PLACEHOLDER,
+  type PermissionAllowlist,
+} from "../../extension/scripts/permissions.mjs";
 
 /**
  * The extension ships two manifests from one codebase, and a store reviewer, a
@@ -303,5 +308,130 @@ describe("README permission table", () => {
       /Profile\s*(?:›|>|→)\s*Developer\s*(?:›|>|→)\s*API Keys/g,
     );
     expect(named?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("requests nothing the allowlist does not record", () => {
+  const allowlist = JSON.parse(
+    read("manifest/permissions.allowlist.json"),
+  ) as PermissionAllowlist;
+
+  it("matches both source manifests, exactly, as sets", () => {
+    // Equality and not a subset check: an allowlist entry the manifests no
+    // longer request fails too, so the record cannot outlive a permission the
+    // extension gave up. An increase needs the allowlist changed in a pull
+    // request a CODEOWNER reviews (.github/CODEOWNERS covers the path).
+    for (const [label, tpl] of [
+      ["manifest/chrome.json", chromeTpl],
+      ["manifest/firefox.json", firefoxTpl],
+    ] as const) {
+      expect(
+        checkAgainstAllowlist(tpl, allowlist, HOST_PLACEHOLDER, label),
+        label,
+      ).toEqual([]);
+    }
+  });
+
+  it("matches the build output when one exists", () => {
+    for (const target of ["chrome", "firefox"]) {
+      const built = resolve(EXT, `dist-${target}`, "manifest.json");
+      if (!existsSync(built)) continue;
+      expect(
+        checkAgainstAllowlist(
+          JSON.parse(readFileSync(built, "utf8")),
+          allowlist,
+          normalizeApiHost(process.env.VULNRADAR_API_HOST),
+          `dist-${target}`,
+        ),
+        built,
+      ).toEqual([]);
+    }
+  });
+
+  it("names a permission added to a manifest", () => {
+    const added = {
+      ...chromeTpl,
+      permissions: [...chromeTpl.permissions, "cookies"],
+    };
+    const problems = checkAgainstAllowlist(
+      added,
+      allowlist,
+      HOST_PLACEHOLDER,
+      "x",
+    );
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('"cookies"');
+    expect(problems[0]).toContain("CODEOWNER");
+  });
+
+  it("names an allowlist entry the manifest no longer requests", () => {
+    const dropped = {
+      ...chromeTpl,
+      permissions: chromeTpl.permissions.filter((p) => p !== "downloads"),
+    };
+    const problems = checkAgainstAllowlist(
+      dropped,
+      allowlist,
+      HOST_PLACEHOLDER,
+      "x",
+    );
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('"downloads"');
+    expect(problems[0]).toContain("no longer requests");
+  });
+
+  it("names a host permission, a content script match or an optional permission added", () => {
+    const widened = {
+      ...chromeTpl,
+      host_permissions: [...chromeTpl.host_permissions, "<all_urls>"],
+      optional_permissions: ["cookies"],
+      content_scripts: [
+        { ...chromeTpl.content_scripts[0]!, matches: ["<all_urls>"] },
+      ],
+    };
+    const problems = checkAgainstAllowlist(
+      widened,
+      allowlist,
+      HOST_PLACEHOLDER,
+      "x",
+    );
+    expect(problems.join("\n")).toContain(
+      'host_permissions requests "<all_urls>"',
+    );
+    expect(problems.join("\n")).toContain(
+      'optional_permissions requests "cookies"',
+    );
+    expect(problems.join("\n")).toContain(
+      'content_scripts_matches requests "<all_urls>"',
+    );
+  });
+
+  it("names a changed content security policy", () => {
+    const loosened = {
+      ...chromeTpl,
+      content_security_policy: {
+        extension_pages:
+          "script-src 'self' 'unsafe-eval'; object-src 'self'; connect-src __API_HOST__",
+      },
+    };
+    const problems = checkAgainstAllowlist(
+      loosened,
+      allowlist,
+      HOST_PLACEHOLDER,
+      "x",
+    );
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("script-src");
+  });
+
+  it("records the CSP the policy tests above pin, and a size budget with its reason", () => {
+    expect(allowlist.content_security_policy.extension_pages).toEqual({
+      "script-src": ["'self'"],
+      "object-src": ["'self'"],
+      "connect-src": [HOST_PLACEHOLDER],
+    });
+    expect(Number.isInteger(allowlist.zipBudgetBytes)).toBe(true);
+    expect(allowlist.zipBudgetBytes).toBeGreaterThan(0);
+    expect(allowlist.zipBudgetReason.length).toBeGreaterThan(20);
   });
 });

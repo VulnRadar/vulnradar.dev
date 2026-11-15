@@ -174,6 +174,26 @@ updates:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
 
+  # web-ext, the linter CI runs over the built Firefox package the way AMO's
+  # review does. It is its own package so its ~330-package tree stays out of
+  # extension/, whose dev tree is the one that emits content.js. Nothing in it
+  # ships; it is watched so the linter does not fall behind AMO's rules.
+  - package-ecosystem: "npm"
+    directory: "/.github/tools/web-ext"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependabot"
+      - "dependencies"
+    groups:
+      web-ext:
+        patterns:
+          - "*"
+
   # Base images: the Dockerfile's node:22.x-alpine (build + runner stages),
   # plus postgres:16.x-alpine in both compose files. The Dockerfile's FROM
   # lines carry tag@sha256:digest, and Dependabot moves the two together, so

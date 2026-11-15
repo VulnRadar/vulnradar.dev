@@ -22,6 +22,11 @@
 /app/api/v3/billing/ @dbcaa @RejectModders
 /app/api/v3/webhooks/ @dbcaa @RejectModders
 
+# The browser extension's permission allowlist. `*` already covers it; the line marks
+# the path as security-critical and survives a future narrowing of `*`. A new
+# permission, host or content-script match changes this file.
+/extension/manifest/ @dbcaa @RejectModders
+
 # Configuration changes
 /lib/config/        @dbcaa @RejectModders
 /.env.example       @dbcaa @RejectModders

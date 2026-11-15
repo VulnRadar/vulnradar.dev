@@ -475,6 +475,44 @@ jobs:
              "vulnradar-extension-v${EXT_VERSION}-source.zip" \
              "${ARTIFACT_DIR}/"
 
+      - name: Check the extension's registry signatures
+        # release: npm ci above installed the extension's whole dev tree, and
+        # that tree is the one that emits content.js. `npm audit signatures`
+        # checks that every package in it carries a valid registry signature,
+        # so a tarball swapped after publish, or a package served by something
+        # that is not the registry, fails here and not in a store review. It
+        # fails on an invalid signature. This job holds no credential.
+        working-directory: ${{ runner.temp }}/extension-src/extension
+        run: npm audit signatures
+
+      - name: Lint the Firefox package the way AMO does
+        # release: the package the stores receive, linted by the tool AMO's
+        # own review runs. web-ext is installed from the TAG's
+        # .github/tools/web-ext, with the report script, by git archive, the
+        # way the extension itself is, so the lint a release runs is the one
+        # the tag was reviewed with. An older tag has no such directory, and
+        # a release rebuilt from one is not held to a check it never had.
+        # Errors fail; warnings go to the job summary. No credential here.
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "${TAG}:.github/tools/web-ext/package-lock.json" 2> /dev/null; then
+            echo "::notice::${TAG} has no .github/tools/web-ext, so there is no web-ext lint for it."
+            exit 0
+          fi
+          TOOL_DIR="${RUNNER_TEMP}/web-ext-tool"
+          rm -rf "${TOOL_DIR}"
+          mkdir -p "${TOOL_DIR}"
+          git archive "${TAG}" -- .github/tools/web-ext scripts/ci/web-ext-lint-report.mjs | tar -x -C "${TOOL_DIR}"
+          cd "${TOOL_DIR}/.github/tools/web-ext"
+          npm ci --no-audit --no-fund
+          npx --no-install web-ext lint \
+            --source-dir "${RUNNER_TEMP}/extension-src/extension/dist-firefox" \
+            --output json > "${RUNNER_TEMP}/web-ext-lint.json" || true
+          node "${TOOL_DIR}/scripts/ci/web-ext-lint-report.mjs" \
+            "${RUNNER_TEMP}/web-ext-lint.json" lint-exceptions.json
+
       - name: Pack the CLI tarball
         # The release already ships the extension; the CLI was the one
         # first-party artifact you could not get from the release page, even

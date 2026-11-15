@@ -105,7 +105,7 @@ Then, depending on what you touched:
   `node --test`: the script adds `--experimental-test-coverage`, and that is
   what CI runs, so a bare invocation reports a pass without telling you what
   fraction of the CLI it actually covered.
-- **`extension/`:** `cd extension && npm ci && npm run typecheck && npm run format:check && npm run build:chrome && npm run build:firefox`
+- **`extension/`:** `cd extension && npm ci && npm run typecheck && npm run format:check && npm run build`, which is the command CI runs. `build:chrome` and `build:firefox` skip the packaging step, so a break in packaging shows only under `build`. A new permission, host or content-script match also needs `extension/manifest/permissions.allowlist.json` changed in the same PR: a code owner reviews that file, and `node scripts/verify-dist.mjs`, run in `extension/` after the build, checks the built manifests against it.
 
 `npm audit --audit-level=high --omit=dev` also gates a PR, so a dependency
 change that introduces a high-severity advisory will fail even if everything

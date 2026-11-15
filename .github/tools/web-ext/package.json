@@ -1,0 +1,13 @@
+{
+  "name": "vulnradar-ci-web-ext",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pinned web-ext for the extension lint in CI. Kept out of extension/ so its dependency tree stays out of the tree that emits the shipped content script.",
+  "license": "GPL-3.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "web-ext": "10.8.0"
+  }
+}
