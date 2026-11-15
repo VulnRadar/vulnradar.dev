@@ -100,6 +100,70 @@ describe("the patterns", () => {
   });
 });
 
+/** The path regexes of every [[allowlists]] block, in gitleaks' syntax. */
+function allowlistedPaths(): RegExp[] {
+  return toml
+    .split(/^\[\[allowlists\]\]$/m)
+    .slice(1)
+    .flatMap((block) => {
+      const body = /^paths = \[\n([\s\S]*?)^\]$/m.exec(block)?.[1] ?? "";
+      return [...body.matchAll(/^ {2}'''(.+)''',$/gm)].map(
+        (m) => new RegExp(m[1]),
+      );
+    });
+}
+
+describe("the path allowlists", () => {
+  const tracked = execFileSync("git", ["ls-files"], {
+    cwd: ROOT,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  })
+    .split("\n")
+    .filter(Boolean);
+  const paths = allowlistedPaths();
+  const skipped = (file: string) => paths.some((re) => re.test(file));
+
+  it("are read from the file", () => {
+    expect(paths.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("each name at least one tracked file", () => {
+    for (const re of paths) {
+      expect(
+        tracked.some((f) => re.test(f)),
+        String(re),
+      ).toBe(true);
+    }
+  });
+
+  // gitleaks' default rules see nothing an allowlist names, so a directory
+  // entry hides everything that later lands in it. The scanner's runtime
+  // code handles real credentials (the sign-in flows) and quotes no fake
+  // ones, so it stays scanned, and so does the rest of the test tree.
+  it("leave the scanner's runtime code and the rest of tests/lib scanned", () => {
+    for (const file of [
+      "lib/scanner/engine.ts",
+      "lib/scanner/execute-scan.ts",
+      "lib/scanner/auth/login.ts",
+      "lib/scanner/auth/browser-login.ts",
+    ]) {
+      expect(tracked, file).toContain(file);
+      expect(skipped(file), file).toBe(false);
+    }
+    for (const dir of [
+      "lib/scanner/auth/",
+      "lib/scanner/active-probes/",
+      "tests/lib/auth/",
+      "tests/lib/billing/",
+    ]) {
+      const under = tracked.filter((f) => f.startsWith(dir));
+      expect(under.length, dir).toBeGreaterThan(0);
+      expect(under.filter(skipped), dir).toEqual([]);
+    }
+  });
+});
+
 describe("the matcher", () => {
   // Built here and never written anywhere, so no file in the tree holds one.
   const key = `vr_live_${randomBytes(32).toString("hex")}`;

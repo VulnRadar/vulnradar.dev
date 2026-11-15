@@ -15,10 +15,13 @@ title = "VulnRadar"
 useDefault = true
 
 [[allowlists]]
-description = "Detector code and fixtures: the scanner looks for leaked secrets in other people's sites, so its patterns, its tests and the findings in audits/ quote fake ones on purpose."
+description = "Detector code and fixtures: the scanner looks for leaked secrets in other people's sites, so its checks and their data, the scanner's tests, a few other tests that build provider-shaped fakes, and the findings in audits/ quote fake ones on purpose. The rest of lib/scanner (the engine, the sign-in code, the probes) and the rest of tests/lib stay scanned: when another file has to quote a fake, list that file, not its directory."
 paths = [
-  '''^lib/scanner/''',
-  '''^tests/lib/''',
+  '''^lib/scanner/checks/''',
+  '''^lib/scanner/checks-data/''',
+  '''^tests/lib/scanner/''',
+  '''^tests/lib/ai/(anthropic|complete|transport)[.]test[.]ts$''',
+  '''^tests/lib/database/error-log-capture[.]test[.]ts$''',
   '''^audits/''',
 ]
 
