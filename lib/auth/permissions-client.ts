@@ -421,9 +421,6 @@ export function canActOnTarget(
   return targetRefusal(caller, target, action) === null;
 }
 
-/**
- * Check if role can access admin panel
- */
 export const NOTE_REFUSAL = {
   self: "Only the author can change a note about your own account.",
   notAuthor: "Only a note's author or an admin can change it.",
@@ -470,6 +467,9 @@ export function canEditAdminNote(note: {
   return adminNoteRefusal(note) === null;
 }
 
+/**
+ * Check if role can access admin panel
+ */
 export function canAccessAdmin(role: string | null | undefined): boolean {
   return hasStaffPermission(role, STAFF_PERMISSIONS.ACCESS_ADMIN_PANEL);
 }
