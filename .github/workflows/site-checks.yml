@@ -4,8 +4,9 @@ name: Site checks
 # the image this job builds from the commit and boots on the runner. Nothing
 # here is aimed at anything else: ZAP runs on a Docker network with no route
 # out, so the only thing it can reach is the container beside it, and the one
-# step that proves the network has no egress asks for our own robots.txt and
-# must fail. tests/repo/external-targets.test.ts holds every target to that.
+# step that proves the network has no egress reads the container's routing
+# table rather than contacting any host, ours included.
+# tests/repo/external-targets.test.ts holds every target to that.
 #
 # Not a required check: it is path-filtered, so most pull requests never run
 # it, and a required check that does not run blocks the merge. It starts as a
@@ -179,15 +180,30 @@ jobs:
           exit 1
 
       - name: Prove the sandbox has no egress
-        # This asks for our own robots.txt, so a sandbox that turned out to
-        # have a route out would still contact nothing but our own host. The
-        # request has to fail: DNS does not resolve outside the network.
+        # No live host is contacted, ours included: the proof reads the
+        # container's own routing table. It must hold no default route, and
+        # a connection to 192.0.2.1 (TEST-NET-1, RFC 5737, which nothing
+        # answers) must fail at once with ENETUNREACH. A sandbox with a route
+        # out would time out on that address instead, so "no route" cannot
+        # be mistaken for anything else, and DNS plays no part in either.
         run: |
-          if docker exec vr-app wget -T 5 -q -O /dev/null https://vulnradar.dev/robots.txt; then
-            echo "::error::the sandbox network reached the internet, so no scan runs from it"
+          routes=$(docker exec vr-app cat /proc/net/route)
+          if echo "$routes" | awk 'NR > 1 && $2 == "00000000" { found = 1 } END { exit found ? 0 : 1 }'; then
+            echo "$routes"
+            echo "::error::the sandbox network has a default route, so no scan runs from it"
             exit 1
           fi
-          echo "The sandbox cannot reach anything outside it, as intended."
+          if ! docker exec vr-app node -e '
+            const s = require("node:net").connect({ host: "192.0.2.1", port: 443 });
+            const done = (ok, why) => { console.log(why); s.destroy(); process.exit(ok ? 0 : 1); };
+            s.setTimeout(5000, () => done(false, "timed out, so the address is routed"));
+            s.on("connect", () => done(false, "connected"));
+            s.on("error", (e) => done(e.code === "ENETUNREACH", e.code));
+          '; then
+            echo "::error::the sandbox network has a route out, so no scan runs from it"
+            exit 1
+          fi
+          echo "The sandbox has no route out of its own network, as intended."
 
       - name: ZAP baseline (passive) against the container only
         # Exit 0 passes. 1 (a FAIL rule fired) or 3 (an error) fails the job.
@@ -335,12 +351,30 @@ jobs:
           exit 1
 
       - name: Prove the sandbox has no egress
+        # No live host is contacted, ours included: the proof reads the
+        # container's own routing table. It must hold no default route, and
+        # a connection to 192.0.2.1 (TEST-NET-1, RFC 5737, which nothing
+        # answers) must fail at once with ENETUNREACH. A sandbox with a route
+        # out would time out on that address instead, so "no route" cannot
+        # be mistaken for anything else, and DNS plays no part in either.
         run: |
-          if docker exec vr-app wget -T 5 -q -O /dev/null https://vulnradar.dev/robots.txt; then
-            echo "::error::the sandbox network reached the internet, so no scan runs from it"
+          routes=$(docker exec vr-app cat /proc/net/route)
+          if echo "$routes" | awk 'NR > 1 && $2 == "00000000" { found = 1 } END { exit found ? 0 : 1 }'; then
+            echo "$routes"
+            echo "::error::the sandbox network has a default route, so no scan runs from it"
             exit 1
           fi
-          echo "The sandbox cannot reach anything outside it, as intended."
+          if ! docker exec vr-app node -e '
+            const s = require("node:net").connect({ host: "192.0.2.1", port: 443 });
+            const done = (ok, why) => { console.log(why); s.destroy(); process.exit(ok ? 0 : 1); };
+            s.setTimeout(5000, () => done(false, "timed out, so the address is routed"));
+            s.on("connect", () => done(false, "connected"));
+            s.on("error", (e) => done(e.code === "ENETUNREACH", e.code));
+          '; then
+            echo "::error::the sandbox network has a route out, so no scan runs from it"
+            exit 1
+          fi
+          echo "The sandbox has no route out of its own network, as intended."
 
       - name: ZAP full scan (active) against the container only
         # The active scan sends attack traffic, which is why it runs only

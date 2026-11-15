@@ -126,11 +126,27 @@ describe("ZAP", () => {
         expect(proof, `${file} ${job.id} has the egress proof`).toBeDefined();
         const scan = steps.find((s) => /zap-[a-z-]+[.]py/.test(s.code))!;
         expect(proof!.index).toBeLessThan(scan.index);
-        // The command is the condition of an if, and a success exits 1.
-        expect(proof!.code).toMatch(
-          /if docker exec vr-app wget -T 5 -q -O \/dev\/null https:\/\/vulnradar[.]dev\/robots[.]txt; then/,
+        // It contacts no host at all: no URL, no hostname, no lookup.
+        expect(proof!.code).not.toMatch(/https?:\/\//);
+        expect(proof!.code).not.toMatch(/\b(wget|curl|nslookup|getent|dig)\b/);
+        // A default route in the container's table fails the job.
+        expect(proof!.code).toContain(
+          "routes=$(docker exec vr-app cat /proc/net/route)",
         );
-        expect(proof!.code).toMatch(/^\s+exit 1$/m);
+        expect(proof!.code).toContain(
+          `if echo "$routes" | awk 'NR > 1 && $2 == "00000000" { found = 1 } END { exit found ? 0 : 1 }'; then`,
+        );
+        // And a connection to a documentation address must fail for want
+        // of a route, not time out: only ENETUNREACH passes.
+        expect(proof!.code).toContain('host: "192.0.2.1", port: 443');
+        expect(proof!.code).toContain(
+          's.on("error", (e) => done(e.code === "ENETUNREACH", e.code));',
+        );
+        expect(proof!.code).toContain(
+          's.setTimeout(5000, () => done(false, "timed out, so the address is routed"));',
+        );
+        expect(proof!.code).toContain("if ! docker exec vr-app node -e '");
+        expect(proof!.code.match(/^\s+exit 1$/gm)?.length).toBe(2);
         expect(proof!.code).not.toMatch(/\|\| true/);
       }
     }
@@ -278,9 +294,9 @@ const ALLOWED_HOSTS: {
   },
   {
     host: /^vulnradar[.]dev$/,
-    where: ["scheduled.yml", "site-checks.yml", "scan-gate/action.yml"],
+    where: ["scheduled.yml", "scan-gate/action.yml"],
     reason:
-      "the weekly live check (one HEAD, one handshake), the egress proof, which must fail, and the action's documented default api-base-url",
+      "the weekly live check (one HEAD, one handshake) and the action's documented default api-base-url",
   },
 ];
 
