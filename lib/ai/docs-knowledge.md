@@ -1727,7 +1727,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: <value>/.github/actions/scan-gate@v<value>
+      - uses: <value>/.github/actions/scan-gate@v<value> # pinned to this release
         with:
           url: https://your-staging-url.com
           api-key: \<value>}
@@ -2204,6 +2204,7 @@ On push to main / PR (.github/workflows/ci.yml)
   ├── Lint (Oxlint, then ESLint 10 with the flat config in eslint.config.mjs, then prettier --check)
   ├── Typecheck (tsc --noEmit, npm audit, the build:knowledge diff)
   ├── Test (vitest run --coverage, then the CLI tests)
+  ├── CLI (Linux, macOS and Windows, each on Node 22.12.0, the pinned version and the current LTS: npm test, then the packed tarball installed and run)
   ├── Integration (tests/integration against a real PostgreSQL)
   ├── Extension (typecheck, format check, build and package)
   ├── Build (next build)
@@ -2211,7 +2212,8 @@ On push to main / PR (.github/workflows/ci.yml)
   ├── Package versions (pull requests only, report-only: a CLI or extension change without a version bump)
   ├── Scan gate action (runs .github/actions/scan-gate on Linux, macOS and Windows against a stand-in API on loopback)
   ├── Dependency review (pull requests only: a dependency the change adds with a high or critical advisory)
-  └── Secret scan (gitleaks over the commits the change adds, redacted)
+  ├── Secret scan (gitleaks over the commits the change adds, redacted)
+  └── Workflow and Dockerfile lint (actionlint with shellcheck, zizmor and hadolint)
 
 On tag v*
   └── Docker publish (ghcr.io/<value>/${`<repo>
@@ -2859,7 +2861,7 @@ jobs:
       contents: read
       security-events: write # only for the upload step
     steps:
-      - name: Scan with <value>
+      - name: "Scan with <value>"
         id: vulnradar
         uses: <value>/.github/actions/scan-gate@v<value> # pinned to this release
         with:

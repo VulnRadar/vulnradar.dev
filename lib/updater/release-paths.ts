@@ -60,6 +60,12 @@ export const STRIP_PREFIXES = [
   ".github",
   ".claude",
   "audits",
+  // The configuration of CI's secret scan, image scan and Dockerfile lint.
+  // Only those CI jobs read them.
+  ".gitleaks.toml",
+  ".gitleaksignore",
+  ".grype.yaml",
+  ".hadolint.yaml",
   // Developer tooling. `next build` does not lint at all since Next 16, and
   // nothing at runtime reads any of these.
   "eslint.config.mjs",

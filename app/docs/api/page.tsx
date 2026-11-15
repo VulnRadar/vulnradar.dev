@@ -2170,7 +2170,7 @@ export default function APIDocsPage() {
     permissions:
       contents: read
     steps:
-      - uses: ${APP_REPO}/.github/actions/scan-gate@v${APP_VERSION}
+      - uses: ${APP_REPO}/.github/actions/scan-gate@v${APP_VERSION} # pinned to this release
         with:
           url: https://your-staging-url.com
           api-key: \${{ secrets.VULNRADAR_TOKEN }}

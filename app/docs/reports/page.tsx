@@ -397,7 +397,7 @@ export default function ReportsDocsPage() {
       contents: read
       security-events: write # only for the upload step
     steps:
-      - name: Scan with ${APP_NAME}
+      - name: "Scan with ${APP_NAME}"
         id: vulnradar
         uses: ${APP_REPO}/.github/actions/scan-gate@v${APP_VERSION} # pinned to this release
         with:
