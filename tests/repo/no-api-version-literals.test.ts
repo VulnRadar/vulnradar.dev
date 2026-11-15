@@ -132,6 +132,8 @@ const HOMES: Record<string, string> = {
   "lib/scanner/subdomain-discovery-engine.ts": "OTX and urlscan APIs, not ours",
   "scripts/spike/":
     "the routing spike drives a fixture app with the exact paths it proves",
+  "scripts/ci/":
+    "CI probes request the exact paths they prove, escaped spellings the API map cannot hold included, and fail loudly when a route moves",
 };
 
 /** Literals that predate this test. Delete a line when its file is clean. */
