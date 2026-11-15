@@ -384,6 +384,39 @@ describe("POST /api/v3/ai/chat: what reaches the reader", () => {
     expect(evs.some((e) => e.type === "error")).toBe(true);
   });
 
+  // @ai-sdk/openai 4.0.118 surfaces a Chat Completions refusal as text and
+  // reports it as content-filter. Before that the reply had no words and the
+  // reader saw the empty-reply error instead of the model's own refusal.
+  it("shows a provider refusal as the answer and records it as content-filter", async () => {
+    fetchMock.mockResolvedValue(
+      sse([
+        chunk({
+          role: "assistant",
+          content: null,
+          refusal: "I cannot help with that.",
+        }),
+        chunk({}, "stop"),
+      ]),
+    );
+    const res = await POST(
+      postRequest({
+        messages: [{ role: "user", content: "hi" }],
+        sessionId: "0b8f5c1e-2a3d-4e5f-8a9b-0c1d2e3f4a5b",
+        messageIndex: 1,
+      }),
+    );
+    const evs = await events(res);
+    expect(evs.filter((e) => e.type === "text")).toEqual([
+      { type: "text", text: "I cannot help with that." },
+    ]);
+    expect(evs.some((e) => e.type === "error")).toBe(false);
+    expect(mockRecordChatEvent).toHaveBeenCalledTimes(1);
+    expect(mockRecordChatEvent.mock.calls[0][0]).toMatchObject({
+      finishReason: "content-filter",
+      error: null,
+    });
+  });
+
   it("returns 502 with a plain message when the provider fails before answering", async () => {
     fetchMock.mockResolvedValue(
       new Response("upstream exploded", { status: 500 }),
