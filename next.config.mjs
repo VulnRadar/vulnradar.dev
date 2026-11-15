@@ -14,7 +14,7 @@ const nextConfig = {
   // deployments, the Dockerfile copies .next + node_modules instead of
   // relying on a standalone bundle: the image is larger but `npm start`
   // works the same everywhere.
-  serverExternalPackages: ["fs", "path"],
+
   // Development-only routes. A file named `page.dev.tsx` is a page outside
   // production and nothing at all inside it, so app/dev/modals (the modal
   // workbench, which renders every dialog in the product on demand including
@@ -36,16 +36,19 @@ const nextConfig = {
     // removed `ignoreBuildErrors: true`. Typecheck errors
     // must block the build. CI runs `tsc --noEmit` separately as a hard
     // gate; allowing the build to swallow type errors would silently ship
-    // broken code.
+    // broken code. `next build` runs the project's own tsc over the whole
+    // tsconfig project, tests included (`experimental.useTypeScriptCli`, on
+    // by default in Next 16.4.6), so a type error anywhere fails the build,
+    // as it already fails CI.
   },
-  eslint: {
-    // Skip Next.js's internal linter during `next build`. We run ESLint
-    // separately via `npm run lint` (and the pre-existing `lint` CI step
-    // runs the same). Next.js's bundled linter can't reliably detect the
-    // Next.js plugin when using @eslint/eslintrc's FlatCompat shim
-    // (a known false positive until Next.js 16 ships native flat config),
-    // which makes the "Next.js plugin was not detected" warning noisy.
-    ignoreDuringBuilds: true,
+  experimental: {
+    // Next 16.4 stops `next dev` and `next build` once, with exit code 1,
+    // when it detects a coding agent and the installed Next has a published
+    // advisory. Builds here run under unattended agents, where that turns a
+    // passing gate into a failure addressed to someone who is not there.
+    // Next advisories already fail CI through `npm audit` and arrive as
+    // Dependabot pull requests.
+    agentUpgrade: false,
   },
   images: {
     unoptimized: true,
@@ -71,16 +74,6 @@ const nextConfig = {
     `${HTML_LIMITED_BOT_UA_RE.source}|Googlebot|Google Favicon|Storebot|bingbot|GPTBot|OAI-SearchBot|ChatGPT-User|ClaudeBot|Claude-User|Claude-SearchBot|PerplexityBot|Perplexity-User|CCBot|Amazonbot|DuckAssistBot|Bytespider|Meta-ExternalAgent`,
     "i",
   ),
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        path: false,
-      };
-    }
-    return config;
-  },
   async rewrites() {
     return [
       {
