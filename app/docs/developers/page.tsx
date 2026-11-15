@@ -427,7 +427,7 @@ export default function DevelopersPage() {
             <InlineCode>package.json</InlineCode> is{" "}
             <InlineCode>{`{ "node": ">=22.0.0 <23.0.0" }`}</InlineCode>. There
             is no fallback to Node 20 and no jump to 24 either: the Dockerfile
-            builds and runs on <InlineCode>node:22.23.4-alpine</InlineCode>, and
+            builds and runs on <InlineCode>node:22.23.5-alpine</InlineCode>, and
             CI runs the full lint, typecheck, test, and build matrix on Node 22
             only. Match that locally.
           </p>
@@ -436,7 +436,7 @@ export default function DevelopersPage() {
           <li>
             <strong className="text-foreground">Node.js 22 LTS</strong> (the{" "}
             <InlineCode>.nvmrc</InlineCode> at the repo root pins{" "}
-            <InlineCode>22.23.4</InlineCode>, the same patch the Dockerfile and
+            <InlineCode>22.23.5</InlineCode>, the same patch the Dockerfile and
             CI pin)
           </li>
           <li>
@@ -478,7 +478,7 @@ export default function DevelopersPage() {
         <CodeBlock
           language="bash"
           code={`# nvm / fnm / volta / asdf will all auto-pick this from the repo root
-nvm use          # reads .nvmrc (which pins 22.23.4)
+nvm use          # reads .nvmrc (which pins 22.23.5)
 
 # or install + use explicitly
 nvm install 22

@@ -582,8 +582,8 @@ jobs:
             } > "$full_file"
             head -c 60000 "$full_file" > "$body_file"
 
-            number=$(gh issue list --state open --search "\"${title}\" in:title" --json number,title --limit 30 \
-              | jq -r --arg t "$title" '[.[] | select(.title == $t)] | .[0].number // empty')
+            number=$(gh issue list --state open --author app/github-actions --search "\"${title}\" in:title" --json number,title,author --limit 30 \
+              | jq -r --arg t "$title" '[.[] | select(.title == $t and ((.author.login // "") | sub("^app/"; "")) == "github-actions")] | .[0].number // empty')
             if [ -n "$number" ]; then
               gh issue edit "$number" --body-file "$body_file"
               echo "${id}: updated issue #${number}"
