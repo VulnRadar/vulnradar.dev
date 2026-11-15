@@ -223,6 +223,18 @@ for the merge commit, which a push made with the workflow token never does.
 Minor and major bumps wait for a person, and the `dependabot-merge-ignore`
 label opts a pull request out.
 
+Two of Dependabot's pull requests always need a commit from a person before
+they can pass. `.github/tools/Dockerfile` names the Postgres image the CI
+services run and the BuildKit the publish jobs run, so that Dependabot sees
+them, but Dependabot cannot edit a workflow file, and
+`tests/repo/workflow-hardening.test.ts` fails until the workflows match the
+Dockerfile. When a `postgres` or `moby/buildkit` bump arrives for
+`/.github/tools`, push a commit onto its branch that copies the new reference
+into every Postgres service `image:` (`ci.yml`, `docker-publish-arm64.yml`,
+`image-arm64.yml`) or into the `driver-opts:` of both publish workflows. A
+Postgres tag change also opens a second pull request for `docker-compose.yml`;
+put its change on the same branch and close it.
+
 ## Translations
 
 The app speaks more than one language, and the wording lives under

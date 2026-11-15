@@ -216,6 +216,20 @@ updates:
       # the two references workflows repeat: the services Postgres and the
       # publish jobs' BuildKit. A workflow names an image Dependabot cannot
       # see, so .github/tools/Dockerfile names it where it can.
+      #
+      # That makes Dependabot NOTICE a new postgres or buildkit, not land it.
+      # It cannot edit a workflow's `image:` or `driver-opts:`, and
+      # tests/repo/workflow-hardening.test.ts requires those to equal the
+      # stage, so a postgres or moby/buildkit PR from here fails Test until
+      # someone pushes the rest of the bump onto its branch: the `image:` of
+      # every Postgres service (ci.yml, docker-publish-arm64.yml,
+      # image-arm64.yml) for postgres, the `driver-opts:` of
+      # docker-publish.yml and docker-publish-arm64.yml for buildkit. A
+      # postgres tag change also arrives a second time from the
+      # docker-compose block below, which updates docker-compose.yml's tag;
+      # land both in one branch and close the other PR. A red check here
+      # means the follow-up commit is missing, not that the bump is wrong,
+      # and the auto-merge gate leaves it for a person either way.
       - "/.github/tools"
     schedule:
       interval: "weekly"

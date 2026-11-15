@@ -609,6 +609,14 @@ describe("the jobs that publish or sign", () => {
   );
 });
 
+/**
+ * Dependabot bumps the postgres and buildkit stages of .github/tools/Dockerfile
+ * but cannot edit a workflow, so the first failure a bump hits is one of the
+ * tests below. Say what the missing half is.
+ */
+const FOLLOW_UP =
+  "a Dependabot bump of .github/tools/Dockerfile needs the same reference copied here by hand (CONTRIBUTING.md, Dependabot)";
+
 describe(".github/tools/Dockerfile", () => {
   it("pins every stage to a tag and a digest", () => {
     const froms = toolsDockerfile
@@ -640,12 +648,12 @@ describe(".github/tools/Dockerfile", () => {
       (m) => m[1],
     );
     expect(services.length).toBeGreaterThanOrEqual(2);
-    for (const image of services) expect(image).toBe(pg);
+    for (const image of services) expect(image, FOLLOW_UP).toBe(pg);
     const compose = /^ {4}image:\s*(postgres:\S+)\s*$/m.exec(
       readRepo("docker-compose.yml"),
     );
     expect(compose, "docker-compose.yml names a postgres image").not.toBeNull();
-    expect(pg!.split("@")[0]).toBe(compose![1]);
+    expect(pg!.split("@")[0], FOLLOW_UP).toBe(compose![1]);
   });
 
   it("is the BuildKit both publish jobs run", () => {
@@ -656,13 +664,28 @@ describe(".github/tools/Dockerfile", () => {
         /uses:\s*docker\/setup-buildx-action@/.test(s.code),
       );
       expect(setups.length, file).toBe(1);
-      expect(setups[0].code).toMatch(
+      expect(setups[0].code, `${file}: ${FOLLOW_UP}`).toMatch(
         new RegExp(
           `^ +driver-opts: image=${buildkit!.replace(/[.]/g, "[.]")}$`,
           "m",
         ),
       );
     }
+  });
+
+  it("says where Dependabot's postgres and buildkit bumps need a person", () => {
+    const dependabot = readRepo(".github/dependabot.yml");
+    expect(dependabot).toMatch(
+      /It cannot edit a workflow's `image:` or `driver-opts:`/,
+    );
+    const contributing = readRepo("CONTRIBUTING.md");
+    expect(contributing).toContain("Dependabot cannot edit a workflow file");
+    for (const file of [
+      "ci.yml",
+      "docker-publish-arm64.yml",
+      "image-arm64.yml",
+    ])
+      expect(contributing).toContain(`\`${file}\``);
   });
 
   it("is watched by Dependabot, as are the composite actions", () => {
@@ -695,7 +718,8 @@ describe("every Postgres service", () => {
         "image-arm64.yml",
       ]),
     );
-    for (const { file, image } of found) expect(image, file).toBe(pg);
+    for (const { file, image } of found)
+      expect(image, `${file}: ${FOLLOW_UP}`).toBe(pg);
   });
 });
 
