@@ -423,7 +423,9 @@ jobs:
     name: Lighthouse
     needs: image
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Twelve pages, three runs each, at about 65 seconds a run on the first
+    # pull request that ran it: 39 minutes, plus boot and the assertions.
+    timeout-minutes: 55
     permissions:
       contents: read
 

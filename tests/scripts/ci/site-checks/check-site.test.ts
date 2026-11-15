@@ -119,7 +119,7 @@ async function serve(
           p,
         ),
     );
-  const routes = new Map(Object.entries(pages));
+  const routes = Object.entries(pages);
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const url = req.url ?? "/";
     hits.push({
@@ -149,11 +149,14 @@ async function serve(
     }
     if (url === "/og.png")
       return send(200, { "content-type": "image/png" }, "png");
-    const entry = routes.get(url.split("?")[0]);
+    const path = url.split("?")[0];
+    const entry = routes.find(([p]) => p === path)?.[1];
     if (entry === undefined)
       return send(404, { "content-type": "text/html" }, "missing");
     if (typeof entry === "string")
       return send(200, { "content-type": "text/html" }, entry);
+    if (typeof entry !== "function")
+      return send(500, { "content-type": "text/html" }, "bad route");
     const out = entry(req);
     return send(
       out.status ?? 200,

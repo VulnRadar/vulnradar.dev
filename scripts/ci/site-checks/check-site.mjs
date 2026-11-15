@@ -87,17 +87,50 @@ export function attributesOf(tag) {
   return attrs;
 }
 
+/** Whether the character after a tag name ends the name. */
+function endsTagName(ch) {
+  return ch === undefined || /[\s/>]/.test(ch);
+}
+
+/**
+ * The document with every <tag> element cut out, the way a browser's parser
+ * ends one: at the first </tag, whatever sits between the name and its ">",
+ * or at the end of the input when it is never closed.
+ */
+function withoutElement(html, tag) {
+  const lower = html.toLowerCase();
+  const open = `<${tag}`;
+  const close = `</${tag}`;
+  let out = "";
+  let i = 0;
+  for (;;) {
+    const start = lower.indexOf(open, i);
+    if (start === -1) return out + html.slice(i);
+    if (!endsTagName(lower[start + open.length])) {
+      out += html.slice(i, start + 1);
+      i = start + 1;
+      continue;
+    }
+    out += html.slice(i, start);
+    let end = lower.indexOf(close, start + open.length);
+    while (end !== -1 && !endsTagName(lower[end + close.length])) {
+      end = lower.indexOf(close, end + 1);
+    }
+    if (end === -1) return out;
+    const gt = lower.indexOf(">", end);
+    if (gt === -1) return out;
+    i = gt + 1;
+  }
+}
+
 // Repeated until nothing changes, so a tag split around another one cannot
-// survive a single pass. An end tag may carry whitespace and junk before its
-// ">", which browsers still accept as the end of the element.
+// survive a single pass.
 function withoutScriptsAndStyles(html) {
   let out = html;
   let previous;
   do {
     previous = out;
-    out = out
-      .replace(/<script\b[\s\S]*?<\/script\b[^>]*>/gi, "")
-      .replace(/<style\b[\s\S]*?<\/style\b[^>]*>/gi, "");
+    out = withoutElement(withoutElement(out, "script"), "style");
   } while (out !== previous);
   return out;
 }
@@ -319,7 +352,14 @@ export async function checkSite({ base, concurrency = 6, fetchImpl = fetch }) {
     return fetchImpl(target, {
       method,
       redirect: "manual",
-      headers: { "user-agent": ua, accept: "text/html,application/xml,*/*" },
+      // X-Forwarded-Proto: https, as the TLS terminator the image runs behind
+      // sends. Without it the app answers plain HTTP with a redirect to
+      // https, and every page would read as a 301.
+      headers: {
+        "user-agent": ua,
+        accept: "text/html,application/xml,*/*",
+        "x-forwarded-proto": "https",
+      },
       signal: AbortSignal.timeout(30_000),
     });
   }
