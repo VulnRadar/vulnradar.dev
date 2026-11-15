@@ -638,12 +638,14 @@ instrumentation.ts (server startup only)
   ├── Extension (typecheck, format check, build and package)
   ├── Build (next build)
   ├── Self-host smoke test (builds the image, boots it on an empty database, self-scans every published route)
-  └── Package versions (pull requests only, report-only: a CLI or extension change without a version bump)
+  ├── Package versions (pull requests only, report-only: a CLI or extension change without a version bump)
+  └── Scan gate action (runs .github/actions/scan-gate on Linux, macOS and Windows against a stand-in API on loopback)
 
 On tag v*
   └── Docker publish (ghcr.io/${`<owner>`}/${`<repo>`})
 
 On PR
+  ├── ARM64 image (pull requests that change the image, and weekly: builds and boots it on an ARM runner)
   ├── Label
   └── Dependabot → auto-merge patch only
 

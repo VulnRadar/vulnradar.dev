@@ -2161,13 +2161,22 @@ export default function APIDocsPage() {
           poll loop yourself.
         </p>
         <CodeBlock
-          code={`- uses: ${APP_REPO}/.github/actions/scan-gate@v${APP_VERSION}
-  with:
-    url: https://your-staging-url.com
-    api-key: \${{ secrets.VULNRADAR_TOKEN }}
-    # Optional, both default to 0:
-    max-critical: 0
-    max-high: 0`}
+          code={`jobs:
+  vulnradar:
+    runs-on: ubuntu-latest
+    # A scan finishes in minutes; this stops a stuck one holding a runner.
+    timeout-minutes: 15
+    # The gate reads nothing from the repository and writes nothing to it.
+    permissions:
+      contents: read
+    steps:
+      - uses: ${APP_REPO}/.github/actions/scan-gate@v${APP_VERSION}
+        with:
+          url: https://your-staging-url.com
+          api-key: \${{ secrets.VULNRADAR_TOKEN }}
+          # Optional, both default to 0:
+          max-critical: 0
+          max-high: 0`}
           language="yaml"
         />
         <p className="max-w-[68ch] text-sm text-muted-foreground">

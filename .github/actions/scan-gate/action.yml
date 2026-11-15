@@ -100,6 +100,20 @@ runs:
       run: |
         set -euo pipefail
 
+        # security: the key is masked before anything else runs, so the runner
+        # prints *** wherever it would appear later in this job's log, from
+        # this step or any other. A key with a line break in it is refused
+        # unprinted: a mask covers one line, and the rest would be logged.
+        case "$VR_API_KEY" in
+          *[[:cntrl:]]*)
+            echo "::error::api-key contains a line break or another control character. Store the key as the secret's whole value, with nothing around it."
+            exit 2
+            ;;
+        esac
+        if [ -n "$VR_API_KEY" ]; then
+          echo "::add-mask::$VR_API_KEY"
+        fi
+
         # Exit codes match the vulnradar CLI: 1 when the scan ran and a
         # threshold was exceeded, 2 when it could not run, 3 when it ran but
         # did not check the target (a bot challenge, or the page could not be
@@ -158,6 +172,25 @@ runs:
             exit 2
             ;;
         esac
+        # Empty follows the scan (below). Anything else has to be a whole
+        # number: the deadline is computed from it.
+        case "$VR_TIMEOUT" in
+          *[!0-9]*)
+            echo "::error::timeout-seconds must be a whole number of seconds, got '$(log_safe "$VR_TIMEOUT")'."
+            exit 2
+            ;;
+        esac
+
+        # security: the key goes in an Authorization header on every request.
+        # Over plain http anything between the runner and the API reads it,
+        # which is only acceptable when the API is on the runner itself.
+        case "$VR_API_BASE" in
+          https://*) ;;
+          "http://127.0.0.1:"* | "http://127.0.0.1/"* | "http://localhost:"* | "http://localhost/"* | "http://[::1]:"* | "http://[::1]/"*) ;;
+          *)
+            echo "::warning::api-base-url is not https and not a loopback address, so the API key is sent unencrypted."
+            ;;
+        esac
 
         if [ "$VR_CRAWL" = "true" ]; then
           endpoint="$VR_API_BASE/scan/crawl"
@@ -165,11 +198,24 @@ runs:
           endpoint="$VR_API_BASE/scan"
         fi
 
+        # The URL as the log shows it. A query string or a user:password@ in
+        # it can carry a token for the site being scanned, and the log is
+        # often public, so both are dropped, and the rest goes through
+        # log_safe like everything else a caller chose.
+        url_shown=$(printf '%s' "${VR_URL%%[?#]*}" | sed -E 's#//[^/@]*@#//#')
+        url_shown=$(log_safe "$url_shown")
+
+        # security: the key reaches curl on stdin (-H @-), never on its command
+        # line, where any process on the runner can read it. Every request is
+        # bounded, so a server that accepts the connection and then says
+        # nothing cannot hold the job until its own timeout.
+
         # jq builds the body: a URL interpolated into a JSON string broke the
         # request on the first double quote or backslash in it.
         create_body_json=$(jq -n --arg url "$VR_URL" '{url: $url}')
-        create_response=$(curl -sS -w '\n%{http_code}' -X POST "$endpoint" \
-          -H "Authorization: Bearer $VR_API_KEY" \
+        create_response=$(printf 'Authorization: Bearer %s\n' "$VR_API_KEY" |
+          curl -sS --connect-timeout 10 --max-time 60 -w '\n%{http_code}' -X POST "$endpoint" \
+          -H @- \
           -H "Content-Type: application/json" \
           -d "$create_body_json" || printf '\n000')
         create_status="${create_response##*$'\n'}"
@@ -198,13 +244,12 @@ runs:
             exit 2
             ;;
         esac
-        echo "Started scan $scan_id for $VR_URL"
+        echo "Started scan $scan_id for $url_shown"
         echo "scan-id=$scan_id" >> "$GITHUB_OUTPUT"
 
         # POST /scan runs as a background job -- it returns {scanId, status}
         # immediately, never findings/summary. The result only shows up once
         # GET /scan/status/{id} reports status=completed.
-        elapsed=0
         status="running"
         result=""
         # An unset timeout follows the scan, matching cli/lib.mjs.
@@ -223,10 +268,15 @@ runs:
           fi
         fi
 
+        # Wall clock, not a sum of poll intervals: every poll also spends
+        # however long its request took, so the sum let a slow API run the
+        # wait well past timeout-seconds.
+        deadline=$(( $(date +%s) + VR_TIMEOUT ))
         failures=0
-        while [ "$elapsed" -lt "$VR_TIMEOUT" ]; do
-          status_response=$(curl -sS -w '\n%{http_code}' \
-            -H "Authorization: Bearer $VR_API_KEY" \
+        while [ "$(date +%s)" -lt "$deadline" ]; do
+          status_response=$(printf 'Authorization: Bearer %s\n' "$VR_API_KEY" |
+            curl -sS --connect-timeout 10 --max-time 60 -w '\n%{http_code}' \
+            -H @- \
             "$VR_API_BASE/scan/status/$scan_id" || printf '\n000')
           status_code="${status_response##*$'\n'}"
           status_body="${status_response%$'\n'*}"
@@ -245,7 +295,6 @@ runs:
             fi
             echo "::warning::Status poll failed (HTTP $status_code); retrying ($failures/5)."
             sleep "$VR_POLL_INTERVAL"
-            elapsed=$((elapsed + VR_POLL_INTERVAL))
             continue
           fi
           failures=0
@@ -270,7 +319,6 @@ runs:
           fi
 
           sleep "$VR_POLL_INTERVAL"
-          elapsed=$((elapsed + VR_POLL_INTERVAL))
         done
 
         if [ -z "$result" ]; then
@@ -365,7 +413,7 @@ runs:
         echo "incomplete=$incomplete" >> "$GITHUB_OUTPUT"
 
         {
-          echo "### VulnRadar scan of $VR_URL"
+          echo "### VulnRadar scan of $url_shown"
           echo ""
           echo "| Severity | Count |"
           echo "|---|---|"
@@ -407,8 +455,9 @@ runs:
         # severity thresholds are the contract, the report is the evidence.
         echo "sarif-file=" >> "$GITHUB_OUTPUT"
         if [ -n "$VR_SARIF_FILE" ]; then
-          sarif_status=$(curl -sS -o "$VR_SARIF_FILE" -w '%{http_code}' \
-            -H "Authorization: Bearer $VR_API_KEY" \
+          sarif_status=$(printf 'Authorization: Bearer %s\n' "$VR_API_KEY" |
+            curl -sS --connect-timeout 10 --max-time 120 -o "$VR_SARIF_FILE" -w '%{http_code}' \
+            -H @- \
             "$VR_API_BASE/history/$scan_id/report?format=sarif" || echo "000")
           if [ "$sarif_status" = "200" ]; then
             echo "sarif-file=$VR_SARIF_FILE" >> "$GITHUB_OUTPUT"

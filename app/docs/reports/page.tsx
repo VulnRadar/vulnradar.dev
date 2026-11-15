@@ -388,19 +388,28 @@ export default function ReportsDocsPage() {
             findings appear on the Security tab, annotated against the target.
           </p>
           <CodeBlock
-            code={`- name: Scan with ${APP_NAME}
-  id: vulnradar
-  uses: ${APP_REPO}/.github/actions/scan-gate@v${APP_VERSION} # pinned to this release
-  with:
-    url: https://your-staging-url.com
-    api-key: \${{ secrets.VULNRADAR_TOKEN }}
+            code={`jobs:
+  vulnradar:
+    runs-on: ubuntu-latest
+    # A scan finishes in minutes; this stops a stuck one holding a runner.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write # only for the upload step
+    steps:
+      - name: Scan with ${APP_NAME}
+        id: vulnradar
+        uses: ${APP_REPO}/.github/actions/scan-gate@v${APP_VERSION} # pinned to this release
+        with:
+          url: https://your-staging-url.com
+          api-key: \${{ secrets.VULNRADAR_TOKEN }}
 
-- name: Upload to code scanning
-  # always(), so the findings still arrive when the gate fails the job.
-  if: \${{ always() && steps.vulnradar.outputs.sarif-file != '' }}
-  uses: github/codeql-action/upload-sarif@v3
-  with:
-    sarif_file: \${{ steps.vulnradar.outputs.sarif-file }}`}
+      - name: Upload to code scanning
+        # always(), so the findings still arrive when the gate fails the job.
+        if: \${{ always() && steps.vulnradar.outputs.sarif-file != '' }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: \${{ steps.vulnradar.outputs.sarif-file }}`}
             language="yaml"
           />
         </DocsSubSection>

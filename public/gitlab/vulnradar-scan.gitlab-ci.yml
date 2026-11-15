@@ -104,6 +104,18 @@ vulnradar_scan:
       if [ -z "${VR_TIMEOUT:-}" ]; then
         if [ "$VR_CRAWL" = "true" ]; then VR_TIMEOUT=900; else VR_TIMEOUT=300; fi
       fi
+      case "$VR_TIMEOUT" in
+        ''|*[!0-9]*) printf '%s\n' "VR_TIMEOUT must be a whole number of seconds, got '$(log_safe "$VR_TIMEOUT")'."; exit 2 ;;
+      esac
+
+      # The token goes in an Authorization header on every request. Over
+      # plain http anything between the runner and the API reads it, which is
+      # only acceptable when the API is on the runner itself.
+      case "$VR_API_BASE" in
+        https://*) ;;
+        "http://127.0.0.1:"* | "http://127.0.0.1/"* | "http://localhost:"* | "http://localhost/"* | "http://[::1]:"* | "http://[::1]/"*) ;;
+        *) echo "Warning: VR_API_BASE is not https and not a loopback address, so VULNRADAR_TOKEN is sent unencrypted." ;;
+      esac
 
       if [ "$VR_CRAWL" = "true" ]; then
         endpoint="$VR_API_BASE/scan/crawl"
@@ -115,9 +127,15 @@ vulnradar_scan:
       # scanId, never findings -- the result appears on GET /scan/status/{id}.
       # jq builds the body: a URL interpolated into a JSON string broke the
       # request on the first double quote or backslash in it.
+      #
+      # The token reaches curl on stdin (-H @-), never on its command line,
+      # where any process on the runner can read it. Every request is
+      # bounded, so a server that accepts the connection and then says
+      # nothing cannot hold the job until GitLab's timeout.
       body=$(jq -n --arg url "$VR_URL" '{url: $url}')
-      code=$(curl -sS -o resp.json -w '%{http_code}' -X POST "$endpoint" \
-        -H "Authorization: Bearer $VULNRADAR_TOKEN" \
+      code=$(printf 'Authorization: Bearer %s\n' "$VULNRADAR_TOKEN" |
+        curl -sS --connect-timeout 10 --max-time 60 -o resp.json -w '%{http_code}' -X POST "$endpoint" \
+        -H @- \
         -H "Content-Type: application/json" \
         -d "$body" || echo 000)
       if [ "$code" -ge 300 ] || [ "$code" = "000" ]; then
@@ -134,15 +152,20 @@ vulnradar_scan:
       case "$scan_id" in
         *[!A-Za-z0-9_-]*) echo "The API returned a scan id that cannot be used in a URL."; exit 2 ;;
       esac
-      echo "Started scan $scan_id for $VR_URL"
+      # A query string or a user:password@ in the URL can carry a token for
+      # the site being scanned, so the log shows neither.
+      url_shown=$(printf '%s' "${VR_URL%%[?#]*}" | sed -E 's#//[^/@]*@#//#')
+      printf '%s\n' "Started scan $scan_id for $(log_safe "$url_shown")"
 
-      # Poll until it completes.
-      elapsed=0
+      # Poll until it completes, against the wall clock: every poll also
+      # spends however long its request took.
+      deadline=$(( $(date +%s) + VR_TIMEOUT ))
       done=false
       failures=0
-      while [ "$elapsed" -lt "$VR_TIMEOUT" ]; do
-        code=$(curl -sS -o status.json -w '%{http_code}' \
-          -H "Authorization: Bearer $VULNRADAR_TOKEN" \
+      while [ "$(date +%s)" -lt "$deadline" ]; do
+        code=$(printf 'Authorization: Bearer %s\n' "$VULNRADAR_TOKEN" |
+          curl -sS --connect-timeout 10 --max-time 60 -o status.json -w '%{http_code}' \
+          -H @- \
           "$VR_API_BASE/scan/status/$scan_id" || echo 000)
         if [ "$code" = "401" ] || [ "$code" = "403" ]; then
           echo "Not authorized to read scan $scan_id (HTTP $code)."; exit 2
@@ -157,7 +180,6 @@ vulnradar_scan:
           fi
           echo "Status poll failed (HTTP $code); retrying ($failures/5)."
           sleep "$VR_POLL_INTERVAL"
-          elapsed=$((elapsed + VR_POLL_INTERVAL))
           continue
         fi
         failures=0
@@ -173,7 +195,6 @@ vulnradar_scan:
           printf '%s\n' "Scan failed: $(log_safe "$reason")"; exit 2
         fi
         sleep "$VR_POLL_INTERVAL"
-        elapsed=$((elapsed + VR_POLL_INTERVAL))
       done
       if [ "$done" != "true" ]; then
         echo "Timed out after ${VR_TIMEOUT}s waiting for scan $scan_id to complete."; exit 2

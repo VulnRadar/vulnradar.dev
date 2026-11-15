@@ -84,15 +84,26 @@ describe("Where things live", () => {
 
 describe("the CI/CD block", () => {
   // Job ids at two spaces, each followed by its display name.
-  const ciJobs = [
-    ...read(".github/workflows/ci.yml").matchAll(
-      /^ {2}[a-z][a-z0-9_-]*:\n {4}name: (.+)$/gm,
-    ),
-  ].map((m) => m[1].trim());
+  const ci = read(".github/workflows/ci.yml");
+  const allJobs = [
+    ...ci.matchAll(/^ {2}([a-z][a-z0-9_-]*):\n {4}name: (.+)$/gm),
+  ].map((m) => ({ id: m[1], name: m[2].trim() }));
+  // A matrix job's name carries an expression, one check per leg. The page
+  // names the aggregate job that needs it instead, the one stable name.
+  const isMatrix = (name: string) => name.includes("${{");
+  const ciJobs = allJobs.filter((j) => !isMatrix(j.name)).map((j) => j.name);
 
   it("parsed the workflow", () => {
     expect(ciJobs).toContain("Integration");
     expect(ciJobs.length).toBeGreaterThan(4);
+  });
+
+  it("leaves out only matrix jobs that a listed job needs", () => {
+    for (const job of allJobs.filter((j) => isMatrix(j.name))) {
+      expect(ci, `a job named on the page needs ${job.id}`).toMatch(
+        new RegExp(`^ {4}needs: \\[${job.id}\\]$`, "m"),
+      );
+    }
   });
 
   it("names exactly the jobs ci.yml runs, in order", () => {

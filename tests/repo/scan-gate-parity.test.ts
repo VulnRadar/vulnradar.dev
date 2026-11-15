@@ -213,7 +213,7 @@ function runGateInputs(
     writeFileSync(
       file,
       [
-        `curl() { echo "curl $*" >> '${calls}'; return 7; }`,
+        `curl() { echo "curl $*" >> '${calls}'; case " $* " in *" @- "*) cat > /dev/null ;; esac; return 7; }`,
         `jq() { echo "jq $*" >> '${calls}'; echo '{}'; }`,
         script,
       ].join("\n"),
@@ -360,6 +360,9 @@ function runGateStart(script: string, shell: "bash" | "sh", scanId: string) {
       [
         "curl() {",
         `  printf '%s\\n' "curl $*" >> '${calls}'`,
+        // The key arrives on stdin (-H @-). Drained as curl drains it, so the
+        // printf feeding it never writes into a pipe this has closed.
+        `  case " $* " in *" @- "*) cat > /dev/null ;; esac`,
         "  code=401; out=''; prev=''",
         '  for arg in "$@"; do',
         '    case "$arg" in POST) code=201 ;; esac',
@@ -1173,5 +1176,228 @@ describe("where the files send you for a key", () => {
     expect(CLI_README).not.toMatch(/25\/50\/100\/250/);
     expect(ACTION).not.toMatch(/from 25 upwards/);
     expect(GITLAB).not.toMatch(/starts at 25/);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* The caller's key and the scanned URL in the log.                          */
+/* ------------------------------------------------------------------------ */
+
+/** Every curl invocation in a script: its own line plus its continuations. */
+function curlInvocations(
+  script: string,
+): { at: number; text: string; fed: string }[] {
+  const lines = script.split("\n");
+  const found: { at: number; text: string; fed: string }[] = [];
+  lines.forEach((line, i) => {
+    if (line.trim().startsWith("#")) return;
+    if (!/(^|[\s(|])curl\s/.test(line)) return;
+    const parts = [line];
+    for (
+      let j = i;
+      j < lines.length - 1 && lines[j].trimEnd().endsWith("\\");
+      j++
+    ) {
+      parts.push(lines[j + 1]);
+    }
+    found.push({ at: i, text: parts.join("\n"), fed: lines[i - 1] ?? "" });
+  });
+  return found;
+}
+
+describe.each([
+  ["action.yml", ACTION_SH, "VR_API_KEY"],
+  ["the GitLab template", GITLAB_SH, "VULNRADAR_TOKEN"],
+])("%s keeps the key off curl's command line", (_name, script, keyVar) => {
+  const calls = curlInvocations(script);
+
+  it("finds every request", () => {
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("sends the header on stdin, fed by printf, on every call", () => {
+    for (const call of calls) {
+      expect(call.text, call.text).not.toMatch(/Authorization: Bearer \$/);
+      expect(call.text, call.text).toMatch(/^\s+-H @- \\$/m);
+      expect(call.fed.trim(), call.text).toBe(
+        `${call.fed.trim().split("$(")[0]}$(printf 'Authorization: Bearer %s\\n' "$${keyVar}" |`,
+      );
+    }
+  });
+
+  it("bounds every request", () => {
+    for (const call of calls) {
+      expect(call.text, call.text).toMatch(/--connect-timeout 10 /);
+      expect(call.text, call.text).toMatch(/--max-time (60|120) /);
+    }
+  });
+
+  it("waits against the wall clock, not a sum of poll intervals", () => {
+    expect(script).toContain("deadline=$(( $(date +%s) + VR_TIMEOUT ))");
+    expect(script).toContain('while [ "$(date +%s)" -lt "$deadline" ]; do');
+    expect(script).not.toMatch(/elapsed/);
+  });
+
+  it("prints the scanned URL only through log_safe, without its query or userinfo", () => {
+    const allowed = [
+      // The emptiness check, which prints no part of it.
+      /^if \[ -z "\$\{VR_URL:-\}" \]; then$/,
+      /^echo "VR_URL is empty[.] Set it to the URL you want scanned[.]"; exit 2$/,
+      // The request body, built by jq.
+      /^[a-z_]+=\$\(jq -n --arg url "\$VR_URL" '\{url: \$url\}'\)$/,
+      // The one copy that is printed.
+      /^url_shown=\$\(printf '%s' "\$\{VR_URL%%\[\?#\]\*\}" \| sed -E 's#\/\/\[\^\/@\]\*@#\/\/#'\)$/,
+    ];
+    const uses = script
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("#"))
+      .filter((l) => /\$\{?VR_URL/.test(l))
+      .map((l) => l.trim());
+    expect(uses.some((l) => l.startsWith("url_shown="))).toBe(true);
+    for (const use of uses) {
+      expect(
+        allowed.some((re) => re.test(use)),
+        use,
+      ).toBe(true);
+    }
+    expect(script).toMatch(/log_safe "\$url_shown"/);
+  });
+});
+
+it("action.yml masks the key before anything can print it", () => {
+  const lines = ACTION_SH.split("\n");
+  const mask = lines.findIndex(
+    (l) => l.trim() === 'echo "::add-mask::$VR_API_KEY"',
+  );
+  expect(mask).toBeGreaterThan(-1);
+  expect(lines[mask - 1].trim()).toBe('if [ -n "$VR_API_KEY" ]; then');
+  expect(mask).toBeLessThan(curlInvocations(ACTION_SH)[0].at);
+  // Only the control-character refusal runs before it, and it prints no
+  // part of the key.
+  const before = lines
+    .slice(0, mask - 1)
+    .filter((l) => l.trim() !== "" && !l.trim().startsWith("#"))
+    .filter((l) => l.includes("VR_API_KEY"));
+  expect(before.map((l) => l.trim())).toEqual(['case "$VR_API_KEY" in']);
+});
+
+describe.skipIf(!shellAvailable)("what the runs send and print", () => {
+  // Built at run time, so it is in no file.
+  const KEY = ["vr", "ci", "argv", "probe", "7f3a"].join("-");
+
+  function runWithKey(
+    script: string,
+    shell: "bash" | "sh",
+    scenario: Record<string, string>,
+  ) {
+    const dir = mkdtempSync(path.join(tmpdir(), "scan-gate-key-"));
+    try {
+      const slash = (p: string) => p.replace(/\\/g, "/");
+      const argv = slash(path.join(dir, "argv.log"));
+      const stdin = slash(path.join(dir, "stdin.log"));
+      const file = slash(path.join(dir, "gate.sh"));
+      writeFileSync(file, [STAND_IN_CURL, STAND_IN_JQ, script].join("\n"));
+      const result = spawnSync(shell, [file], {
+        cwd: dir,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ...GATE_DEFAULTS,
+          VR_API_KEY: KEY,
+          VULNRADAR_TOKEN: KEY,
+          VR_POLL_INTERVAL: "0",
+          VR_SARIF_FILE: "report.sarif",
+          FAKE_STATUS_BODY:
+            '{"status":"completed","result":{"summary":{"critical":0,"high":0,"medium":0,"low":0,"total":0}}}',
+          FAKE_CURL_ARGV: argv,
+          FAKE_CURL_STDIN: stdin,
+          GITHUB_OUTPUT: slash(path.join(dir, "output.txt")),
+          GITHUB_STEP_SUMMARY: slash(path.join(dir, "summary.md")),
+          ...scenario,
+        },
+      });
+      return {
+        status: result.status,
+        out: `${result.stdout}${result.stderr}`,
+        argv: existsSync(argv) ? readFileSync(argv, "utf8") : "",
+        stdin: existsSync(stdin) ? readFileSync(stdin, "utf8") : "",
+      };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  describe.each([
+    ["action.yml", ACTION_SH, "bash" as const, 3],
+    ["the GitLab template", GITLAB_SH, "sh" as const, 2],
+  ])("%s", (_name, script, shell, requests) => {
+    it("never puts the key in curl's arguments, only on its stdin", () => {
+      const run = runWithKey(script, shell, {});
+      expect(run.status, run.out).toBe(0);
+      const calls = run.argv.split("\n").filter((l) => l === "--").length;
+      expect(calls, run.out).toBe(requests);
+      expect(run.argv).not.toContain(KEY);
+      expect(run.stdin.split(`Authorization: Bearer ${KEY}\n`)).toHaveLength(
+        requests + 1,
+      );
+      expect(run.argv).toContain("--max-time");
+    });
+
+    it("prints the key nowhere but in the mask command", () => {
+      const run = runWithKey(script, shell, {});
+      const masks = shell === "bash" ? 1 : 0;
+      expect(run.out.split(KEY)).toHaveLength(masks + 1);
+      if (masks) expect(run.out).toContain(`::add-mask::${KEY}`);
+    });
+
+    it("drops the query, the fragment and the userinfo from the URL it prints", () => {
+      const run = runWithKey(script, shell, {
+        VR_URL:
+          "https://someone:hunter2@scan-gate.test/app/page?token=t0ps3cret#frag",
+      });
+      expect(run.out).toContain(
+        "Started scan abc123 for https://scan-gate.test/app/page",
+      );
+      for (const leak of ["hunter2", "someone", "t0ps3cret", "#frag"]) {
+        expect(run.out).not.toContain(leak);
+      }
+    });
+
+    it.each([
+      ["http://scan-gate.test/api/v3", true],
+      ["http://10.0.0.5:3000/api/v3", true],
+      ["https://scan-gate.test/api/v3", false],
+      ["http://127.0.0.1:9/api/v3", false],
+      ["http://localhost:3000/api/v3", false],
+      ["http://[::1]:3000/api/v3", false],
+    ])("warns that %s sends the key unencrypted: %s", (base, warns) => {
+      const run = runGateInputs(script, shell, {
+        ...GATE_DEFAULTS,
+        VR_API_BASE: base,
+      });
+      expect(run.startedScan, run.out).toBe(true);
+      expect(
+        /not https and not a loopback address/.test(run.out),
+        run.out,
+      ).toBe(warns);
+    });
+
+    it("refuses a timeout it cannot count down, before any request", () => {
+      const run = runWithKey(script, shell, { VR_TIMEOUT: "1.5" });
+      expect(run.status, run.out).toBe(EXIT.ERROR);
+      expect(run.out).toMatch(/must be a whole number of seconds/);
+      expect(run.argv).toBe("");
+    });
+  });
+
+  it("action.yml refuses a key with a line break, without printing any of it", () => {
+    const run = runGateInputs(ACTION_SH, "bash", {
+      ...GATE_DEFAULTS,
+      VR_API_KEY: `firsthalf${NL}secondhalf`,
+    });
+    expect(run.status).toBe(EXIT.ERROR);
+    expect(run.startedScan).toBe(false);
+    expect(run.out).not.toContain("firsthalf");
+    expect(run.out).not.toContain("secondhalf");
   });
 });

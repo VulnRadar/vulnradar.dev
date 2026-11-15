@@ -922,3 +922,140 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: node scripts/ci/package-versions.mjs --mode pr --ref "$HEAD_SHA" --base "$BASE_SHA"
+
+  # The scan-gate composite action is what users add to their own CI, and it
+  # only ever ran in this repository as a script extracted by the repo tests.
+  # This runs it as an action, `uses: ./.github/actions/scan-gate`, on the
+  # three runner images people use, against a stand-in API on 127.0.0.1
+  # (tests/fixtures/scan-gate/mock-api.mjs), so nothing leaves the runner.
+  # The key is a fixed string the stand-in checks; it is not a key.
+  action-matrix:
+    name: Scan gate action on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          # Nothing is installed: the stand-in API is node:http only.
+          package-manager-cache: false
+
+      - name: Start the stand-in API on loopback
+        shell: bash
+        run: |
+          set -euo pipefail
+          port_file="$RUNNER_TEMP/scan-gate-mock-port"
+          log="$RUNNER_TEMP/scan-gate-mock.log"
+          rm -f "$port_file"
+          nohup node tests/fixtures/scan-gate/mock-api.mjs --port-file "$port_file" > "$log" 2>&1 &
+          for _ in $(seq 1 100); do
+            if [ -s "$port_file" ]; then break; fi
+            sleep 0.2
+          done
+          if [ ! -s "$port_file" ]; then
+            echo "::error::The stand-in API did not start within 20 seconds."
+            cat "$log" || true
+            exit 1
+          fi
+          echo "VR_MOCK_BASE=http://127.0.0.1:$(cat "$port_file")/api/v3" >> "$GITHUB_ENV"
+
+      - name: Clean scan passes
+        id: clean
+        uses: ./.github/actions/scan-gate
+        with:
+          url: https://clean.scan-gate.test/
+          api-key: vr-ci-not-a-key
+          api-base-url: ${{ env.VR_MOCK_BASE }}
+          poll-interval-seconds: "1"
+          sarif-file: ""
+
+      - name: Its outputs carry the counts
+        shell: bash
+        env:
+          CRITICAL: ${{ steps.clean.outputs.critical }}
+          HIGH: ${{ steps.clean.outputs.high }}
+          MEDIUM: ${{ steps.clean.outputs.medium }}
+          TOTAL: ${{ steps.clean.outputs.total }}
+          SCAN_ID: ${{ steps.clean.outputs.scan-id }}
+        run: |
+          set -euo pipefail
+          for pair in "critical:$CRITICAL" "high:$HIGH" "medium:$MEDIUM" "total:$TOTAL"; do
+            if [ "${pair#*:}" != "0" ]; then
+              echo "::error::The clean scan's ${pair%%:*} output is '${pair#*:}', expected 0."
+              exit 1
+            fi
+          done
+          if [ -z "$SCAN_ID" ]; then
+            echo "::error::The clean scan set no scan-id output."
+            exit 1
+          fi
+          echo "The clean scan passed with every count 0 (scan ${SCAN_ID})."
+
+      - name: Failing scan
+        id: failing
+        continue-on-error: true
+        uses: ./.github/actions/scan-gate
+        with:
+          url: https://failing.scan-gate.test/
+          api-key: vr-ci-not-a-key
+          api-base-url: ${{ env.VR_MOCK_BASE }}
+          poll-interval-seconds: "1"
+          sarif-file: ""
+
+      # The outcome alone would also be "failure" for a gate that could not
+      # reach the API at all; the counts say it judged the findings.
+      - name: The failing scan failed the gate
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.failing.outcome }}
+          CRITICAL: ${{ steps.failing.outputs.critical }}
+          HIGH: ${{ steps.failing.outputs.high }}
+        run: |
+          set -euo pipefail
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "::error::The failing scan's outcome is '$OUTCOME', expected failure."
+            exit 1
+          fi
+          if [ "$CRITICAL" != "2" ] || [ "$HIGH" != "1" ]; then
+            echo "::error::The failing scan reported critical=$CRITICAL high=$HIGH, expected 2 and 1."
+            exit 1
+          fi
+          echo "The failing scan failed the gate on 2 critical and 1 high."
+
+      - name: Stand-in API log on failure
+        if: failure()
+        shell: bash
+        run: cat "$RUNNER_TEMP/scan-gate-mock.log" || true
+
+  # The one check name the ruleset can require. Matrix leg names change
+  # whenever the matrix does; this one does not.
+  action:
+    name: Scan gate action
+    needs: [action-matrix]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+
+    steps:
+      - name: Every leg passed
+        env:
+          NEEDS_RESULT: ${{ needs.action-matrix.result }}
+        run: |
+          if [ "$NEEDS_RESULT" != "success" ]; then
+            echo "::error::The scan gate action did not pass on every runner: ${NEEDS_RESULT}."
+            exit 1
+          fi
