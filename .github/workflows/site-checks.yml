@@ -1,0 +1,483 @@
+name: Site checks
+
+# A passive security scan, a deeper weekly one, and Lighthouse, run against
+# the image this job builds from the commit and boots on the runner. Nothing
+# here is aimed at anything else: ZAP runs on a Docker network with no route
+# out, so the only thing it can reach is the container beside it, and the one
+# step that proves the network has no egress asks for our own robots.txt and
+# must fail. tests/repo/external-targets.test.ts holds every target to that.
+#
+# Not a required check: it is path-filtered, so most pull requests never run
+# it, and a required check that does not run blocks the merge. It starts as a
+# report; the rules and floors are in .github/zap and .github/lighthouse, each
+# with its reason.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "components/**"
+      - "hooks/**"
+      - "lib/**"
+      - middleware.ts
+      - next.config.mjs
+      - "public/**"
+      - server.mjs
+      - Dockerfile
+      - .dockerignore
+      - package.json
+      - package-lock.json
+      - ".github/zap/**"
+      - ".github/lighthouse/**"
+      - ".github/tools/**"
+      - .github/workflows/site-checks.yml
+  schedule:
+    - cron: "30 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      full_zap:
+        description: "Also run the ZAP full scan (it runs weekly on its own)"
+        type: boolean
+        default: false
+
+# Only a pull request's superseded run is worth cancelling; the weekly and
+# manual runs report on main and always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Nothing at the top level: each job states the one scope it uses.
+permissions: {}
+
+jobs:
+  image:
+    name: Build the image for site checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # security: nothing in this job pushes with git, so no token stays
+          # behind in .git/config for the Docker build or a later step.
+          persist-credentials: false
+
+      - name: Build the image
+        # build.invalid is the same sentinel the Self-host smoke test builds
+        # with: it can never resolve.
+        run: docker build --build-arg NEXT_PUBLIC_APP_URL=https://build.invalid -t vulnradar:site .
+
+      - name: Save the image for the jobs that boot it
+        run: |
+          set -euo pipefail
+          docker save vulnradar:site -o "$RUNNER_TEMP/site-image.tar"
+          gzip -1 -c "$RUNNER_TEMP/site-image.tar" > "$RUNNER_TEMP/site-image.tar.gz"
+
+      - name: Upload the image
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site-image
+          path: ${{ runner.temp }}/site-image.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Build the pinned vulnerability scanner
+        run: docker build --target grype -t vr-grype .github/tools
+
+      - name: Report known vulnerabilities in the image
+        # Reports and never fails. The base image changes under the repository
+        # even when a diff does not, so a pull request gate on it would turn
+        # red for reasons outside the pull request; the weekly run in
+        # scheduled.yml is the one that fails, on the published image. Only
+        # findings with a fix are listed, since the rest cannot be acted on.
+        # The scanner reads the saved image from disk and contacts no target.
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/grype.txt"
+          docker run --rm -v "$RUNNER_TEMP:/w" vr-grype docker-archive:/w/site-image.tar --only-fixed -o table > "$report" || true
+          {
+            echo "### Fixed vulnerabilities in the image"
+            echo ""
+            if [ -s "$report" ]; then
+              echo '```'
+              head -c 60000 "$report"
+              echo '```'
+            else
+              echo "None reported, or the scanner could not run."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  zap-baseline:
+    name: ZAP baseline
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the image
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site-image
+          path: ${{ runner.temp }}/site-image
+
+      - name: Load the image and build the pinned tools
+        run: |
+          set -euo pipefail
+          gunzip -c "$RUNNER_TEMP/site-image/site-image.tar.gz" | docker load
+          docker build --target zap -t vr-zap .github/tools
+          docker build --target postgres -t vr-postgres .github/tools
+
+      - name: Start the app on a network with no way out
+        # --internal: containers on it reach each other by name and nothing
+        # else. The app gets only the settings it needs to boot, so there is
+        # no SMTP, Stripe, Discord, AI, Browserbase or Turnstile variable, and
+        # it can send no mail and spend no credit.
+        run: |
+          set -euo pipefail
+          docker network create --internal vr-sandbox
+          docker run -d --name vr-db --network vr-sandbox \
+            -e POSTGRES_USER=vulnradar \
+            -e POSTGRES_PASSWORD=ci_site_password \
+            -e POSTGRES_DB=vulnradar \
+            vr-postgres
+          for i in $(seq 1 30); do
+            if docker exec vr-db pg_isready -U vulnradar > /dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          docker run -d --name vr-app --network vr-sandbox \
+            -e NODE_ENV=production \
+            -e DATABASE_URL='postgresql://vulnradar:ci_site_password@vr-db:5432/vulnradar' \
+            -e DATABASE_SSL=false \
+            -e APP_URL=http://vr-app:3000 \
+            -e API_KEY_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff \
+            vulnradar:site
+          for i in $(seq 1 60); do
+            if docker exec vr-app wget -qO- http://localhost:3000/api/v3/health > /dev/null 2>&1; then
+              echo "the app is healthy after $((i * 5))s"
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' vr-app)" != "true" ]; then
+              echo "::error::the app exited before becoming healthy"
+              docker logs vr-app
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "::error::the app never became healthy"
+          docker logs vr-app
+          exit 1
+
+      - name: Prove the sandbox has no egress
+        # This asks for our own robots.txt, so a sandbox that turned out to
+        # have a route out would still contact nothing but our own host. The
+        # request has to fail: DNS does not resolve outside the network.
+        run: |
+          if docker exec vr-app wget -T 5 -q -O /dev/null https://vulnradar.dev/robots.txt; then
+            echo "::error::the sandbox network reached the internet, so no scan runs from it"
+            exit 1
+          fi
+          echo "The sandbox cannot reach anything outside it, as intended."
+
+      - name: ZAP baseline (passive) against the container only
+        # Exit 0 passes. 1 (a FAIL rule fired) or 3 (an error) fails the job.
+        # The replacer adds X-Forwarded-Proto: https to every request, so the
+        # app answers as it does behind its TLS terminator and the HSTS and
+        # Secure-cookie rules can be FAIL rather than ignored.
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/zap"
+          chmod 777 "$RUNNER_TEMP/zap"
+          cp .github/zap/baseline.conf "$RUNNER_TEMP/zap/baseline.conf"
+          zap_opts="-config replacer.full_list(0).description=forwarded-proto"
+          zap_opts="$zap_opts -config replacer.full_list(0).enabled=true"
+          zap_opts="$zap_opts -config replacer.full_list(0).matchtype=REQ_HEADER"
+          zap_opts="$zap_opts -config replacer.full_list(0).matchstr=X-Forwarded-Proto"
+          zap_opts="$zap_opts -config replacer.full_list(0).regex=false"
+          zap_opts="$zap_opts -config replacer.full_list(0).replacement=https"
+          status=0
+          docker run --rm --network vr-sandbox -v "$RUNNER_TEMP/zap:/zap/wrk:rw" \
+            vr-zap zap-baseline.py -t http://vr-app:3000 -c baseline.conf -m 3 \
+            -J zap.json -r zap.html -I -z "$zap_opts" || status=$?
+          echo "zap-baseline.py exited $status"
+          case "$status" in
+            0 | 2) ;;
+            *)
+              echo "::error::ZAP baseline failed (exit $status). Read the report in the artifact."
+              exit 1
+              ;;
+          esac
+
+      - name: Summarise the alerts
+        if: always()
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/zap/zap.json"
+          if [ ! -s "$report" ]; then
+            echo "No ZAP report was written." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "### ZAP baseline alerts"
+            echo ""
+            echo "| Rule | Risk | Alert | Instances |"
+            echo "|---|---|---|---|"
+            jq -r '[.site[].alerts[]] | sort_by(.riskcode) | reverse | .[] | "| \(.pluginid) | \(.riskdesc | gsub("[|]"; "_")) | \(.name | gsub("[|]"; "_")) | \(.instances | length) |"' "$report"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the ZAP report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zap-baseline-report
+          path: |
+            ${{ runner.temp }}/zap/zap.json
+            ${{ runner.temp }}/zap/zap.html
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs vr-app || true
+
+  zap-full:
+    name: ZAP full scan
+    if: github.event_name == 'schedule' || inputs.full_zap
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the image
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site-image
+          path: ${{ runner.temp }}/site-image
+
+      - name: Load the image and build the pinned tools
+        run: |
+          set -euo pipefail
+          gunzip -c "$RUNNER_TEMP/site-image/site-image.tar.gz" | docker load
+          docker build --target zap -t vr-zap .github/tools
+          docker build --target postgres -t vr-postgres .github/tools
+
+      - name: Start the app on a network with no way out
+        run: |
+          set -euo pipefail
+          docker network create --internal vr-sandbox
+          docker run -d --name vr-db --network vr-sandbox \
+            -e POSTGRES_USER=vulnradar \
+            -e POSTGRES_PASSWORD=ci_site_password \
+            -e POSTGRES_DB=vulnradar \
+            vr-postgres
+          for i in $(seq 1 30); do
+            if docker exec vr-db pg_isready -U vulnradar > /dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          docker run -d --name vr-app --network vr-sandbox \
+            -e NODE_ENV=production \
+            -e DATABASE_URL='postgresql://vulnradar:ci_site_password@vr-db:5432/vulnradar' \
+            -e DATABASE_SSL=false \
+            -e APP_URL=http://vr-app:3000 \
+            -e API_KEY_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff \
+            vulnradar:site
+          for i in $(seq 1 60); do
+            if docker exec vr-app wget -qO- http://localhost:3000/api/v3/health > /dev/null 2>&1; then
+              echo "the app is healthy after $((i * 5))s"
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' vr-app)" != "true" ]; then
+              echo "::error::the app exited before becoming healthy"
+              docker logs vr-app
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "::error::the app never became healthy"
+          docker logs vr-app
+          exit 1
+
+      - name: Prove the sandbox has no egress
+        run: |
+          if docker exec vr-app wget -T 5 -q -O /dev/null https://vulnradar.dev/robots.txt; then
+            echo "::error::the sandbox network reached the internet, so no scan runs from it"
+            exit 1
+          fi
+          echo "The sandbox cannot reach anything outside it, as intended."
+
+      - name: ZAP full scan (active) against the container only
+        # The active scan sends attack traffic, which is why it runs only
+        # here: on a network that has no way out, against a database that
+        # holds nothing. Two threads per host. The routes that make the app
+        # fetch a target (/api/v3/scan, /api/v3/demo-scan, /api/v3/browser)
+        # are excluded, and the internal network would block that fetch
+        # anyway; /api/v3/auth/login is excluded because it is rate-limited
+        # at 5 per 15 minutes. The rules that call third-party interaction
+        # servers are IGNORE in full.conf.
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/zap"
+          chmod 777 "$RUNNER_TEMP/zap"
+          cp .github/zap/full.conf "$RUNNER_TEMP/zap/full.conf"
+          zap_opts="-config scanner.threadPerHost=2"
+          n=0
+          for path in /api/v3/scan /api/v3/demo-scan /api/v3/browser /api/v3/auth/login; do
+            zap_opts="$zap_opts -config globalexcludeurl.url_list.url($n).regex=http://vr-app:3000${path}.*"
+            zap_opts="$zap_opts -config globalexcludeurl.url_list.url($n).enabled=true"
+            n=$((n + 1))
+          done
+          zap_opts="$zap_opts -config replacer.full_list(0).description=forwarded-proto"
+          zap_opts="$zap_opts -config replacer.full_list(0).enabled=true"
+          zap_opts="$zap_opts -config replacer.full_list(0).matchtype=REQ_HEADER"
+          zap_opts="$zap_opts -config replacer.full_list(0).matchstr=X-Forwarded-Proto"
+          zap_opts="$zap_opts -config replacer.full_list(0).regex=false"
+          zap_opts="$zap_opts -config replacer.full_list(0).replacement=https"
+          status=0
+          docker run --rm --network vr-sandbox -v "$RUNNER_TEMP/zap:/zap/wrk:rw" \
+            vr-zap zap-full-scan.py -t http://vr-app:3000 -c full.conf -m 5 -T 60 \
+            -J zap.json -r zap.html -I -z "$zap_opts" || status=$?
+          echo "zap-full-scan.py exited $status"
+          case "$status" in
+            0 | 2) ;;
+            *)
+              echo "::error::ZAP full scan failed (exit $status). Read the report in the artifact."
+              exit 1
+              ;;
+          esac
+
+      - name: Fail on any High alert that full.conf does not ignore
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/zap/zap.json"
+          test -s "$report" || { echo "::error::No ZAP report was written."; exit 1; }
+          ignored=$(awk -F '\t' '$2 == "IGNORE" { print $1 }' .github/zap/full.conf | jq -R . | jq -s .)
+          {
+            echo "### ZAP full scan alerts"
+            echo ""
+            echo "| Rule | Risk | Alert | Instances |"
+            echo "|---|---|---|---|"
+            jq -r '[.site[].alerts[]] | sort_by(.riskcode) | reverse | .[] | "| \(.pluginid) | \(.riskdesc | gsub("[|]"; "_")) | \(.name | gsub("[|]"; "_")) | \(.instances | length) |"' "$report"
+          } >> "$GITHUB_STEP_SUMMARY"
+          high=$(jq -r --argjson ignored "$ignored" '[.site[].alerts[] | select(.riskcode == "3") | select(.pluginid as $p | $ignored | index($p) | not)] | .[] | "\(.pluginid) \(.name)"' "$report")
+          if [ -n "$high" ]; then
+            while IFS= read -r line; do
+              echo "::error::High alert not ignored in full.conf: ${line}"
+            done <<< "$high"
+            exit 1
+          fi
+          echo "No High alert outside full.conf's IGNORE rows."
+
+      - name: Upload the ZAP report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zap-full-report
+          path: |
+            ${{ runner.temp }}/zap/zap.json
+            ${{ runner.temp }}/zap/zap.html
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs vr-app || true
+
+  lighthouse:
+    name: Lighthouse
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+
+    services:
+      postgres:
+        # The same reference as ci.yml's Self-host smoke test.
+        image: postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
+        env:
+          POSTGRES_USER: vulnradar
+          POSTGRES_PASSWORD: ci_smoke_test_password
+          POSTGRES_DB: vulnradar
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the image
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site-image
+          path: ${{ runner.temp }}/site-image
+
+      - name: Boot the image on the host network and wait for health
+        # Lighthouse drives the runner's own Chrome, and a page on localhost
+        # counts as a secure context, so the image is served on the host
+        # network the way the Self-host smoke test serves it.
+        run: |
+          set -euo pipefail
+          gunzip -c "$RUNNER_TEMP/site-image/site-image.tar.gz" | docker load
+          docker run -d --name vr-lighthouse --network host \
+            -e NODE_ENV=production \
+            -e DATABASE_URL='postgresql://vulnradar:ci_smoke_test_password@localhost:5432/vulnradar' \
+            -e DATABASE_SSL=false \
+            -e APP_URL=http://localhost:3000 \
+            -e API_KEY_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff \
+            vulnradar:site
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:3000/api/v3/health 2>/dev/null || true)
+            if [ "$code" = "200" ]; then
+              echo "healthy after ${i}0s"
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' vr-lighthouse)" != "true" ]; then
+              echo "::error::the container exited before becoming healthy"
+              docker logs vr-lighthouse
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "::error::the container never became healthy"
+          docker logs vr-lighthouse
+          exit 1
+
+      - name: Run Lighthouse on the public pages
+        # Reports stay in GitHub: the results are uploaded as an artifact of
+        # this run, never to a public report host. The accessibility, SEO and
+        # best-practices floors are errors; performance on a shared runner
+        # varies too much to gate on and is a warning.
+        uses: treosh/lighthouse-ci-action@3e7e23fb74242897f95c0ba9cabad3d0227b9b18 # 12.6.2
+        with:
+          configPath: .github/lighthouse/lighthouserc.json
+          runs: 3
+          uploadArtifacts: true
+          temporaryPublicStorage: false
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs vr-lighthouse || true
