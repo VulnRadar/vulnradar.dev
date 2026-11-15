@@ -62,6 +62,20 @@ function registryCsrfExempt(path: string): boolean {
   }
 }
 
+/**
+ * Whether a Bearer key belongs to the space a path resolves to, which is what
+ * lets it stand in for the Origin header: v4, its v3 aliases and legacy v3,
+ * as middleware's acceptsBearer() decides. Anywhere else a key waives nothing.
+ */
+function registryAcceptsBearer(path: string): boolean {
+  const resolved = resolveApiPath(path, true, []);
+  return (
+    resolved.kind === "v4" ||
+    resolved.kind === "legacy-v3" ||
+    (resolved.kind === "alias" && resolved.target === "v4")
+  );
+}
+
 interface Answer {
   status: number;
   body: string;
@@ -125,6 +139,10 @@ const exempt = handlers.filter((h) =>
   registryCsrfExempt(concretePath(h.route.template)),
 );
 const guarded = handlers.filter((h) => !exempt.includes(h));
+const keyed = guarded.filter((h) =>
+  registryAcceptsBearer(concretePath(h.route.template)),
+);
+const keyless = guarded.filter((h) => !keyed.includes(h));
 
 // Built at run time, never a literal: it is not a key, only key-shaped.
 const FAKE_KEY = `vr_live_${"0".repeat(64)}`;
@@ -211,15 +229,32 @@ describe.skipIf(!BASE)("cross-site writes against the booted image", () => {
     "lets a Bearer key with no Origin through to the handler, as API clients send it",
     { timeout: 600_000 },
     async () => {
+      expect(keyed.length).toBeGreaterThan(0);
       let checked = 0;
-      for (const h of guarded) {
+      for (const h of keyed) {
         expectReachedPastMiddleware(
           h,
           await send(h, { Authorization: `Bearer ${FAKE_KEY}` }),
         );
         checked++;
       }
-      expect(checked).toBe(guarded.length);
+      expect(checked).toBe(keyed.length);
+    },
+  );
+
+  it(
+    "refuses a Bearer key with no Origin where the API space takes no key",
+    { timeout: 600_000 },
+    async () => {
+      let checked = 0;
+      for (const h of keyless) {
+        const a = await send(h, { Authorization: `Bearer ${FAKE_KEY}` });
+        expect(isCsrfRejection(a), `${label(h)}: ${a.status} ${a.body}`).toBe(
+          true,
+        );
+        checked++;
+      }
+      expect(checked).toBe(keyless.length);
     },
   );
 
