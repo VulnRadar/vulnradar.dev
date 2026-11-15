@@ -27,9 +27,15 @@ on:
   pull_request:
     types: [opened, reopened, synchronize]
 
-permissions:
-  contents: write
-  pull-requests: write
+# One run per pull request. A new push cancels the older run, so a run that
+# started on a patch bump cannot go on to merge a head that has since become
+# something else.
+concurrency:
+  group: dependabot-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# Nothing at the top level: the job states its own scopes.
+permissions: {}
 
 jobs:
   dependabot-merge:
@@ -45,10 +51,14 @@ jobs:
     # pull request someone else opened (a fork can arrange that), and a
     # maintainer is the actor after pushing a fix to Dependabot's branch.
     if: github.event.pull_request.user.login == 'dependabot[bot]'
+    permissions:
+      # Squash-merge and delete the branch.
+      contents: write
+      pull-requests: write
     steps:
       - name: Fetch metadata
         id: metadata
-        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 

@@ -49,9 +49,17 @@ on:
 # release.yml. The group is decided before any job condition, so a fork's pull
 # request on a branch named after the tag would otherwise cancel the real
 # arm64 build halfway, leaving the release amd64-only until someone re-runs it.
+#
+# cancel-in-progress is false: a dispatch for a tag whose run is still going
+# waits for it rather than cancelling it between `imagetools create` and
+# `cosign sign`, which would leave the release tag on an unsigned index. Both
+# runs end in the same index, so waiting costs nothing.
 concurrency:
   group: docker-arm64-${{ (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch) || inputs.tag || github.run_id }}
-  cancel-in-progress: true
+  cancel-in-progress: false
+
+# Nothing at the top level: each job states its own scopes.
+permissions: {}
 
 jobs:
   arm64:
@@ -115,7 +123,7 @@ jobs:
 
       - name: Checkout repository
         if: steps.vars.outputs.skip != 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The tag, not the default branch: workflow_run checks out the
           # default branch by default, which would build whatever main has
@@ -136,11 +144,11 @@ jobs:
 
       - name: Set up Docker Buildx
         if: steps.vars.outputs.skip != 'true'
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GitHub Container Registry
         if: steps.vars.outputs.skip != 'true'
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

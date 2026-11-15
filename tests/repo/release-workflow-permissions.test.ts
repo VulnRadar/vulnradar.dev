@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { readWorkflow, workflowSteps } from "./_workflow-steps";
+import {
+  readWorkflow,
+  workflowSteps,
+  jobsOf,
+  type WorkflowJob as Job,
+} from "./_workflow-steps";
 
 /**
  * Third-party code and release credentials must never share a job.
@@ -15,47 +20,9 @@ import { readWorkflow, workflowSteps } from "./_workflow-steps";
 
 const release = readWorkflow("release.yml");
 
-interface Job {
-  name: string;
-  permissions: Record<string, string>;
-  steps: ReturnType<typeof workflowSteps>;
-  /** The job's lines with whole-line comments removed. */
-  code: string;
-}
-
-function jobsOf(workflow: string): Job[] {
-  const lines = workflow.split("\n");
-  const start = lines.indexOf("jobs:");
-  expect(start, "the workflow has a jobs: block").toBeGreaterThan(-1);
-  const found: { name: string; lines: string[] }[] = [];
-  for (const line of lines.slice(start + 1)) {
-    const header = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
-    if (header) found.push({ name: header[1], lines: [] });
-    else found[found.length - 1]?.lines.push(line);
-  }
-  return found.map(({ name, lines: jobLines }) => {
-    const permissions: Record<string, string> = {};
-    const at = jobLines.findIndex((l) => /^ {4}permissions:\s*$/.test(l));
-    if (at !== -1) {
-      for (const line of jobLines.slice(at + 1)) {
-        if (line.trim() === "" || line.trim().startsWith("#")) continue;
-        const entry = /^ {6}([a-z-]+):\s*(\w+)\s*$/.exec(line);
-        if (!entry) break;
-        permissions[entry[1]] = entry[2];
-      }
-    }
-    return {
-      name,
-      permissions,
-      steps: workflowSteps(jobLines.join("\n")),
-      code: jobLines.filter((l) => !l.trim().startsWith("#")).join("\n"),
-    };
-  });
-}
-
 const jobs = jobsOf(release);
 const job = (name: string): Job => {
-  const found = jobs.find((j) => j.name === name);
+  const found = jobs.find((j) => j.id === name);
   if (!found) throw new Error(`no job named ${name}`);
   return found;
 };
@@ -68,16 +35,12 @@ const holdsCredential = (j: Job) =>
 
 describe("release.yml separates package code from credentials", () => {
   it("has the three jobs the split is written against", () => {
-    expect(jobs.map((j) => j.name)).toEqual([
-      "build",
-      "release",
-      "publish-npm",
-    ]);
+    expect(jobs.map((j) => j.id)).toEqual(["build", "release", "publish-npm"]);
   });
 
   it("states every job's permissions instead of inheriting the default", () => {
     for (const j of jobs) {
-      expect(Object.keys(j.permissions).length, j.name).toBeGreaterThan(0);
+      expect(Object.keys(j.permissions).length, j.id).toBeGreaterThan(0);
     }
   });
 
@@ -85,7 +48,7 @@ describe("release.yml separates package code from credentials", () => {
     const building = jobs.filter((j) => /\bnpm (ci|run)\b/.test(j.code));
     expect(building.length).toBeGreaterThan(0);
     for (const j of building) {
-      expect(holdsCredential(j), j.name).toBe(false);
+      expect(holdsCredential(j), j.id).toBe(false);
     }
   });
 

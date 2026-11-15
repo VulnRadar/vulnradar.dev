@@ -1,25 +1,35 @@
 name: Stale
 
 # Close stale issues and PRs after 30 days of inactivity.
-# Dependabot PRs are exempt.
+# Dependabot PRs are exempt: every block in .github/dependabot.yml applies the
+# `dependabot` label, which is in exempt-pr-labels below
+# (tests/repo/stale-exemptions.test.ts).
 
 on:
   schedule:
     - cron: "0 0 * * *"
   workflow_dispatch:
 
-permissions:
-  issues: write
-  pull-requests: write
+# One run at a time, and never cut short: a cancelled run would leave items
+# marked stale with no close pass behind them until the next day.
+concurrency:
+  group: stale
+  cancel-in-progress: false
+
+# Nothing at the top level: the job states its own scopes.
+permissions: {}
 
 jobs:
   stale:
     name: Mark/close stale items
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      issues: write
+      pull-requests: write
     steps:
       - name: Run stale
-        uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v10
+        uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           days-before-stale: 30
@@ -34,5 +44,5 @@ jobs:
           close-issue-message: "Closed: no activity for 30+ days."
           close-pr-message: "Closed: no activity for 30+ days."
           exempt-issue-labels: "pinned,security,enhancement"
-          exempt-pr-labels: "pinned,security,dependabot-merge-ignore"
+          exempt-pr-labels: "pinned,security,dependabot,dependabot-merge-ignore"
           operations-per-run: 50

@@ -75,9 +75,11 @@ on:
     types:
       - published
 
-# Cancel any in-flight run on the same tag. If the user publishes
-# the release and docker-publish completes in quick succession, only
-# one of these will run for the same tag.
+# One run at a time per tag. If the user publishes the release and
+# docker-publish completes in quick succession, the second run waits for the
+# first instead of cancelling it: a cancelled run could stop between signing
+# the sums file and uploading it, or before the image SBOM is attached, and
+# both triggers are idempotent, so waiting costs nothing.
 #
 # security: keyed on the tag only for a run the job's if: below accepts. The
 # group is decided before any job condition, so keyed on head_branch alone, a
@@ -86,7 +88,10 @@ on:
 # the middle of its uploads. Any other run gets a group of its own.
 concurrency:
   group: release-attach-${{ (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch) || github.event.release.tag_name || github.run_id }}
-  cancel-in-progress: true
+  cancel-in-progress: false
+
+# Nothing at the top level: each job states its own scopes.
+permissions: {}
 
 jobs:
   build:
@@ -110,6 +115,7 @@ jobs:
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
 
@@ -119,7 +125,7 @@ jobs:
       # every later step that needs the tagged tree runs `git archive`
       # against it.
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           # security: nothing here pushes with git, so no token stays behind in
@@ -179,7 +185,7 @@ jobs:
         # release: needed to build the browser extension below. Same pin as
         # ci.yml, read from the same file (Node 22 LTS, see
         # package.json#engines).
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           # security: see the same line in the publish-npm job. Here it also
@@ -317,6 +323,7 @@ jobs:
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
       # Required for cosign keyless signing of the source tarball
@@ -328,7 +335,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           # security: nothing here pushes with git, so no token stays behind in
@@ -407,7 +414,7 @@ jobs:
       - name: Download the built artifacts
         # From this run's build job, into its own directory: the next steps
         # copy out only the files they expect.
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-build
           path: ${{ runner.temp }}/release-build
@@ -435,7 +442,7 @@ jobs:
         # attempt; the check in "Build artifact list" below makes a genuine
         # miss on the primary path loud instead of silent.
         if: github.event_name == 'workflow_run'
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: vulnradar-${{ steps.vars.outputs.tag }}.sbom.cdx.json
           run-id: ${{ github.event.workflow_run.id }}
@@ -664,6 +671,7 @@ jobs:
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       # The only credential trusted publishing uses.
@@ -671,7 +679,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           # security: nothing here pushes with git, so no token stays behind in
@@ -732,7 +740,7 @@ jobs:
         # for the publish step. It writes an .npmrc whose token is a
         # placeholder; trusted publishing replaces it with an OIDC exchange,
         # so no registry credential exists in this workflow.
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           registry-url: "https://registry.npmjs.org"

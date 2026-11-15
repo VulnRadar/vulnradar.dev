@@ -312,6 +312,19 @@ describe("a fork's run cannot cancel a release through the concurrency group", (
       expect(concurrencyGroup(arm64, ctx)).not.toBe(real);
     }
   });
+
+  // The two triggers of one tag share a group, so whichever arrives second
+  // waits. Cancelling instead could stop a release between signing the sums
+  // file and uploading it, or an arm64 run between `imagetools create` and
+  // `cosign sign`, leaving the release tag on an unsigned index.
+  it.each([
+    ["release.yml", release],
+    ["docker-publish-arm64.yml", arm64],
+  ])("%s never cancels the run that holds the group", (_, workflow) => {
+    expect(workflow).toMatch(
+      /^concurrency:\n {2}group:.+\n {2}cancel-in-progress: false$/m,
+    );
+  });
 });
 
 describe("docker-publish-arm64.yml keeps the same gate", () => {

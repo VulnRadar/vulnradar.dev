@@ -37,9 +37,19 @@ on:
         type: boolean
         default: true
 
+# Never two at once, and never cut short: a cancelled run could stop between
+# deleting an image and deleting the signatures that belonged to it.
+concurrency:
+  group: ghcr-cleanup
+  cancel-in-progress: false
+
+# Nothing at the top level: the job states its own scopes.
+permissions: {}
+
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       packages: write
 
