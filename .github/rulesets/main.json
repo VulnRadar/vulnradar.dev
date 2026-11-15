@@ -29,13 +29,33 @@
         "strict_required_status_checks_policy": false,
         "do_not_enforce_on_create": false,
         "required_status_checks": [
-          { "context": "Lint" },
-          { "context": "Typecheck" },
-          { "context": "Test" },
-          { "context": "Extension" },
-          { "context": "Build" },
-          { "context": "Self-host smoke test" },
-          { "context": "Integration" }
+          { "context": "Lint", "integration_id": 15368 },
+          { "context": "Typecheck", "integration_id": 15368 },
+          { "context": "Test", "integration_id": 15368 },
+          { "context": "Extension", "integration_id": 15368 },
+          { "context": "Build", "integration_id": 15368 },
+          { "context": "Self-host smoke test", "integration_id": 15368 },
+          { "context": "Integration", "integration_id": 15368 },
+          { "context": "Dependency review", "integration_id": 15368 },
+          { "context": "Secret scan", "integration_id": 15368 },
+          {
+            "context": "Workflow and Dockerfile lint",
+            "integration_id": 15368
+          },
+          { "context": "CLI", "integration_id": 15368 },
+          { "context": "Scan gate action", "integration_id": 15368 }
+        ]
+      }
+    },
+    {
+      "type": "code_scanning",
+      "parameters": {
+        "code_scanning_tools": [
+          {
+            "tool": "CodeQL",
+            "security_alerts_threshold": "high_or_higher",
+            "alerts_threshold": "errors"
+          }
         ]
       }
     }

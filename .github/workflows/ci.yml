@@ -11,9 +11,10 @@ name: CI
 # claim they blocked merges, which was never true.
 #
 # To make them real, add a ruleset on `main` requiring the Lint, Typecheck,
-# Test, Integration, Extension, Build and Self-host smoke test check names,
-# plus a code-owner review, and blocking force pushes.
-# .github/rulesets/main.json is that ruleset, listing exactly those seven
+# Test, Integration, Extension, Build, Self-host smoke test, Dependency review,
+# Secret scan, Workflow and Dockerfile lint, CLI and Scan gate action check
+# names, plus a code-owner review, and blocking force pushes.
+# .github/rulesets/main.json is that ruleset, listing exactly those twelve
 # names, ready to import under Settings > Rules > Rulesets > New ruleset >
 # Import a ruleset; it lives in the repository so the configuration is
 # reviewable here rather than only in the web UI. Two things to know before
@@ -37,6 +38,12 @@ on:
     branches: [main, "v4/**"]
   pull_request:
     branches: [main]
+  # A merge queue builds the merge result and asks for these checks before it
+  # lands. Every job runs on it except Dependency review and Package versions,
+  # which are skipped by their `if:` (a skipped job reports success to a
+  # required check).
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
   # A quiet week still proves main: an advisory, a base image or a runner image
   # can break the build without a commit. Only pull request runs are cancelled,
@@ -48,8 +55,15 @@ on:
 # refuses a commit without a green run here, so a push to main that cancelled
 # the run of the commit before it made a tag on that commit fail the publish
 # for a run that had simply been stopped.
+#
+# On main the group is the commit, not the branch: pushes to main in a burst
+# used to share one group, and with cancel-in-progress off the run of a middle
+# commit could still be replaced while pending, since a group holds one running
+# and one pending run. A run of its own per commit leaves every commit on main
+# with the CI run a tag on it needs. A pull request and a v4/** branch keep one
+# group per ref, so a new push to one still supersedes the older run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Nothing at the top level: each job below states the one scope it uses, so a

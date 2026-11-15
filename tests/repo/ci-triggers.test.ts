@@ -75,3 +75,26 @@ describe("ci.yml's weekly run", () => {
     );
   });
 });
+
+describe("ci.yml and a merge queue", () => {
+  it("runs on merge_group, when the queue asks for the checks", () => {
+    const block = onBlock(ci)
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("#"))
+      .join("\n");
+    expect(block).toMatch(
+      /^ {2}merge_group:\n {4}types: \[checks_requested\]$/m,
+    );
+  });
+
+  it("skips only Dependency review and Package versions there, by their own if:", () => {
+    // A skipped job reports success, which satisfies a required check.
+    const skipped = ci
+      .split(/^ {2}(?=[a-z-]+:\n {4}name:)/m)
+      .filter((job) =>
+        /^ {4}if: github[.]event_name == 'pull_request'$/m.test(job),
+      )
+      .map((job) => /^ {4}name: (.+)$/m.exec(job)![1]);
+    expect(skipped.sort()).toEqual(["Dependency review", "Package versions"]);
+  });
+});

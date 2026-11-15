@@ -6,6 +6,7 @@ import {
   jobsOf,
   jobNamed,
 } from "./_workflow-steps";
+import { evaluateValue, type Ctx } from "./_expressions";
 
 /**
  * docker-publish refuses to ship a commit whose CI did not pass, and a push to
@@ -44,8 +45,62 @@ describe("ci.yml concurrency", () => {
     );
   });
 
-  it("keeps one group per workflow and ref", () => {
-    expect(block).toContain("group: ${{ github.workflow }}-${{ github.ref }}");
+  it("keys the group on the commit on main and on the ref everywhere else", () => {
+    expect(block).toContain(
+      "group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}",
+    );
+  });
+
+  /** The group with its expressions filled in for one run. */
+  const groupFor = (github: Record<string, string>): string => {
+    const raw = /^ {2}group:\s*(.+)$/m.exec(block)![1];
+    const ctx: Ctx = { github: { workflow: "CI", ...github } };
+    return raw.replace(/\$\{\{(.+?)\}\}/g, (_, expr: string) => {
+      const v = evaluateValue(expr, ctx);
+      return v === null ? "" : String(v);
+    });
+  };
+  const A = "a".repeat(40);
+  const B = "b".repeat(40);
+
+  it("gives two pushes to main different groups, so neither replaces the other", () => {
+    const first = groupFor({ ref: "refs/heads/main", sha: A });
+    const second = groupFor({ ref: "refs/heads/main", sha: B });
+    expect(first).not.toBe(second);
+    expect(first).toContain(A);
+    // The same commit run twice (a schedule and a re-run) is one group.
+    expect(groupFor({ ref: "refs/heads/main", sha: A })).toBe(first);
+  });
+
+  it("gives two runs of one pull request one group, which cancels the older run", () => {
+    const first = groupFor({ ref: "refs/pull/12/merge", sha: A });
+    const second = groupFor({ ref: "refs/pull/12/merge", sha: B });
+    expect(first).toBe(second);
+    expect(groupFor({ ref: "refs/pull/13/merge", sha: A })).not.toBe(first);
+    const cancel = /^ {2}cancel-in-progress:\s*(.+)$/m.exec(block)![1];
+    const on = (event_name: string) =>
+      evaluateValue(cancel, { github: { event_name } });
+    expect(on("pull_request")).toBe(true);
+    for (const other of [
+      "push",
+      "schedule",
+      "merge_group",
+      "workflow_dispatch",
+    ]) {
+      expect(on(other), other).toBe(false);
+    }
+  });
+
+  it("keeps one group per ref on a v4 branch, as before", () => {
+    const first = groupFor({ ref: "refs/heads/v4/audit", sha: A });
+    expect(groupFor({ ref: "refs/heads/v4/audit", sha: B })).toBe(first);
+    expect(first).toContain("refs/heads/v4/audit");
+    expect(groupFor({ ref: "refs/heads/v4/other", sha: A })).not.toBe(first);
+  });
+
+  it("keys a merge queue run on its own ref", () => {
+    const queue = "refs/heads/gh-readonly-queue/main/pr-12-abc";
+    expect(groupFor({ ref: queue, sha: A })).toContain(queue);
   });
 });
 
