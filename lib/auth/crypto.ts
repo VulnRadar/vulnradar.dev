@@ -22,7 +22,8 @@ function getEncryptionKey(): Buffer {
  * The key a previous deployment used, kept readable during a rotation.
  *
  * One key protects TOTP seeds, Discord and GitHub OAuth tokens, user AI
- * provider keys and API keys, and rotating it used to be impossible without
+ * provider keys and webhook secrets and addresses, and rotating it used to be
+ * impossible without
  * hand-editing the database: every existing ciphertext became garbage the
  * moment the environment variable changed, and there was no second key to
  * fall back to (AUDIT-007#auth-02).
@@ -37,10 +38,10 @@ function getEncryptionKey(): Buffer {
  *
  * Operator procedure: set PREVIOUS_API_KEY_ENCRYPTION_KEY to the old value,
  * set API_KEY_ENCRYPTION_KEY to the new one, restart. Remove the previous
- * key once everything has been rewritten under the new one. API keys migrate
- * on their first use after the rotation (lib/api/api-keys.ts), so an
- * integration that has not called since still depends on the previous key:
- * removing it then fails that key with a 401 and no matching row to log.
+ * key once everything has been rewritten under the new one. API keys do not
+ * depend on this key at all: they are stored as a one-way digest
+ * (lib/api/api-key-digest.ts), and the boot migration converts any row still
+ * held as ciphertext, under either key, before it is needed.
  */
 function getPreviousEncryptionKey(): Buffer | null {
   const hex = process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY;
@@ -49,7 +50,7 @@ function getPreviousEncryptionKey(): Buffer | null {
     // Loud but non-fatal: an operator mid-rotation has explicitly set this,
     // so staying silent would present as "some accounts mysteriously cannot
     // log in". Throwing instead would be swallowed by the callers that treat
-    // a decrypt failure as "wrong key" (lib/api/api-keys.ts), which is worse.
+    // a decrypt failure as "wrong key" (lib/webhooks/secret.ts), which is worse.
     console.error(
       "[crypto] PREVIOUS_API_KEY_ENCRYPTION_KEY is set but is not a 64-character hex string; ignoring it. Values encrypted with the old key will not decrypt.",
     );
