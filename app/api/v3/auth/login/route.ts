@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHash } from "node:crypto";
 import {
   getUserByEmail,
   verifyPassword,
@@ -46,6 +45,12 @@ import { upgradePasswordHash } from "@/lib/auth/auth";
 import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
 import { logError } from "@/lib/logging/log";
 import { maskEmail, storeEmailCode } from "@/lib/auth/email-codes";
+import {
+  loginLockAlertKey,
+  loginLockKey,
+  passesAccountLock,
+  resolveAccountLockLimit,
+} from "@/lib/auth/login-lock";
 
 // The pending sign-ins the OAuth and Discord callbacks park while they wait
 // for a second factor (app/api/v3/auth/oauth/[provider]/callback and
@@ -66,26 +71,6 @@ async function getDummyHash(): Promise<string> {
     "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d";
   dummyHashCache = await hashPassword(fixed);
   return dummyHashCache;
-}
-
-/**
- * How much larger the per-ACCOUNT failed-login bucket is than the per-IP one.
- * Derived rather than a second registry key so an operator tuning the login
- * limit moves both together and the two can never drift into the state where
- * one IP's whole allowance is exactly enough to lock an account out.
- */
-const ACCOUNT_LOCK_ATTEMPT_MULTIPLIER = 5;
-const ACCOUNT_LOCK_WINDOW_MULTIPLIER = 4;
-
-async function resolveAccountLockLimit(): Promise<{
-  maxAttempts: number;
-  windowSeconds: number;
-}> {
-  const { maxAttempts, windowSeconds } = await getRateLimit("login");
-  return {
-    maxAttempts: maxAttempts * ACCOUNT_LOCK_ATTEMPT_MULTIPLIER,
-    windowSeconds: windowSeconds * ACCOUNT_LOCK_WINDOW_MULTIPLIER,
-  };
 }
 
 export const POST = withErrorHandling(async (request: Request) => {
@@ -115,21 +100,14 @@ export const POST = withErrorHandling(async (request: Request) => {
     );
   }
 
-  // Keyed on the submitted address, hashed, rather than on users.id: only a
-  // real account could ever have had an id-keyed counter, which made the
-  // lock message proof the address exists. Hashed so the rate-limit table
-  // does not become a list of every address anyone has tried to sign in as.
-  const accountKey = createHash("sha256")
-    .update(email.trim().toLowerCase())
-    .digest("hex");
+  // Hashed, keyed on the submitted address (see lib/auth/login-lock.ts).
+  const accountKey = loginLockKey(email);
 
-  // Per-address lockout gate, read before the account is even looked up.
-  // The failed-password bookkeeping below records login-fail:<hash> across
-  // IPs; once it is full the address is refused here, before the expensive
-  // scrypt verify, so a distributed brute force spread over many IPs is
-  // throttled (the IP gate above alone misses it) and stops burning CPU on
-  // a locked address. The window expires on its own, and the peek does not
-  // itself count.
+  // Per-address lockout, read before the account is even looked up. The
+  // failed-password bookkeeping below records login-fail:<hash> across IPs,
+  // so a distributed brute force spread over many IPs is throttled (the IP
+  // gate above alone misses it). The window expires on its own, and the peek
+  // does not itself count.
   //
   // Every address goes through this gate and every failure below fills it,
   // whether or not an account exists or has a password. When only existing
@@ -147,20 +125,22 @@ export const POST = withErrorHandling(async (request: Request) => {
   // 2FA code. The account cap is therefore a multiple of the per-IP cap over
   // a longer window: filling it now takes several source addresses, which is
   // what a genuine distributed attempt looks like.
+  //
+  // A full bucket is not a wall for the owner (ATK-8). Filling it takes a
+  // few source addresses and can be redone every window, so refusing the
+  // right password outright let anyone who knew an address keep its owner
+  // out. A locked request is therefore looked up and verified exactly as an
+  // unlocked one is, and passes only with the right password from a browser
+  // this account already trusts (passesAccountLock); everything else gets
+  // the same refusal it always did. That costs a scrypt verify per locked
+  // attempt where the gate used to skip it, which the per-IP limit above
+  // still bounds. The other way back in is a password reset, which empties
+  // the bucket.
   const accountLockLimit = await resolveAccountLockLimit();
   const accountLock = await peekRateLimit({
-    key: `login-fail:${accountKey}`,
+    key: accountKey,
     ...accountLockLimit,
   });
-  if (!accountLock.allowed) {
-    return ApiResponse.tooManyRequests(
-      TOO_MANY_ATTEMPTS(
-        "failed sign-in attempts",
-        accountLock.retryAfterSeconds,
-      ),
-      accountLock.retryAfterSeconds,
-    );
-  }
 
   const user = await getUserByEmail(email);
 
@@ -173,6 +153,26 @@ export const POST = withErrorHandling(async (request: Request) => {
   let valid = false;
   if (passwordHash) valid = await verifyPassword(password, passwordHash);
   else await verifyPassword(password, await getDummyHash());
+
+  if (!accountLock.allowed) {
+    const passes = await passesAccountLock({
+      userId: user?.id ?? null,
+      passwordValid: !!user && !!passwordHash && valid,
+      deviceCookie: (request as unknown as NextRequest).cookies?.get?.(
+        DEVICE_TRUST_COOKIE_NAME,
+      )?.value,
+    });
+    if (!passes) {
+      return ApiResponse.tooManyRequests(
+        TOO_MANY_ATTEMPTS(
+          "failed sign-in attempts",
+          accountLock.retryAfterSeconds,
+        ),
+        accountLock.retryAfterSeconds,
+      );
+    }
+  }
+
   if (!user || !passwordHash || !valid) {
     // Per-address brute-force detection. The gate at the top of this handler
     // is keyed by IP, so it stops a single address hammering the form but
@@ -184,14 +184,14 @@ export const POST = withErrorHandling(async (request: Request) => {
     // caller receives.
     try {
       const fail = await checkRateLimit({
-        key: `login-fail:${accountKey}`,
+        key: accountKey,
         ...accountLockLimit,
       });
       if (!fail.allowed) {
         // The one-shot key is spent for unknown addresses too, so whether
         // anyone is mailed costs no extra round trip an attacker could time.
         const alertGate = await checkRateLimit({
-          key: `login-fail-alert:${accountKey}`,
+          key: loginLockAlertKey(email),
           maxAttempts: 1,
           windowSeconds: 3600,
         });
@@ -230,12 +230,12 @@ export const POST = withErrorHandling(async (request: Request) => {
   // The password was correct, so forgive the account's failure counter. The
   // counter exists to detect a brute-force in progress; leaving it standing
   // after the real owner has just proved they hold the password meant a
-  // half-full bucket kept counting toward a lockout the owner could do
-  // nothing about (there is no unlock-by-email path). The per-IP bucket is
+  // half-full bucket kept counting toward a lockout. That includes a full
+  // bucket the owner just passed from a trusted device. The per-IP bucket is
   // deliberately NOT cleared: that one throttles the source address, not
   // the account, and clearing it would let one address reset its own quota
   // by interleaving a valid login.
-  await resetRateLimit(`login-fail:${accountKey}`);
+  await resetRateLimit(accountKey);
 
   // Check if account is disabled or email not verified
   // `role` rides along for the PAUSE_LOGINS check below rather than costing a

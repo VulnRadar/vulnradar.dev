@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { makeHeaderStore } from "../_test-harness";
 import { encryptApiKey } from "@/lib/auth/crypto";
+import { createHash } from "node:crypto";
 
 /**
  * Route-level tests for POST /api/v3/auth/reset-password.
@@ -465,4 +466,50 @@ describe("POST /api/v3/auth/reset-password", () => {
       expect(candidate).toMatch(/^[a-f0-9]{64}$/);
     }
   }, 15_000);
+
+  // ATK-8: the reset is the way back in from a new device for an owner whose
+  // sign-in lock someone keeps full, so it empties that lock, and only once
+  // the new password is committed.
+  describe("the sign-in lock", () => {
+    const lockKey = (email: string) =>
+      `login-fail:${createHash("sha256").update(email.trim().toLowerCase()).digest("hex")}`;
+
+    it("is emptied for the reset account after the commit", async () => {
+      tokenRow = validToken({ email: "Account-Owner@Example.com" });
+
+      const res = await POST(
+        resetRequest({ token: "t", password: STRONG_PASSWORD }),
+      );
+      expect(res.status).toBe(200);
+
+      const sql = queries.map((q) => q.sql);
+      const commit = sql.indexOf("COMMIT");
+      const cleared = queries.findIndex(
+        (q) =>
+          q.sql === "DELETE FROM rate_limits WHERE key = $1" &&
+          q.params[0] === lockKey("account-owner@example.com"),
+      );
+      expect(commit).toBeGreaterThanOrEqual(0);
+      expect(cleared).toBeGreaterThan(commit);
+    }, 15_000);
+
+    it.each([
+      ["an unknown token", null],
+      [
+        "an expired token",
+        { expires_at: new Date(Date.now() - 60_000).toISOString() },
+      ],
+    ])("is left alone for %s", async (_label, row) => {
+      tokenRow = row ? validToken(row) : null;
+
+      const res = await POST(
+        resetRequest({ token: "t", password: STRONG_PASSWORD }),
+      );
+
+      expect(res.status).toBe(400);
+      expect(
+        queries.some((q) => String(q.params[0]).startsWith("login-fail:")),
+      ).toBe(false);
+    });
+  });
 });

@@ -12,7 +12,11 @@ import {
 import { revokeDiscordTokens } from "@/lib/discord/revoke";
 import { passwordChangedEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import {
+  checkRateLimit,
+  resetRateLimit,
+  RATE_LIMITS,
+} from "@/lib/rate-limiting/rate-limit";
 import {
   getClientIp,
   getUserAgent,
@@ -27,6 +31,7 @@ import {
 } from "@/lib/api/api-utils";
 import { getSetting } from "@/lib/config/runtime-config";
 import { authTokenHashCandidates } from "@/lib/auth/token-hash";
+import { loginLockKey } from "@/lib/auth/login-lock";
 
 // auth: hash the incoming token with the same function used at generation
 // time so we never compare raw tokens against the DB. The candidate list is
@@ -210,6 +215,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
 
     await client.query("COMMIT");
+
+    // The way back in for an owner whose address someone keeps filling the
+    // sign-in lock with (ATK-8): the reset mail proved the mailbox, so the
+    // new password gets through from any device. The device_trust wipe above
+    // removes the other way past the lock, so without this a reset left the
+    // owner locked out of their own new password until the window ran out.
+    // After the commit, so a reset that rolled back leaves the lock alone.
+    await resetRateLimit(loginLockKey(resetToken.email));
 
     // Deleting the row only deletes our copy. After the commit, so a reset
     // that fails keeps a working connection; cannot throw, and has a deadline.
