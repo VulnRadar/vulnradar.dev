@@ -146,9 +146,9 @@ export async function generateApiKey(
 }
 
 /**
- * Compare a key with a legacy bcrypt hash. Only rows from before key_encrypted
- * existed still hold one; each is rewritten to the digest on its first
- * successful use (findLegacyBcryptKey), so this path empties itself.
+ * Compare a key with a legacy bcrypt hash (see LEGACY_BCRYPT_ROW). Each such
+ * row is rewritten to the digest on its first successful use
+ * (findLegacyBcryptKey), so this path empties itself.
  */
 async function verifyLegacyBcryptKey(
   key: string,
@@ -434,16 +434,29 @@ async function notifyApiKeyIpMismatch(params: {
 }
 
 /**
- * Rows that hold a bcrypt hash and no ciphertext: keys from before
- * key_encrypted existed. A digest can only be computed from the raw key, so
- * these cannot be converted at boot the way ciphertext rows are; each one is
- * rewritten to the digest on its first successful use instead.
+ * Rows that hold a bcrypt hash and no ciphertext: keys made by 2.2.x on an
+ * install with no API_KEY_ENCRYPTION_KEY (2.3.0 made the key required). A
+ * digest can only be computed from the raw key, so these cannot be
+ * converted at boot the way ciphertext rows are; each one is rewritten to the
+ * digest on its first successful use instead.
  *
  * `$2` is the bcrypt version prefix ($2a$, $2b$, $2y$). A SHA-256 digest is
  * hex and never starts with `$`, and neither did the `deprecated_`
  * placeholder 3.9.1 wrote beside its ciphertext.
+ *
+ * `key_locator IS NULL` is the condition 3.9.1 ran its bcrypt compare under.
+ * A bcrypt row with a locator has not authenticated since then, and dropping
+ * the condition would bring it back rather than keep it working.
  */
-const LEGACY_BCRYPT_ROW = `ak.key_hash LIKE '$2%' AND ak.key_encrypted IS NULL`;
+const LEGACY_BCRYPT_ROW = `ak.key_hash LIKE '$2%' AND ak.key_encrypted IS NULL AND ak.key_locator IS NULL`;
+
+/**
+ * bcrypt compares only the first 72 bytes of its input, and a bcrypt-era key
+ * (vr_live_ plus 64 hex) is exactly 72, so the key with anything appended
+ * passes the compare. Such a string is not the key, and rewriting the row to
+ * its digest would lock the real key out, so it never reaches the compare.
+ */
+const BCRYPT_INPUT_LIMIT_BYTES = 72;
 
 /**
  * perf: whether any legacy bcrypt row is left.
@@ -508,6 +521,7 @@ async function findLegacyBcryptKey(
   key: string,
   digest: string,
 ): Promise<KeyLookupRow | null> {
+  if (Buffer.byteLength(key, "utf8") > BCRYPT_INPUT_LIMIT_BYTES) return null;
   const result = await pool.query<KeyLookupRow>(
     `${KEY_LOOKUP_SQL}
         WHERE ${LEGACY_BCRYPT_ROW}`,

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createHash } from "node:crypto";
 import { ALL_API_KEY_SCOPES } from "@/lib/config/client-constants";
+import { hashApiKey } from "@/lib/api/api-key-digest";
 
 /**
  * Tests for API key IP binding (passesApiKeyIpBinding), plus one
@@ -118,7 +118,7 @@ beforeEach(() => {
 });
 
 function digestOf(raw: string): string {
-  return createHash("sha256").update(raw, "utf8").digest("hex");
+  return hashApiKey(raw);
 }
 
 describe("validation does not depend on API_KEY_ENCRYPTION_KEY", () => {

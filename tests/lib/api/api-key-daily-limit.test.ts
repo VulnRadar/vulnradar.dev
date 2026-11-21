@@ -18,7 +18,7 @@
  * validateApiKey, so mocking either would test nothing.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createHash } from "node:crypto";
+import { hashApiKey } from "@/lib/api/api-key-digest";
 
 type Row = Record<string, unknown>;
 
@@ -100,7 +100,7 @@ function setKeyOwner(owner: {
     name: "CI",
     revoked_at: null,
     disabled_at: null,
-    key_hash: createHash("sha256").update(RAW_KEY).digest("hex"),
+    key_hash: hashApiKey(RAW_KEY),
     bound_ip: null,
     scopes: ["scan:read"],
     email: "owner@example.com",

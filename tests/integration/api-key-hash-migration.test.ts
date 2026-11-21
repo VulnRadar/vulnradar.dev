@@ -45,8 +45,11 @@ function setKeys(current: string, previous?: string) {
   else process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY = previous;
 }
 
+/** What key_hash holds from 4.0.0 on (lib/api/api-key-digest.ts). */
 function digest(raw: string): string {
-  return createHash("sha256").update(raw, "utf8").digest("hex");
+  return createHash("sha256")
+    .update("vulnradar-api-key-digest:" + raw, "utf8")
+    .digest("hex");
 }
 
 function newRawKey(): string {
@@ -231,5 +234,27 @@ describeIntegration("API keys stored as a digest", () => {
     });
     expect((await validateApiKey(raw))?.keyId).toBe(id);
     expect(await validateApiKey(newRawKey())).toBeNull();
+  });
+
+  it("does not bring back a key stored as its bare SHA-256 before 2.2.0", async () => {
+    // Those releases wrote sha256(raw) to key_hash. 3.9.1 refuses the row
+    // (its bcrypt compare never passes against hex), and so must 4.0.0: a
+    // digest lookup that matched it would revive a key dead for months.
+    const user = await createUser();
+    const raw = newRawKey();
+    const { rows } = await pool.query<{ id: number }>(
+      `INSERT INTO api_keys (user_id, key_hash, key_prefix, name)
+       VALUES ($1, $2, $3, '2.1 key') RETURNING id`,
+      [
+        user.id,
+        createHash("sha256").update(raw, "utf8").digest("hex"),
+        raw.slice(0, 16),
+      ],
+    );
+    written.push(rows[0].id);
+    await hashStoredApiKeys();
+    __resetLegacyKeyRowCache();
+
+    expect(await validateApiKey(raw)).toBeNull();
   });
 });

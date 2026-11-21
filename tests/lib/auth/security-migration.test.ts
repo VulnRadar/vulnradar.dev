@@ -184,7 +184,9 @@ describe("migratePlaintextSecretsToEncrypted (Discord tokens)", () => {
 describe("hashStoredApiKeys", () => {
   const RAW = "vr_live_" + "e".repeat(64);
   const digest = (raw: string) =>
-    createHash("sha256").update(raw, "utf8").digest("hex");
+    createHash("sha256")
+      .update("vulnradar-api-key-digest:" + raw, "utf8")
+      .digest("hex");
 
   function apiKeyWrites() {
     return updates().filter((q) => q.sql.includes("UPDATE api_keys"));

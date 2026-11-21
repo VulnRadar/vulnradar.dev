@@ -56,6 +56,14 @@ function joined(row: StoredRow) {
   return { ...row, key_id: row.id, ...OWNER };
 }
 
+/** The bcrypt-row predicate, honouring each condition the SQL states. */
+function isBcryptRow(sql: string, row: StoredRow): boolean {
+  if (!row.key_hash.startsWith("$2")) return false;
+  if (sql.includes("key_encrypted IS NULL") && row.key_encrypted) return false;
+  if (sql.includes("key_locator IS NULL") && row.key_locator) return false;
+  return true;
+}
+
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   queries.push({ sql, params });
   const s = sql.replace(/\s+/g, " ").trim();
@@ -132,18 +140,14 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
       };
     }
     if (s.includes("LIKE '$2%'")) {
-      return {
-        rows: table
-          .filter((r) => r.key_hash.startsWith("$2") && !r.key_encrypted)
-          .map(joined),
-      };
+      return { rows: table.filter((r) => isBcryptRow(s, r)).map(joined) };
     }
     return { rows: [] };
   }
 
   if (s.startsWith("SELECT EXISTS")) {
     const present = s.includes("LIKE '$2%'")
-      ? table.some((r) => r.key_hash.startsWith("$2") && !r.key_encrypted)
+      ? table.some((r) => isBcryptRow(s, r))
       : table.some((r) => r.key_locator === null);
     return { rows: [{ present }] };
   }
@@ -205,7 +209,18 @@ const realCrypto =
   );
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 
-function sha256Hex(value: string): string {
+/**
+ * What key_hash holds from 4.0.0 on, written out here rather than imported so
+ * a change to the stored form (which invalidates every key) fails this suite.
+ */
+function storedDigest(raw: string): string {
+  return createHash("sha256")
+    .update("vulnradar-api-key-digest:" + raw, "utf8")
+    .digest("hex");
+}
+
+/** What releases before 2.2.0 stored in key_hash: the key's bare SHA-256. */
+function bareSha256Hex(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
@@ -259,7 +274,7 @@ describe("generateApiKey stores a one-way digest", () => {
     expect(raw).toMatch(/^vr_live_[0-9a-f]{64}$/);
   });
 
-  it("writes sha256(raw) to key_hash and nothing reversible anywhere", async () => {
+  it("writes the digest to key_hash and nothing reversible anywhere", async () => {
     const { raw } = await newKey();
 
     const insert = queries.find((q) => q.sql.includes("INSERT INTO api_keys"));
@@ -268,7 +283,7 @@ describe("generateApiKey stores a one-way digest", () => {
       expect(String(param)).not.toContain(raw.slice(8));
       expect(opensTo(param)).toBeNull();
     }
-    expect(table[0].key_hash).toBe(sha256Hex(raw));
+    expect(table[0].key_hash).toBe(storedDigest(raw));
     expect(table[0].key_encrypted).toBeNull();
     expect(table[0].key_locator).toBeNull();
     expect(encryptCalls).not.toHaveBeenCalled();
@@ -299,7 +314,7 @@ describe("validateApiKey compares digests", () => {
     queries.length = 0;
     await validateApiKey(raw);
     const lookup = queries.find((q) => q.sql.includes("ak.key_hash = $1"));
-    expect(lookup?.params).toEqual([sha256Hex(raw)]);
+    expect(lookup?.params).toEqual([storedDigest(raw)]);
   });
 
   it("keeps working when API_KEY_ENCRYPTION_KEY is replaced and no previous key is set", async () => {
@@ -340,6 +355,31 @@ describe("validateApiKey compares digests", () => {
     expect(await validateApiKey(raw)).toBeNull();
     expect(decryptCalls).not.toHaveBeenCalled();
   });
+
+  it("does not bring back a key a release before 2.2.0 stored as its bare SHA-256", async () => {
+    // Those releases wrote sha256(raw) into this same column. The keys have
+    // answered 401 since bcrypt replaced the bare hash (3.9.1 runs a bcrypt
+    // compare on the row, which a hex string never passes), but nothing
+    // revoked the rows: a stored digest equal to the bare hash would turn
+    // every one of them back on.
+    const raw = "vr_live_" + "f".repeat(64);
+    table.push({
+      id: 60,
+      user_id: 3,
+      name: "2.1 key",
+      key_hash: bareSha256Hex(raw),
+      key_locator: null,
+      key_encrypted: null,
+      key_prefix: raw.slice(0, 16),
+      daily_limit: 100,
+      scopes: null,
+      revoked_at: null,
+      bound_ip: null,
+      created_at: new Date("2026-02-20T00:00:00Z"),
+    });
+
+    expect(await validateApiKey(raw)).toBeNull();
+  });
 });
 
 describe("rotateApiKey stores the new secret as a digest", () => {
@@ -350,7 +390,7 @@ describe("rotateApiKey stores the new secret as a digest", () => {
 
     expect(rotated?.id).toBe(id);
     const newRaw = rotated!.raw_key as string;
-    expect(table[0].key_hash).toBe(sha256Hex(newRaw));
+    expect(table[0].key_hash).toBe(storedDigest(newRaw));
     expect(table[0].key_encrypted).toBeNull();
     expect(table[0].key_locator).toBeNull();
     const update = queries.find((q) =>
@@ -370,7 +410,9 @@ describe("rotateApiKey stores the new secret as a digest", () => {
 describe("a legacy bcrypt row", () => {
   const RAW = "vr_live_" + "b".repeat(64);
 
-  async function legacyRow(): Promise<StoredRow> {
+  async function legacyRow(
+    overrides: Partial<StoredRow> = {},
+  ): Promise<StoredRow> {
     const row: StoredRow = {
       id: 70,
       user_id: 3,
@@ -384,10 +426,33 @@ describe("a legacy bcrypt row", () => {
       revoked_at: null,
       bound_ip: null,
       created_at: new Date(),
+      ...overrides,
     };
     table.push(row);
     return row;
   }
+
+  it("refuses the key with bytes past bcrypt's 72 and does not rewrite the row", async () => {
+    // bcrypt compares only the first 72 bytes, and RAW is exactly 72, so the
+    // key with anything appended passes the compare. Rewriting the row to the
+    // digest of that longer string would lock the real key out for good.
+    const row = await legacyRow();
+    const oldHash = row.key_hash;
+
+    expect(await validateApiKey(RAW + "x")).toBeNull();
+    expect(row.key_hash).toBe(oldHash);
+
+    expect((await validateApiKey(RAW))?.keyId).toBe(70);
+    expect(row.key_hash).toBe(storedDigest(RAW));
+  });
+
+  it("stays refused when it carries a key_locator, as it was in 3.9.1", async () => {
+    // 3.9.1 only ran the bcrypt compare on rows with no locator, so a bcrypt
+    // row that has one has not authenticated since then either.
+    await legacyRow({ key_locator: "0a1b2c3d" });
+
+    expect(await validateApiKey(RAW)).toBeNull();
+  });
 
   it("authenticates and is rewritten to the digest on its first use", async () => {
     const row = await legacyRow();
@@ -400,8 +465,8 @@ describe("a legacy bcrypt row", () => {
         q.sql.trim().startsWith("UPDATE api_keys") &&
         q.sql.includes("key_hash = $1"),
     );
-    expect(rewrite?.params).toEqual([sha256Hex(RAW), 70, oldHash]);
-    expect(row.key_hash).toBe(sha256Hex(RAW));
+    expect(rewrite?.params).toEqual([storedDigest(RAW), 70, oldHash]);
+    expect(row.key_hash).toBe(storedDigest(RAW));
 
     // The second use finds it by digest, and the path has emptied itself.
     queries.length = 0;

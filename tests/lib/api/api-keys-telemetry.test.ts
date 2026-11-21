@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextResponse } from "next/server";
-import { createHash } from "node:crypto";
+import { hashApiKey } from "@/lib/api/api-key-digest";
 
 /**
  * Which API version and client each key was last used with, the record the
@@ -72,7 +72,7 @@ function keyRow(): Row {
     user_id: 3,
     name: "CI key",
     revoked_at: null,
-    key_hash: createHash("sha256").update(RAW_KEY).digest("hex"),
+    key_hash: hashApiKey(RAW_KEY),
     bound_ip: null,
     email: "owner@example.com",
     user_name: "Owner",
