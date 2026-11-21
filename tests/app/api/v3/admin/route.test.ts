@@ -249,6 +249,8 @@ const { POST: resetPasswordPOST } =
   await import("@/app/api/v3/auth/reset-password/route");
 const { hashPassword } = await import("@/lib/auth/password-hash");
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
+const { encryptApiKey } = await import("@/lib/auth/crypto");
+const { generateTOTP } = await import("@/lib/auth/totp");
 
 const ADMIN_PASSWORD = "correct-admin-password-42!";
 let adminHash: string;
@@ -283,6 +285,36 @@ function queueAdminPassword(hash: string | null) {
     rows: hash ? [{ password_hash: hash }] : [],
   });
 }
+
+/**
+ * The second-factor lookup lib/auth/staff-step-up.ts makes for the ACTING
+ * admin after the password check, on impersonate. `totp` on means an
+ * authenticator account whose current code is totpNow().
+ */
+const TOTP_SEED = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+const savedEncryptionKey = process.env.API_KEY_ENCRYPTION_KEY;
+function queueSecondFactor(totp: boolean) {
+  // The seed is stored encrypted, so the key has to be there to read it.
+  process.env.API_KEY_ENCRYPTION_KEY = "d".repeat(64);
+  mockQuery.mockResolvedValueOnce({
+    rows: [
+      {
+        password_hash: adminHash,
+        totp_enabled: totp,
+        totp_secret: totp ? encryptApiKey(TOTP_SEED) : null,
+        two_factor_method: totp ? "app" : null,
+      },
+    ],
+  });
+}
+function totpNow(): string {
+  return generateTOTP(TOTP_SEED);
+}
+afterEach(() => {
+  if (savedEncryptionKey === undefined)
+    delete process.env.API_KEY_ENCRYPTION_KEY;
+  else process.env.API_KEY_ENCRYPTION_KEY = savedEncryptionKey;
+});
 
 /**
  * The user-detail request is one statement (lib/admin/user-detail.ts): the
@@ -3546,6 +3578,7 @@ describe("PATCH /api/v3/admin, super_admin caller passes every check an admin pa
       unsubscribe_token: null,
     });
     queueAdminPassword(adminHash);
+    queueSecondFactor(true);
     // startImpersonation's own independent lookups (see
     // lib/auth/impersonation.ts): the target user again (disabled_at
     // isn't in the PATCH handler's own targetRes columns), then whether
@@ -3560,11 +3593,17 @@ describe("PATCH /api/v3/admin, super_admin caller passes every check an admin pa
         action: "impersonate",
         userId: 5,
         currentAdminPassword: ADMIN_PASSWORD,
+        totpCode: totpNow(),
       }),
     );
     const json = await res.json();
     expect(res.status).toBe(200);
     expect(json.impersonating).toBe("t@example.com");
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("INSERT INTO sessions"),
+      ),
+    ).toBe(true);
     expect(cookieState.get(AUTH_SESSION_COOKIE_NAME)).not.toBe(
       "admin-session-id",
     );
@@ -3606,6 +3645,7 @@ describe("PATCH /api/v3/admin, super_admin caller passes every check an admin pa
       unsubscribe_token: null,
     });
     queueAdminPassword(adminHash);
+    queueSecondFactor(true);
     mockQuery.mockResolvedValueOnce({
       rows: [{ email: "t@example.com", role: "support", disabled_at: null }],
     });
@@ -3615,11 +3655,148 @@ describe("PATCH /api/v3/admin, super_admin caller passes every check an admin pa
         action: "impersonate",
         userId: 5,
         currentAdminPassword: ADMIN_PASSWORD,
+        totpCode: totpNow(),
       }),
     );
     expect(res.status).toBe(403);
     expect(cookieState.get(AUTH_SESSION_COOKIE_NAME)).toBe("admin-session-id");
   });
+
+  // ENFORCE_STAFF_2FA ships off, so the password used to be the whole gate:
+  // one stolen admin password signed in as any customer. The second factor is
+  // asked for whatever that setting says (lib/auth/staff-step-up.ts).
+  it("refuses an admin without two-factor, right password and all, before any session is created", async () => {
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "admin-session-id");
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    queueSecondFactor(false);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ email: "t@example.com", role: "user", disabled_at: null }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ impersonated_by: null }] });
+
+    const res = await PATCH(
+      patchRequest({
+        action: "impersonate",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.code).toBe("SECOND_FACTOR_REQUIRED");
+    expect(json.secondFactor).toBe("none");
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("INSERT INTO sessions"),
+      ),
+    ).toBe(false);
+    expect(cookieState.get(AUTH_SESSION_COOKIE_NAME)).toBe("admin-session-id");
+    expect(cookieState.has("imp_return_session")).toBe(false);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  }, 20000);
+
+  it("refuses a wrong authenticator code, and the refusal stays counted", async () => {
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "admin-session-id");
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    queueSecondFactor(true);
+    const code = totpNow();
+
+    const res = await PATCH(
+      patchRequest({
+        action: "impersonate",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+        totpCode: code === "000000" ? "111111" : "000000",
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect((await res.json()).secondFactor).toBe("totp");
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("INSERT INTO sessions"),
+      ),
+    ).toBe(false);
+    expect(cookieState.get(AUTH_SESSION_COOKIE_NAME)).toBe("admin-session-id");
+    // The password check reserved and returned one attempt; the second
+    // factor reserved another under the same key and kept it.
+    const reauthKeys = mockCheckRateLimit.mock.calls
+      .map(([arg]) => (arg as { key: string }).key)
+      .filter((key) => key.startsWith("admin-reauth:2:"));
+    expect(reauthKeys).toHaveLength(2);
+    expect(mockRefundRateLimitAttempt).toHaveBeenCalledTimes(1);
+  }, 20000);
+
+  it("hands the second factor's attempt back when the code was right", async () => {
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "admin-session-id");
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    queueSecondFactor(true);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ email: "t@example.com", role: "user", disabled_at: null }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ impersonated_by: null }] });
+
+    const res = await PATCH(
+      patchRequest({
+        action: "impersonate",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+        totpCode: totpNow(),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockRefundRateLimitAttempt).toHaveBeenCalledTimes(2);
+  }, 20000);
+
+  it("refuses the second factor at the attempt cap without reading the account", async () => {
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "admin-session-id");
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    mockCheckRateLimit
+      .mockResolvedValueOnce({
+        allowed: true,
+        remaining: 0,
+        retryAfterSeconds: 0,
+      })
+      .mockResolvedValueOnce({
+        allowed: false,
+        remaining: 0,
+        retryAfterSeconds: 600,
+      });
+
+    const res = await PATCH(
+      patchRequest({
+        action: "impersonate",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+        totpCode: totpNow(),
+      }),
+    );
+    expect(res.status).toBe(429);
+    expect(cookieState.get(AUTH_SESSION_COOKIE_NAME)).toBe("admin-session-id");
+  }, 20000);
 
   it("can edit a note it doesn't own (admin-or-higher-only capability)", async () => {
     queueRole("super_admin");

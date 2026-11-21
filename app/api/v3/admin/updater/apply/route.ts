@@ -5,6 +5,10 @@ import {
   logAction,
 } from "@/lib/auth/authorization";
 import { reauthRefusal, verifyReauthPassword } from "@/lib/auth/reauth";
+import {
+  secondFactorRefusal,
+  verifyStaffSecondFactor,
+} from "@/lib/auth/staff-step-up";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp } from "@/lib/api/request-utils";
 import { parseBody } from "@/lib/api/api-utils";
@@ -17,6 +21,8 @@ export const dynamic = "force-dynamic";
 
 interface ApplyBody {
   currentAdminPassword?: string;
+  /** Six digits from the authenticator app (lib/auth/staff-step-up.ts). */
+  totpCode?: string;
   targetVersion?: string;
 }
 
@@ -32,7 +38,8 @@ interface ApplyBody {
  * host": gated hard behind the super_admin role (not just admin/staff),
  * behind the same password re-auth + rate limit pattern
  * app/api/v3/admin/route.ts uses for its own destructive actions
- * (GATED_ACTIONS), and audit-logged. The checksum/signature verification
+ * (GATED_ACTIONS), then a second factor whatever ENFORCE_STAFF_2FA says
+ * (lib/auth/staff-step-up.ts), and audit-logged. The checksum/signature verification
  * inside runUpdateJob (lib/updater/apply.ts) is the actual control here,
  * not this gate -- this gate only decides *who* may ask for a verified
  * release to be installed.
@@ -107,6 +114,11 @@ export async function POST(request: NextRequest) {
     },
   );
   if (!reauth.ok) return reauthRefusal(reauth, 403, 403);
+
+  // A password alone is one stolen secret away from code on the host. The
+  // refusal stays counted: the attempt was reserved above for every request.
+  const secondFactor = await verifyStaffSecondFactor(admin, parsed.data);
+  if (!secondFactor.ok) return secondFactorRefusal(secondFactor);
 
   const version =
     typeof targetVersion === "string" && targetVersion.trim()

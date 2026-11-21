@@ -17,6 +17,10 @@ import { hashPassword } from "@/lib/auth/auth";
 import { issueResetLinkToken } from "@/lib/auth/password-reset-token";
 import { replaceAccountEmail } from "@/lib/admin/account-email";
 import { reauthRefusal, verifyReauthPassword } from "@/lib/auth/reauth";
+import {
+  secondFactorRefusal,
+  verifyStaffSecondFactor,
+} from "@/lib/auth/staff-step-up";
 import { analyzePassword } from "@/lib/auth/password-strength";
 import { startImpersonation } from "@/lib/auth/impersonation";
 import { revokeStoredGithubToken } from "@/lib/github/github-connections";
@@ -1847,6 +1851,32 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
           { status: 403 },
         );
       }
+      // The password gate above is one stolen secret, and ENFORCE_STAFF_2FA
+      // ships off, so a second factor is asked for here whatever it says
+      // (lib/auth/staff-step-up.ts). Refusals count against the same re-auth
+      // allowance as a wrong password: the attempt is reserved first and
+      // handed back only when the factor passed.
+      const factorKey = `admin-reauth:${session.userId}:${ip}`;
+      const factorReservedAt = new Date();
+      const factorRl = await checkRateLimit({
+        key: factorKey,
+        ...RATE_LIMITS.adminReauth,
+      });
+      if (!factorRl.allowed) {
+        return NextResponse.json(
+          {
+            error: `Too many admin attempts. Try again in ${Math.ceil(factorRl.retryAfterSeconds / 60)} minute(s).`,
+          },
+          {
+            status: 429,
+            headers: { "Retry-After": String(factorRl.retryAfterSeconds) },
+          },
+        );
+      }
+      const secondFactor = await verifyStaffSecondFactor(session, body);
+      if (!secondFactor.ok) return secondFactorRefusal(secondFactor);
+      await refundRateLimitAttempt(factorKey, factorReservedAt);
+
       const result = await startImpersonation(
         session.userId,
         userId,
