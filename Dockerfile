@@ -119,18 +119,41 @@ RUN npm run build
 # move.
 RUN npm prune --omit=dev --ignore-scripts
 
-# infra: cosign binary, pulled from Sigstore's own distroless
-# image rather than curl+checksum-verified by hand -- the standard
-# multi-stage COPY pattern for bundling cosign into another image.
-# Pinned to v2.4.1, the exact version .github/workflows/release.yml
-# signs releases with, so verify-blob's bundle format always matches
-# what was signed. Without cosign on PATH, lib/updater/cosign.ts soft-
-# skips signature verification entirely (checksum verification still
-# runs and is a hard gate either way) -- this is what makes real
-# signature verification actually happen by default in the published
-# image, instead of only for someone who happened to install cosign
-# themselves.
-FROM gcr.io/projectsigstore/cosign:v3.1.3 AS cosign
+# infra: the cosign binary for lib/updater/cosign.ts. Without cosign on PATH
+# the updater soft-skips signature verification entirely (checksum
+# verification still runs and is a hard gate either way), so shipping it is
+# what makes signature verification happen by default in the published image
+# instead of only for someone who happened to install cosign themselves.
+#
+# security: this is cosign's v3.1.4 release binary, checked against the
+# sha256 that release publishes in cosign_checksums.txt (GitHub's own digest
+# for each asset says the same), rather than a copy out of
+# gcr.io/projectsigstore/cosign. The image and the binaries are separate
+# builds. Sigstore compiles the release binaries with Go 1.27.3, but builds
+# the image with ko on its release builder's own Go, which for v3.1.4 is
+# 1.27.1, so the image still carries the eleven Go standard library
+# advisories fixed in 1.27.2 and 1.27.3 (ten between GO-2026-6603 and
+# GO-2026-6617, one of them critical, and GO-2026-6809). The v3.1.3 image
+# this replaces was on go1.26.4, with golang.org/x/net v0.56.0 and grpc
+# v1.82.0 under it.
+#
+# The stage starts from the same pinned Node image as the other two, so it
+# pulls no extra base. amd64 and arm64 are the two platforms this image is
+# published for, and the only two the lockfile carries Alpine bindings for;
+# any other architecture fails here by name instead of shipping without a
+# verifier. `cosign version` fails the build if the binary does not run.
+FROM node:22.23.5-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS cosign
+RUN set -eu; \
+    case "$(apk --print-arch)" in \
+      x86_64) arch=amd64; sum=424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa ;; \
+      aarch64) arch=arm64; sum=ade83b7aac62e131cacfe96d958948b2150cc9efec46a570a2649b8e27dedad2 ;; \
+      *) echo "no pinned cosign v3.1.4 checksum for $(apk --print-arch)" >&2; exit 1 ;; \
+    esac; \
+    wget -q -O /tmp/cosign "https://github.com/sigstore/cosign/releases/download/v3.1.4/cosign-linux-${arch}"; \
+    echo "${sum}  /tmp/cosign" | sha256sum -c -; \
+    install -m 0755 /tmp/cosign /usr/local/bin/cosign; \
+    rm /tmp/cosign; \
+    cosign version
 
 # ── Production stage ───────────────────────────────────────────
 FROM node:22.23.5-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS runner
@@ -171,7 +194,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/lib ./lib
 # cosign binary for the self-updater's release signature verification
 # (lib/updater/cosign.ts) -- see the cosign build stage above for why.
 # /usr/local/bin is on Alpine's default PATH already.
-COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
+COPY --from=cosign /usr/local/bin/cosign /usr/local/bin/cosign
 
 # Install wget for health checks, tini for proper PID 1 signal handling
 # (npm as PID 1 does not forward SIGTERM to the Node worker on
