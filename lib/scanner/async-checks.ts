@@ -2466,7 +2466,11 @@ function probeAxfr(
   });
 }
 
-async function checkZoneTransfer(
+// Exported for tests/lib/scanner/zone-transfer.test.ts: the NS addresses come
+// from the scanned domain's own records, and CodeQL does not treat
+// net.createConnection as a request-forgery sink, so the test is the only
+// thing that notices if the private-address skip below goes missing.
+export async function checkZoneTransfer(
   domain: string,
   url: string,
 ): Promise<Vulnerability[]> {
