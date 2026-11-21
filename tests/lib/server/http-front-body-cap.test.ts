@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import http from "node:http";
+import net from "node:net";
 import { createHash, randomBytes } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createFrontServer } from "@/server.mjs";
-import { MAX_REQUEST_BODY_BYTES as FRONT_CAP } from "@/lib/server/http-front.mjs";
+import {
+  MAX_REQUEST_BODY_BYTES as FRONT_CAP,
+  capRequestBody,
+} from "@/lib/server/http-front.mjs";
 import { MAX_REQUEST_BODY_BYTES } from "@/lib/api/request-limits";
 
 /**
@@ -206,6 +210,9 @@ describe("a chunked body to the API, over a real socket", () => {
       "/%61pi/v3/contact",
       "/x/../api/v3/contact",
       "/api/v3/contact?next=/",
+      // The middleware unescapes the prefix one escape at a time, so a
+      // malformed one further along does not stop it judging the API.
+      "/%61pi/v3/contact/%zz",
     ]) {
       const answer = await send(port, path, randomBytes(2 * MiB));
       expect(answer.status, path).toBe(413);
@@ -270,6 +277,49 @@ describe("a chunked body to the API, over a real socket", () => {
     });
 
     expect(outcome).toBe("cut off: streaming");
+  });
+});
+
+describe("a Content-Length sent beside Transfer-Encoding", () => {
+  it("is counted when the lenient parser reads that body as chunked", async () => {
+    // The strict parser refuses the pair outright. --insecure-http-parser
+    // takes the chunked body and keeps the header, so a middleware that
+    // judges the header sees 10 bytes while the handler receives them all.
+    const seen: Seen[] = [];
+    const handler = readingHandler(seen);
+    server = http.createServer({ insecureHTTPParser: true }, (req, res) => {
+      capRequestBody(req, res);
+      handler(req, res);
+    });
+    await new Promise<void>((done) => server!.listen(0, "127.0.0.1", done));
+    const { port } = server.address() as AddressInfo;
+
+    const chunk = randomBytes(64 * 1024);
+    const frames: Buffer[] = [
+      Buffer.from(
+        "POST /api/v3/contact HTTP/1.1\r\nHost: localhost\r\n" +
+          "Content-Length: 10\r\nTransfer-Encoding: chunked\r\n\r\n",
+      ),
+    ];
+    for (let sent = 0; sent < 2 * MiB; sent += chunk.length) {
+      frames.push(Buffer.from(`${chunk.length.toString(16)}\r\n`), chunk);
+      frames.push(Buffer.from("\r\n"));
+    }
+    frames.push(Buffer.from("0\r\n\r\n"));
+
+    const reply = await new Promise<string>((resolve) => {
+      const socket = net.connect(port, "127.0.0.1");
+      let text = "";
+      socket.on("data", (data: Buffer) => (text += data.toString("latin1")));
+      socket.on("end", () => resolve(text));
+      socket.on("error", () => resolve(text));
+      socket.write(Buffer.concat(frames));
+    });
+
+    expect(reply.split("\r\n")[0]).toBe("HTTP/1.1 413 Payload Too Large");
+    expect(seen).toHaveLength(1);
+    await seen[0].closed;
+    expect(seen[0].ended).toBe(false);
   });
 });
 
