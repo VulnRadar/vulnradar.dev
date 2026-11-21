@@ -68,6 +68,20 @@ describe("isPrivateIP IPv6 canonicalization", () => {
     "2002:a9fe:a9fe::1",
     "2002:c0a8:101:1::1",
     "2002:a83f:8110::",
+    // SIIT IPv4-translated form (RFC 2765, ::ffff:0:a.b.c.d): canonical
+    // 0000:0000:0000:0000:ffff:0000:..., so ffff sits one group earlier than
+    // in the mapped form and the embedded IPv4 used to go unread.
+    "::ffff:0:7f00:1",
+    "::ffff:0:a9fe:a9fe",
+    "::ffff:0:127.0.0.1",
+    "::ffff:0:a00:1",
+    // RFC 8215 local-use NAT64 (64:ff9b:1::/48). Under a /48 translator the
+    // IPv4 sits in bits 48 to 87 (RFC 6052 2.2), so reading the last 32 bits
+    // is wrong: the second address embeds 169.254.169.254 there and 8.8.8.8
+    // in the tail. The whole /48 is refused whatever its embedding.
+    "64:ff9b:1::7f00:1",
+    "64:ff9b:1:a9fe:a9:fe00:808:808",
+    "64:ff9b:1:ffff::1",
   ])("blocks %s", (ip) => {
     expect(isPrivateIP(ip)).toBe(true);
   });
@@ -79,6 +93,8 @@ describe("isPrivateIP IPv6 canonicalization", () => {
     "::ffff:1.1.1.1", // Cloudflare IPv4-mapped public
     "::1.1.1.1", // IPv4-compatible public
     "2002:101:101::1", // 6to4 for a public IPv4
+    "::ffff:0:808:808", // SIIT form of a public IPv4
+    "64:ff9b:2::808:808", // just past the local-use /48
   ])("allows public IPv6 %s", (ip) => {
     expect(isPrivateIP(ip)).toBe(false);
   });

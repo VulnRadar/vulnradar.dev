@@ -338,6 +338,13 @@ const PRIVATE_IPV6_PATTERNS = [
   /^0000:0000:0000:0000:0000:ffff:e000:/i, // IPv4-mapped 224.0.0.0/4 multicast
   /^0000:0000:0000:0000:0000:ffff:f[0-9a-f][0-9a-f][0-9a-f]:/i, // IPv4-mapped 240.0.0.0/4
   /^0064:ff9b:0000:0000:0000:0000:/i, // RFC 6052 NAT64 well-known prefix
+  // ssrf: RFC 8215 local-use NAT64 (64:ff9b:1::/48). A /48 translator embeds
+  // the IPv4 in bits 48 to 87 (RFC 6052 2.2), not the last 32 bits the
+  // well-known-prefix branch of ipv4MappedToDotted reads, so
+  // 64:ff9b:1:a9fe:a9:fe00:808:808 reached 169.254.169.254 while reading as
+  // 8.8.8.8. The prefix is for a site's own translator by definition, so the
+  // whole /48 is refused whatever the network's prefix length.
+  /^0064:ff9b:0001:/i,
   /^0100:0000:0000:0000:0000:0000:/i, // Discard prefix (RFC 6666) (100::/64)
   /^2001:0db8:/i, // Documentation prefix (RFC 3849)
   /^2001:0000:/i, // Teredo tunneling (RFC 4380) (2001::/32)
@@ -390,9 +397,10 @@ export function isPrivateIP(ip: string): boolean {
 /**
  * If `canonicalIp` carries an IPv4 address in a form a network can still
  * deliver to that IPv4 host, return the embedded IPv4 in dotted form:
- * IPv4-mapped (::ffff:a.b.c.d), the deprecated IPv4-compatible form
- * (::a.b.c.d, RFC 4291 2.5.5.1), RFC 6052 NAT64 (64:ff9b::a.b.c.d) and 6to4
- * (2002:aabb:ccdd::/48, RFC 3056). Returns null otherwise.
+ * IPv4-mapped (::ffff:a.b.c.d), IPv4-translated (::ffff:0:a.b.c.d, the SIIT
+ * form of RFC 2765), the deprecated IPv4-compatible form (::a.b.c.d, RFC 4291
+ * 2.5.5.1), RFC 6052 NAT64 (64:ff9b::a.b.c.d) and 6to4 (2002:aabb:ccdd::/48,
+ * RFC 3056). Returns null otherwise.
  *
  * The compatible and 6to4 forms used to fall through to the native IPv6
  * patterns, which match neither, so a DNS answer of ::7f00:1 or
@@ -404,13 +412,16 @@ function ipv4MappedToDotted(canonicalIp: string): string | null {
 
   // IPv4-mapped IPv6: ::ffff:X.X.X.X → groups[0..4] = 0, groups[5] = ffff.
   // IPv4-compatible: ::X.X.X.X → groups[0..5] = 0.
+  // IPv4-translated (SIIT, RFC 2765): ::ffff:0:X.X.X.X → groups[0..3] = 0,
+  // groups[4] = ffff, groups[5] = 0. A SIIT translator on the host's network
+  // delivers it to the IPv4 host, so ::ffff:0:7f00:1 is 127.0.0.1.
   if (
     groups[0] === "0000" &&
     groups[1] === "0000" &&
     groups[2] === "0000" &&
     groups[3] === "0000" &&
-    groups[4] === "0000" &&
-    (groups[5] === "ffff" || groups[5] === "0000")
+    ((groups[4] === "0000" && (groups[5] === "ffff" || groups[5] === "0000")) ||
+      (groups[4] === "ffff" && groups[5] === "0000"))
   ) {
     return hexGroupPairToDotted(groups[6], groups[7]);
   }
