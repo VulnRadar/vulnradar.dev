@@ -58,6 +58,7 @@ import {
   type SortDirection,
 } from "@/components/admin/shared";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { InlineAlert } from "@/components/shared/inline-alert";
 import {
   AdminReauthDialog,
   meHasPassword,
@@ -70,6 +71,7 @@ import {
 import { ModalShell } from "@/components/ui/modal-shell";
 import {
   API,
+  ROUTES,
   STAFF_ROLES,
   STAFF_ROLE_HIERARCHY,
   STAFF_ROLE_LABELS,
@@ -142,6 +144,73 @@ export function staffInviteBody(
     role,
     ...(currentAdminPassword === undefined ? {} : { currentAdminPassword }),
   };
+}
+
+/**
+ * Whether ENFORCE_STAFF_2FA resolves on, from the same effective-settings read
+ * the Settings tab makes. null when it could not be read (below the admin
+ * tier the endpoint refuses it), which shows no banner rather than a guess.
+ */
+export async function fetchStaffTwoFactorEnforced(): Promise<boolean | null> {
+  try {
+    const res = await fetch(`${API.ADMIN}/features`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ section: "system_settings", action: "effective" }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json().catch(() => null)) as {
+      effective?: Record<string, unknown>;
+    } | null;
+    const value = data?.effective?.ENFORCE_STAFF_2FA;
+    return typeof value === "boolean" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The staff accounts that sign in with a password alone. */
+export function staffWithoutTwoFactor(admins: ActiveAdmin[]): ActiveAdmin[] {
+  return admins.filter((admin) => !admin.totp_enabled);
+}
+
+/**
+ * While ENFORCE_STAFF_2FA is off, a staff account without two-factor reaches
+ * every admin route on its password alone. The directory showed that only as
+ * a count in the stat bar and a pill per row, so nothing said the setting
+ * that closes it was off. Nothing when the setting is on, when it could not
+ * be read, or when every account has two-factor.
+ */
+export function StaffTwoFactorBanner({
+  admins,
+  enforced,
+}: {
+  admins: ActiveAdmin[];
+  enforced: boolean | null;
+}) {
+  if (enforced !== false) return null;
+  const missing = staffWithoutTwoFactor(admins);
+  if (missing.length === 0) return null;
+  const verb = missing.length === 1 ? "signs" : "sign";
+  return (
+    <InlineAlert
+      tone="warning"
+      live="off"
+      title={`${pluralize(missing.length, "staff account")} ${verb} in with a password alone.`}
+    >
+      <p>{missing.map((admin) => admin.name || admin.email).join(", ")}</p>
+      <p>
+        Turn on{" "}
+        <a
+          href={`${ROUTES.ADMIN}?tab=settings`}
+          className="rounded-sm font-medium underline underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Require 2FA for staff
+        </a>{" "}
+        once they have set it up.
+      </p>
+    </InlineAlert>
+  );
 }
 
 /**
@@ -235,6 +304,9 @@ export function StaffList({
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [invitesLoading, setInvitesLoading] = useState(false);
   const [revokingId, setRevokingId] = useState<number | null>(null);
+  const [twoFactorEnforced, setTwoFactorEnforced] = useState<boolean | null>(
+    null,
+  );
 
   const fetchPendingInvites = useCallback(async () => {
     setInvitesLoading(true);
@@ -261,6 +333,18 @@ export function StaffList({
     // oxlint-disable-next-line react/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     if (canInvite) fetchPendingInvites();
   }, [canInvite, fetchPendingInvites]);
+
+  // The setting is admin-only to read, the same tier as the invites.
+  useEffect(() => {
+    if (!canInvite) return;
+    let cancelled = false;
+    void fetchStaffTwoFactorEnforced().then((value) => {
+      if (!cancelled) setTwoFactorEnforced(value);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [canInvite]);
 
   // Reload whenever the modal opens, so it reflects invites sent from another
   // admin's session too, not just this tab's own sends.
@@ -957,6 +1041,13 @@ export function StaffList({
       )}
 
       <div className="space-y-4">
+        {!adminsLoading && !adminsError && (
+          <StaffTwoFactorBanner
+            admins={activeAdmins}
+            enforced={twoFactorEnforced}
+          />
+        )}
+
         {/* Stats row */}
         {adminsLoading ? (
           <StatBarSkeleton segments={5} />
