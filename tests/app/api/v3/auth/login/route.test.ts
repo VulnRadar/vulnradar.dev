@@ -7,7 +7,7 @@ import {
   afterEach,
   vi,
 } from "vitest";
-import { createHash, randomBytes, scryptSync } from "node:crypto";
+import { createHash, createHmac, randomBytes, scryptSync } from "node:crypto";
 
 /**
  * The per-account lockout key.
@@ -45,6 +45,9 @@ void defaultSessionRow; // not needed here, kept for parity with sibling suites
 // The 2FA-challenge branch signs a pending token (lib/auth/pending-2fa), which
 // requires a 32-byte hex key. Set before the route runs, matching sibling suites.
 process.env.API_KEY_ENCRYPTION_KEY = "c".repeat(64);
+// The emailed-code digest is keyed with AUTH_SECRET first; unset here so it
+// is the key above.
+delete process.env.AUTH_SECRET;
 
 const queries: { sql: string; params: unknown[] }[] = [];
 
@@ -526,6 +529,20 @@ describe("POST /api/v3/auth/login", () => {
     // Email send is queued via setImmediate; flush the macrotask queue.
     await new Promise((resolve) => setImmediate(resolve));
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
+
+    // enc-13: stored as HMAC-SHA256 of "<salt>:<code>" under the server key,
+    // so the row and its salt do not give the mailed code back.
+    const [, codeHash, codeSalt] = email2FAInsertCalls[0]! as string[];
+    const mailed = mockSendEmail.mock.calls[0]![0] as { text: string };
+    const code = /sign-in code is (\d{6})/.exec(mailed.text)![1];
+    expect(codeHash).toBe(
+      createHmac("sha256", "c".repeat(64))
+        .update(`${codeSalt}:${code}`)
+        .digest("hex"),
+    );
+    expect(codeHash).not.toBe(
+      createHash("sha256").update(`${codeSalt}:${code}`).digest("hex"),
+    );
   });
 
   it("tells the user the lifetime the emailed code was stored with", async () => {

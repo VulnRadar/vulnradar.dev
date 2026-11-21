@@ -1,10 +1,6 @@
-import {
-  createHash,
-  randomBytes,
-  randomInt,
-  timingSafeEqual,
-} from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 import pool from "@/lib/database/db";
+import { hashOneTimeCode, oneTimeCodeMatches } from "@/lib/auth/one-time-code";
 
 /**
  * The 6-digit codes kept in email_2fa_codes, one kind per `purpose`:
@@ -21,11 +17,6 @@ import pool from "@/lib/database/db";
  * would silently cancel another in flight.
  */
 export type EmailCodePurpose = "login" | "reauth" | "setup";
-
-function hashCode(salt: string, code: string): string {
-  // L-2: salted, because the 6-digit space is small enough to table.
-  return createHash("sha256").update(`${salt}:${code}`).digest("hex");
-}
 
 export type IssueResult =
   { ok: true; code: string } | { ok: false; retryAfterSeconds: number };
@@ -76,14 +67,15 @@ export async function storeEmailCode(
   const salt = randomBytes(32).toString("hex");
   await pool.query(
     "INSERT INTO email_2fa_codes (user_id, code_hash, code_salt, expires_at, purpose) VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 minute'), $5)",
-    [userId, hashCode(salt, code), salt, expiryMinutes, purpose],
+    [userId, hashOneTimeCode(salt, code), salt, expiryMinutes, purpose],
   );
   return code;
 }
 
 /**
- * True exactly once for a live code of this purpose. The hash is compared in
- * Node with timingSafeEqual, and the matched row is deleted with RETURNING so
+ * True exactly once for a live code of this purpose. The keyed digest is
+ * compared in Node (lib/auth/one-time-code.ts), and the matched row is
+ * deleted with RETURNING so
  * two concurrent requests with the same code cannot both pass: the second one
  * deletes nothing.
  */
@@ -107,13 +99,7 @@ export async function consumeEmailCode(
   );
   let matchedId: number | null = null;
   for (const row of candidates.rows) {
-    const expected = Buffer.from(hashCode(row.code_salt, code), "hex");
-    const stored = Buffer.from(row.code_hash ?? "", "hex");
-    if (
-      row.code_hash &&
-      expected.length === stored.length &&
-      timingSafeEqual(expected, stored)
-    ) {
+    if (oneTimeCodeMatches(row.code_hash, row.code_salt, code)) {
       matchedId = row.id;
       break;
     }

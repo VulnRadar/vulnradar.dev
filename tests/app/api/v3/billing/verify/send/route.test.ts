@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { createHash, createHmac } from "node:crypto";
+
+const SERVER_KEY = "7".repeat(64);
+process.env.AUTH_SECRET = SERVER_KEY;
 
 /**
  * Route-level tests for POST /api/v3/billing/verify/send. The pg pool and
@@ -110,15 +114,28 @@ describe("POST /api/v3/billing/verify/send", () => {
     );
     expect(String(insertCall[0])).toContain("salt");
     expect(String(insertCall[0])).toContain("expires_at");
-    const [userId, salt, code] = insertCall[1] as [number, string, string];
+    const [userId, codeHash, salt] = insertCall[1] as [number, string, string];
     expect(userId).toBe(42);
     expect(salt).toMatch(/^[0-9a-f]{64}$/); // 32 random bytes, hex-encoded
-    expect(code).toMatch(/^\d{6}$/);
 
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
     const emailArg = mockSendEmail.mock.calls[0][0];
     expect(emailArg.to).toBe("john@example.com");
-    expect(emailArg.text).toBe(`code ${code}`);
+    const code = /^code (\d{6})$/.exec(emailArg.text)![1];
+
+    // enc-13: the stored digest is keyed with the server secret, so the row
+    // and its salt alone do not give the code back.
+    expect(codeHash).toBe(
+      createHmac("sha256", SERVER_KEY).update(`${salt}:${code}`).digest("hex"),
+    );
+    expect(codeHash).not.toBe(
+      createHash("sha256").update(`${salt}${code}`).digest("hex"),
+    );
+    // Hashed in Node: the code itself never reaches the database.
+    for (const call of mockQuery.mock.calls) {
+      expect((call[1] as unknown[] | undefined) ?? []).not.toContain(code);
+      expect(String(call[0])).not.toContain("sha256");
+    }
   });
 
   it("tells the user the expiry an admin configured, not the shipped default", async () => {

@@ -23,14 +23,18 @@ import { createHash, createHmac } from "node:crypto";
  * own, and DEGRADES rather than throws: on a deployment that has set
  * neither variable this returns the old unkeyed digest, which is exactly
  * what shipped before, instead of breaking password reset outright.
+ *
+ * Exported because the emailed six-digit codes (lib/auth/one-time-code.ts)
+ * are keyed with the same secret: one resolver, so the two can never
+ * disagree about which variable wins.
  */
-function tokenSecret(): string | null {
+export function serverHashKey(): string | null {
   return process.env.AUTH_SECRET || process.env.API_KEY_ENCRYPTION_KEY || null;
 }
 
 /** The digest to STORE for a freshly minted token. */
 export function hashAuthToken(token: string): string {
-  const secret = tokenSecret();
+  const secret = serverHashKey();
   if (!secret) return legacyHashAuthToken(token);
   return createHmac("sha256", secret).update(token).digest("hex");
 }

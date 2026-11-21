@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { billingVerificationCodeEmail, sendEmail } from "@/lib/email/email";
 import { getSetting } from "@/lib/config/runtime-config";
+import { hashOneTimeCode } from "@/lib/auth/one-time-code";
 
 // POST /api/v3/billing/verify/send - Send billing verification code
 export async function POST(_request: NextRequest) {
@@ -57,14 +58,17 @@ export async function POST(_request: NextRequest) {
     // pre-computed table over the 10^6 possible 6-digit codes (AUDIT-005#secrets-01).
     const salt = randomBytes(32).toString("hex");
 
-    // Store hashed code with an admin-configurable expiry
+    // Store the keyed digest with an admin-configurable expiry. Hashed here
+    // rather than in SQL: a salted sha256 next to its salt gave the code back
+    // to anyone who could read the row (enc-13), and the raw code was a query
+    // parameter, so it reached the database at all.
     const codeExpiryMinutes = await getSetting(
       "BILLING_VERIFY_CODE_EXPIRY_MINUTES",
     );
     await pool.query(
       `INSERT INTO billing_verification_codes (user_id, code_hash, salt, expires_at)
-       VALUES ($1, encode(sha256(($2 || $3)::bytea), 'hex'), $2, NOW() + ($4 * INTERVAL '1 minute'))`,
-      [session.userId, salt, code, codeExpiryMinutes],
+       VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 minute'))`,
+      [session.userId, hashOneTimeCode(salt, code), salt, codeExpiryMinutes],
     );
 
     // The lifetime the code was just stored with, so the email quotes what

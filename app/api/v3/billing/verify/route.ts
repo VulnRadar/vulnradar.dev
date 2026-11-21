@@ -8,6 +8,7 @@ import {
   readJsonObject,
   withErrorHandling,
 } from "@/lib/api/api-utils";
+import { oneTimeCodeMatches } from "@/lib/auth/one-time-code";
 
 // POST /api/v3/billing/verify - Verify code and return sensitive billing data
 export const POST = withErrorHandling(async (request: NextRequest) => {
@@ -48,53 +49,40 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       );
     }
 
-    // Retrieve the salt for this user's pending code, then verify
-    // hash(salt + code) in the DB. The per-row salt prevents a DB leak
-    // from being reversed via a precomputed table over 10^6 digit codes
-    // (AUDIT-005#secrets-01).
-    const saltRow = await pool.query<{ id: number; salt: string | null }>(
-      `SELECT id, salt FROM billing_verification_codes
+    // The user's live code, compared in Node against its keyed digest
+    // (lib/auth/one-time-code.ts). The SQL compare this replaced recomputed
+    // an unkeyed sha256 of salt || code, which anyone able to read the row
+    // could invert by trying all 10^6 codes (enc-13), and it sent the code
+    // to the database to do it. A row without a salt predates
+    // AUDIT-005#secrets-01 and has long expired, so it is simply a mismatch.
+    const pending = await pool.query<{
+      id: number;
+      code_hash: string | null;
+      salt: string | null;
+    }>(
+      `SELECT id, code_hash, salt FROM billing_verification_codes
        WHERE user_id = $1 AND expires_at > NOW()
        ORDER BY created_at DESC LIMIT 1`,
       [session.userId],
     );
+    const row = pending.rows[0];
+    const matched = row && oneTimeCodeMatches(row.code_hash, row.salt, code);
 
-    let codeResult: { rows: { id: number }[] } = { rows: [] };
-    if (saltRow.rows.length > 0) {
-      const { id: codeId, salt } = saltRow.rows[0];
-      if (salt) {
-        // New salted codes: verify hash(salt + code)
-        codeResult = await pool.query<{ id: number }>(
-          `SELECT id FROM billing_verification_codes
-           WHERE id = $1
-           AND code_hash = encode(sha256(($2 || $3)::bytea), 'hex')
-           AND expires_at > NOW()`,
-          [codeId, salt, code],
-        );
-      } else {
-        // Legacy unsalted codes (created before AUDIT-005 fix): plain hash
-        codeResult = await pool.query<{ id: number }>(
-          `SELECT id FROM billing_verification_codes
-           WHERE id = $1
-           AND code_hash = encode(sha256($2::bytea), 'hex')
-           AND expires_at > NOW()`,
-          [codeId, code],
-        );
-      }
-    }
+    // Deleted by id with RETURNING, so of two requests carrying the same
+    // code only the one that removes the row goes on.
+    const consumed = matched
+      ? await pool.query<{ id: number }>(
+          "DELETE FROM billing_verification_codes WHERE id = $1 RETURNING id",
+          [row.id],
+        )
+      : null;
 
-    if (codeResult.rows.length === 0) {
+    if (!consumed || consumed.rows.length === 0) {
       return NextResponse.json(
         { error: "Invalid or expired verification code" },
         { status: 400 },
       );
     }
-
-    // Delete the used code
-    await pool.query(
-      "DELETE FROM billing_verification_codes WHERE user_id = $1",
-      [session.userId],
-    );
 
     // Get user's subscription info
     const userResult = await pool.query(

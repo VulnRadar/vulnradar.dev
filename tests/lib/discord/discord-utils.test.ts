@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 
 /**
  * lib/discord/discord-utils.ts is DB reads/writes, an outbound email send,
@@ -105,15 +105,21 @@ describe("sendDiscordEmail2FACode", () => {
     expect(emailArgs.to).toBe("user@example.com");
 
     // Pull the plaintext code back out of the (real) email body and verify
-    // it hashes to exactly what was stored, proving the salted hash matches
-    // the code that was actually sent.
+    // it hashes to exactly what was stored, proving the stored digest matches
+    // the code that was actually sent. Keyed with the server secret (enc-13):
+    // the unkeyed sha256 of "<salt>:<code>" is the code to anyone who can
+    // read the row and its salt.
     const match = /sign-in code is (\d{6})/.exec(emailArgs.text);
     expect(match).not.toBeNull();
     const code = match![1];
-    const expectedHash = createHash("sha256")
-      .update(`${codeSalt}:${code}`)
-      .digest("hex");
-    expect(codeHash).toBe(expectedHash);
+    expect(codeHash).toBe(
+      createHmac("sha256", process.env.AUTH_SECRET || ENCRYPTION_KEY)
+        .update(`${codeSalt}:${code}`)
+        .digest("hex"),
+    );
+    expect(codeHash).not.toBe(
+      createHash("sha256").update(`${codeSalt}:${code}`).digest("hex"),
+    );
   });
 
   it("tells the user the lifetime the code was stored with", async () => {

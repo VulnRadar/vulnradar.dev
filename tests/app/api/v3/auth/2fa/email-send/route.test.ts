@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { createHash, createHmac } from "node:crypto";
 import {
   defaultSessionRow,
   makeCookieStore,
@@ -88,6 +89,23 @@ const { POST } = await import("@/app/api/v3/auth/2fa/email-send/route");
 
 // email-send now derives the userId only from a signed pending cookie.
 process.env.API_KEY_ENCRYPTION_KEY = "c".repeat(64);
+delete process.env.AUTH_SECRET;
+
+// enc-13: what an emailed code is stored as, HMAC-SHA256 of "<salt>:<code>"
+// under the server key (API_KEY_ENCRYPTION_KEY here), never a sha256 the
+// row's own salt reverses by trying every code.
+function keyedDigest(salt: string, code: string): string {
+  const expected = createHmac("sha256", "c".repeat(64))
+    .update(`${salt}:${code}`)
+    .digest("hex");
+  expect(expected).not.toBe(
+    createHash("sha256").update(`${salt}:${code}`).digest("hex"),
+  );
+  return expected;
+}
+function mailedCode(mail: { text: string }): string {
+  return /\b(\d{6})\b/.exec(mail.text)![1];
+}
 function signedPending(userId: number, ts: number = Date.now()): string {
   return signPendingToken({ userId, ts });
 }
@@ -178,6 +196,8 @@ describe("POST /api/v3/auth/2fa/email-send", () => {
 
     // sendEmail is awaited directly (not backgrounded) by this route.
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    const mail = mockSendEmail.mock.calls[0][0] as { text: string };
+    expect(codeHash).toBe(keyedDigest(codeSalt as string, mailedCode(mail)));
   });
 
   it("tells the user the lifetime the code was stored with", async () => {
@@ -256,7 +276,7 @@ describe("POST /api/v3/auth/2fa/email-send { purpose: 'reauth' }", () => {
     expect((await res.json()).maskedEmail).toBe("oa***@example.com");
     expect(deleteCodeCalls).toEqual([[5, "reauth"]]);
     expect(cooldownCalls[0]).toEqual([5, expect.any(Number), "reauth"]);
-    const [userId, codeHash, , expiry, purpose] = insertCodeCalls[0];
+    const [userId, codeHash, codeSalt, expiry, purpose] = insertCodeCalls[0];
     expect(userId).toBe(5);
     expect(codeHash).toMatch(/^[a-f0-9]{64}$/);
     expect(expiry).toBe(10);
@@ -272,6 +292,8 @@ describe("POST /api/v3/auth/2fa/email-send { purpose: 'reauth' }", () => {
     expect(mail.template).toBe("stepUpCode");
     expect(mail.subject).not.toMatch(/\d{6}/);
     expect(mail.text).toContain("It expires in 10 minutes.");
+    // The step-up code is stored under the same keyed digest (enc-13).
+    expect(codeHash).toBe(keyedDigest(codeSalt as string, mailedCode(mail)));
   });
 
   it("holds the resend cooldown", async () => {

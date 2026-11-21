@@ -27,6 +27,7 @@ process.env.GOOGLE_CLIENT_SECRET = "google-client-secret";
 process.env.GITHUB_CLIENT_ID = "github-client-id";
 process.env.GITHUB_CLIENT_SECRET = "github-client-secret";
 process.env.API_KEY_ENCRYPTION_KEY = "f".repeat(64);
+delete process.env.AUTH_SECRET;
 
 const queries: { sql: string; params: unknown[] }[] = [];
 // email_verified_at and the provider-id columns are optional here and filled
@@ -1784,6 +1785,40 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
     expect(emailCodeInsertCalls[0]![3]).toBe(3);
     const mail = mockSendEmail.mock.calls[0]![0] as { text: string };
     expect(mail.text).toContain("3 minutes");
+  });
+
+  // enc-13: the code mailed for email two-factor is stored as HMAC-SHA256
+  // of "<salt>:<code>" under the server key, not a sha256 the row's own salt
+  // reverses in a million tries.
+  it("stores the mailed sign-in code as a keyed digest", async () => {
+    userByEmailRow = { id: 42, auth_provider: "google", disabled_at: null };
+    twoFARow = {
+      totp_enabled: true,
+      two_factor_method: "email",
+      email: "u@example.com",
+    };
+    const state = signLoginState("google", { intent: "login" });
+
+    await GET(
+      callbackRequest("google", { code: "somecode", state }),
+      ctx("google"),
+    );
+    await vi.waitFor(() => expect(mockSendEmail).toHaveBeenCalledTimes(1));
+
+    const { createHash, createHmac } = await import("node:crypto");
+    const [userId, codeHash, codeSalt, , purpose] = emailCodeInsertCalls[0]!;
+    const mail = mockSendEmail.mock.calls[0]![0] as { text: string };
+    const code = /sign-in code is (\d{6})/.exec(mail.text)![1];
+    expect(userId).toBe(42);
+    expect(purpose).toBe("login");
+    expect(codeHash).toBe(
+      createHmac("sha256", process.env.API_KEY_ENCRYPTION_KEY!)
+        .update(`${codeSalt}:${code}`)
+        .digest("hex"),
+    );
+    expect(codeHash).not.toBe(
+      createHash("sha256").update(`${codeSalt}:${code}`).digest("hex"),
+    );
   });
 
   // The state's purpose picks which of three flows runs. Only the start

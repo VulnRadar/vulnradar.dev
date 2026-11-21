@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { createHash, createHmac } from "node:crypto";
+
+const SERVER_KEY = "9".repeat(64);
+process.env.AUTH_SECRET = SERVER_KEY;
+
+/** What /billing/verify/send stores for a code: HMAC under the server key. */
+const keyedDigest = (salt: string, code: string) =>
+  createHmac("sha256", SERVER_KEY).update(`${salt}:${code}`).digest("hex");
 
 /**
  * Route-level tests for POST /api/v3/billing/verify. This route gates
@@ -56,16 +64,21 @@ function postRequest(body: unknown): NextRequest {
 }
 
 function isSaltRowQuery(sql: string) {
-  return sql.includes("SELECT id, salt FROM billing_verification_codes");
-}
-function isSaltedCheck(sql: string) {
-  return sql.includes("($2 || $3)::bytea");
-}
-function isUnsaltedCheck(sql: string) {
-  return sql.includes("code_hash = encode(sha256($2::bytea)");
+  return sql.includes(
+    "SELECT id, code_hash, salt FROM billing_verification_codes",
+  );
 }
 function isDelete(sql: string) {
   return sql.startsWith("DELETE FROM billing_verification_codes");
+}
+// The code never goes to the database: it is compared in Node.
+function sentTheCode(code: string) {
+  return mockQuery.mock.calls.some((c) =>
+    ((c[1] as unknown[] | undefined) ?? []).includes(code),
+  );
+}
+function pendingRow(id: number, code: string, salt = `salt-${id}`) {
+  return { id, salt, code_hash: keyedDigest(salt, code) };
 }
 function isUserLookup(sql: string) {
   return sql.includes(
@@ -153,55 +166,82 @@ describe("POST /api/v3/billing/verify", () => {
     );
   });
 
-  it("a well-formed but wrong code fails against a salted stored hash", async () => {
+  it("a well-formed but wrong code fails against the stored keyed digest", async () => {
     mockGetStripe.mockReturnValue({});
     mockQuery.mockImplementation(async (sql: string) => {
-      if (isSaltRowQuery(sql)) {
-        return { rows: [{ id: 7, salt: "abc123salt" }] };
-      }
-      if (isSaltedCheck(sql)) {
-        return { rows: [] }; // hash mismatch: wrong code
-      }
+      if (isSaltRowQuery(sql)) return { rows: [pendingRow(7, "123456")] };
       return { rows: [] };
     });
 
-    const res = await POST(postRequest({ code: "999999" }));
+    const res = await POST(postRequest({ code: "123457" }));
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toBe("Invalid or expired verification code");
+    expect(mockQuery.mock.calls.some((c) => isDelete(String(c[0])))).toBe(
+      false,
+    );
+    expect(sentTheCode("123457")).toBe(false);
   });
 
-  it("uses the legacy unsalted hash query for a row with salt: null", async () => {
+  // enc-13: a salted sha256 next to its salt is the code to anyone who can
+  // read the row. A row stored that way no longer verifies, and neither does
+  // the unsalted shape from before AUDIT-005.
+  it.each([
+    [
+      "the salted sha256 the route used to store",
+      (salt: string, code: string) =>
+        createHash("sha256").update(`${salt}${code}`).digest("hex"),
+      "salt-3",
+    ],
+    [
+      "an unkeyed sha256 of '<salt>:<code>'",
+      (salt: string, code: string) =>
+        createHash("sha256").update(`${salt}:${code}`).digest("hex"),
+      "salt-3",
+    ],
+    [
+      "the legacy unsalted sha256 (salt: null)",
+      (_salt: string, code: string) =>
+        createHash("sha256").update(code).digest("hex"),
+      null,
+    ],
+  ])("refuses %s", async (_label, digest, salt) => {
     mockGetStripe.mockReturnValue({});
-    let usedUnsaltedQuery = false;
-    mockQuery.mockImplementation(async (sql: string, params: unknown[]) => {
+    mockQuery.mockImplementation(async (sql: string) => {
       if (isSaltRowQuery(sql)) {
-        return { rows: [{ id: 9, salt: null }] };
-      }
-      if (isUnsaltedCheck(sql)) {
-        usedUnsaltedQuery = true;
-        expect(params).toEqual([9, "111222"]);
-        return { rows: [{ id: 9 }] };
-      }
-      if (isDelete(sql)) return { rows: [] };
-      if (isUserLookup(sql))
         return {
-          rows: [{ stripe_customer_id: "cus_1", stripe_subscription_id: null }],
+          rows: [{ id: 3, salt, code_hash: digest(salt ?? "", "111222") }],
         };
+      }
+      if (isDelete(sql)) return { rows: [{ id: 3 }] };
       return { rows: [] };
     });
 
     const res = await POST(postRequest({ code: "111222" }));
-    expect(usedUnsaltedQuery).toBe(true);
-    // No active subscription on this user, but the code itself was valid.
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(400);
+    expect(mockQuery.mock.calls.some((c) => isUserLookup(String(c[0])))).toBe(
+      false,
+    );
   });
 
-  it("deletes the code (single-use) and returns 404 when the user has no active subscription", async () => {
+  it("only looks at codes that have not expired", async () => {
+    mockGetStripe.mockReturnValue({});
+    mockQuery.mockImplementation(async () => ({ rows: [] }));
+
+    const res = await POST(postRequest({ code: "123456" }));
+
+    expect(res.status).toBe(400);
+    const [lookup] = mockQuery.mock.calls.find((c) =>
+      isSaltRowQuery(String(c[0])),
+    )!;
+    expect(String(lookup)).toContain("expires_at > NOW()");
+  });
+
+  it("refuses a code a concurrent request already used", async () => {
+    // The row matched, but the other request deleted it first.
     mockGetStripe.mockReturnValue({});
     mockQuery.mockImplementation(async (sql: string) => {
-      if (isSaltRowQuery(sql)) return { rows: [{ id: 1, salt: "salt" }] };
-      if (isSaltedCheck(sql)) return { rows: [{ id: 1 }] };
+      if (isSaltRowQuery(sql)) return { rows: [pendingRow(4, "123456")] };
       if (isDelete(sql)) return { rows: [] };
       if (isUserLookup(sql))
         return {
@@ -211,8 +251,76 @@ describe("POST /api/v3/billing/verify", () => {
     });
 
     const res = await POST(postRequest({ code: "123456" }));
+    expect(res.status).toBe(400);
+    expect(mockQuery.mock.calls.some((c) => isUserLookup(String(c[0])))).toBe(
+      false,
+    );
+  });
+
+  it("deletes the code (single-use) and returns 404 when the user has no active subscription", async () => {
+    mockGetStripe.mockReturnValue({});
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (isSaltRowQuery(sql)) return { rows: [pendingRow(1, "123456")] };
+      if (isDelete(sql)) return { rows: [{ id: 1 }] };
+      if (isUserLookup(sql))
+        return {
+          rows: [{ stripe_customer_id: "cus_1", stripe_subscription_id: null }],
+        };
+      return { rows: [] };
+    });
+
+    const res = await POST(postRequest({ code: "123456" }));
     expect(res.status).toBe(404);
-    expect(mockQuery.mock.calls.some((c) => isDelete(String(c[0])))).toBe(true);
+    const del = mockQuery.mock.calls.find((c) => isDelete(String(c[0])));
+    expect(String(del![0])).toContain("WHERE id = $1 RETURNING id");
+    expect(del![1]).toEqual([1]);
+    expect(sentTheCode("123456")).toBe(false);
+  });
+
+  it("refuses the same code the second time", async () => {
+    mockGetStripe.mockReturnValue({});
+    const rows = [pendingRow(5, "123456")];
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (isSaltRowQuery(sql)) return { rows: [...rows] };
+      if (isDelete(sql))
+        return { rows: rows.splice(0, 1).map(({ id }) => ({ id })) };
+      if (isUserLookup(sql))
+        return {
+          rows: [{ stripe_customer_id: "cus_1", stripe_subscription_id: null }],
+        };
+      return { rows: [] };
+    });
+
+    const first = await POST(postRequest({ code: "123456" }));
+    const second = await POST(postRequest({ code: "123456" }));
+
+    expect(first.status).toBe(404);
+    expect(second.status).toBe(400);
+  });
+
+  it("refuses a code stored under a different server key", async () => {
+    mockGetStripe.mockReturnValue({});
+    const salt = "salt-6";
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (isSaltRowQuery(sql)) {
+        return {
+          rows: [
+            {
+              id: 6,
+              salt,
+              code_hash: createHmac("sha256", "8".repeat(64))
+                .update(`${salt}:123456`)
+                .digest("hex"),
+            },
+          ],
+        };
+      }
+      if (isDelete(sql)) return { rows: [{ id: 6 }] };
+      return { rows: [] };
+    });
+
+    const res = await POST(postRequest({ code: "123456" }));
+    expect(res.status).toBe(400);
   });
 
   it("returns sensitive subscription data on a fully valid code", async () => {
@@ -240,9 +348,8 @@ describe("POST /api/v3/billing/verify", () => {
     });
     mockGetStripe.mockReturnValue({ subscriptions: { retrieve } });
     mockQuery.mockImplementation(async (sql: string) => {
-      if (isSaltRowQuery(sql)) return { rows: [{ id: 2, salt: "salt2" }] };
-      if (isSaltedCheck(sql)) return { rows: [{ id: 2 }] };
-      if (isDelete(sql)) return { rows: [] };
+      if (isSaltRowQuery(sql)) return { rows: [pendingRow(2, "555555")] };
+      if (isDelete(sql)) return { rows: [{ id: 2 }] };
       if (isUserLookup(sql))
         return {
           rows: [

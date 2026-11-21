@@ -33,6 +33,7 @@ import {
  */
 
 process.env.API_KEY_ENCRYPTION_KEY = "b".repeat(64);
+delete process.env.AUTH_SECRET;
 
 const queries: { sql: string; params: unknown[] }[] = [];
 const rateLimitCounts = new Map<string, number>();
@@ -127,7 +128,9 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   if (s.startsWith("DELETE FROM email_2fa_codes WHERE id = $1 RETURNING id")) {
     const id = params[0] as number;
     emailCodeDeleteCalls.push(id);
-    return { rows: [{ id }] };
+    const before = emailCodeCandidates.length;
+    emailCodeCandidates = emailCodeCandidates.filter((c) => c.id !== id);
+    return { rows: emailCodeCandidates.length < before ? [{ id }] : [] };
   }
   if (s.startsWith("INSERT INTO sessions")) {
     sessionInsertCalls.push(params);
@@ -205,17 +208,25 @@ const { STEP_UP_COOKIE, verifyReauthPassword } =
   await import("@/lib/auth/reauth");
 const { POST } = await import("@/app/api/v3/auth/2fa/verify/route");
 
+// What lib/auth/email-codes.ts stores: HMAC-SHA256 of "<salt>:<code>" under
+// the server key (enc-13), here API_KEY_ENCRYPTION_KEY since AUTH_SECRET is
+// unset in this suite.
+async function keyedCodeDigest(salt: string, code: string) {
+  const { createHmac } = await import("node:crypto");
+  return createHmac("sha256", "b".repeat(64))
+    .update(`${salt}:${code}`)
+    .digest("hex");
+}
+
 async function emailCode(
   id: number,
   code: string,
   purpose: "login" | "reauth" | "setup",
 ) {
-  const { createHash, randomBytes } = await import("node:crypto");
+  const { randomBytes } = await import("node:crypto");
   const salt = randomBytes(32).toString("hex");
   emailCodeCandidates.push({ id, code_salt: salt, purpose });
-  emailCodeHashes[id] = createHash("sha256")
-    .update(`${salt}:${code}`)
-    .digest("hex");
+  emailCodeHashes[id] = await keyedCodeDigest(salt, code);
 }
 
 // The verify route now derives the userId ONLY from a cryptographically-signed
@@ -554,12 +565,11 @@ describe("POST /api/v3/auth/2fa/verify", () => {
     });
 
     it("accepts the matching emailed code and deletes it", async () => {
-      const { createHash, randomBytes } = await import("node:crypto");
+      const { randomBytes } = await import("node:crypto");
       const salt = randomBytes(32).toString("hex");
       const code = "654321";
-      const hash = createHash("sha256").update(`${salt}:${code}`).digest("hex");
       emailCodeCandidates = [{ id: 9, code_salt: salt }];
-      emailCodeHashes = { 9: hash };
+      emailCodeHashes = { 9: await keyedCodeDigest(salt, code) };
 
       const res = await POST(
         verifyRequest(
@@ -576,11 +586,10 @@ describe("POST /api/v3/auth/2fa/verify", () => {
     });
 
     it("rejects an incorrect emailed code", async () => {
-      const { createHash, randomBytes } = await import("node:crypto");
+      const { randomBytes } = await import("node:crypto");
       const salt = randomBytes(32).toString("hex");
-      const hash = createHash("sha256").update(`${salt}:654321`).digest("hex");
       emailCodeCandidates = [{ id: 9, code_salt: salt }];
-      emailCodeHashes = { 9: hash };
+      emailCodeHashes = { 9: await keyedCodeDigest(salt, "654321") };
 
       const res = await POST(
         verifyRequest(
@@ -590,6 +599,62 @@ describe("POST /api/v3/auth/2fa/verify", () => {
       );
       expect(res.status).toBe(400);
       expect(sessionInsertCalls).toHaveLength(0);
+    });
+
+    // enc-13: an unkeyed sha256 of "<salt>:<code>" beside its salt is the
+    // code to anyone who can read the row, so a row stored that way no
+    // longer verifies. Codes live minutes; one issued before the deploy just
+    // fails and the person asks for another.
+    it("rejects a code whose row holds the old unkeyed digest", async () => {
+      const { createHash, randomBytes } = await import("node:crypto");
+      const salt = randomBytes(32).toString("hex");
+      emailCodeCandidates = [{ id: 9, code_salt: salt }];
+      emailCodeHashes = {
+        9: createHash("sha256").update(`${salt}:654321`).digest("hex"),
+      };
+
+      const res = await POST(
+        verifyRequest(
+          { userId: 1, code: "654321" },
+          { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
+        ),
+      );
+      expect(res.status).toBe(400);
+      expect(sessionInsertCalls).toHaveLength(0);
+    });
+
+    it("only asks for codes that have not expired", async () => {
+      emailCodeCandidates = [];
+
+      const res = await POST(
+        verifyRequest(
+          { userId: 1, code: "654321" },
+          { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
+        ),
+      );
+
+      expect(res.status).toBe(400);
+      const lookup = queries.find((q) =>
+        q.sql.startsWith(
+          "SELECT id, code_salt, code_hash FROM email_2fa_codes",
+        ),
+      );
+      expect(lookup!.sql).toContain("expires_at > NOW()");
+    });
+
+    it("refuses the same code the second time", async () => {
+      await emailCode(9, "654321", "login");
+      const request = () =>
+        POST(
+          verifyRequest(
+            { userId: 1, code: "654321" },
+            { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
+          ),
+        );
+
+      expect((await request()).status).toBe(200);
+      expect((await request()).status).toBe(400);
+      expect(sessionInsertCalls).toHaveLength(1);
     });
   });
 

@@ -4,6 +4,7 @@ import {
   hashAuthToken,
   legacyHashAuthToken,
   authTokenHashCandidates,
+  serverHashKey,
 } from "@/lib/auth/token-hash";
 
 /**
@@ -88,5 +89,24 @@ describe("authTokenHashCandidates", () => {
     for (const candidate of mine) {
       expect(theirs).not.toContain(candidate);
     }
+  });
+});
+
+describe("serverHashKey", () => {
+  // One resolver for every keyed digest of an emailed secret, so the reset
+  // link and the six-digit codes can never disagree about which key wins.
+  it("prefers AUTH_SECRET over API_KEY_ENCRYPTION_KEY", () => {
+    process.env.AUTH_SECRET = "s".repeat(32);
+    process.env.API_KEY_ENCRYPTION_KEY = "k".repeat(64);
+    expect(serverHashKey()).toBe("s".repeat(32));
+  });
+
+  it("falls back to API_KEY_ENCRYPTION_KEY", () => {
+    process.env.API_KEY_ENCRYPTION_KEY = "k".repeat(64);
+    expect(serverHashKey()).toBe("k".repeat(64));
+  });
+
+  it("is null when neither is set", () => {
+    expect(serverHashKey()).toBeNull();
   });
 });
