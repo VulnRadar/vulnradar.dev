@@ -345,6 +345,60 @@ describe("POST /api/v3/data-request", () => {
     }
   });
 
+  it("exports each webhook's URL opened from its encrypted column, never the ciphertext (enc-2)", async () => {
+    const SECRET_URL = "https://discord.com/api/webhooks/1/s3cr3t-token";
+    const previous = process.env.API_KEY_ENCRYPTION_KEY;
+    process.env.API_KEY_ENCRYPTION_KEY = "a".repeat(64);
+    try {
+      const { encryptApiKey } = await import("@/lib/auth/crypto");
+      const ciphertext = encryptApiKey(SECRET_URL);
+      routeQueries({ priorDownloadAt: null, updateRowCount: 1 });
+      const base = mockQuery.getMockImplementation()!;
+      mockQuery.mockImplementation(async (sql: string, params: unknown[]) => {
+        if (/FROM webhook_deliveries/.test(sql)) {
+          return {
+            rows: [
+              {
+                id: 1,
+                event_type: "scan.completed",
+                webhook_id: 9,
+                webhook_name: "Ops",
+                webhook_url: "",
+                webhook_url_encrypted: ciphertext,
+              },
+            ],
+          };
+        }
+        if (/FROM webhooks WHERE user_id/.test(sql)) {
+          return {
+            rows: [
+              {
+                id: 9,
+                url: "",
+                url_encrypted: ciphertext,
+                url_host: "discord.com",
+                name: "Ops",
+              },
+            ],
+          };
+        }
+        return base(sql, params);
+      });
+
+      const json = await (await POST(postRequest())).json();
+
+      expect(json.data.webhooks[0].url).toBe(SECRET_URL);
+      expect(json.data.webhooks[0].url_host).toBe("discord.com");
+      expect(json.data.webhookDeliveries[0].webhook_url).toBe(SECRET_URL);
+      const exported = JSON.stringify(json.data);
+      expect(exported).not.toContain(ciphertext);
+      expect(exported).not.toContain("url_encrypted");
+    } finally {
+      if (previous === undefined) delete process.env.API_KEY_ENCRYPTION_KEY;
+      else process.env.API_KEY_ENCRYPTION_KEY = previous;
+    }
+  });
+
   it("never writes a device trust token into the export or its stored copy", async () => {
     routeQueries({ priorDownloadAt: null });
 

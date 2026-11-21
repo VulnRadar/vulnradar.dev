@@ -20,6 +20,9 @@ const {
   encryptWebhookSecret,
   readWebhookSecret,
   migratePlaintextWebhookSecrets,
+  encryptWebhookUrl,
+  readWebhookUrl,
+  storeWebhookUrl,
 } = await import("@/lib/webhooks/secret");
 const { encryptApiKey } = await import("@/lib/auth/crypto");
 
@@ -118,6 +121,7 @@ describe("migratePlaintextWebhookSecrets", () => {
       encrypted: 2,
       alreadyEncrypted: 1,
       unreadable: 0,
+      urlsEncrypted: 0,
     });
 
     const updates = mockQuery.mock.calls.filter(([sql]) =>
@@ -148,6 +152,151 @@ describe("migratePlaintextWebhookSecrets", () => {
     delete process.env.API_KEY_ENCRYPTION_KEY;
     const stats = await migratePlaintextWebhookSecrets();
     expect(stats.scanned).toBe(0);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+// enc-2: a Discord or Slack webhook URL is the credential for posting into
+// that channel, so it is held the way the signing secret beside it is.
+const DISCORD_URL = "https://discord.com/api/webhooks/123/s3cr3t-token";
+
+describe("storeWebhookUrl / readWebhookUrl", () => {
+  it("stores ciphertext and an empty url column, with the host beside it", () => {
+    const stored = storeWebhookUrl(DISCORD_URL);
+    expect(stored.url).toBe("");
+    expect(stored.urlHost).toBe("discord.com");
+    expect(stored.urlEncrypted).not.toBeNull();
+    expect(stored.urlEncrypted).not.toContain("s3cr3t-token");
+    expect(encryptWebhookUrl(DISCORD_URL)).not.toBe(DISCORD_URL);
+    expect(
+      readWebhookUrl({
+        id: 1,
+        url: stored.url,
+        url_encrypted: stored.urlEncrypted,
+      }),
+    ).toBe(DISCORD_URL);
+  });
+
+  it("keeps the url column when no encryption key is configured", () => {
+    delete process.env.API_KEY_ENCRYPTION_KEY;
+    const stored = storeWebhookUrl(DISCORD_URL);
+    expect(stored).toEqual({
+      url: DISCORD_URL,
+      urlEncrypted: null,
+      urlHost: "discord.com",
+    });
+    expect(
+      readWebhookUrl({ id: 1, url: stored.url, url_encrypted: null }),
+    ).toBe(DISCORD_URL);
+  });
+
+  it("refuses to store the URL in the clear when the key is set but malformed", () => {
+    process.env.API_KEY_ENCRYPTION_KEY = "z".repeat(64);
+    expect(() => storeWebhookUrl(DISCORD_URL)).toThrow(
+      "API_KEY_ENCRYPTION_KEY",
+    );
+  });
+
+  it("reads a legacy row that still has only the plaintext column", () => {
+    expect(
+      readWebhookUrl({ id: 1, url: DISCORD_URL, url_encrypted: null }),
+    ).toBe(DISCORD_URL);
+  });
+
+  it("returns null for a row with no address at all", () => {
+    expect(readWebhookUrl({ id: 1, url: "", url_encrypted: null })).toBeNull();
+  });
+
+  it("opens a value written under the previous key during a rotation", () => {
+    const { urlEncrypted } = storeWebhookUrl(DISCORD_URL);
+    process.env.API_KEY_ENCRYPTION_KEY = OTHER_KEY;
+    process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY = KEY;
+    try {
+      expect(
+        readWebhookUrl({ id: 1, url: "", url_encrypted: urlEncrypted }),
+      ).toBe(DISCORD_URL);
+    } finally {
+      delete process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY;
+    }
+  });
+
+  it("returns null for ciphertext that does not open, and logs the id but never the value", () => {
+    const { urlEncrypted } = storeWebhookUrl(DISCORD_URL);
+    process.env.API_KEY_ENCRYPTION_KEY = OTHER_KEY;
+    const errors = vi.mocked(console.error);
+
+    expect(
+      readWebhookUrl({ id: 77, url: "", url_encrypted: urlEncrypted }),
+    ).toBeNull();
+
+    const logged = errors.mock.calls.flat().map(String).join(" ");
+    expect(logged).toContain("77");
+    expect(logged).not.toContain(String(urlEncrypted));
+    expect(logged).not.toContain("s3cr3t-token");
+  });
+});
+
+describe("migratePlaintextWebhookSecrets: webhook URLs", () => {
+  function routeUrlRows(rows: { id: number; url: string }[]) {
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT id, url FROM webhooks")) return { rows };
+      if (sql.startsWith("UPDATE webhooks SET url_encrypted")) {
+        return { rows: [], rowCount: 1 };
+      }
+      return { rows: [] };
+    });
+  }
+
+  it("moves every plaintext URL into the encrypted column and empties url", async () => {
+    routeUrlRows([{ id: 5, url: DISCORD_URL }]);
+
+    const stats = await migratePlaintextWebhookSecrets();
+
+    expect(stats.urlsEncrypted).toBe(1);
+    const select = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("SELECT id, url FROM webhooks"),
+    );
+    expect(select?.[0]).toContain("url <> ''");
+    expect(select?.[0]).toContain("url_encrypted IS NULL");
+
+    const update = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).startsWith("UPDATE webhooks SET url_encrypted"),
+    );
+    expect(update).toBeDefined();
+    const [sql, params] = update as [string, unknown[]];
+    expect(sql).toContain("url = ''");
+    // Guarded on the value it read, so an edit that lands between the
+    // SELECT and this UPDATE is not overwritten with the older address.
+    expect(sql).toContain("WHERE id = $1 AND url = $4");
+    expect(params[0]).toBe(5);
+    expect(params[2]).toBe("discord.com");
+    expect(params[3]).toBe(DISCORD_URL);
+    expect(params[1]).not.toBe(DISCORD_URL);
+    expect(
+      readWebhookUrl({ id: 5, url: "", url_encrypted: params[1] as string }),
+    ).toBe(DISCORD_URL);
+  });
+
+  it("does not count a row whose guarded UPDATE matched nothing", async () => {
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT id, url FROM webhooks")) {
+        return { rows: [{ id: 5, url: DISCORD_URL }] };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const stats = await migratePlaintextWebhookSecrets();
+
+    expect(stats.urlsEncrypted).toBe(0);
+  });
+
+  it("leaves URLs in place when no encryption key is configured", async () => {
+    delete process.env.API_KEY_ENCRYPTION_KEY;
+    routeUrlRows([{ id: 5, url: DISCORD_URL }]);
+
+    const stats = await migratePlaintextWebhookSecrets();
+
+    expect(stats.urlsEncrypted).toBe(0);
     expect(mockQuery).not.toHaveBeenCalled();
   });
 });

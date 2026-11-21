@@ -6,8 +6,9 @@
  * tests/app/api/v3/keys/[id]/revoke/route.test.ts and
  * tests/app/api/v3/history/[id]/route.test.ts for the same class of route.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { decryptApiKey, encryptApiKey } from "@/lib/auth/crypto";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -213,17 +214,101 @@ describe("PATCH /api/v3/webhooks/[id]", () => {
 
     const [sql, sqlParams] = mockQuery.mock.calls[1];
     expect(sql).toContain("url = $1");
-    expect(sql).toContain("name = $2");
+    expect(sql).toContain("url_encrypted = $2");
+    expect(sql).toContain("url_host = $3");
+    expect(sql).toContain("name = $4");
     // Changing the URL re-runs auto-detection (same as creation), so the
     // type column is re-written too even though this request didn't send
     // `type` explicitly.
-    expect(sql).toContain("type = $3");
+    expect(sql).toContain("type = $5");
+    // No API_KEY_ENCRYPTION_KEY in this suite, so the address stays in the
+    // url column and url_encrypted is cleared rather than left stale.
     expect(sqlParams).toEqual([
       "https://hooks.slack.com/services/x/y/z",
+      null,
+      "hooks.slack.com",
       "Slack Alerts",
       "slack",
       10,
     ]);
+  });
+
+  describe("a new URL at rest (enc-2)", () => {
+    const SECRET_URL = "https://hooks.slack.com/services/T0/B0/s3cr3t-token";
+    let previous: string | undefined;
+
+    beforeEach(() => {
+      previous = process.env.API_KEY_ENCRYPTION_KEY;
+      process.env.API_KEY_ENCRYPTION_KEY = "a".repeat(64);
+    });
+
+    afterEach(() => {
+      if (previous === undefined) delete process.env.API_KEY_ENCRYPTION_KEY;
+      else process.env.API_KEY_ENCRYPTION_KEY = previous;
+    });
+
+    it("encrypts it again, empties url, stores the host, and answers with the URL", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ user_id: 7, team_id: null }],
+      });
+      mockQuery.mockImplementationOnce(
+        async (_sql: string, values: unknown[]) => ({
+          rows: [
+            {
+              id: 10,
+              url: values[0],
+              url_encrypted: values[1],
+              url_host: values[2],
+              name: "Prod",
+              type: "slack",
+              active: true,
+              user_id: 7,
+              team_id: null,
+            },
+          ],
+        }),
+      );
+
+      const res = await PATCH(patchRequest({ url: SECRET_URL }), params());
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      const [sql, sqlParams] = mockQuery.mock.calls[1] as [string, unknown[]];
+      expect(sql).toContain("url_encrypted =");
+      for (const param of sqlParams) {
+        expect(String(param)).not.toContain("s3cr3t-token");
+      }
+      expect(sqlParams[0]).toBe("");
+      expect(sqlParams[2]).toBe("hooks.slack.com");
+      expect(decryptApiKey(sqlParams[1] as string)).toBe(SECRET_URL);
+
+      expect(json.url).toBe(SECRET_URL);
+      expect(json.url_host).toBe("hooks.slack.com");
+      expect(json).not.toHaveProperty("url_encrypted");
+    });
+
+    it("answers a rename with the stored URL opened, not the emptied column", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ user_id: 7, team_id: null }],
+      });
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 10,
+            url: "",
+            url_encrypted: encryptApiKey(SECRET_URL),
+            url_host: "hooks.slack.com",
+            name: "Renamed",
+          },
+        ],
+      });
+
+      const res = await PATCH(patchRequest({ name: "Renamed" }), params());
+      const json = await res.json();
+
+      expect(json.url).toBe(SECRET_URL);
+      expect(json).not.toHaveProperty("url_encrypted");
+    });
   });
 
   it("assigns a webhook to a team the caller can manage", async () => {

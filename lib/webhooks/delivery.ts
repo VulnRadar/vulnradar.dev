@@ -50,7 +50,10 @@ export interface WebhookDeliveryTarget {
   ownerUserId: number;
   /** The scan belongs to someone other than the creator. */
   teammateScan?: boolean;
-  url: string;
+  /** The opened address (readWebhookUrl in lib/webhooks/secret.ts). null when
+   *  the stored ciphertext did not decrypt: nothing is sent and the delivery
+   *  log says why. */
+  url: string | null;
   type: string;
   /** The stored `webhooks.secret` column value, which is encrypted at rest
    *  since AUDIT-009#webhook-01. Callers pass the column through untouched;
@@ -130,7 +133,7 @@ export async function readResponseSnippet(
 }
 
 async function attemptDelivery(
-  webhook: WebhookDeliveryTarget,
+  url: string,
   body: string,
   signingSecret: string | null,
   delivery: DeliveryIdentity,
@@ -139,7 +142,7 @@ async function attemptDelivery(
   // before POSTing. The URL was checked at registration (and at edit
   // time), but DNS / routing may have changed since, and safeFetch also
   // blocks redirects to private IPs.
-  const safety = await validateScanTarget(webhook.url);
+  const safety = await validateScanTarget(url);
   if (!safety.safe) {
     return {
       ok: false,
@@ -149,7 +152,7 @@ async function attemptDelivery(
   }
 
   try {
-    const res = await safeFetch(webhook.url, {
+    const res = await safeFetch(url, {
       method: "POST",
       headers: buildDeliveryHeaders(body, signingSecret, delivery),
       body,
@@ -197,6 +200,7 @@ async function logDelivery(
 
 async function notifyDeliveryFailed(
   webhook: WebhookDeliveryTarget,
+  url: string,
   first: DeliveryAttempt,
   retry: DeliveryAttempt,
 ): Promise<void> {
@@ -207,7 +211,7 @@ async function notifyDeliveryFailed(
     );
     if (userResult.rows.length === 0) return;
 
-    const emailContent = webhookDeliveryFailedEmail(webhook.url, {
+    const emailContent = webhookDeliveryFailedEmail(url, {
       firstStatus: first.httpStatus,
       retryStatus: retry.httpStatus,
       manageUrl: `${APP_URL}/profile?tab=developer&dtab=webhooks`,
@@ -254,13 +258,27 @@ export async function deliverWebhook(
   // way POSTURE_DIGEST_ENABLED gates its own worker.
   if (!(await getSetting("FEATURE_WEBHOOKS"))) return;
 
+  // An address that did not decrypt is not retried and not emailed about: a
+  // second attempt reads the same ciphertext, and the failure email would
+  // name no address. The delivery log row is what the owner sees.
+  const url = webhook.url;
+  if (!url) {
+    await logDelivery(webhook.id, eventType, {
+      ok: false,
+      httpStatus: null,
+      responseSnippet:
+        "Not sent: the stored address could not be decrypted. Edit the webhook and save its URL again.",
+    });
+    return;
+  }
+
   // Decrypted once for both attempts rather than per attempt: the retry
   // signs the identical bytes with the identical secret, so a second
   // decrypt would only be extra work on the failure path.
   const signingSecret = readWebhookSecret(webhook.secret);
   const delivery = { id: deliveryId, event: eventType };
 
-  const first = await attemptDelivery(webhook, body, signingSecret, {
+  const first = await attemptDelivery(url, body, signingSecret, {
     ...delivery,
     attempt: 1,
   });
@@ -269,12 +287,12 @@ export async function deliverWebhook(
 
   await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
 
-  const retry = await attemptDelivery(webhook, body, signingSecret, {
+  const retry = await attemptDelivery(url, body, signingSecret, {
     ...delivery,
     attempt: 2,
   });
   await logDelivery(webhook.id, eventType, retry);
   if (retry.ok) return;
 
-  await notifyDeliveryFailed(webhook, first, retry);
+  await notifyDeliveryFailed(webhook, url, first, retry);
 }

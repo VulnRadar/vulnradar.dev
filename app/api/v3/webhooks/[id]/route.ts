@@ -13,6 +13,11 @@ import {
   type WebhookType,
 } from "@/lib/webhooks/detect-type";
 import {
+  readWebhookHost,
+  readWebhookUrl,
+  storeWebhookUrl,
+} from "@/lib/webhooks/secret";
+import {
   getTeamResourceAccess,
   getAssignableTeamIds,
 } from "@/lib/auth/team-resource-access";
@@ -227,8 +232,16 @@ export const PATCH = withErrorHandling(
       values.push(active);
     }
     if (validatedUrl !== undefined) {
+      // Encrypted like the address POST stores (enc-2). url_encrypted is set
+      // even when it is null, so a ciphertext of the old address is never
+      // left to win over the new one.
+      const stored = storeWebhookUrl(validatedUrl);
       setClauses.push(`url = $${values.length + 1}`);
-      values.push(validatedUrl);
+      values.push(stored.url);
+      setClauses.push(`url_encrypted = $${values.length + 1}`);
+      values.push(stored.urlEncrypted);
+      setClauses.push(`url_host = $${values.length + 1}`);
+      values.push(stored.urlHost);
     }
     if (hasName) {
       setClauses.push(`name = $${values.length + 1}`);
@@ -255,7 +268,7 @@ export const PATCH = withErrorHandling(
     const result = await pool.query(
       `UPDATE webhooks SET ${setClauses.join(", ")}
      WHERE id = $${values.length}
-     RETURNING id, url, name, type, active, user_id, team_id, created_at`,
+     RETURNING id, url, url_encrypted, url_host, name, type, active, user_id, team_id, created_at`,
       values,
     );
 
@@ -263,6 +276,14 @@ export const PATCH = withErrorHandling(
       return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
     }
 
-    return NextResponse.json(result.rows[0]);
+    // Everyone who reaches this line can write to the webhook, and GET shows
+    // a writer the address, so the answer opens it rather than echoing the
+    // emptied url column.
+    const { url_encrypted: _ciphertext, ...updated } = result.rows[0];
+    return NextResponse.json({
+      ...updated,
+      url: readWebhookUrl(result.rows[0]),
+      url_host: readWebhookHost(result.rows[0]),
+    });
   },
 );

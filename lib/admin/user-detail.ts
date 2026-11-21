@@ -111,10 +111,12 @@ export function buildUserDetailSql(flags: UserDetailFlags): string {
     extra.push(
       // The host, not the path. Identifying which service a hook points at is
       // what the panel is for; the path segments are the bearer token, and
-      // staff have no reason to hold one.
+      // staff have no reason to hold one. The host has its own column now that
+      // url is emptied once the address is encrypted (enc-2); the split is
+      // only for a legacy row the boot migration has not reached.
       `${jsonList(
         "w",
-        `SELECT id, name, split_part(url, '/', 3) AS url_host, type, active FROM webhooks WHERE user_id = u.id`,
+        `SELECT id, name, COALESCE(url_host, NULLIF(split_part(url, '/', 3), '')) AS url_host, type, active FROM webhooks WHERE user_id = u.id`,
         "w.id",
       )} AS ${COLUMN.webhooks}`,
     );

@@ -31,7 +31,13 @@ import {
   resolveWebhookType,
   WEBHOOK_TYPE_ERROR,
 } from "@/lib/webhooks/detect-type";
-import { encryptWebhookSecret, readWebhookSecret } from "@/lib/webhooks/secret";
+import {
+  encryptWebhookSecret,
+  readWebhookHost,
+  readWebhookSecret,
+  readWebhookUrl,
+  storeWebhookUrl,
+} from "@/lib/webhooks/secret";
 import {
   buildDeliveryHeaders,
   readResponseSnippet,
@@ -148,7 +154,7 @@ export const GET = withErrorHandling(async () => {
   // tell the two apart, so it would either hide the team control from owners
   // or offer everyone a control that 403s.
   const result = await pool.query(
-    `SELECT id, url, name, type, active, user_id, team_id, created_at FROM webhooks
+    `SELECT id, url, url_encrypted, url_host, name, type, active, user_id, team_id, created_at FROM webhooks
      WHERE user_id = $1
         OR team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
      ORDER BY created_at DESC`,
@@ -176,10 +182,13 @@ export const GET = withErrorHandling(async () => {
         accessByOwnerAndTeam.set(key, access);
       }
       const { canWrite } = await access;
+      // Opened only for a writer, so a read-only teammate's request never
+      // decrypts an address it is not shown.
+      const { url_encrypted: _ciphertext, ...listed } = row;
       return {
-        ...row,
-        url: canWrite ? row.url : null,
-        url_host: parseStoredUrl(row.url)?.host ?? null,
+        ...listed,
+        url: canWrite ? readWebhookUrl(row) : null,
+        url_host: readWebhookHost(row),
       };
     }),
   );
@@ -285,21 +294,29 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // afterwards. The guarded form is the one schedules/route.ts and
   // lib/rate-limiting/daily-limits.ts already use. A null cap means unlimited
   // (billing off, or the plan's own -1) and the WHERE then always holds.
+  //
+  // The URL is a credential too (enc-2): a Discord or Slack webhook's path is
+  // what lets anyone post into that channel. It goes to url_encrypted with url
+  // left '', and the response carries the URL the caller sent for the same
+  // reason the secret is attached rather than returned.
   const webhookCap =
     planLimits && planLimits.webhooks !== -1 ? planLimits.webhooks : null;
+  const storedUrl = storeWebhookUrl(url);
   const result = await pool.query(
-    `INSERT INTO webhooks (user_id, url, name, type, secret)
-     SELECT $1, $2, $3, $4, $5
+    `INSERT INTO webhooks (user_id, url, name, type, secret, url_encrypted, url_host)
+     SELECT $1, $2, $3, $4, $5, $7, $8
      WHERE $6::int IS NULL
         OR (SELECT COUNT(*) FROM webhooks WHERE user_id = $1) < $6::int
-     RETURNING id, url, name, type, active, user_id, team_id, created_at`,
+     RETURNING id, name, type, active, user_id, team_id, created_at`,
     [
       session.userId,
-      url,
+      storedUrl.url,
       webhookName,
       webhookType,
       encryptWebhookSecret(secret),
       webhookCap,
+      storedUrl.urlEncrypted,
+      storedUrl.urlHost,
     ],
   );
   if (result.rows.length === 0) {
@@ -332,7 +349,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     console.error("Failed to send webhook created notification:", err),
   );
 
-  return NextResponse.json({ ...result.rows[0], secret }, { status: 201 });
+  return NextResponse.json(
+    { ...result.rows[0], url, url_host: storedUrl.urlHost, secret },
+    { status: 201 },
+  );
 });
 
 // Test a webhook by sending a test payload
@@ -373,7 +393,7 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
 
   // Get webhook details
   const result = await pool.query(
-    "SELECT id, url, name, type, user_id, team_id, secret FROM webhooks WHERE id = $1",
+    "SELECT id, url, url_encrypted, name, type, user_id, team_id, secret FROM webhooks WHERE id = $1",
     [id],
   );
 
@@ -397,10 +417,22 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
+  const webhookUrl = readWebhookUrl(webhook);
+  if (!webhookUrl) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "This webhook's saved address could not be read, so nothing was sent. Edit the webhook and save its URL again.",
+      },
+      { status: 409 },
+    );
+  }
+
   // After the access checks, so a stranger cannot spend a target's bucket by
   // guessing webhook ids.
   const targetLimit = await checkRateLimit({
-    key: testTargetLimitKey(webhook.id, webhook.url),
+    key: testTargetLimitKey(webhook.id, webhookUrl),
     ...TEST_SEND_TARGET_LIMIT,
   });
   if (!targetLimit.allowed) return testRateLimited(targetLimit);
@@ -409,7 +441,7 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
   // written via DB migration, admin path, or any code path that
   // bypassed POST validation. DNS or routing may also have changed since
   // registration, and safeFetch separately blocks redirects to private IPs.
-  const targetCheck = await validateScanTarget(webhook.url);
+  const targetCheck = await validateScanTarget(webhookUrl);
   if (!targetCheck.safe) {
     // Same reading safeFetch gives this result: a name that no longer resolves
     // is the far end being down (502), and only a real refusal is a 400.
@@ -425,7 +457,7 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
   // stored type: a row saved as discord before /slack and /github were told
   // apart still holds that type, and its test was sent an embed those
   // endpoints do not read, while its scan notifications already worked.
-  const format = deliveryFormat(webhook.type, webhook.url);
+  const format = deliveryFormat(webhook.type, webhookUrl);
   const testPayload =
     format === "discord"
       ? {
@@ -491,7 +523,7 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
 
   try {
     const body = JSON.stringify(testPayload);
-    const res = await safeFetch(webhook.url, {
+    const res = await safeFetch(webhookUrl, {
       method: "POST",
       headers: buildDeliveryHeaders(body, readWebhookSecret(webhook.secret), {
         id: envelope.id,

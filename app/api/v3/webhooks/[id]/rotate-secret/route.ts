@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
-import { encryptWebhookSecret } from "@/lib/webhooks/secret";
+import { encryptWebhookSecret, readWebhookUrl } from "@/lib/webhooks/secret";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { webhookSecretRotatedEmail } from "@/lib/email/email";
@@ -61,7 +61,7 @@ export const POST = withErrorHandling(
     const result = await pool.query(
       `UPDATE webhooks SET secret = $1
       WHERE id = $2 AND user_id = $3
-      RETURNING id, url, name, type, active, created_at`,
+      RETURNING id, url, url_encrypted, name, type, active, created_at`,
       [encryptWebhookSecret(secret), id, session.userId],
     );
 
@@ -69,27 +69,34 @@ export const POST = withErrorHandling(
       return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
     }
 
+    // The url column is '' once the address is encrypted (enc-2). Only the
+    // owner reaches this line, and the answer has always carried the URL.
+    const { url_encrypted: _ciphertext, ...row } = result.rows[0];
+    const rotated = { ...row, url: readWebhookUrl(result.rows[0]) };
+
     // Creating and deleting a webhook both email; rotating its secret did not,
     // and it is the change with the largest blast radius of the three: every
     // receiver verifying signatures starts rejecting deliveries the instant this
     // returns.
-    const rotated = result.rows[0];
     void (async () => {
       try {
         await sendNotificationEmail({
           userId: session.userId,
           userEmail: session.email,
           type: "webhooks",
-          emailContent: webhookSecretRotatedEmail(rotated.name || rotated.url, {
-            ipAddress: (await getClientIp()) || "Unknown",
-            userAgent: await getUserAgent(),
-          }),
+          emailContent: webhookSecretRotatedEmail(
+            rotated.name || rotated.url || "",
+            {
+              ipAddress: (await getClientIp()) || "Unknown",
+              userAgent: await getUserAgent(),
+            },
+          ),
         });
       } catch (err) {
         console.error("Failed to send webhook secret rotation notice:", err);
       }
     })();
 
-    return NextResponse.json({ ...result.rows[0], secret });
+    return NextResponse.json({ ...rotated, secret });
   },
 );

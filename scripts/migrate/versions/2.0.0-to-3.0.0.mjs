@@ -1610,6 +1610,10 @@ export const upgrade = {
       column: "paused_by_system",
       definition: "BOOLEAN NOT NULL DEFAULT false",
     },
+    // A webhook's address encrypted at rest, and its host for display. The
+    // app's boot backfill moves the plaintext url into them.
+    { table: "webhooks", column: "url_encrypted", definition: "TEXT" },
+    { table: "webhooks", column: "url_host", definition: "TEXT" },
     // The crawl a per-page history row belongs to.
     {
       table: "scan_history",
@@ -2518,7 +2522,11 @@ export const downgrade = {
     "change, each schedule's last outcome and stored scan settings, each " +
     "webhook's event filter and failure streak, the link from a crawl's " +
     "page rows to the crawl, every API key expiry, and what a mailed code " +
-    "was for. Re-adds the five unused v2.0.0 " +
+    "was for. Also DELETES every encrypted webhook address: the app empties " +
+    "webhooks.url once it has encrypted the address, so each webhook saved " +
+    "or backfilled since the upgrade is left with no URL and delivers " +
+    "nothing until it is edited; restore the pre-upgrade backup to keep " +
+    "them. Re-adds the five unused v2.0.0 " +
     "columns the upgrade dropped (AUDIT-011 drift-17), empty, so the " +
     "result is a true v2.0.0 shape.",
 
@@ -2668,6 +2676,8 @@ export const downgrade = {
     { table: "webhooks", column: "consecutive_failures" },
     { table: "webhooks", column: "last_failure_at" },
     { table: "webhooks", column: "paused_by_system" },
+    { table: "webhooks", column: "url_encrypted" },
+    { table: "webhooks", column: "url_host" },
     { table: "scan_history", column: "crawl_parent_id" },
     { table: "api_keys", column: "expires_at" },
     { table: "api_keys", column: "expiry_warning_sent_at" },

@@ -88,11 +88,88 @@ export function readWebhookSecret(
   }
 }
 
+/**
+ * webhooks.url at rest (enc-2).
+ *
+ * A Discord or Slack webhook URL carries its token in the path: whoever holds
+ * the URL can post into that channel. So the address is held like the signing
+ * secret beside it, in url_encrypted, with url left as '' (the column stays
+ * NOT NULL, so no constraint changes at boot) and the host in url_host for the
+ * places that only identify the service.
+ *
+ * The same key rule as encryptWebhookSecret: no key at all keeps the address
+ * in url, and a key that is set but malformed is left to encryptApiKey to
+ * refuse rather than silently writing the credential in the clear.
+ */
+export function encryptWebhookUrl(url: string): string | null {
+  return process.env.API_KEY_ENCRYPTION_KEY ? encryptApiKey(url) : null;
+}
+
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).host || null;
+  } catch {
+    return null;
+  }
+}
+
+export interface StoredWebhookUrl {
+  url: string;
+  urlEncrypted: string | null;
+  urlHost: string | null;
+}
+
+/**
+ * The three column values a writer stores for an address. url_encrypted is
+ * null when there is no key, and the writer sets it anyway: readWebhookUrl
+ * prefers it, so a stale ciphertext left beside a newer plaintext would win.
+ */
+export function storeWebhookUrl(url: string): StoredWebhookUrl {
+  const urlEncrypted = encryptWebhookUrl(url);
+  return { url: urlEncrypted ? "" : url, urlEncrypted, urlHost: hostOf(url) };
+}
+
+/**
+ * The address of a stored webhook row: url_encrypted opened under the current
+ * key, then the previous one (decryptApiKey tries both), or the url column of
+ * a legacy row the boot migration has not reached.
+ *
+ * Returns null for ciphertext that does not open, so the caller sends nothing
+ * rather than posting somewhere it cannot name. The log carries the row id so
+ * an operator can find it, and never the stored value.
+ */
+export function readWebhookUrl(row: {
+  id?: number | null;
+  url?: string | null;
+  url_encrypted?: string | null;
+}): string | null {
+  if (row.url_encrypted) {
+    try {
+      return decryptApiKey(row.url_encrypted);
+    } catch {
+      console.error(
+        `[${APP_NAME}] The address of webhook ${row.id ?? "(unknown)"} is ciphertext that does not decrypt under API_KEY_ENCRYPTION_KEY or PREVIOUS_API_KEY_ENCRYPTION_KEY. Nothing is sent to it until it is saved again.`,
+      );
+      return null;
+    }
+  }
+  return row.url || null;
+}
+
+/** The host a row identifies its service by, for a row written either way. */
+export function readWebhookHost(row: {
+  url?: string | null;
+  url_host?: string | null;
+}): string | null {
+  return row.url_host || (row.url ? hostOf(row.url) : null);
+}
+
 export interface WebhookSecretMigrationStats {
   scanned: number;
   encrypted: number;
   alreadyEncrypted: number;
   unreadable: number;
+  urlsEncrypted: number;
 }
 
 /**
@@ -100,6 +177,10 @@ export interface WebhookSecretMigrationStats {
  * instrumentation.ts can call it on every boot; a row that is already
  * ciphertext is counted and skipped, and one that is ciphertext-shaped but
  * unreadable is left strictly alone.
+ *
+ * It then moves every plaintext webhooks.url into url_encrypted and url_host
+ * (enc-2), which is idempotent the same way: a moved row has url '' and no
+ * longer matches.
  */
 export async function migratePlaintextWebhookSecrets(): Promise<WebhookSecretMigrationStats> {
   const stats: WebhookSecretMigrationStats = {
@@ -107,6 +188,7 @@ export async function migratePlaintextWebhookSecrets(): Promise<WebhookSecretMig
     encrypted: 0,
     alreadyEncrypted: 0,
     unreadable: 0,
+    urlsEncrypted: 0,
   };
   if (!isEncryptionConfigured()) return stats;
 
@@ -140,6 +222,28 @@ export async function migratePlaintextWebhookSecrets(): Promise<WebhookSecretMig
       stats.unreadable++;
       console.error(
         `[${APP_NAME}] Failed to encrypt webhooks.secret for webhook ${row.id}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  const urlRows = await pool.query<{ id: number; url: string }>(
+    "SELECT id, url FROM webhooks WHERE url <> '' AND url_encrypted IS NULL",
+  );
+  for (const row of urlRows.rows) {
+    try {
+      // Guarded on the value read above: an edit saved between that read and
+      // this write already stored its own address, and this must not replace
+      // it with the older one.
+      const result = await pool.query(
+        `UPDATE webhooks SET url_encrypted = $2, url_host = $3, url = ''
+          WHERE id = $1 AND url = $4`,
+        [row.id, encryptApiKey(row.url), hostOf(row.url), row.url],
+      );
+      if (result.rowCount === 1) stats.urlsEncrypted++;
+    } catch (err) {
+      console.error(
+        `[${APP_NAME}] Failed to encrypt webhooks.url for webhook ${row.id}:`,
         err instanceof Error ? err.message : err,
       );
     }

@@ -55,6 +55,7 @@ import {
   type DeliveryEnvelope,
 } from "@/lib/webhooks/delivery-contract";
 import { deliveryFormat } from "@/lib/webhooks/detect-type";
+import { readWebhookUrl } from "@/lib/webhooks/secret";
 import { pluralize } from "@/lib/ui/plural";
 
 /** Webhook event names this module can emit. */
@@ -563,6 +564,7 @@ interface WebhookRow {
   id: number;
   user_id: number;
   url: string;
+  url_encrypted: string | null;
   type: string;
   secret: string | null;
   scan_public_id: string | null;
@@ -586,7 +588,7 @@ async function deliverScanWebhooks(
   // without the EXISTS their endpoint kept receiving that team's results for
   // good, with nobody left on the team able to see where they went.
   const { rows } = await pool.query<WebhookRow>(
-    `SELECT w.id, w.user_id, w.url, w.type, w.secret,
+    `SELECT w.id, w.user_id, w.url, w.url_encrypted, w.type, w.secret,
             (SELECT public_id FROM scan_history WHERE id = $2) AS scan_public_id
        FROM webhooks w
       WHERE w.active = true
@@ -609,11 +611,14 @@ async function deliverScanWebhooks(
 
   await Promise.all(
     rows.map(async (row) => {
+      // Opened once per webhook for both events. A row that does not open
+      // still goes to deliverWebhook, which records why nothing was sent.
+      const url = readWebhookUrl(row);
       const target = {
         id: row.id,
         ownerUserId: row.user_id,
         teammateScan: row.user_id !== params.userId,
-        url: row.url,
+        url,
         type: row.type,
         secret: row.secret ?? null,
       };
@@ -626,7 +631,7 @@ async function deliverScanWebhooks(
       // retried once on failure. deliverWebhook re-validates the URL through
       // safeFetch's SSRF check before every attempt, so no separate
       // validateScanTarget call belongs here.
-      const format = deliveryFormat(row.type, row.url);
+      const format = deliveryFormat(row.type, url ?? "");
       try {
         const envelope = newEnvelope();
         await deliverWebhook(

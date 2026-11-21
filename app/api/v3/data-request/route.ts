@@ -6,6 +6,7 @@ import { getSetting } from "@/lib/config/runtime-config";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { dataRequestCreatedEmail } from "@/lib/email/email";
+import { readWebhookUrl } from "@/lib/webhooks/secret";
 
 /**
  * How many of the export's table reads run at once.
@@ -351,7 +352,7 @@ export async function POST(_request: NextRequest) {
       () =>
         pool.query(
           `
-        SELECT id, url, name, type, active, created_at
+        SELECT id, url, url_encrypted, url_host, name, type, active, created_at
         FROM webhooks WHERE user_id = $1 ORDER BY created_at DESC
       `,
           [session.userId],
@@ -790,7 +791,8 @@ export async function POST(_request: NextRequest) {
         pool.query(
           `
         SELECT d.id, d.event_type, d.http_status, d.response_snippet,
-               d.attempted_at, w.name as webhook_name, w.url as webhook_url
+               d.attempted_at, w.name as webhook_name, w.url as webhook_url,
+               d.webhook_id, w.url_encrypted as webhook_url_encrypted
         FROM webhook_deliveries d
         JOIN webhooks w ON d.webhook_id = w.id
         WHERE w.user_id = $1
@@ -890,6 +892,35 @@ export async function POST(_request: NextRequest) {
       delete notifPrefs.user_id;
     }
 
+    // The webhook address is stored encrypted (enc-2), so the export opens it
+    // rather than handing over an empty url column or the ciphertext. Opened
+    // once per webhook: every delivery row of one webhook names the same one.
+    const openedUrls = new Map<number, string | null>();
+    const openUrl = (row: {
+      id: number;
+      url: string;
+      url_encrypted: string | null;
+    }) => {
+      if (!openedUrls.has(row.id)) openedUrls.set(row.id, readWebhookUrl(row));
+      return openedUrls.get(row.id) ?? null;
+    };
+    const webhooksExport = webhooksData.rows.map(
+      ({ url_encrypted, ...row }) => ({
+        ...row,
+        url: openUrl({ id: row.id, url: row.url, url_encrypted }),
+      }),
+    );
+    const webhookDeliveriesExport = webhookDeliveriesData.rows.map(
+      ({ webhook_id, webhook_url_encrypted, ...row }) => ({
+        ...row,
+        webhook_url: openUrl({
+          id: webhook_id,
+          url: row.webhook_url,
+          url_encrypted: webhook_url_encrypted,
+        }),
+      }),
+    );
+
     const exportData = {
       exportedAt: new Date().toISOString(),
       dataExportVersion: APP_VERSION,
@@ -907,7 +938,7 @@ export async function POST(_request: NextRequest) {
       // API & Developer
       apiKeys: apiKeysData.rows,
       apiUsage: apiUsageData.rows,
-      webhooks: webhooksData.rows,
+      webhooks: webhooksExport,
 
       // Scanning
       scheduledScans: scheduledScansData.rows,
@@ -961,7 +992,7 @@ export async function POST(_request: NextRequest) {
       scanScreenshots: scanScreenshotsData.rows,
 
       // Webhook deliveries and team sharing
-      webhookDeliveries: webhookDeliveriesData.rows,
+      webhookDeliveries: webhookDeliveriesExport,
       scanTeamShares: scanTeamSharesData.rows,
 
       // Staff-only, empty for an ordinary account

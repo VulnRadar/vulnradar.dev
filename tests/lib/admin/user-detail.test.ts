@@ -88,8 +88,14 @@ describe("buildUserDetailSql", () => {
 
   it("selects a webhook's host and not its URL, which is the credential", () => {
     const sql = buildUserDetailSql(ALL);
-    expect(sql).toContain("split_part(url, '/', 3) AS url_host");
+    // url is emptied once the address is encrypted (enc-2), so the host comes
+    // from its own column, and the old expression only covers a legacy row
+    // the boot migration has not reached.
+    expect(sql).toContain(
+      "COALESCE(url_host, NULLIF(split_part(url, '/', 3), '')) AS url_host",
+    );
     expect(sql).not.toMatch(/SELECT id, name, url,/);
+    expect(sql).not.toContain("url_encrypted");
   });
 
   it("selects the scan status that keeps a failed scan from reading as clean", () => {

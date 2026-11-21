@@ -92,6 +92,7 @@ function installQueryMock(
       user_id?: number;
       scan_public_id?: string;
       url: string;
+      url_encrypted?: string | null;
       type: string;
       secret: string | null;
     }[];
@@ -192,6 +193,43 @@ describe("notifyScanComplete: delivery fan-out", () => {
     expect(mockSendNotificationEmail).toHaveBeenCalledWith(
       expect.objectContaining({ type: "scan_complete" }),
     );
+  });
+
+  it("delivers to the opened URL of an encrypted row, and picks its format from it (enc-2)", async () => {
+    const previous = process.env.API_KEY_ENCRYPTION_KEY;
+    process.env.API_KEY_ENCRYPTION_KEY = "a".repeat(64);
+    try {
+      const { encryptApiKey } = await import("@/lib/auth/crypto");
+      const slackCompat = "https://discord.com/api/webhooks/1/tok/slack";
+      installQueryMock({
+        webhooks: [
+          {
+            id: 3,
+            user_id: 42,
+            url: "",
+            url_encrypted: encryptApiKey(slackCompat),
+            type: "discord",
+            secret: null,
+          },
+        ],
+      });
+
+      await notifyScanComplete(baseParams());
+
+      const sql = mockQuery.mock.calls
+        .map(([s]) => String(s))
+        .find((s) => s.includes("FROM webhooks"));
+      expect(sql).toContain("url_encrypted");
+      expect(mockDeliverWebhook).toHaveBeenCalledTimes(1);
+      const [target, , body] = mockDeliverWebhook.mock.calls[0];
+      expect((target as { url: string }).url).toBe(slackCompat);
+      // deliveryFormat read the real URL: Discord's /slack endpoint gets the
+      // Slack payload, which an empty url column would have lost.
+      expect(JSON.parse(body as string)).toHaveProperty("blocks");
+    } finally {
+      if (previous === undefined) delete process.env.API_KEY_ENCRYPTION_KEY;
+      else process.env.API_KEY_ENCRYPTION_KEY = previous;
+    }
   });
 
   it("suppresses only the routine email when silenceRoutineEmail is set, never the webhook", async () => {

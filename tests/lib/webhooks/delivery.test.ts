@@ -488,6 +488,29 @@ describe("deliverWebhook: who hears about a failure", () => {
   });
 });
 
+describe("deliverWebhook: a stored URL that did not open (enc-2)", () => {
+  it("sends nothing, does not retry or email, and records why", async () => {
+    await deliverWebhook(
+      { ...webhook, url: null },
+      "scan.completed",
+      JSON.stringify({ a: 1 }),
+    );
+
+    expect(mockValidateScanTarget).not.toHaveBeenCalled();
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+    expect(mockSendNotificationEmail).not.toHaveBeenCalled();
+    const logs = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("INSERT INTO webhook_deliveries"),
+    );
+    expect(logs).toHaveLength(1);
+    const [, [webhookId, eventType, httpStatus, snippet]] = logs[0];
+    expect(webhookId).toBe(webhook.id);
+    expect(eventType).toBe("scan.completed");
+    expect(httpStatus).toBeNull();
+    expect(String(snippet)).toMatch(/could not be decrypted/);
+  });
+});
+
 describe("FEATURE_WEBHOOKS kill switch", () => {
   it("does not POST, log, or notify when the feature is off", async () => {
     mockGetSetting.mockResolvedValue(false);

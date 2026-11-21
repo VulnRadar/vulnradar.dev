@@ -9,10 +9,10 @@
  * "plan X gets capped at N webhooks" is proving the real resolver + the
  * real withinPlanLimit() check in the route, not a hand-rolled stand-in.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createHmac } from "node:crypto";
-import { decryptApiKey } from "@/lib/auth/crypto";
+import { decryptApiKey, encryptApiKey } from "@/lib/auth/crypto";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -1019,5 +1019,149 @@ describe("POST /api/v3/webhooks: plan-tier limit", () => {
     const res = await POST(postRequest({ url: "https://example.com/hook" }));
     expect(res.status).toBe(201);
     expect(mockGetUserPlan).not.toHaveBeenCalled();
+  });
+});
+
+// enc-2: the URL of a Discord or Slack webhook is the credential for posting
+// into that channel, so it is stored the way the signing secret beside it is.
+describe("webhook URLs at rest", () => {
+  const KEY = "a".repeat(64);
+  const SECRET_URL = "https://discord.com/api/webhooks/123/s3cr3t-token";
+  let previous: string | undefined;
+
+  beforeEach(() => {
+    previous = process.env.API_KEY_ENCRYPTION_KEY;
+    process.env.API_KEY_ENCRYPTION_KEY = KEY;
+  });
+
+  afterEach(() => {
+    if (previous === undefined) delete process.env.API_KEY_ENCRYPTION_KEY;
+    else process.env.API_KEY_ENCRYPTION_KEY = previous;
+    vi.restoreAllMocks();
+  });
+
+  function opens(value: unknown): boolean {
+    if (typeof value !== "string" || value === "") return false;
+    try {
+      return decryptApiKey(value) === SECRET_URL;
+    } catch {
+      return false;
+    }
+  }
+
+  function storedRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 2,
+      url: "",
+      url_encrypted: encryptApiKey(SECRET_URL),
+      url_host: "discord.com",
+      name: "Ops",
+      type: "discord",
+      active: true,
+      user_id: 7,
+      team_id: null,
+      secret: null,
+      ...overrides,
+    };
+  }
+
+  it("POST stores the URL encrypted, an empty url column and the host, and no parameter carries the URL", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 1, name: "Default", type: "discord", active: true }],
+    });
+
+    const res = await POST(postRequest({ url: SECRET_URL }));
+    const json = await res.json();
+
+    expect(res.status).toBe(201);
+    const [sql, params] = mockQuery.mock.calls[1] as [string, unknown[]];
+    expect(sql).toContain("url_encrypted");
+    expect(sql).toContain("url_host");
+    expect(sql).not.toMatch(/RETURNING[^;]*\burl\b/);
+    for (const param of params) {
+      expect(String(param)).not.toContain("s3cr3t-token");
+    }
+    expect(params[1]).toBe("");
+    expect(params).toContain("discord.com");
+    expect(params.some(opens)).toBe(true);
+
+    // The caller gets back the URL they sent, not the emptied column.
+    expect(json.url).toBe(SECRET_URL);
+    expect(json.url_host).toBe("discord.com");
+    expect(json).not.toHaveProperty("url_encrypted");
+  });
+
+  it("GET opens the URL for the owner and reads the host from its column", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [storedRow()] });
+
+    const { webhooks } = await (await GET()).json();
+
+    expect(webhooks[0].url).toBe(SECRET_URL);
+    expect(webhooks[0].url_host).toBe("discord.com");
+    expect(webhooks[0]).not.toHaveProperty("url_encrypted");
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain("url_encrypted");
+    expect(sql).toContain("url_host");
+  });
+
+  it("GET still gives a read-only teammate url null and only the host", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [storedRow({ user_id: 99, team_id: 1 })],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "viewer" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] });
+
+    const { webhooks } = await (await GET()).json();
+
+    expect(webhooks[0].url).toBeNull();
+    expect(webhooks[0].url_host).toBe("discord.com");
+    expect(JSON.stringify(webhooks)).not.toContain("s3cr3t-token");
+    expect(webhooks[0]).not.toHaveProperty("url_encrypted");
+  });
+
+  it("GET shows the host of a legacy row that has no url_host yet", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        storedRow({ url: SECRET_URL, url_encrypted: null, url_host: null }),
+      ],
+    });
+
+    const { webhooks } = await (await GET()).json();
+
+    expect(webhooks[0].url).toBe(SECRET_URL);
+    expect(webhooks[0].url_host).toBe("discord.com");
+  });
+
+  it("the test delivery is sent to the opened URL", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [storedRow()] });
+    const { safeFetch } = await import("@/lib/scanner/safe-fetch");
+    vi.mocked(safeFetch).mockReset();
+    vi.mocked(safeFetch).mockResolvedValue(new Response("ok", { status: 200 }));
+
+    const res = await PATCH(patchRequest({ id: 2 }));
+
+    expect(res.status).toBe(200);
+    expect(mockValidateScanTarget).toHaveBeenCalledWith(SECRET_URL);
+    expect(vi.mocked(safeFetch).mock.calls[0][0]).toBe(SECRET_URL);
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain("url_encrypted");
+  });
+
+  it("sends nothing when the stored URL does not open", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [storedRow({ url_encrypted: "A".repeat(40) })],
+    });
+    const { safeFetch } = await import("@/lib/scanner/safe-fetch");
+    vi.mocked(safeFetch).mockReset();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await PATCH(patchRequest({ id: 2 }));
+    const json = await res.json();
+
+    expect(json.success).toBe(false);
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(vi.mocked(safeFetch)).not.toHaveBeenCalled();
+    expect(mockValidateScanTarget).not.toHaveBeenCalled();
   });
 });
