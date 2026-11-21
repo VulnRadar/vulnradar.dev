@@ -85,6 +85,36 @@ describe("EmailStepUp", () => {
   });
 });
 
+describe("EmailStepUp as a second factor", () => {
+  // A password account that signs in with email codes, in front of an update
+  // or an impersonation (lib/auth/staff-step-up.ts): the same send and verify,
+  // but the code is its second factor, not a stand-in for a password it has.
+  it("explains the code as the account's two-step sign-in, not a missing password", () => {
+    const html = renderToStaticMarkup(
+      <EmailStepUp mode="second-factor" onReady={() => {}} />,
+    );
+    expect(html).toContain(">Email me a code<");
+    expect(html).toContain("uses email codes for two-step sign-in");
+    expect(html).not.toContain("has no password");
+  });
+
+  it("never offers a fresh sign-in in its place, which is no second factor", () => {
+    const html = renderToStaticMarkup(
+      <EmailStepUp
+        mode="second-factor"
+        emailConfigured={false}
+        onReady={() => {}}
+      />,
+    );
+    expect(html).not.toContain(">Sign in again<");
+  });
+
+  it("keeps the no-password wording by default", () => {
+    expect(view()).toContain("has no password");
+    expect(view({ mode: "second-factor" })).not.toContain("has no password");
+  });
+});
+
 describe("EmailStepUpView", () => {
   it("asks for the 6-digit code once it is sent, naming the masked address", () => {
     const html = view({ phase: "sent", maskedEmail: "oa***@example.com" });

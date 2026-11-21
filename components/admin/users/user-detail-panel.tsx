@@ -102,6 +102,7 @@ import {
   type AdminTocItem,
 } from "@/components/admin/shared";
 import { AdminReauthDialog } from "@/components/admin/shared/admin-reauth-dialog";
+import { StaffSecondFactorDialog } from "@/components/admin/shared/staff-second-factor-dialog";
 import { useAdminPermissions } from "@/components/admin/hooks";
 import { GiftSubscriptionModal } from "./gift-subscription-modal";
 import { AccountHistory } from "./account-history";
@@ -409,6 +410,7 @@ export function UserDetailPanel({
     email: u.email,
     name: u.name || undefined,
   };
+  const impersonating = pendingSupportAction?.action === "impersonate";
 
   // Queue a support action for confirmation. Decides which dialog to show
   // up front, not mid-flow: password-gated actions go straight to
@@ -471,16 +473,19 @@ export function UserDetailPanel({
   // Execute the pending support action. `password` is only sent when the
   // action is in PASSWORD_GATED_ACTIONS and the caller has a password (see
   // the re-auth dialog below). A caller with none sends nothing: the step-up
-  // cookie its emailed code left behind is what the server reads.
+  // cookie its emailed code left behind is what the server reads. `totpCode`
+  // is impersonation's second factor, for an account with an authenticator.
   const executeSupportAction = async (
     notifyUser: boolean,
     password?: string,
+    totpCode?: string,
   ): Promise<{ ok: boolean; error?: string }> => {
     if (!pendingSupportAction) return { ok: true };
     const result = await onAction(u.id, pendingSupportAction.action, {
       ...pendingSupportAction.extraPayload,
       notifyUser,
       ...(password ? { currentAdminPassword: password } : {}),
+      ...(totpCode ? { totpCode } : {}),
     });
     if (result.ok) {
       if (
@@ -3138,7 +3143,7 @@ export function UserDetailPanel({
       />
 
       <AdminReauthDialog
-        open={showSupportPasswordDialog}
+        open={showSupportPasswordDialog && !impersonating}
         onOpenChange={(o) => {
           setShowSupportPasswordDialog(o);
           if (!o) setPendingSupportAction(null);
@@ -3155,6 +3160,27 @@ export function UserDetailPanel({
           if (result.ok) setShowSupportPasswordDialog(false);
           return result;
         }}
+      />
+
+      {/* Signing in as a customer asks for a second factor as well as the
+          password, whatever ENFORCE_STAFF_2FA says
+          (lib/auth/staff-step-up.ts), so it has its own confirmation. */}
+      <StaffSecondFactorDialog
+        open={showSupportPasswordDialog && impersonating}
+        onOpenChange={(o) => {
+          setShowSupportPasswordDialog(o);
+          if (!o) setPendingSupportAction(null);
+        }}
+        title={pendingSupportAction?.label || "Impersonate User"}
+        description={
+          pendingSupportAction?.description || "Confirm this action."
+        }
+        confirmLabel="Start impersonating"
+        variant="destructive"
+        hasPassword={callerHasPassword}
+        onConfirm={({ password, totpCode }) =>
+          executeSupportAction(supportNotify, password, totpCode)
+        }
       />
 
       {/* Delete Note Confirmation Modal */}

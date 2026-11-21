@@ -27,7 +27,16 @@ import { STEP_UP_WINDOW } from "@/lib/auth/step-up-window";
  * code: it offers a fresh sign-in instead, which the gate accepts for ten
  * minutes, and only the server can tell whether this session is that fresh.
  * `stepUpCanSave` is that rule in one place.
+ *
+ * `mode="second-factor"` is the same send and verify for an account that has
+ * a password and signs in with email codes: in front of an update or an
+ * impersonation the mailed code is its second factor
+ * (lib/auth/staff-step-up.ts), not a stand-in for the password. A fresh
+ * sign-in is no second factor, so that mode never offers one: on a server
+ * that cannot send mail it says so and stays not ready.
  */
+
+export type StepUpMode = "no-password" | "second-factor";
 
 export function stepUpCanSave(
   emailConfigured: boolean,
@@ -109,6 +118,8 @@ export type StepUpPhase = "start" | "sent" | "done" | "sign-in";
 
 export interface EmailStepUpViewProps {
   phase: StepUpPhase;
+  /** Which account this is for; only the explanation differs. */
+  mode?: StepUpMode;
   idPrefix: string;
   code: string;
   maskedEmail: string | null;
@@ -123,6 +134,7 @@ export interface EmailStepUpViewProps {
 /** The markup for each phase, apart from the state so each can be rendered. */
 export function EmailStepUpView({
   phase,
+  mode = "no-password",
   idPrefix,
   code,
   maskedEmail,
@@ -171,8 +183,9 @@ export function EmailStepUpView({
       {phase === "start" ? (
         <>
           <p className="text-sm text-muted-foreground">
-            Your account has no password, so confirm it is you with a 6-digit
-            code we email to you.
+            {mode === "second-factor"
+              ? "Your account uses email codes for two-step sign-in, so confirm this with a 6-digit code we email to you."
+              : "Your account has no password, so confirm it is you with a 6-digit code we email to you."}
           </p>
           <Button
             type="button"
@@ -253,6 +266,7 @@ export function EmailStepUp({
   emailConfigured = true,
   onReady,
   idPrefix = "step-up",
+  mode = "no-password",
 }: {
   /** False when the server cannot send mail (GET API.CONFIG_CLIENT). */
   emailConfigured?: boolean;
@@ -263,9 +277,12 @@ export function EmailStepUp({
   onReady: () => void;
   /** Keeps ids unique when two of these could be on one page. */
   idPrefix?: string;
+  /** "second-factor" for a password account that signs in with email codes. */
+  mode?: StepUpMode;
 }) {
+  const secondFactor = mode === "second-factor";
   const [phase, setPhase] = useState<StepUpPhase>(
-    emailConfigured ? "start" : "sign-in",
+    emailConfigured || secondFactor ? "start" : "sign-in",
   );
   const [code, setCode] = useState("");
   const [maskedEmail, setMaskedEmail] = useState<string | null>(null);
@@ -284,8 +301,9 @@ export function EmailStepUp({
       return;
     }
     // The config said mail works and the server says it does not: the
-    // server is the one that knows.
-    if (result.emailConfigured === false) {
+    // server is the one that knows. A second factor has no fallback, so the
+    // refusal is shown and nothing is ready.
+    if (result.emailConfigured === false && !secondFactor) {
       setPhase("sign-in");
       onReady();
       return;
@@ -309,6 +327,7 @@ export function EmailStepUp({
   return (
     <EmailStepUpView
       phase={phase}
+      mode={mode}
       idPrefix={idPrefix}
       code={code}
       maskedEmail={maskedEmail}

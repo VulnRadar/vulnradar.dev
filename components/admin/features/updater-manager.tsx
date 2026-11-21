@@ -27,10 +27,12 @@ import { cn } from "@/lib/ui/utils";
 import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
 import { LeadingIcon } from "@/components/shared/leading-icon";
 import { InlineAlert } from "@/components/shared/inline-alert";
+import { meHasPassword } from "@/components/admin/shared/admin-reauth-dialog";
 import {
-  AdminReauthDialog,
-  meHasPassword,
-} from "@/components/admin/shared/admin-reauth-dialog";
+  StaffSecondFactorDialog,
+  type StaffSecondFactorCredentials,
+  type StaffSecondFactorResult,
+} from "@/components/admin/shared/staff-second-factor-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 import { API } from "@/lib/config/client-constants";
 
@@ -236,27 +238,31 @@ export function UpdaterManager() {
     hiddenDelayMs: 10_000,
   });
 
-  const startUpdate = async (password: string | undefined) => {
+  const startUpdate = async ({
+    password,
+    totpCode,
+  }: StaffSecondFactorCredentials): Promise<StaffSecondFactorResult> => {
     try {
       const res = await fetch(`${API.ADMIN}/updater/apply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          applyUpdateBody(password, status?.latest || "latest"),
+          applyUpdateBody(password, status?.latest || "latest", totpCode),
         ),
       });
       const data = await res.json();
       if (res.ok) {
         setJob({ id: data.jobId } as UpdaterJob);
         setConfirmOpen(false);
-        return { ok: true as const };
+        return { ok: true };
       }
       return {
-        ok: false as const,
+        ok: false,
         error: data.error || "Failed to start update.",
+        secondFactor: data.secondFactor,
       };
     } catch {
-      return { ok: false as const, error: "Failed to start update." };
+      return { ok: false, error: "Failed to start update." };
     }
   };
 
@@ -578,19 +584,25 @@ export function UpdaterManager() {
 /**
  * POST /api/v3/admin/updater/apply. An account with no password confirms
  * with a mailed code, which the server reads from its step-up cookie, so no
- * currentAdminPassword key is sent for it.
+ * currentAdminPassword key is sent for it. The same goes for a second factor
+ * by email; an authenticator code travels as totpCode.
  */
 export function applyUpdateBody(
   currentAdminPassword: string | undefined,
   targetVersion: string,
+  totpCode?: string,
 ) {
   return {
     ...(currentAdminPassword === undefined ? {} : { currentAdminPassword }),
+    ...(totpCode === undefined ? {} : { totpCode }),
     targetVersion,
   };
 }
 
-/** The re-auth gate in front of an update, password or mailed code. */
+/**
+ * The gate in front of an update: the password or mailed code, then a second
+ * factor, which the server asks for whatever ENFORCE_STAFF_2FA says.
+ */
 export function ApplyUpdateDialog({
   open,
   onOpenChange,
@@ -603,11 +615,11 @@ export function ApplyUpdateDialog({
   latest: string | null;
   hasPassword: boolean;
   onConfirm: (
-    password: string | undefined,
-  ) => Promise<{ ok: boolean; error?: string }>;
+    credentials: StaffSecondFactorCredentials,
+  ) => Promise<StaffSecondFactorResult>;
 }) {
   return (
-    <AdminReauthDialog
+    <StaffSecondFactorDialog
       open={open}
       onOpenChange={onOpenChange}
       title="Apply update"
