@@ -20,6 +20,23 @@ app version (UI/backend) are tracked separately in the config (see
 
 ---
 
+## v3.9.2 - November 21, 2026
+**Nothing You Use Changed**
+
+This release changes nothing you use. Every page, scan, check, setting and API response works exactly as it did in 3.9.1. What changed is underneath: the Node.js runtime and the libraries VulnRadar is built on, updated to close security issues published after 3.9.1 shipped. Two of them were critical: one in Node.js itself that is being exploited in the wild, and an unauthenticated remote code execution in the image handling of Next.js, the framework the app runs on. If you self-host with Docker, pull v3.9.2. If you run from source, run npm ci, rebuild and restart. Nothing else is needed: no new settings, and no database migration.
+
+### Changes
+- [Package] **[SECURITY]** **Next.js and Six Libraries Moved to Fixed Releases**
+  Next.js 15.5.29 fixes an unauthenticated remote code execution through image optimization, a denial of service through Server Actions, cache poisoning on self-hosted servers, and HttpOnly cookies leaking through a response header on the Edge runtime. nodemailer 10.6.0 fixes how it reads email addresses, where a crafted address could tie up the mailer or deliver to a domain other than the one written. zod 4.6.7 stops an oversized input from exhausting memory while it is being validated. undici, sharp, source-map-js and DOMPurify each move to the first release that fixes their advisories, two of which were TLS certificate checks that could be skipped. None of these updates changes how VulnRadar behaves.
+- [Container] **[SECURITY]** **The Docker Image Runs on a Patched Node.js and Alpine**
+  The published image moves from Node.js 22.23.2 to 22.23.5, which fixes CVE-2026-111497, a critical Node.js vulnerability that is being actively exploited, and three others. The image also takes Alpine's current OpenSSL, zlib, musl and PostgreSQL client libraries when it is built, rather than whichever versions the base image happened to include, which closes the OpenSSL and libpq advisories the weekly scan of the published image found. The base image is now pinned by digest as well as by version, so a rebuild cannot silently land on a different base image.
+- [ShieldCheck] **[SECURITY]** **The Release Verifier Itself Was Out of Date**
+  The image carries cosign, the tool the self-updater uses to check that a release really came from us. The copy it shipped was built with a Go release that has since had over a dozen security fixes. It is now the cosign 3.1.4 release build, compiled with Go 1.27.3, which has those fixes, and checked against the checksum Sigstore publishes before it goes into the image. Release verification works exactly as before.
+- [Wrench] **[SECURITY]** **The Test Runner No Longer Ships in the Image**
+  vitest and its coverage plugin were listed as things the app needs to run, so every published image carried the test runner and vite, the build tool under it, which had advisories of its own. They are listed as development tools now, so the image leaves them out. An install from source still downloads them to build and test with, and their advisories concern a development server that VulnRadar never starts.
+
+---
+
 ## v3.9.1 - September 8, 2026
 **Handed the Whole Book, Remembering None of It**
 
@@ -1432,7 +1449,7 @@ entry is retrieved.
 
 ## Quick reference
 
-- **Total releases:** 72
-- **Total changes documented:** 859
-- **Latest:** v3.9.1 (September 8, 2026) - Handed the Whole Book, Remembering None of It
+- **Total releases:** 73
+- **Total changes documented:** 863
+- **Latest:** v3.9.2 (November 21, 2026) - Nothing You Use Changed
 - **Earliest:** v1.0.0 (February 9, 2026) - First Release
