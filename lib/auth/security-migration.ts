@@ -1,12 +1,13 @@
 /**
  * crypto: one-time encryption migration for the TOTP seed and
- * Discord OAuth tokens.
+ * Discord OAuth tokens, plus the move of API keys from ciphertext to a
+ * one-way digest (hashStoredApiKeys, at the end of this file).
  *
  * The schema columns `users.totp_secret`,
  * `discord_connections.access_token`, and
  * `discord_connections.refresh_token` are now stored as AES-256-GCM
- * ciphertexts (base64) using the same `encryptApiKey` /
- * `decryptApiKey` pipeline that protects API keys.
+ * ciphertexts (base64) using the `encryptApiKey` / `decryptApiKey`
+ * pipeline in lib/auth/crypto.ts.
  *
  * A plaintext TOTP seed is a 32-char uppercase base32 string.
  * A plaintext Discord token is a 24-30+ char alphanumeric string.
@@ -29,6 +30,7 @@
  */
 import pool from "@/lib/database/db";
 import { encryptApiKey, decryptApiKey } from "@/lib/auth/crypto";
+import { hashApiKey } from "@/lib/api/api-key-digest";
 
 /**
  * Three states, not two. The original two-state `looksEncrypted` returned
@@ -87,6 +89,9 @@ interface MigrationStats {
   discordReEncrypted: number;
   discordAlreadyEncrypted: number;
   discordUnreadable: number;
+  apiKeysScanned: number;
+  apiKeysHashed: number;
+  apiKeysUnreadable: number;
 }
 
 /**
@@ -103,6 +108,9 @@ export async function migratePlaintextSecretsToEncrypted(): Promise<MigrationSta
     discordReEncrypted: 0,
     discordAlreadyEncrypted: 0,
     discordUnreadable: 0,
+    apiKeysScanned: 0,
+    apiKeysHashed: 0,
+    apiKeysUnreadable: 0,
   };
 
   // --- TOTP ---
@@ -201,16 +209,100 @@ export async function migratePlaintextSecretsToEncrypted(): Promise<MigrationSta
     console.error("[security-migration] Discord migration query failed:", err);
   }
 
+  const apiKeys = await hashStoredApiKeys();
+  stats.apiKeysScanned = apiKeys.scanned;
+  stats.apiKeysHashed = apiKeys.hashed;
+  stats.apiKeysUnreadable = apiKeys.unreadable;
+
   if (
     stats.totpReEncrypted > 0 ||
     stats.discordReEncrypted > 0 ||
     stats.totpUnreadable > 0 ||
-    stats.discordUnreadable > 0
+    stats.discordUnreadable > 0 ||
+    stats.apiKeysHashed > 0
   ) {
     console.log(
       `[security-migration] Plaintext-to-encrypted backfill complete: ` +
         `totp re-encrypted=${stats.totpReEncrypted} (skipped=${stats.totpAlreadyEncrypted}, unreadable=${stats.totpUnreadable}); ` +
-        `discord re-encrypted=${stats.discordReEncrypted} (skipped=${stats.discordAlreadyEncrypted}, unreadable=${stats.discordUnreadable}).`,
+        `discord re-encrypted=${stats.discordReEncrypted} (skipped=${stats.discordAlreadyEncrypted}, unreadable=${stats.discordUnreadable}); ` +
+        `api keys stored as a digest=${stats.apiKeysHashed} (unreadable=${stats.apiKeysUnreadable}).`,
+    );
+  }
+
+  return stats;
+}
+
+interface ApiKeyHashStats {
+  scanned: number;
+  hashed: number;
+  unreadable: number;
+}
+
+/**
+ * Turn every API key still stored as ciphertext into its SHA-256 digest.
+ *
+ * 3.9.1 and earlier kept the raw key under AES in api_keys.key_encrypted (with
+ * a `deprecated_` placeholder in key_hash and an HMAC locator to find it), and
+ * 4.0.0 validates by digest alone (lib/api/api-keys.ts). The ciphertext is the
+ * only copy of those keys the server has, so this opens each one (the current
+ * key, then PREVIOUS_API_KEY_ENCRYPTION_KEY, which decryptApiKey already
+ * does), writes the digest and drops the ciphertext and the locator. After
+ * that no key depends on the encryption key, and a 3.9.1 binary can no longer
+ * validate any of them: rolling back means restoring the pre-upgrade backup.
+ *
+ * The UPDATE re-checks the ciphertext it read, so a key rotated by its owner
+ * in between is not overwritten with the old secret's digest. A row neither
+ * key opens is left exactly as it is: it cannot authenticate today either,
+ * and a later boot with the right previous key still converts it. Only the
+ * count is reported, never the row or anything in it.
+ *
+ * Idempotent: a converted row has no ciphertext and is not selected again.
+ */
+export async function hashStoredApiKeys(): Promise<ApiKeyHashStats> {
+  const stats: ApiKeyHashStats = { scanned: 0, hashed: 0, unreadable: 0 };
+
+  let rows: { id: number; key_encrypted: string }[];
+  try {
+    const result = await pool.query<{ id: number; key_encrypted: string }>(
+      "SELECT id, key_encrypted FROM api_keys WHERE key_encrypted IS NOT NULL",
+    );
+    rows = result.rows;
+  } catch (err) {
+    console.error(
+      "[security-migration] API key digest migration query failed:",
+      err,
+    );
+    return stats;
+  }
+
+  stats.scanned = rows.length;
+  for (const row of rows) {
+    let raw: string;
+    try {
+      raw = decryptApiKey(row.key_encrypted);
+    } catch {
+      stats.unreadable++;
+      continue;
+    }
+    try {
+      const result = await pool.query(
+        `UPDATE api_keys
+            SET key_hash = $1, key_encrypted = NULL, key_locator = NULL
+          WHERE id = $2 AND key_encrypted = $3`,
+        [hashApiKey(raw), row.id, row.key_encrypted],
+      );
+      if ((result.rowCount ?? 0) > 0) stats.hashed++;
+    } catch (err) {
+      console.error(
+        `[security-migration] Could not store API key ${row.id} as a digest:`,
+        err,
+      );
+    }
+  }
+
+  if (stats.unreadable > 0) {
+    console.error(
+      `[security-migration] ${stats.unreadable} stored API key(s) open under neither API_KEY_ENCRYPTION_KEY nor PREVIOUS_API_KEY_ENCRYPTION_KEY and were left as they are. They cannot authenticate; set the key they were written under as PREVIOUS_API_KEY_ENCRYPTION_KEY and restart to convert them.`,
     );
   }
 

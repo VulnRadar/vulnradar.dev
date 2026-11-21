@@ -1,13 +1,8 @@
-import { randomBytes, createHmac, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import pool from "@/lib/database/db";
 import { API_KEY_PREFIX } from "@/lib/config/constants";
-import {
-  encryptApiKey,
-  decryptApiKey,
-  isEncryptionConfigured,
-} from "@/lib/auth/crypto";
-import { isKeyHex, parseKeyHex } from "@/lib/auth/key-hex";
+import { apiKeyDigestsMatch, hashApiKey } from "@/lib/api/api-key-digest";
 import {
   getClientIp,
   getUserAgent,
@@ -35,100 +30,23 @@ import {
 } from "@/lib/billing/plan-limits";
 
 /**
- * Constant-time compare for a decrypted API key against the presented one.
- * `a === b` short-circuits on the first differing byte, which is the one
- * pattern every other secret compare in this codebase already avoids
- * (lib/auth/password-hash.ts, lib/auth/totp.ts, lib/auth/oauth-state.ts).
- * The timing signal here is weak because the locator lookup has already
- * narrowed the candidate set to one row, but there is no reason for this to
- * be the single exception to the rule (AUDIT-012#auth-11).
+ * A new secret: vr_live_ plus 64 hex characters (256 bits), the prefix the
+ * key list shows, and the digest that is the only form ever stored.
  *
- * timingSafeEqual throws on a length mismatch, so the length is compared
- * first. Key length is not a secret: it is fixed by generateApiKey.
+ * Until 4.0.0 the key was also stored under AES in key_encrypted and found by
+ * an HMAC locator, so anyone holding the database and API_KEY_ENCRYPTION_KEY
+ * held every customer's working key, while nothing but validation ever read
+ * that copy. key_encrypted and key_locator are written NULL now, and the boot
+ * migration (hashStoredApiKeys in lib/auth/security-migration.ts) converts the
+ * rows written before.
  */
-function apiKeysMatch(decrypted: string, presented: string): boolean {
-  const a = Buffer.from(decrypted, "utf8");
-  const b = Buffer.from(presented, "utf8");
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
-
-// Helper function to generate a random deprecated placeholder string
-function generateDeprecatedPlaceholder(): string {
-  // Generate 64 random bytes as hex (fully random, no predictable pattern)
-  return `deprecated_${randomBytes(48).toString("hex")}`;
-}
-
-// Derive a server-side secret for key locator HMAC.
-// removed the hardcoded `"vulnradar-key-locator-v1"`
-// fallback. A global default in the source would let anyone who read the
-// source compute the locator for any stolen key. Require the real secret.
-function getLocatorSecret(): Buffer {
-  return parseKeyHex(
-    process.env.API_KEY_ENCRYPTION_KEY,
-    "[api-keys] API_KEY_ENCRYPTION_KEY must be set to a 64-character hex " +
-      "string (32 bytes) to compute API key locators. " +
-      "Generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
-  );
-}
-
-/**
- * The key the previous deployment used, while an operator is rotating
- * API_KEY_ENCRYPTION_KEY (lib/auth/crypto.ts has the procedure). Null when no
- * rotation is in progress or the value is not a 64-character hex string;
- * crypto.ts already reports the malformed case, so this stays quiet.
- */
-function getPreviousLocatorSecret(): Buffer | null {
-  const hex = process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY;
-  return isKeyHex(hex) ? Buffer.from(hex, "hex") : null;
-}
-
-// Compute a deterministic 8-hex-char locator for indexed O(1) lookup.
-// HMAC-SHA256(rawKey, secret)  first 4 bytes  hex.
-function locatorUnder(rawKey: string, secret: Buffer): string {
-  // This is NOT a password. It is a keyed HMAC over a CSPRNG-generated
-  // 256-bit API key used as a deterministic column index for O(1) lookup.
-  // The 256-bit key entropy makes brute-force irrelevant; bcrypt would be
-  // wrong here because we need a deterministic, fast, keyed hash.
-  const hmac = createHmac("sha256", secret);
-  // codeql[js/insufficient-password-hash]
-  hmac.update(rawKey);
-  return hmac.digest("hex").slice(0, 8);
-}
-
-function computeKeyLocator(rawKey: string): string {
-  return locatorUnder(rawKey, getLocatorSecret());
-}
-
-/**
- * The locator this key would have been stored under before the last
- * rotation, or null when no previous key is configured.
- */
-function computePreviousKeyLocator(rawKey: string): string | null {
-  const secret = getPreviousLocatorSecret();
-  return secret ? locatorUnder(rawKey, secret) : null;
-}
-
-/**
- * Key ids already reported as undecryptable by this process.
- *
- * A locator match whose ciphertext opens under neither key is a corrupt row
- * or a rotation that dropped the old key too early, and it repeats on every
- * request that reaches the row: a CLI polling every few seconds would write an
- * Error Logs entry each time. One report per row per process is enough for an
- * operator to act on, and bounds the set by the number of broken rows.
- */
-const reportedUndecryptableKeys = new Set<number>();
-
-function reportUndecryptableKey(keyId: number, err: unknown): void {
-  if (reportedUndecryptableKeys.has(keyId)) return;
-  reportedUndecryptableKeys.add(keyId);
-  logError(
-    "api-keys",
-    "stored API key could not be decrypted under the current or previous encryption key",
-    err,
-    { keyId },
-  );
+function newKeyMaterial() {
+  const raw = `${API_KEY_PREFIX}${randomBytes(32).toString("hex")}`;
+  return {
+    raw,
+    prefix: raw.slice(0, API_KEY_PREFIX.length + 8),
+    keyHash: hashApiKey(raw),
+  };
 }
 
 // Generate a new API key - returns the raw key (only shown once) and metadata
@@ -154,28 +72,16 @@ export async function generateApiKey(
   activeKeyCap?: number | null,
 ) {
   const limit = dailyLimit ?? (await getSetting("DEFAULT_API_KEY_DAILY_LIMIT"));
-
-  // Generate a random key: vr_live_<64 hex chars>
-  const raw = `${API_KEY_PREFIX}${randomBytes(32).toString("hex")}`;
-  const prefix = raw.slice(0, API_KEY_PREFIX.length + 8); // show prefix + some chars
-  const locator = computeKeyLocator(raw);
-
-  let keyHash: string;
-  let keyEncrypted: string | null = null;
-
-  if (isEncryptionConfigured()) {
-    // If encryption key is available, store encrypted key + deprecated placeholder
-    keyEncrypted = encryptApiKey(raw);
-    keyHash = generateDeprecatedPlaceholder();
-  } else {
-    // If no encryption key, use bcrypt-based hashing for lookup
-    keyHash = await hashKey(raw);
-  }
+  const { raw, prefix, keyHash } = newKeyMaterial();
 
   // The count matches the route's own definition of an active key: rows
   // that have not been revoked. getUserApiKeys selects every row and filters
   // revoked_at in JavaScript, so this is where that predicate has to be
   // written out in SQL.
+  //
+  // key_locator ($3) and key_encrypted ($7) are bound NULL rather than left
+  // out of the column list, which keeps the parameter positions the callers'
+  // tests already pin (the cap is $9).
   const insertSql = `INSERT INTO api_keys (user_id, key_hash, key_locator, key_prefix, name, daily_limit, key_encrypted, scopes)
      SELECT $1, $2, $3, $4, $5, $6, $7, $8
      WHERE $9::int IS NULL
@@ -185,11 +91,11 @@ export async function generateApiKey(
   const params = [
     userId,
     keyHash,
-    locator,
+    null,
     prefix,
     name,
     limit,
-    keyEncrypted,
+    null,
     JSON.stringify(scopes),
     activeKeyCap ?? null,
   ];
@@ -229,7 +135,7 @@ export async function generateApiKey(
 
     return {
       ...result.rows[0],
-      raw_key: raw, // Only returned on creation, never stored in plaintext
+      raw_key: raw, // Only returned on creation, never stored
     };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
@@ -239,21 +145,15 @@ export async function generateApiKey(
   }
 }
 
-// Hash the API key with bcrypt for secure storage
-async function hashKey(key: string): Promise<string> {
-  // bcrypt silently truncates input at 72 bytes. Assert here so a future
-  // prefix change doesn't silently reduce key entropy.
-  if (Buffer.byteLength(key, "utf8") > 72) {
-    throw new Error(
-      `[api-keys] Key length ${Buffer.byteLength(key, "utf8")} bytes exceeds bcrypt's 72-byte limit; extend the fallback path to pre-hash with SHA-256`,
-    );
-  }
-  const saltRounds = 12;
-  return await bcrypt.hash(key, saltRounds);
-}
-
-// Compare API key with its hash
-async function verifyKey(key: string, hash: string): Promise<boolean> {
+/**
+ * Compare a key with a legacy bcrypt hash. Only rows from before key_encrypted
+ * existed still hold one; each is rewritten to the digest on its first
+ * successful use (findLegacyBcryptKey), so this path empties itself.
+ */
+async function verifyLegacyBcryptKey(
+  key: string,
+  hash: string,
+): Promise<boolean> {
   return await bcrypt.compare(key, hash);
 }
 
@@ -534,18 +434,29 @@ async function notifyApiKeyIpMismatch(params: {
 }
 
 /**
- * perf: whether any api_keys row still lacks a key_locator.
+ * Rows that hold a bcrypt hash and no ciphertext: keys from before
+ * key_encrypted existed. A digest can only be computed from the raw key, so
+ * these cannot be converted at boot the way ciphertext rows are; each one is
+ * rewritten to the digest on its first successful use instead.
  *
- * The locator lookup is O(1) and indexed; the two fallback paths below are
- * full scans of the un-backfilled rows, and one of them runs a bcryptjs
- * compare (cost 12, pure JS, on the main thread) PER ROW. Because a locator
- * miss fell straight through to them, every INVALID key, and every request
- * from a scanner probing for one, paid both scans. generateApiKey has
- * written a locator since it shipped, so on any install without legacy rows
- * the correct answer is "return null immediately".
+ * `$2` is the bcrypt version prefix ($2a$, $2b$, $2y$). A SHA-256 digest is
+ * hex and never starts with `$`, and neither did the `deprecated_`
+ * placeholder 3.9.1 wrote beside its ciphertext.
+ */
+const LEGACY_BCRYPT_ROW = `ak.key_hash LIKE '$2%' AND ak.key_encrypted IS NULL`;
+
+/**
+ * perf: whether any legacy bcrypt row is left.
+ *
+ * The digest lookup is O(1) on the UNIQUE key_hash index; the fallback below
+ * is a full scan of the bcrypt rows with a bcryptjs compare (cost 12, pure
+ * JS, on the main thread) PER ROW. Every INVALID key, and every request from
+ * a scanner probing for one, would pay that scan, and on any install created
+ * after keys stopped being stored as bcrypt the correct answer is "return
+ * null immediately".
  *
  * null means "not looked up yet". Once resolved to false it stays false: no
- * code path creates a locator-less row. Reset to null after a backfill so
+ * code path writes a bcrypt row any more. Reset to null after a rewrite so
  * the next miss re-checks whether any remain.
  */
 let legacyKeyRowsPresent: boolean | null = null;
@@ -554,12 +465,12 @@ async function hasLegacyKeyRows(): Promise<boolean> {
   if (legacyKeyRowsPresent !== null) return legacyKeyRowsPresent;
   try {
     const res = await pool.query<{ present: boolean }>(
-      "SELECT EXISTS(SELECT 1 FROM api_keys WHERE key_locator IS NULL) AS present",
+      `SELECT EXISTS(SELECT 1 FROM api_keys ak WHERE ${LEGACY_BCRYPT_ROW}) AS present`,
     );
     legacyKeyRowsPresent = res.rows[0]?.present === true;
   } catch {
     // Fail OPEN: a failed probe must never turn a valid legacy key into an
-    // authentication failure. The scans below are slow, not wrong.
+    // authentication failure. The scan below is slow, not wrong.
     return true;
   }
   return legacyKeyRowsPresent;
@@ -570,91 +481,59 @@ export function __resetLegacyKeyRowCache(): void {
   legacyKeyRowsPresent = null;
 }
 
-/**
- * The by-locator row lookup, shared by the current-key and previous-key paths
- * so both select the same columns through the same joins.
- */
-const ENCRYPTED_LOCATOR_LOOKUP_SQL = `SELECT ak.id as key_id, ak.user_id, ak.name,
-              ak.revoked_at, ak.key_encrypted, ak.bound_ip, ak.scopes,
+/** Everything a lookup selects, shared so the digest and bcrypt paths agree. */
+const KEY_LOOKUP_SQL = `SELECT ak.id as key_id, ak.user_id, ak.name,
+              ak.revoked_at, ak.key_hash, ak.bound_ip, ak.scopes,
               u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at,
               ${PLAN_COLUMNS}
          FROM api_keys ak
               JOIN users u ON ak.user_id = u.id
-              ${PLAN_JOIN}
-        WHERE ak.key_locator = $1
-          AND ak.key_encrypted IS NOT NULL`;
+              ${PLAN_JOIN}`;
+
+type KeyLookupRow = Parameters<typeof rowToResult>[0] &
+  Parameters<typeof passesApiKeyIpBinding>[0] & {
+    key_hash: string;
+    revoked_at: string | null;
+    disabled_at: string | null;
+  };
 
 /**
- * Decrypt a row's stored key, or null (reported once per row, see
- * reportUndecryptableKey) when neither the current nor the previous
- * encryption key opens it. Only the decrypt is covered: a failure anywhere
- * else is not an undecryptable key and must not be reported as one.
- */
-function readStoredKey(row: {
-  key_id: number;
-  key_encrypted: string;
-}): string | null {
-  try {
-    return decryptApiKey(row.key_encrypted);
-  } catch (err) {
-    reportUndecryptableKey(row.key_id, err);
-    return null;
-  }
-}
-
-/**
- * Find a key whose locator was written under the encryption key in use BEFORE
- * the last rotation, and move it onto the current one.
+ * Find a legacy bcrypt key and rewrite its row to the digest.
  *
- * The locator is an HMAC under API_KEY_ENCRYPTION_KEY, so rotating that key
- * changes the locator of every key while every stored row keeps the old one.
- * The ciphertext survived (lib/auth/crypto.ts falls back to the previous key),
- * but nothing ever found the row: the lookup by the new locator came back
- * empty and the operator who followed the documented procedure had every CLI,
- * CI and API integration answer 401 with nothing in any log.
- *
- * Runs only after the current-locator lookup missed and a previous key is
- * configured. A match is rewritten in place, locator and ciphertext both under
- * the current key, so each key pays for this once and the previous key can be
- * dropped when every key still in use has done so.
+ * The UPDATE re-checks the hash it read, so a rotation of this key that landed
+ * in between is not overwritten. Losing the race to another request carrying
+ * the same key just updates zero rows: they wrote the same digest.
  */
-async function findKeyUnderPreviousSecret(
-  rawKey: string,
-  currentLocator: string,
-) {
-  const previousLocator = computePreviousKeyLocator(rawKey);
-  if (!previousLocator || previousLocator === currentLocator) return null;
-
-  const result = await pool.query(ENCRYPTED_LOCATOR_LOOKUP_SQL, [
-    previousLocator,
-  ]);
+async function findLegacyBcryptKey(
+  key: string,
+  digest: string,
+): Promise<KeyLookupRow | null> {
+  const result = await pool.query<KeyLookupRow>(
+    `${KEY_LOOKUP_SQL}
+        WHERE ${LEGACY_BCRYPT_ROW}`,
+  );
   for (const row of result.rows) {
-    const decrypted = readStoredKey(row);
-    if (decrypted === null || !apiKeysMatch(decrypted, rawKey)) continue;
+    let matched = false;
+    try {
+      matched = await verifyLegacyBcryptKey(key, row.key_hash);
+    } catch {
+      continue;
+    }
+    if (!matched) continue;
 
-    // Both columns move together, and the WHERE re-checks what was read, so a
-    // rotation of this one key that landed in between is not overwritten with
-    // the old secret's material. Losing the race to another request carrying
-    // the same key just updates zero rows: they wrote the same values.
     try {
       await pool.query(
-        `UPDATE api_keys
-            SET key_locator = $1, key_encrypted = $2
-          WHERE id = $3 AND key_locator = $4 AND key_encrypted = $5`,
-        [
-          currentLocator,
-          encryptApiKey(rawKey),
-          row.key_id,
-          previousLocator,
-          row.key_encrypted,
-        ],
+        `UPDATE api_keys SET key_hash = $1, key_locator = NULL
+          WHERE id = $2 AND key_hash = $3`,
+        [digest, row.key_id, row.key_hash],
       );
+      legacyKeyRowsPresent = null;
     } catch (err) {
       // The key itself is valid, so this request goes through; the next one
       // for the same key tries the rewrite again.
       logError(
         "api-keys",
-        "could not move an API key onto the current encryption key",
+        "could not rewrite a legacy API key to its digest",
         err,
         { keyId: row.key_id },
       );
@@ -665,7 +544,7 @@ async function findKeyUnderPreviousSecret(
 }
 
 // Validate an API key and return the user/key info, or null.
-// Uses an indexed key_locator for O(1) lookup instead of a full-table scan.
+// One indexed lookup of the key's SHA-256 digest on the UNIQUE key_hash.
 // Returns { needsTermsAcceptance: true } if user hasn't accepted latest terms.
 //
 // Every branch checks `u.disabled_at` alongside `ak.revoked_at`. The cookie
@@ -674,8 +553,10 @@ async function findKeyUnderPreviousSecret(
 // disabled kept full API access: a user suspended for abuse could go on running
 // scans and reading or deleting their history with a key issued before the ban.
 // The account-state gate belongs here rather than at the ~15 Bearer call sites.
+//
+// Nothing here decrypts. A row that still holds 3.9.1 ciphertext is converted
+// by the boot migration (hashStoredApiKeys), and until then it does not match.
 async function lookupApiKey(key: string): Promise<KeyValidationResult | null> {
-  const locator = computeKeyLocator(key);
   const [{ TERMS_UPDATED_AT: termsUpdatedAt }, featureEnabled] =
     await Promise.all([
       getSettings(["TERMS_UPDATED_AT"] as const),
@@ -691,165 +572,25 @@ async function lookupApiKey(key: string): Promise<KeyValidationResult | null> {
   // invalid-key result: callers already handle null.
   if (!featureEnabled) return null;
 
-  if (isEncryptionConfigured()) {
-    // Primary path: O(1) indexed lookup by HMAC locator.
-    const locatorResult = await pool.query(ENCRYPTED_LOCATOR_LOOKUP_SQL, [
-      locator,
-    ]);
-
-    for (const row of locatorResult.rows) {
-      const decrypted = readStoredKey(row);
-      if (decrypted === null) continue;
-      try {
-        if (apiKeysMatch(decrypted, key)) {
-          if (row.revoked_at || row.disabled_at) return null;
-          if (!(await passesApiKeyIpBinding(row))) return null;
-          return rowToResult(row, termsUpdatedAt);
-        }
-      } catch {
-        continue;
-      }
-    }
-
-    // A miss on the current locator may be a key that predates a rotation of
-    // API_KEY_ENCRYPTION_KEY: its row still holds the locator the old key
-    // computed. Only costs a query while PREVIOUS_API_KEY_ENCRYPTION_KEY is set.
-    const rotated = await findKeyUnderPreviousSecret(key, locator);
-    if (rotated) {
-      if (rotated.revoked_at || rotated.disabled_at) return null;
-      if (!(await passesApiKeyIpBinding(rotated))) return null;
-      return rowToResult(rotated, termsUpdatedAt);
-    }
-
-    // Everything below is a scan of the rows that have no locator yet. Skip
-    // both scans entirely when there are none, which is the normal state.
-    if (!(await hasLegacyKeyRows())) return null;
-
-    // Backfill: key matched a row that has no locator yet (legacy row).
-    // Compute locator from decrypted key and persist it for future lookups.
-    const legacyResult = await pool.query(
-      `SELECT ak.id as key_id, ak.user_id, ak.name,
-              ak.revoked_at, ak.key_encrypted, ak.key_locator, ak.bound_ip, ak.scopes,
-              u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at,
-              ${PLAN_COLUMNS}
-         FROM api_keys ak
-              JOIN users u ON ak.user_id = u.id
-              ${PLAN_JOIN}
-        WHERE ak.key_locator IS NULL
-          AND ak.key_encrypted IS NOT NULL`,
-    );
-    for (const row of legacyResult.rows) {
-      const decrypted = readStoredKey(row);
-      if (decrypted === null) continue;
-      try {
-        if (apiKeysMatch(decrypted, key)) {
-          // Persist locator so subsequent lookups are O(1).
-          await pool
-            .query(
-              "UPDATE api_keys SET key_locator = $1 WHERE id = $2 AND key_locator IS NULL",
-              [computeKeyLocator(decrypted), row.key_id],
-            )
-            .catch(() => undefined);
-          // A row just lost its legacy status, so re-check whether any remain.
-          legacyKeyRowsPresent = null;
-          if (row.revoked_at || row.disabled_at) return null;
-          if (!(await passesApiKeyIpBinding(row))) return null;
-          return rowToResult(row, termsUpdatedAt);
-        }
-      } catch {
-        continue;
-      }
-    }
-
-    // Fallback: hash-based bcrypt lookup (old keys without encryption).
-    const hashResult = await pool.query(
-      `SELECT ak.id as key_id, ak.user_id, ak.name,
-              ak.revoked_at, ak.key_hash, ak.bound_ip, ak.scopes,
-              u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at,
-              ${PLAN_COLUMNS}
-         FROM api_keys ak
-              JOIN users u ON ak.user_id = u.id
-              ${PLAN_JOIN}
-        WHERE ak.key_hash IS NOT NULL
-          AND ak.key_locator IS NULL
-          AND ak.key_encrypted IS NULL`,
-    );
-    for (const row of hashResult.rows) {
-      try {
-        if (await verifyKey(key, row.key_hash)) {
-          if (row.revoked_at || row.disabled_at) return null;
-          if (!(await passesApiKeyIpBinding(row))) return null;
-          return rowToResult(row, termsUpdatedAt);
-        }
-      } catch {
-        continue;
-      }
-    }
-
-    return null;
-  }
-
-  // No encryption configured: O(1) locator lookup for bcrypt-hashed keys.
-  const locatorResult = await pool.query(
-    `SELECT ak.id as key_id, ak.user_id, ak.name,
-            ak.revoked_at, ak.key_hash, ak.bound_ip, ak.scopes,
-            u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at,
-            ${PLAN_COLUMNS}
-       FROM api_keys ak
-            JOIN users u ON ak.user_id = u.id
-            ${PLAN_JOIN}
-      WHERE ak.key_locator = $1
-        AND ak.key_hash IS NOT NULL`,
-    [locator],
+  const digest = hashApiKey(key);
+  const result = await pool.query<KeyLookupRow>(
+    `${KEY_LOOKUP_SQL}
+        WHERE ak.key_hash = $1`,
+    [digest],
   );
-  for (const row of locatorResult.rows) {
-    try {
-      if (await verifyKey(key, row.key_hash)) {
-        if (row.revoked_at || row.disabled_at) return null;
-        if (!(await passesApiKeyIpBinding(row))) return null;
-        return rowToResult(row, termsUpdatedAt);
-      }
-    } catch {
-      continue;
-    }
+  let row: KeyLookupRow | null =
+    result.rows.find((r) => apiKeyDigestsMatch(r.key_hash, digest)) ?? null;
+
+  // Everything below is a scan of the legacy bcrypt rows. Skip it entirely
+  // when there are none, which is the normal state.
+  if (!row && (await hasLegacyKeyRows())) {
+    row = await findLegacyBcryptKey(key, digest);
   }
+  if (!row) return null;
 
-  // Legacy bcrypt keys without locator: full scan with a bcrypt compare per
-  // row. Skipped entirely when no locator-less row exists.
-  if (!(await hasLegacyKeyRows())) return null;
-
-  // Legacy bcrypt keys without locator: full scan (backfill on match).
-  const legacyHashResult = await pool.query(
-    `SELECT ak.id as key_id, ak.user_id, ak.name,
-            ak.revoked_at, ak.key_hash, ak.bound_ip, ak.scopes,
-            u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at,
-            ${PLAN_COLUMNS}
-       FROM api_keys ak
-            JOIN users u ON ak.user_id = u.id
-            ${PLAN_JOIN}
-      WHERE ak.key_hash IS NOT NULL
-        AND ak.key_locator IS NULL`,
-  );
-  for (const row of legacyHashResult.rows) {
-    try {
-      if (await verifyKey(key, row.key_hash)) {
-        await pool
-          .query(
-            "UPDATE api_keys SET key_locator = $1 WHERE id = $2 AND key_locator IS NULL",
-            [locator, row.key_id],
-          )
-          .catch(() => undefined);
-        legacyKeyRowsPresent = null;
-        if (row.revoked_at || row.disabled_at) return null;
-        if (!(await passesApiKeyIpBinding(row))) return null;
-        return rowToResult(row, termsUpdatedAt);
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return null;
+  if (row.revoked_at || row.disabled_at) return null;
+  if (!(await passesApiKeyIpBinding(row))) return null;
+  return rowToResult(row, termsUpdatedAt);
 }
 
 /**
@@ -1277,18 +1018,7 @@ export async function rotateApiKey(
   // new id with no usage rows attached. Rotating in place keeps the id, so
   // usage_today and the rate limit built on it survive exactly like a new
   // secret on the same key should, not a new key.
-  const raw = `${API_KEY_PREFIX}${randomBytes(32).toString("hex")}`;
-  const prefix = raw.slice(0, API_KEY_PREFIX.length + 8);
-  const locator = computeKeyLocator(raw);
-
-  let keyHash: string;
-  let keyEncrypted: string | null = null;
-  if (isEncryptionConfigured()) {
-    keyEncrypted = encryptApiKey(raw);
-    keyHash = generateDeprecatedPlaceholder();
-  } else {
-    keyHash = await hashKey(raw);
-  }
+  const { raw, prefix, keyHash } = newKeyMaterial();
 
   const resolvedScopes = resolveApiKeyScopes(oldScopes);
   const newLimit = dailyLimit ?? oldLimit;
@@ -1300,6 +1030,10 @@ export async function rotateApiKey(
   // bound_ip goes with the old secret: the next use of the new one adopts its
   // network, exactly as a new key would. Keeping it left a key that had moved
   // networks refused even after its owner replaced the secret to recover it.
+  //
+  // key_locator ($2) and key_encrypted ($4) are cleared too, so rotating a key
+  // the boot migration could not open leaves no ciphertext behind. Bound NULL,
+  // as in generateApiKey's INSERT, so the parameter positions stay put.
   const updateResult = await pool.query(
     `UPDATE api_keys
         SET key_hash = $1, key_locator = $2, key_prefix = $3,
@@ -1309,9 +1043,9 @@ export async function rotateApiKey(
       RETURNING id, key_prefix, name, daily_limit, created_at, scopes`,
     [
       keyHash,
-      locator,
+      null,
       prefix,
-      keyEncrypted,
+      null,
       newLimit,
       JSON.stringify(resolvedScopes),
       keyId,

@@ -18,15 +18,16 @@
  * validateApiKey, so mocking either would test nothing.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createHash } from "node:crypto";
 
 type Row = Record<string, unknown>;
 
-/** The row the locator lookup finds, minus the plan columns each test sets. */
+/** The row the digest lookup finds, minus the plan columns each test sets. */
 let keyRow: Row | null = null;
 
 const mockQuery = vi.fn(async (sql: string, _params?: unknown[]) => {
   const s = sql.trim();
-  if (s.includes("ak.key_encrypted") && s.includes("ak.key_locator = $1")) {
+  if (s.includes("ak.key_hash = $1")) {
     return { rows: keyRow ? [keyRow] : [] };
   }
   if (s.startsWith("SELECT EXISTS")) {
@@ -52,12 +53,6 @@ vi.mock("@/lib/database/db", () => ({
     query: (...args: unknown[]) =>
       (mockQuery as (...a: unknown[]) => unknown)(...args),
   },
-}));
-
-vi.mock("@/lib/auth/crypto", () => ({
-  isEncryptionConfigured: () => true,
-  encryptApiKey: (raw: string) => `enc:${raw}`,
-  decryptApiKey: (enc: string) => String(enc).replace(/^enc:/, ""),
 }));
 
 vi.mock("@/lib/api/request-utils", async (importOriginal) => {
@@ -105,7 +100,7 @@ function setKeyOwner(owner: {
     name: "CI",
     revoked_at: null,
     disabled_at: null,
-    key_encrypted: `enc:${RAW_KEY}`,
+    key_hash: createHash("sha256").update(RAW_KEY).digest("hex"),
     bound_ip: null,
     scopes: ["scan:read"],
     email: "owner@example.com",

@@ -1,91 +1,41 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
-import { randomBytes } from "node:crypto";
+import { describe, it, expect } from "vitest";
+import { createHmac, randomBytes } from "node:crypto";
 import { computeApiKeyLocatorMirror } from "../../scripts/_lib/_lib.api-key-locator-mirror.mjs";
 
 /**
- * lib/api/api-keys.ts's computeKeyLocator() is a private (non-exported)
- * function, so it can't be imported directly for a cross-check the way
- * the 2FA tool's mirrors cross-check exported functions. Instead, this
- * drives it INDIRECTLY through the real, exported generateApiKey(): it
- * always calls computeKeyLocator() internally and passes the result as
- * the `key_locator` INSERT parameter, which this test captures via the
- * mocked pool and compares against this mirror's own computation of the
- * same raw key. If lib/api/api-keys.ts's algorithm ever changes, this
- * mismatches and fails.
+ * The locator mirror computes the 8-hex-character HMAC locator that 3.9.1 and
+ * earlier stored in api_keys.key_locator beside each key's ciphertext. This
+ * used to cross-check against the app through generateApiKey's INSERT; the
+ * app stores a one-way digest since 4.0.0 and writes no locator, so the only
+ * locators left are on rows written before the upgrade, and the reference
+ * here is the formula those rows were written with
+ * (git show v3.9.1:lib/api/api-keys.ts, computeKeyLocator).
  */
 
 const KEY_HEX = randomBytes(32).toString("hex");
-const originalKey = process.env.API_KEY_ENCRYPTION_KEY;
-beforeAll(() => {
-  process.env.API_KEY_ENCRYPTION_KEY = KEY_HEX;
-});
-afterAll(() => {
-  if (originalKey === undefined) delete process.env.API_KEY_ENCRYPTION_KEY;
-  else process.env.API_KEY_ENCRYPTION_KEY = originalKey;
-});
 
-const insertCalls: { sql: string; params: unknown[] }[] = [];
-const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
-  if (sql.includes("INSERT INTO api_keys")) {
-    insertCalls.push({ sql, params });
-    return {
-      rows: [
-        {
-          id: 1,
-          key_prefix: "vr_live_abc",
-          name: "test",
-          daily_limit: 50,
-          created_at: new Date(),
-        },
-      ],
-    };
-  }
-  return { rows: [] };
-});
-// generateApiKey serializes a CAPPED create behind a per-user advisory lock,
-// so that path runs on a pooled client rather than on the pool itself. The
-// client forwards the real statement to the same mockQuery every expectation
-// here queues against; BEGIN, the lock and COMMIT are transaction plumbing
-// with no result worth queueing, so they are answered locally instead of
-// consuming a queued row.
-const TX_PLUMBING = /^(BEGIN|COMMIT|ROLLBACK)$|pg_advisory_xact_lock/i;
-const mockConnect = vi.fn(async () => ({
-  query: async (...args: unknown[]) => {
-    if (TX_PLUMBING.test(String(args[0] ?? "").trim())) {
-      return { rows: [], rowCount: 0 };
-    }
-    return mockQuery(...(args as [string, unknown[]?]));
-  },
-  release: vi.fn(),
-}));
+function locatorAs391Wrote(rawKey: string, key: Buffer): string {
+  return createHmac("sha256", key).update(rawKey).digest("hex").slice(0, 8);
+}
 
-vi.mock("@/lib/database/db", () => ({
-  default: {
-    query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
-    connect: () => mockConnect(),
-  },
-}));
+function rawKey(): string {
+  return `vr_live_${randomBytes(32).toString("hex")}`;
+}
 
-const { generateApiKey } = await import("@/lib/api/api-keys");
-
-describe("computeApiKeyLocatorMirror matches the real computeKeyLocator", () => {
-  it("matches the key_locator generateApiKey() actually persists", async () => {
-    const result = await generateApiKey(1, "Test Key");
-    expect(insertCalls).toHaveLength(1);
-
-    // INSERT INTO api_keys (user_id, key_hash, key_locator, key_prefix, name, daily_limit, key_encrypted)
-    const persistedLocator = insertCalls[0].params[2] as string;
-    expect(typeof persistedLocator).toBe("string");
-
+describe("computeApiKeyLocatorMirror matches the locator 3.9.1 stored", () => {
+  it("matches the key_locator a 3.9.1 row carries", () => {
     const key = Buffer.from(KEY_HEX, "hex");
-    const mirrored = computeApiKeyLocatorMirror(result.raw_key, key);
-    expect(mirrored).toBe(persistedLocator);
+    for (let i = 0; i < 5; i++) {
+      const raw = rawKey();
+      expect(computeApiKeyLocatorMirror(raw, key)).toBe(
+        locatorAs391Wrote(raw, key),
+      );
+    }
   });
 
-  it("produces an 8-hex-char locator, matching the real format", async () => {
-    const result = await generateApiKey(2, "Another Key");
+  it("produces an 8-hex-char locator, matching the real format", () => {
     const key = Buffer.from(KEY_HEX, "hex");
-    const mirrored = computeApiKeyLocatorMirror(result.raw_key, key);
+    const mirrored = computeApiKeyLocatorMirror(rawKey(), key);
     expect(mirrored).toMatch(/^[0-9a-f]{8}$/);
   });
 

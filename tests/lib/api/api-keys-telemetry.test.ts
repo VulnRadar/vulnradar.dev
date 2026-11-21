@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 
 /**
  * Which API version and client each key was last used with, the record the
@@ -28,7 +29,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   if (sql.includes("FROM api_keys ak") && sql.includes("ORDER BY CASE")) {
     return { rows: listRows };
   }
-  if (sql.includes("ak.key_encrypted") && sql.includes("ak.key_locator = $1")) {
+  if (sql.includes("ak.key_hash = $1")) {
     return { rows: encryptedKeyRow ? [encryptedKeyRow] : [] };
   }
   return { rows: [] };
@@ -38,12 +39,6 @@ vi.mock("@/lib/database/db", () => ({
   default: {
     query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
   },
-}));
-
-vi.mock("@/lib/auth/crypto", () => ({
-  isEncryptionConfigured: () => true,
-  encryptApiKey: (raw: string) => `enc:${raw}`,
-  decryptApiKey: (enc: string) => String(enc).replace(/^enc:/, ""),
 }));
 
 vi.mock("@/lib/api/request-utils", async (importOriginal) => ({
@@ -77,7 +72,7 @@ function keyRow(): Row {
     user_id: 3,
     name: "CI key",
     revoked_at: null,
-    key_encrypted: `enc:${RAW_KEY}`,
+    key_hash: createHash("sha256").update(RAW_KEY).digest("hex"),
     bound_ip: null,
     email: "owner@example.com",
     user_name: "Owner",

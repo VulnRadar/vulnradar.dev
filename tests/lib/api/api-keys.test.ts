@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createHash } from "node:crypto";
 import { ALL_API_KEY_SCOPES } from "@/lib/config/client-constants";
 
 /**
@@ -6,19 +7,18 @@ import { ALL_API_KEY_SCOPES } from "@/lib/config/client-constants";
  * validateApiKey integration test proving the check is actually wired
  * into the real lookup path, not just exercised in isolation.
  *
- * Mocked at the database and network boundary: pool.query,
- * sendNotificationEmail, and lib/auth/crypto (real AES/HMAC isn't the
- * thing under test here; see lib/auth/crypto.test.ts and
- * lib/auth/password-hash.test.ts for suites that exercise the real
- * primitives). getClientIp is mocked for the same reason as in
- * auth.test.ts; ipsInSameSubnet is left real via importOriginal.
+ * Mocked at the database and network boundary: pool.query and
+ * sendNotificationEmail. The key digest is real (tests/lib/api/
+ * api-keys-hashed.test.ts covers how keys are stored). getClientIp is mocked
+ * for the same reason as in auth.test.ts; ipsInSameSubnet is left real via
+ * importOriginal.
  */
 
 type Row = Record<string, unknown>;
 
 const queries: { sql: string; params: unknown[] }[] = [];
 let settingsRows: Row[] = [];
-let encryptedKeyRow: Row | null = null;
+let keyRow: Row | null = null;
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   queries.push({ sql, params });
@@ -32,12 +32,13 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   if (s.startsWith("INSERT INTO security_alerts")) {
     return { rows: [] };
   }
-  if (s.includes("ak.key_encrypted") && s.includes("ak.key_locator = $1")) {
-    return { rows: encryptedKeyRow ? [encryptedKeyRow] : [] };
+  if (s.includes("ak.key_hash = $1")) {
+    return {
+      rows: keyRow && keyRow.key_hash === params[0] ? [keyRow] : [],
+    };
   }
-  // Every other lookup branch (legacy/backfill/hash paths) is irrelevant
-  // to the row under test in this suite: return empty so validateApiKey
-  // falls through them without a match.
+  // The legacy bcrypt path is irrelevant to the row under test in this
+  // suite: return empty so validateApiKey falls through it without a match.
   return { rows: [] };
 });
 
@@ -63,12 +64,6 @@ vi.mock("@/lib/database/db", () => ({
     query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
     connect: () => mockConnect(),
   },
-}));
-
-vi.mock("@/lib/auth/crypto", () => ({
-  isEncryptionConfigured: () => true,
-  encryptApiKey: (raw: string) => `enc:${raw}`,
-  decryptApiKey: (enc: string) => String(enc).replace(/^enc:/, ""),
 }));
 
 let currentIp = "unknown";
@@ -115,25 +110,31 @@ beforeEach(() => {
   mockSendNotificationEmail.mockClear();
   queries.length = 0;
   settingsRows = [];
-  encryptedKeyRow = null;
+  keyRow = null;
   currentIp = "unknown";
   process.env.API_KEY_ENCRYPTION_KEY = "a".repeat(64);
   __resetLegacyKeyRowCache();
   invalidateSettingsCache();
 });
 
-describe("the locator secret", () => {
+function digestOf(raw: string): string {
+  return createHash("sha256").update(raw, "utf8").digest("hex");
+}
+
+describe("validation does not depend on API_KEY_ENCRYPTION_KEY", () => {
   it.each([
     ["no hex at all", "z".repeat(64)],
     ["63 hex characters and a g", `${"a".repeat(63)}g`],
-  ])("refuses a 64-character key with %s", async (_label, key) => {
-    // Decoded by hand, this key became a locator HMAC under zero or 31 bytes
-    // instead of failing.
-    process.env.API_KEY_ENCRYPTION_KEY = key;
-    await expect(validateApiKey("vr_live_anything")).rejects.toThrow(
-      /API_KEY_ENCRYPTION_KEY must be set to a 64-character hex/,
-    );
-  });
+  ])(
+    "answers normally under a 64-character key with %s",
+    async (_label, key) => {
+      // The 3.9.1 locator was an HMAC under this key, so a malformed one threw
+      // here. The digest is unkeyed: boot validation (lib/config/env.ts) is
+      // what refuses a malformed key now, and validation is not affected.
+      process.env.API_KEY_ENCRYPTION_KEY = key;
+      await expect(validateApiKey("vr_live_anything")).resolves.toBeNull();
+    },
+  );
 });
 
 describe("passesApiKeyIpBinding", () => {
@@ -232,13 +233,13 @@ describe("validateApiKey (integration: ip binding is wired into the real lookup)
     "vr_live_test0000000000000000000000000000000000000000000000000000";
 
   it("returns the key normally when binding is disabled", async () => {
-    encryptedKeyRow = {
+    keyRow = {
       key_id: 9,
       user_id: 3,
       name: "CI key",
       daily_limit: 50,
       revoked_at: null,
-      key_encrypted: `enc:${RAW_KEY}`,
+      key_hash: digestOf(RAW_KEY),
       bound_ip: "203.0.113.5",
       email: "owner@example.com",
       user_name: "Owner",
@@ -253,13 +254,13 @@ describe("validateApiKey (integration: ip binding is wired into the real lookup)
 
   it("declines the request (returns null, key untouched) on a subnet mismatch", async () => {
     enableSettingsRow(true);
-    encryptedKeyRow = {
+    keyRow = {
       key_id: 9,
       user_id: 3,
       name: "CI key",
       daily_limit: 50,
       revoked_at: null,
-      key_encrypted: `enc:${RAW_KEY}`,
+      key_hash: digestOf(RAW_KEY),
       bound_ip: "203.0.113.5",
       email: "owner@example.com",
       user_name: "Owner",
@@ -276,7 +277,7 @@ describe("validateApiKey (integration: ip binding is wired into the real lookup)
 
   it("still returns null for a genuinely wrong key regardless of IP binding", async () => {
     enableSettingsRow(true);
-    encryptedKeyRow = null; // no row matches the locator at all
+    keyRow = null; // no row matches the digest at all
     currentIp = "203.0.113.5";
 
     const result = await validateApiKey("vr_live_totally_wrong_key");
@@ -295,7 +296,7 @@ describe("validateApiKey (integration: account-state gate -- a suspended account
       name: "CI key",
       daily_limit: 50,
       revoked_at: null,
-      key_encrypted: `enc:${RAW_KEY}`,
+      key_hash: digestOf(RAW_KEY),
       bound_ip: null,
       email: "owner@example.com",
       user_name: "Owner",
@@ -309,19 +310,19 @@ describe("validateApiKey (integration: account-state gate -- a suspended account
     // Turning the feature off used to gate only key creation, so an operator
     // reacting to a leaked key found every existing key still working.
     settingsRows = [{ key: "FEATURE_API_KEYS", value: "false" }];
-    encryptedKeyRow = keyRowForUser({});
+    keyRow = keyRowForUser({});
     const result = await validateApiKey(RAW_KEY);
     expect(result).toBeNull();
   });
 
   it("selects the owner's disabled_at so the account state is available to the gate", async () => {
-    encryptedKeyRow = keyRowForUser({});
+    keyRow = keyRowForUser({});
     await validateApiKey(RAW_KEY);
     expect(queries.some((q) => q.sql.includes("u.disabled_at"))).toBe(true);
   });
 
   it("returns the key while the owning account is in good standing", async () => {
-    encryptedKeyRow = keyRowForUser({});
+    keyRow = keyRowForUser({});
     const result = await validateApiKey(RAW_KEY);
     expect(result?.keyId).toBe(9);
   });
@@ -332,7 +333,7 @@ describe("validateApiKey (integration: account-state gate -- a suspended account
     // gate the Bearer path had no equivalent, so a user banned for abuse kept a
     // working vr_live_... key: they could go on running scans and reading or
     // deleting history while the admin panel showed the account as disabled.
-    encryptedKeyRow = keyRowForUser({
+    keyRow = keyRowForUser({
       disabled_at: "2026-08-01T00:00:00.000Z",
     });
     const result = await validateApiKey(RAW_KEY);
@@ -351,7 +352,7 @@ describe("validateApiKey (integration: terms-of-service gating resolves through 
       name: "CI key",
       daily_limit: 50,
       revoked_at: null,
-      key_encrypted: `enc:${RAW_KEY}`,
+      key_hash: digestOf(RAW_KEY),
       bound_ip: null,
       email: "owner@example.com",
       user_name: "Owner",
@@ -364,7 +365,7 @@ describe("validateApiKey (integration: terms-of-service gating resolves through 
     // acceptance date alone would pass with no database row at all -- the
     // database override, not the compiled constant, is what fails it here.
     settingsRows = [{ key: "TERMS_UPDATED_AT", value: "2030-01-01" }];
-    encryptedKeyRow = keyRowAcceptedAt("2026-06-01T00:00:00.000Z");
+    keyRow = keyRowAcceptedAt("2026-06-01T00:00:00.000Z");
     currentIp = "unknown";
 
     const result = await validateApiKey(RAW_KEY);
@@ -373,7 +374,7 @@ describe("validateApiKey (integration: terms-of-service gating resolves through 
 
   it("clears needsTermsAcceptance once the database-overridden terms date is satisfied", async () => {
     settingsRows = [{ key: "TERMS_UPDATED_AT", value: "2020-01-01" }];
-    encryptedKeyRow = keyRowAcceptedAt("2026-06-01T00:00:00.000Z");
+    keyRow = keyRowAcceptedAt("2026-06-01T00:00:00.000Z");
     currentIp = "unknown";
 
     const result = await validateApiKey(RAW_KEY);
@@ -382,7 +383,7 @@ describe("validateApiKey (integration: terms-of-service gating resolves through 
 
   it("flags needsTermsAcceptance when the key's user has never accepted", async () => {
     settingsRows = [];
-    encryptedKeyRow = keyRowAcceptedAt(null);
+    keyRow = keyRowAcceptedAt(null);
     currentIp = "unknown";
 
     const result = await validateApiKey(RAW_KEY);
@@ -397,7 +398,7 @@ describe("validateApiKey (integration: terms-of-service gating resolves through 
     // hasAcceptedLatestTerms's own isNaN guard is what keeps this from
     // wrongly blocking every key once the value is unparseable.
     settingsRows = [{ key: "TERMS_UPDATED_AT", value: "not-a-date" }];
-    encryptedKeyRow = keyRowAcceptedAt("2026-06-01T00:00:00.000Z");
+    keyRow = keyRowAcceptedAt("2026-06-01T00:00:00.000Z");
     currentIp = "unknown";
 
     const result = await validateApiKey(RAW_KEY);
@@ -416,7 +417,7 @@ describe("validateApiKey (integration: scoping migration -- a pre-existing key w
       name: "CI key",
       daily_limit: 50,
       revoked_at: null,
-      key_encrypted: `enc:${RAW_KEY}`,
+      key_hash: digestOf(RAW_KEY),
       bound_ip: null,
       email: "owner@example.com",
       user_name: "Owner",
@@ -426,7 +427,7 @@ describe("validateApiKey (integration: scoping migration -- a pre-existing key w
   }
 
   it("grandfathers a key created before scoping existed (scopes column is NULL) in with every scope", async () => {
-    encryptedKeyRow = keyRowWithScopes(null);
+    keyRow = keyRowWithScopes(null);
     currentIp = "unknown";
 
     const result = await validateApiKey(RAW_KEY);
@@ -436,7 +437,7 @@ describe("validateApiKey (integration: scoping migration -- a pre-existing key w
   it("also grandfathers a row where the scopes key is entirely absent, not just NULL", async () => {
     const row = keyRowWithScopes(undefined);
     delete (row as { scopes?: unknown }).scopes;
-    encryptedKeyRow = row;
+    keyRow = row;
     currentIp = "unknown";
 
     const result = await validateApiKey(RAW_KEY);
@@ -444,7 +445,7 @@ describe("validateApiKey (integration: scoping migration -- a pre-existing key w
   });
 
   it("honors an explicit, narrower scopes array from the database instead of widening it", async () => {
-    encryptedKeyRow = keyRowWithScopes(["scan:read"]);
+    keyRow = keyRowWithScopes(["scan:read"]);
     currentIp = "unknown";
 
     const result = await validateApiKey(RAW_KEY);
@@ -453,29 +454,29 @@ describe("validateApiKey (integration: scoping migration -- a pre-existing key w
 });
 
 /**
- * An invalid key used to fall from the O(1) locator lookup straight into two
- * full scans of the un-backfilled rows, one of them running a bcryptjs
- * compare (cost 12, pure JS, main thread) per row. Since generateApiKey has
- * always written a locator, the answer on a normal install is "there is
- * nothing to scan", and that is now checked once and cached.
+ * An invalid key used to fall from the O(1) lookup straight into a full scan
+ * of the legacy bcrypt rows, running a bcryptjs compare (cost 12, pure JS,
+ * main thread) per row. No code path writes a bcrypt row, so the answer on a
+ * normal install is "there is nothing to scan", and that is checked once and
+ * cached.
  */
 describe("validateApiKey: legacy fallback scans", () => {
   const RAW =
     "vr_live_test0000000000000000000000000000000000000000000000000000";
 
-  it("skips both full scans when no locator-less row exists", async () => {
-    encryptedKeyRow = null;
+  it("skips the bcrypt scan when no legacy bcrypt row exists", async () => {
+    keyRow = null;
 
     const result = await validateApiKey(RAW);
 
     expect(result).toBeNull();
     const probes = queries.filter((q) => q.sql.includes("SELECT EXISTS"));
     expect(probes).toHaveLength(1);
-    // Neither full scan of the locator-less rows was issued.
+    // The full scan of the bcrypt rows was not issued.
     expect(
       queries.filter(
         (q) =>
-          q.sql.includes("ak.key_locator IS NULL") &&
+          q.sql.includes("LIKE '$2%'") &&
           !q.sql.includes("SELECT EXISTS") &&
           !q.sql.startsWith("UPDATE"),
       ),
@@ -483,7 +484,7 @@ describe("validateApiKey: legacy fallback scans", () => {
   });
 
   it("probes only once across repeated invalid keys", async () => {
-    encryptedKeyRow = null;
+    keyRow = null;
 
     await validateApiKey(RAW);
     await validateApiKey(RAW);

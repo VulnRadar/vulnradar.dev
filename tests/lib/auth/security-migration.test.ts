@@ -11,12 +11,14 @@
  * producing the ciphertext and running the migration.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { createHash } from "node:crypto";
 
 type Row = Record<string, unknown>;
 
 const queries: { sql: string; params: unknown[] }[] = [];
 let totpRows: Row[] = [];
 let discordRows: Row[] = [];
+let apiKeyRows: Row[] = [];
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   queries.push({ sql, params });
@@ -24,6 +26,9 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   if (s.startsWith("SELECT id, totp_secret")) return { rows: totpRows };
   if (s.startsWith("SELECT user_id, access_token"))
     return { rows: discordRows };
+  if (s.startsWith("SELECT id, key_encrypted FROM api_keys"))
+    return { rows: apiKeyRows };
+  if (s.startsWith("UPDATE api_keys")) return { rows: [], rowCount: 1 };
   return { rows: [] };
 });
 
@@ -33,7 +38,7 @@ vi.mock("@/lib/database/db", () => ({
   },
 }));
 
-const { migratePlaintextSecretsToEncrypted } =
+const { migratePlaintextSecretsToEncrypted, hashStoredApiKeys } =
   await import("@/lib/auth/security-migration");
 const { encryptApiKey } = await import("@/lib/auth/crypto");
 
@@ -53,7 +58,9 @@ beforeEach(() => {
   mockQuery.mockClear();
   totpRows = [];
   discordRows = [];
+  apiKeyRows = [];
   process.env.API_KEY_ENCRYPTION_KEY = KEY_A;
+  delete process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY;
 });
 
 afterEach(() => {
@@ -164,5 +171,93 @@ describe("migratePlaintextSecretsToEncrypted (Discord tokens)", () => {
     expect(stats.discordReEncrypted).toBe(0);
     expect(stats.discordUnreadable).toBe(1);
     expect(errorSpy).toHaveBeenCalled();
+  });
+});
+
+/**
+ * API keys used to be stored as ciphertext (api_keys.key_encrypted) and are a
+ * SHA-256 digest from 4.0.0 on. The ciphertext is the only copy of a 3.9.1 key
+ * the server holds, so the boot migration opens it once, writes the digest and
+ * drops the ciphertext. Getting this wrong locks every integration out, so the
+ * real AES pipeline is used and a rotation is simulated by swapping keys.
+ */
+describe("hashStoredApiKeys", () => {
+  const RAW = "vr_live_" + "e".repeat(64);
+  const digest = (raw: string) =>
+    createHash("sha256").update(raw, "utf8").digest("hex");
+
+  function apiKeyWrites() {
+    return updates().filter((q) => q.sql.includes("UPDATE api_keys"));
+  }
+
+  it("rewrites a 3.9.1 row as the digest, with the ciphertext and locator dropped", async () => {
+    const ciphertext = encryptApiKey(RAW);
+    apiKeyRows = [{ id: 11, key_encrypted: ciphertext }];
+
+    const stats = await hashStoredApiKeys();
+
+    expect(stats).toEqual({ scanned: 1, hashed: 1, unreadable: 0 });
+    const [write] = apiKeyWrites();
+    expect(write.sql).toMatch(/key_hash = \$1/);
+    expect(write.sql).toMatch(/key_encrypted = NULL/);
+    expect(write.sql).toMatch(/key_locator = NULL/);
+    // Guarded on the ciphertext it read, so a rotation of this key between
+    // the read and the write is not overwritten.
+    expect(write.sql).toMatch(/WHERE id = \$2 AND key_encrypted = \$3/);
+    expect(write.params).toEqual([digest(RAW), 11, ciphertext]);
+  });
+
+  it("opens a row written under the previous encryption key", async () => {
+    const underA = encryptApiKey(RAW);
+    process.env.API_KEY_ENCRYPTION_KEY = KEY_B;
+    process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY = KEY_A;
+    apiKeyRows = [{ id: 12, key_encrypted: underA }];
+
+    const stats = await hashStoredApiKeys();
+
+    expect(stats.hashed).toBe(1);
+    expect(apiKeyWrites()[0].params).toEqual([digest(RAW), 12, underA]);
+  });
+
+  it("leaves a row neither key opens untouched and reports only the count", async () => {
+    const underA = encryptApiKey(RAW);
+    process.env.API_KEY_ENCRYPTION_KEY = KEY_B;
+    apiKeyRows = [
+      { id: 13, key_encrypted: underA },
+      { id: 14, key_encrypted: encryptApiKey(RAW + "x") },
+    ];
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const stats = await hashStoredApiKeys();
+
+    expect(stats).toEqual({ scanned: 2, hashed: 1, unreadable: 1 });
+    expect(apiKeyWrites()).toHaveLength(1);
+    expect(apiKeyWrites()[0].params[1]).toBe(14);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const line = String(errorSpy.mock.calls[0][0]);
+    expect(line).toContain("1 stored API key");
+    // A count, not the row, the key or its ciphertext.
+    expect(line).not.toContain(underA);
+    expect(line).not.toContain("13");
+  });
+
+  it("reads only rows that still hold ciphertext, so a second run writes nothing", async () => {
+    await hashStoredApiKeys();
+
+    const read = queries.find((q) =>
+      q.sql.includes("SELECT id, key_encrypted FROM api_keys"),
+    );
+    expect(read?.sql).toContain("WHERE key_encrypted IS NOT NULL");
+    expect(apiKeyWrites()).toHaveLength(0);
+  });
+
+  it("runs as part of the boot backfill", async () => {
+    apiKeyRows = [{ id: 15, key_encrypted: encryptApiKey(RAW) }];
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const stats = await migratePlaintextSecretsToEncrypted();
+
+    expect(stats.apiKeysHashed).toBe(1);
+    expect(apiKeyWrites()).toHaveLength(1);
   });
 });
