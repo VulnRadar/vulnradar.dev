@@ -2,13 +2,16 @@
 # Node 22 LTS only. Node 20 reached end-of-life on 2026-04-30 and is no
 # longer receiving security patches.
 #
-# infra: base image pinned to a specific minor version
-# (`node:22.23.2-alpine`) instead of the moving `node:22-alpine` tag.
-# Self-hosters who want a fully immutable build should replace this
-# with `node:22.23.2-alpine@sha256:<digest>`: pull
-# `node:22.23.2-alpine` locally and grab the digest via
-# `docker images --digests node:22.23.2-alpine`.
-FROM node:22.23.2-alpine AS builder
+# infra: base image pinned to an exact patch AND its digest
+# (`node:22.23.5-alpine@sha256:...`) instead of the moving `node:22-alpine`
+# tag. A tag alone can be re-pushed under the same name; the digest cannot,
+# so the image this builds on is the one that was reviewed. Every FROM node
+# line in this file uses the same reference, and .nvmrc, .node-version and
+# the node-version pins in ci.yml and release.yml carry the same patch. The
+# "Assert CI Node matches the published image" step in ci.yml reads the
+# first `node:X.Y.Z-alpine` in this file, so this comment must not name any
+# other patch above the FROM line.
+FROM node:22.23.5-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS builder
 
 WORKDIR /app
 
@@ -130,7 +133,7 @@ RUN npm prune --omit=dev --ignore-scripts
 FROM gcr.io/projectsigstore/cosign:v3.1.3 AS cosign
 
 # ── Production stage ───────────────────────────────────────────
-FROM node:22.23.2-alpine AS runner
+FROM node:22.23.5-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS runner
 
 LABEL org.opencontainers.image.source="https://github.com/VulnRadar/vulnradar.dev"
 LABEL org.opencontainers.image.description="VulnRadar - Website Security Scanner"
@@ -177,7 +180,19 @@ COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
 # applying any schema changes; without this package that step warns and
 # skips instead of hard-failing the migration (see _lib.backup.mjs),
 # but a self-hosted deploy using this image gets the real thing.
-RUN apk add --no-cache wget tini postgresql-client
+#
+# security: `apk upgrade` first. The Node image is a snapshot of Alpine taken
+# the day it was built, and `apk add` installs current versions of what it
+# adds but leaves the snapshot's own packages alone. The snapshot can be
+# behind on the day it is published: the 22.23.5 image above carries zlib
+# 1.3.2-r1 and OpenSSL 3.5.9-r0, while Alpine 3.24 ships zlib 1.4-r0 (for a
+# critical advisory) and OpenSSL 3.5.9-r1 (for five more). Without this line
+# a rebuild picks up neither, because nothing here ever asks for a newer
+# libssl3 or zlib. Upgrading takes OpenSSL, zlib and musl to Alpine's current
+# security releases at build time; postgresql-client (libpq) arrives at its
+# current one either way.
+RUN apk upgrade --no-cache && \
+    apk add --no-cache wget tini postgresql-client
 
 # infra: HEALTHCHECK gives orchestrators (k8s, ECS, compose) a real
 # signal of app readiness. /api/v3/health checks database connectivity;
