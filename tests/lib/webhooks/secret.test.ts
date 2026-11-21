@@ -21,6 +21,7 @@ const {
   readWebhookSecret,
   migratePlaintextWebhookSecrets,
   encryptWebhookUrl,
+  readWebhookHost,
   readWebhookUrl,
   storeWebhookUrl,
 } = await import("@/lib/webhooks/secret");
@@ -207,6 +208,27 @@ describe("storeWebhookUrl / readWebhookUrl", () => {
     expect(readWebhookUrl({ id: 1, url: "", url_encrypted: null })).toBeNull();
   });
 
+  it("reads an address written to url after the row was encrypted, not the older ciphertext", () => {
+    // What a 3.9.1 binary leaves when it edits a moved row during a rollback
+    // or a rolling deploy: it writes url and knows nothing of url_encrypted.
+    const old = storeWebhookUrl(DISCORD_URL);
+    const newer = "https://hooks.slack.com/services/T0/B0/newer-token";
+
+    expect(
+      readWebhookUrl({ id: 1, url: newer, url_encrypted: old.urlEncrypted }),
+    ).toBe(newer);
+    expect(readWebhookHost({ url: newer, url_host: old.urlHost })).toBe(
+      "hooks.slack.com",
+    );
+  });
+
+  it("reads the host from its column once url is emptied", () => {
+    expect(readWebhookHost({ url: "", url_host: "discord.com" })).toBe(
+      "discord.com",
+    );
+    expect(readWebhookHost({ url: "", url_host: null })).toBeNull();
+  });
+
   it("opens a value written under the previous key during a rotation", () => {
     const { urlEncrypted } = storeWebhookUrl(DISCORD_URL);
     process.env.API_KEY_ENCRYPTION_KEY = OTHER_KEY;
@@ -256,8 +278,10 @@ describe("migratePlaintextWebhookSecrets: webhook URLs", () => {
     const select = mockQuery.mock.calls.find(([sql]) =>
       String(sql).includes("SELECT id, url FROM webhooks"),
     );
+    // Every non-empty url, including one beside an older ciphertext, which a
+    // url_encrypted IS NULL filter would leave in the clear for good.
     expect(select?.[0]).toContain("url <> ''");
-    expect(select?.[0]).toContain("url_encrypted IS NULL");
+    expect(select?.[0]).not.toContain("url_encrypted IS NULL");
 
     const update = mockQuery.mock.calls.find(([sql]) =>
       String(sql).startsWith("UPDATE webhooks SET url_encrypted"),

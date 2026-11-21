@@ -120,9 +120,9 @@ export interface StoredWebhookUrl {
 }
 
 /**
- * The three column values a writer stores for an address. url_encrypted is
- * null when there is no key, and the writer sets it anyway: readWebhookUrl
- * prefers it, so a stale ciphertext left beside a newer plaintext would win.
+ * The three column values a writer stores for an address, always all three
+ * together. url_encrypted is null when there is no key, and the writer sets
+ * it anyway, so no ciphertext of an older address is left in the row.
  */
 export function storeWebhookUrl(url: string): StoredWebhookUrl {
   const urlEncrypted = encryptWebhookUrl(url);
@@ -130,9 +130,16 @@ export function storeWebhookUrl(url: string): StoredWebhookUrl {
 }
 
 /**
- * The address of a stored webhook row: url_encrypted opened under the current
- * key, then the previous one (decryptApiKey tries both), or the url column of
- * a legacy row the boot migration has not reached.
+ * The address of a stored webhook row: the url column when it holds one, and
+ * otherwise url_encrypted opened under the current key, then the previous one
+ * (decryptApiKey tries both).
+ *
+ * A non-empty url wins over url_encrypted because this code never writes both:
+ * storeWebhookUrl and the boot migration empty url whenever they store
+ * ciphertext. A row that has both was edited after it was encrypted by
+ * something that knows only the url column (a 3.9.1 binary during a rollback
+ * or a rolling deploy, or a hand edit), so the url column is the newer
+ * address, and the boot migration encrypts it on the next start.
  *
  * Returns null for ciphertext that does not open, so the caller sends nothing
  * rather than posting somewhere it cannot name. The log carries the row id so
@@ -143,25 +150,27 @@ export function readWebhookUrl(row: {
   url?: string | null;
   url_encrypted?: string | null;
 }): string | null {
-  if (row.url_encrypted) {
-    try {
-      return decryptApiKey(row.url_encrypted);
-    } catch {
-      console.error(
-        `[${APP_NAME}] The address of webhook ${row.id ?? "(unknown)"} is ciphertext that does not decrypt under API_KEY_ENCRYPTION_KEY or PREVIOUS_API_KEY_ENCRYPTION_KEY. Nothing is sent to it until it is saved again.`,
-      );
-      return null;
-    }
+  if (row.url) return row.url;
+  if (!row.url_encrypted) return null;
+  try {
+    return decryptApiKey(row.url_encrypted);
+  } catch {
+    console.error(
+      `[${APP_NAME}] The address of webhook ${row.id ?? "(unknown)"} is ciphertext that does not decrypt under API_KEY_ENCRYPTION_KEY or PREVIOUS_API_KEY_ENCRYPTION_KEY. Nothing is sent to it until it is saved again.`,
+    );
+    return null;
   }
-  return row.url || null;
 }
 
-/** The host a row identifies its service by, for a row written either way. */
+/**
+ * The host a row identifies its service by, for a row written either way.
+ * Read from a non-empty url first, for the reason readWebhookUrl gives.
+ */
 export function readWebhookHost(row: {
   url?: string | null;
   url_host?: string | null;
 }): string | null {
-  return row.url_host || (row.url ? hostOf(row.url) : null);
+  return (row.url ? hostOf(row.url) : null) ?? (row.url_host || null);
 }
 
 export interface WebhookSecretMigrationStats {
@@ -180,7 +189,9 @@ export interface WebhookSecretMigrationStats {
  *
  * It then moves every plaintext webhooks.url into url_encrypted and url_host
  * (enc-2), which is idempotent the same way: a moved row has url '' and no
- * longer matches.
+ * longer matches. Every non-empty url is moved, including one beside an
+ * existing ciphertext: that url was written after the ciphertext (see
+ * readWebhookUrl), so it replaces it rather than staying in the clear.
  */
 export async function migratePlaintextWebhookSecrets(): Promise<WebhookSecretMigrationStats> {
   const stats: WebhookSecretMigrationStats = {
@@ -228,7 +239,7 @@ export async function migratePlaintextWebhookSecrets(): Promise<WebhookSecretMig
   }
 
   const urlRows = await pool.query<{ id: number; url: string }>(
-    "SELECT id, url FROM webhooks WHERE url <> '' AND url_encrypted IS NULL",
+    "SELECT id, url FROM webhooks WHERE url <> ''",
   );
   for (const row of urlRows.rows) {
     try {
