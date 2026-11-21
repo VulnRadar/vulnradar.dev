@@ -111,12 +111,10 @@ RUN npm run build
 # cannot resolve a different tree than the one the build was verified
 # against. --ignore-scripts for the same reason as the install above.
 #
-# One caveat worth naming: `vitest` and `@vitest/coverage-v8` are declared
-# under `dependencies` rather than `devDependencies` (AUDIT-013#deps-02), so
-# prune keeps them and their ~43 MB rolldown/vite subtree. Moving those two
-# entries requires regenerating package-lock.json on Linux, which is a
-# separate change; this line is correct either way and gets bigger once they
-# move.
+# `vitest` and `@vitest/coverage-v8` used to sit under `dependencies`
+# (AUDIT-013#deps-02), so prune kept them and their ~43 MB rolldown and vite
+# subtree, and the published image carried a vite with advisories against it.
+# They are devDependencies now, so this line drops them with the rest.
 RUN npm prune --omit=dev --ignore-scripts
 
 # infra: the cosign binary for lib/updater/cosign.ts. Without cosign on PATH
