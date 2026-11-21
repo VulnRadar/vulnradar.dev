@@ -97,11 +97,25 @@ function collectBindings(source: ts.SourceFile): Bindings {
   const bindObjectPattern = (pattern: ts.ObjectBindingPattern) => {
     for (const el of pattern.elements) {
       if (!ts.isIdentifier(el.name)) continue;
-      const imported = el.propertyName?.getText(source) ?? el.name.text;
+      const prop = el.propertyName;
+      const imported = !prop
+        ? el.name.text
+        : ts.isIdentifier(prop) || ts.isStringLiteralLike(prop)
+          ? prop.text
+          : prop.getText(source);
       named.set(el.name.text, imported);
     }
   };
   const visit = (node: ts.Node) => {
+    if (
+      ts.isImportEqualsDeclaration(node) &&
+      !node.isTypeOnly &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      ts.isStringLiteralLike(node.moduleReference.expression) &&
+      SOCKET_MODULES.has(node.moduleReference.expression.text)
+    ) {
+      namespaces.add(node.name.text);
+    }
     if (
       ts.isImportDeclaration(node) &&
       ts.isStringLiteralLike(node.moduleSpecifier) &&
@@ -121,13 +135,21 @@ function collectBindings(source: ts.SourceFile): Bindings {
         }
       }
     }
-    if (ts.isVariableDeclaration(node)) {
-      const mod = loadedModule(node.initializer);
-      if (mod && SOCKET_MODULES.has(mod)) {
-        if (ts.isIdentifier(node.name)) namespaces.add(node.name.text);
-        else if (ts.isObjectBindingPattern(node.name)) {
-          bindObjectPattern(node.name);
-        }
+    if (ts.isVariableDeclaration(node) && node.initializer) {
+      const init = node.initializer;
+      const mod = loadedModule(init);
+      // A socket function taken off the module, `const { connect } = tls`
+      // or `const dial = net.createConnection`, is called by its new name.
+      const fromModule =
+        (mod !== null && SOCKET_MODULES.has(mod)) ||
+        isNamespace(init, namespaces);
+      if (fromModule && ts.isIdentifier(node.name)) {
+        namespaces.add(node.name.text);
+      } else if (fromModule && ts.isObjectBindingPattern(node.name)) {
+        bindObjectPattern(node.name);
+      } else if (ts.isIdentifier(node.name)) {
+        const member = namespaceMember(init, namespaces);
+        if (member) named.set(node.name.text, member);
       }
     }
     ts.forEachChild(node, visit);
@@ -136,20 +158,22 @@ function collectBindings(source: ts.SourceFile): Bindings {
   return { namespaces, named };
 }
 
+/** `ns` bound to net or tls, or `ns.default`. */
+function isNamespace(expr: ts.Expression, namespaces: Set<string>): boolean {
+  let target = expr;
+  if (ts.isPropertyAccessExpression(target) && target.name.text === "default") {
+    target = target.expression;
+  }
+  return ts.isIdentifier(target) && namespaces.has(target.text);
+}
+
 /** `ns.member` where ns is bound to net or tls, or `ns.default.member`. */
 function namespaceMember(
   expr: ts.Expression,
   namespaces: Set<string>,
 ): string | null {
   if (!ts.isPropertyAccessExpression(expr)) return null;
-  let target = expr.expression;
-  if (ts.isPropertyAccessExpression(target) && target.name.text === "default") {
-    target = target.expression;
-  }
-  if (ts.isIdentifier(target) && namespaces.has(target.text)) {
-    return expr.name.text;
-  }
-  return null;
+  return isNamespace(expr.expression, namespaces) ? expr.name.text : null;
 }
 
 interface FileReport {
@@ -252,11 +276,18 @@ describe("the raw-socket detector", () => {
         "  lazy.connect(6, host);",
         '  const { createConnection: req } = require("tls");',
         "  req({ host, port: 7 });",
+        "  const { connect: grab, TLSSocket: Raw } = tls;",
+        "  grab({ host, port: 8 });",
+        "  const dial2 = net.createConnection;",
+        "  dial2({ host, port: 9 });",
+        "  new Raw(new Socket());",
+        "  legacy.connect(10, host);",
         "}",
+        'import legacy = require("net");',
       ].join("\n"),
     );
     expect(report.sockets.map((s) => Number(s.split(":")[0]))).toEqual([
-      5, 6, 7, 8, 9, 10, 11, 12, 13, 13, 15, 17,
+      5, 6, 7, 8, 9, 10, 11, 12, 13, 13, 15, 17, 19, 21, 22, 22, 23,
     ]);
   });
 
