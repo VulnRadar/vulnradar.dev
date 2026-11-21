@@ -200,9 +200,9 @@ request process.
 - **Database:** PostgreSQL via the `pg` driver
 - **Auth:** HTTP-only session cookies, scrypt password hashing (N=2^17, params
   stored per hash so the cost can be raised without invalidating old hashes),
-  custom TOTP (RFC 6238). API keys are encrypted at rest with AES-256-GCM and
-  found by a short HMAC locator; only legacy rows from before encryption was
-  required still carry a bcrypt hash
+  custom TOTP (RFC 6238). API keys are stored only as a one-way SHA-256
+  digest and cannot be shown again; a key made by 2.2.x without an encryption
+  key keeps a bcrypt hash until its first use
 - **Payments:** Stripe (Elements)
 - **Scanner:** Custom TypeScript engine over HTTP/HTTPS/WebSocket/FTP
 - **Testing:** Vitest

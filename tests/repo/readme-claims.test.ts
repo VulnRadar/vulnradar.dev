@@ -126,14 +126,16 @@ describe("README.md", () => {
     expect(snippet?.[0]).toMatch(/docker compose up -d --build/);
   });
 
-  it("says API keys are encrypted, which is what the code does", () => {
-    expect(readme).toMatch(/API keys are encrypted at rest with AES-256-GCM/);
-    expect(readme).toMatch(/HMAC locator/);
+  it("says API keys are stored as a one-way digest, which is what the code does", () => {
+    expect(readme).toMatch(
+      /API keys are stored only as a one-way SHA-256\s+digest/,
+    );
+    expect(readme).not.toMatch(/API keys are encrypted at rest/i);
+    expect(readme).not.toMatch(/HMAC locator/);
     expect(readme).not.toMatch(/bcrypt for API key/i);
-    expect(readme).not.toMatch(/API keys?[^.]{0,40}\bhash(?:ed|ing)\b/i);
 
-    expect(read("lib/auth/crypto.ts")).toContain('"aes-256-gcm"');
-    expect(read("lib/api/api-keys.ts")).toMatch(/createHmac\("sha256"/);
+    expect(read("lib/api/api-key-digest.ts")).toMatch(/createHash\("sha256"/);
+    expect(read("lib/api/api-keys.ts")).not.toMatch(/decryptApiKey\(/);
   });
 
   it("says the app refuses to start without API_KEY_ENCRYPTION_KEY, and it does", () => {
