@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { domainToASCII } from "node:url";
 import { describe, it, expect } from "vitest";
 import {
   checkDatabaseTls,
@@ -160,6 +161,8 @@ describe("without DATABASE_SSL=true a URL that asks for TLS is not downgraded", 
  */
 describe("databaseTlsWarning", () => {
   const REMOTE = "postgresql://vr:secret@db.example.com:5432/vulnradar";
+  const IDEOGRAPHIC_FULL_STOP = String.fromCharCode(0x3002);
+  const FULLWIDTH_FULL_STOP = String.fromCharCode(0xff0e);
   const prod = (url: string, extra: Record<string, string> = {}) => ({
     NODE_ENV: "production",
     DATABASE_URL: url,
@@ -249,10 +252,40 @@ describe("databaseTlsWarning", () => {
       true,
     ],
     ["postgres://vr:p@/vulnradar?host=db.example.com", "db.example.com", true],
+    // One label, but inet_aton, which getaddrinfo falls back to, reads a lone
+    // number as a whole IPv4 address: these are 216.58.214.206.
+    ["postgresql://vr:p@3627733118/vulnradar", "3627733118", true],
+    ["postgresql://vr:p@0xd83ad6ce/vulnradar", "0xd83ad6ce", true],
+    [
+      "postgresql://vr:p@localhost/vulnradar?host=3627733118",
+      "3627733118",
+      true,
+    ],
+    // No ASCII dot either, but Node maps the name through IDNA before it
+    // looks it up, which reads an ideographic or fullwidth full stop as one.
+    [
+      "postgresql://vr:p@example%E3%80%82com/vulnradar",
+      `example${IDEOGRAPHIC_FULL_STOP}com`,
+      true,
+    ],
+    [
+      "postgresql://vr:p@example%EF%BC%8Ecom/vulnradar",
+      `example${FULLWIDTH_FULL_STOP}com`,
+      true,
+    ],
   ] as const)("%s connects to %s, remote: %s", (url, host, remote) => {
     expect(new ConnectionParameters({ connectionString: url }).host).toBe(host);
     expect(databaseTlsStatus(prod(url)).remote).toBe(remote);
     expect(databaseTlsWarning(prod(url)) !== null).toBe(remote);
+  });
+
+  it("reads a non-ASCII full stop as Node's resolver does, as a dot", () => {
+    expect(domainToASCII(`example${IDEOGRAPHIC_FULL_STOP}com`)).toBe(
+      "example.com",
+    );
+    expect(domainToASCII(`example${FULLWIDTH_FULL_STOP}com`)).toBe(
+      "example.com",
+    );
   });
 
   it("follows PGHOST when the URL names no host, as node-pg does", () => {
