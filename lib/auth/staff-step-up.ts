@@ -5,6 +5,8 @@ import { decryptApiKey } from "@/lib/auth/crypto";
 import { verifyTOTPWithCounter } from "@/lib/auth/totp";
 import { verifyReauthAgainstHash } from "@/lib/auth/reauth";
 import { isEmailConfigured } from "@/lib/email/email";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
 import {
   SECOND_FACTOR_MESSAGES,
   SECOND_FACTOR_REQUIRED,
@@ -39,7 +41,14 @@ export { SECOND_FACTOR_REQUIRED, SECOND_FACTOR_MESSAGES };
 export type { SecondFactorKind };
 
 export type StaffSecondFactorResult =
-  { ok: true } | { ok: false; secondFactor: SecondFactorKind; error: string };
+  | { ok: true }
+  | {
+      ok: false;
+      secondFactor: SecondFactorKind;
+      error: string;
+      /** Set when the account's code guesses ran out: the refusal is a 429. */
+      retryAfterSeconds?: number;
+    };
 
 const SIX_DIGITS = /^\d{6}$/;
 
@@ -114,6 +123,23 @@ async function verifyTotp(
   } catch {
     return refuse("totp", SECOND_FACTOR_MESSAGES.totpBroken);
   }
+  // The callers' own limiters are keyed by account and address, and a session
+  // is not tied to an address by default, so on those alone the six digits
+  // could be guessed from as many addresses as the caller has. This is the
+  // per-account bucket the sign-in verifier keeps, shared with it, so moving
+  // between the two buys no extra guesses either.
+  const rl = await checkRateLimit({
+    key: `2fa-verify-user:${userId}`,
+    ...RATE_LIMITS.twoFactorVerify,
+  });
+  if (!rl.allowed) {
+    return {
+      ok: false,
+      secondFactor: "totp",
+      error: TOO_MANY_ATTEMPTS("2FA attempts", rl.retryAfterSeconds),
+      retryAfterSeconds: rl.retryAfterSeconds,
+    };
+  }
   const result = verifyTOTPWithCounter(secret, code);
   if (!result.valid || result.counter === null) {
     return refuse("totp", SECOND_FACTOR_MESSAGES.totpWrong);
@@ -175,10 +201,16 @@ export async function verifyStaffSecondFactor(
   return verifyTotp(session.userId, row, fields);
 }
 
-/** The 403 for a refusal: the message, SECOND_FACTOR_REQUIRED and the factor. */
+/**
+ * The 403 for a refusal: the message, SECOND_FACTOR_REQUIRED and the factor.
+ * Out of code guesses it is a 429 with Retry-After instead.
+ */
 export function secondFactorRefusal(
   result: Extract<StaffSecondFactorResult, { ok: false }>,
 ): NextResponse {
+  if (result.retryAfterSeconds !== undefined) {
+    return ApiResponse.tooManyRequests(result.error, result.retryAfterSeconds);
+  }
   return ApiResponse.forbidden(result.error, {
     code: SECOND_FACTOR_REQUIRED,
     secondFactor: result.secondFactor,

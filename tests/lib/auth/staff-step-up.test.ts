@@ -71,6 +71,24 @@ vi.mock("@/lib/email/email", () => ({
   isEmailConfigured: () => emailConfigured,
 }));
 
+let guessesLeft = true;
+const limiterKeys: string[] = [];
+vi.mock("@/lib/rate-limiting/rate-limit", () => ({
+  checkRateLimit: vi.fn(async ({ key }: { key: string }) => {
+    limiterKeys.push(key);
+    return guessesLeft
+      ? { allowed: true, remaining: 4, retryAfterSeconds: 0 }
+      : { allowed: false, remaining: 0, retryAfterSeconds: 240 };
+  }),
+  RATE_LIMITS: {
+    twoFactorVerify: {
+      limit: "twoFactorVerify",
+      maxAttempts: 5,
+      windowSeconds: 300,
+    },
+  },
+}));
+
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
 const { encryptApiKey } = await import("@/lib/auth/crypto");
 const { generateSecret, generateTOTP } = await import("@/lib/auth/totp");
@@ -100,6 +118,8 @@ beforeEach(() => {
   lastCounter = null;
   freshSession = false;
   emailConfigured = true;
+  guessesLeft = true;
+  limiterKeys.length = 0;
   clientQueries.length = 0;
 });
 
@@ -205,6 +225,29 @@ describe("an authenticator account", () => {
     expect(result).toMatchObject({ ok: false, secondFactor: "totp" });
   });
 
+  // The routes count attempts per account and address, and a session is not
+  // tied to an address by default, so that alone let the six digits be
+  // guessed from as many addresses as the caller had.
+  it("spends each code from the account's own bucket, the one sign-in uses", async () => {
+    row = totpAccount();
+    await verifyStaffSecondFactor(session, { totpCode: generateTOTP(SECRET) });
+    expect(limiterKeys).toEqual(["2fa-verify-user:7"]);
+  });
+
+  it("stops taking codes once that bucket is spent, the right one included", async () => {
+    row = totpAccount();
+    guessesLeft = false;
+    const result = await verifyStaffSecondFactor(session, {
+      totpCode: generateTOTP(SECRET),
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      secondFactor: "totp",
+      retryAfterSeconds: 240,
+    });
+    expect(lastCounter).toBeNull();
+  });
+
   it("works for an account with no password: the mailed step-up was the first factor", async () => {
     row = totpAccount({ password_hash: null });
     const result = await verifyStaffSecondFactor(session, {
@@ -285,5 +328,16 @@ describe("secondFactorRefusal", () => {
       code: SECOND_FACTOR_REQUIRED,
       secondFactor: "totp",
     });
+  });
+
+  it("is a 429 with Retry-After once the account's code guesses ran out", async () => {
+    const res = secondFactorRefusal({
+      ok: false,
+      secondFactor: "totp",
+      error: "Too many 2FA attempts. Try again in 4 minutes.",
+      retryAfterSeconds: 240,
+    });
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("240");
   });
 });
