@@ -2,10 +2,12 @@
  * The process `npm start` and the image run: a node:http server around Next's
  * request handler, which `next start` gives no way to get in front of.
  *
- * It exists for two things. It is the only code that can see the real socket,
- * so it is where a forged X-Forwarded-For gets replaced (lib/server/http-front
- * .mjs). And it holds the http.Server, so the shutdown sequence in
- * lib/database/boot/graceful-shutdown.ts can stop accepting connections and
+ * It exists for three things. It is the only code that can see the real
+ * socket, so it is where a forged X-Forwarded-For gets replaced
+ * (lib/server/http-front.mjs). It is the only code that sees every body byte
+ * as it arrives, so it is where a chunked API body that declares no length is
+ * held to the body cap. And it holds the http.Server, so the shutdown sequence
+ * in lib/database/boot/graceful-shutdown.ts can stop accepting connections and
  * drain them before the database pool goes away.
  */
 import { createServer } from "node:http";
@@ -13,6 +15,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import {
   HTTP_SERVER_SLOT,
+  capRequestBody,
   enforceForwardedFor,
   localPlainHttpApplies,
   trustedProxyCidr,
@@ -31,6 +34,7 @@ export function createFrontServer(getRequestHandler, env = process.env) {
   const server = createServer(async (req, res) => {
     try {
       enforceForwardedFor(req, trustedProxyCidr(env));
+      capRequestBody(req, res);
       await getRequestHandler()(req, res);
     } catch (err) {
       // Not req.url: console.error is persisted to the admin error log, and

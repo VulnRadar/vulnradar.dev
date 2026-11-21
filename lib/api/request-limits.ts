@@ -14,11 +14,14 @@
  * every route shape in this app (the largest legitimate payload is a few KB).
  *
  * Enforced in middleware for every /api/ request that declares a body length.
- * A chunked body declares none and gets past that check, so what actually
- * bounds it is readBodyBounded below, which parseBody and readJsonObject read
- * through. A route that still calls request.json() itself is capped by the
- * middleware check alone: the cap was documented as a property of the API but
- * only some of the body-reading routes ever went through parseBody.
+ * A chunked body declares none and gets past that check. Under server.mjs,
+ * which `npm start` and the image run, the front server counts those bytes as
+ * they arrive and answers 413 past this cap (lib/server/http-front.mjs keeps
+ * its own copy of the number, pinned equal by a test). readBodyBounded below,
+ * which parseBody and readJsonObject read through, holds wherever the app is
+ * started from. A route that still calls request.json() itself has only the
+ * front server behind it, so an install that skips server.mjs leaves that
+ * route uncapped; tests/repo/no-raw-request-json.test.ts stops new ones.
  * ref: AUDIT-013#dup-04
  */
 export const MAX_REQUEST_BODY_BYTES = 1 * 1024 * 1024;
