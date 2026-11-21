@@ -148,7 +148,6 @@ const BASELINE: ReadonlySet<string> = new Set([
   "lib/ai/verify-findings.ts::unreadableKeyReported",
   "lib/api/api-keys.ts::lastKeyUsageWrite",
   "lib/api/api-keys.ts::legacyKeyRowsPresent",
-  "lib/api/api-keys.ts::reportedUndecryptableKeys",
   "lib/auth/auth.ts::lastCleanupTime",
   "lib/auth/me.ts::quotaCache",
   "lib/auth/password-hash.ts::scryptInFlight",
