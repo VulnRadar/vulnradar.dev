@@ -19,6 +19,7 @@ import {
   hostRunsWorkers,
 } from "@/lib/admin/worker-registry";
 import { isEngineFailure, type FailureKind } from "@/lib/scanner/failure-kinds";
+import { databaseTlsStatus } from "@/lib/database/pg-ssl.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -396,6 +397,10 @@ export const GET = withErrorHandling(async () => {
 
   return NextResponse.json({
     ...(wantsQueue ? { scanQueue: queue, workers, overdueSchedules } : {}),
+    // The boot log's database TLS line, from the same function, for an
+    // operator who never reads the server log. Booleans and that fixed
+    // sentence only: neither the connection string nor the host leaves here.
+    ...(wantsQueue ? { databaseTls: databaseTlsStatus(process.env) } : {}),
     ...(wantsMaintenance ? { backup } : {}),
     ...(wantsErrors ? { errorLogs } : {}),
     ...(wantsMaintenance ? { email } : {}),

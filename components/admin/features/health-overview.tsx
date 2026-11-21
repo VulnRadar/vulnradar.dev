@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,12 +13,20 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { HealthListSkeleton, SkeletonRegion } from "@/components/admin/shared";
+import { InlineAlert } from "@/components/shared/inline-alert";
 import {
   buildHealthRows,
   formatGeneratedAt,
   type HealthMetrics,
   type HealthState,
 } from "./health-overview-utils";
+
+/** GET /api/v3/admin/health's databaseTls, from lib/database/pg-ssl.mjs. */
+interface DatabaseTls {
+  encrypted: boolean;
+  remote: boolean;
+  warning: string | null;
+}
 
 /**
  * Admin > Overview. AUDIT-014 qols-02: the panel used to land on the user
@@ -77,7 +86,7 @@ export function HealthOverview({
   onRefresh,
   onNavigate,
 }: {
-  metrics: HealthMetrics | null;
+  metrics: (HealthMetrics & { databaseTls?: DatabaseTls | null }) | null;
   loading: boolean;
   refreshing: boolean;
   loadFailed: boolean;
@@ -86,10 +95,29 @@ export function HealthOverview({
   onNavigate: (tab: string) => void;
 }) {
   const rows = buildHealthRows(metrics, { updateAvailable });
-  const worst = rows.length > 0 ? rows[0].state : "ok";
-  const problems = rows.filter(
-    (r) => r.state === "crit" || r.state === "warn",
-  ).length;
+  // A configuration fault with no tab to send anyone to, so it is not a
+  // buildHealthRows row. It still counts: a header saying nothing needs
+  // attention above a warning would contradict it.
+  const tlsWarning = metrics?.databaseTls?.warning ?? null;
+  const rowsWorst = rows.length > 0 ? rows[0].state : "ok";
+  const worst = tlsWarning && rowsWorst !== "crit" ? "warn" : rowsWorst;
+  const problems =
+    rows.filter((r) => r.state === "crit" || r.state === "warn").length +
+    (tlsWarning ? 1 : 0);
+  // Worst first, like the rows: after any critical row, before the rest.
+  const firstNonCrit = rows.findIndex((r) => r.state !== "crit");
+  const tlsAt = firstNonCrit === -1 ? rows.length : firstNonCrit;
+  const tlsRow = tlsWarning ? (
+    <li key="database-tls" className="px-5 py-4">
+      <InlineAlert
+        tone="warning"
+        live="off"
+        title="Database connection is not encrypted"
+      >
+        <p>{tlsWarning}</p>
+      </InlineAlert>
+    </li>
+  ) : null;
   const asOf = formatGeneratedAt(metrics?.generatedAt ?? null);
 
   return (
@@ -178,53 +206,57 @@ export function HealthOverview({
           </div>
         ) : (
           <ul className="divide-y divide-border/50 border-t border-border/50">
-            {rows.map((row) => {
+            {rows.map((row, i) => {
               const style = STATE_STYLES[row.state];
               return (
-                <li key={row.key}>
-                  <a
-                    href={`/admin?tab=${row.tab}`}
-                    onClick={(e) => {
-                      if (!e.ctrlKey && !e.metaKey) {
-                        e.preventDefault();
-                        onNavigate(row.tab);
-                      }
-                    }}
-                    className="flex items-start gap-3 px-5 py-4 transition-colors hover:bg-muted/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                  >
-                    <span
-                      className={cn(
-                        "mt-1.5 h-2 w-2 shrink-0 rounded-full",
-                        style.dot,
-                      )}
-                      aria-hidden="true"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="text-sm font-medium text-foreground">
-                          {row.label}
-                        </span>
-                        <span
-                          className={cn(
-                            "font-mono text-xs tabular-nums",
-                            style.label,
-                          )}
-                        >
-                          {row.value}
-                        </span>
+                <Fragment key={row.key}>
+                  {i === tlsAt && tlsRow}
+                  <li>
+                    <a
+                      href={`/admin?tab=${row.tab}`}
+                      onClick={(e) => {
+                        if (!e.ctrlKey && !e.metaKey) {
+                          e.preventDefault();
+                          onNavigate(row.tab);
+                        }
+                      }}
+                      className="flex items-start gap-3 px-5 py-4 transition-colors hover:bg-muted/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                    >
+                      <span
+                        className={cn(
+                          "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+                          style.dot,
+                        )}
+                        aria-hidden="true"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                          <span className="text-sm font-medium text-foreground">
+                            {row.label}
+                          </span>
+                          <span
+                            className={cn(
+                              "font-mono text-xs tabular-nums",
+                              style.label,
+                            )}
+                          >
+                            {row.value}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                          {row.detail}
+                        </p>
                       </div>
-                      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                        {row.detail}
-                      </p>
-                    </div>
-                    {/* The state word carries the meaning for anyone who
+                      {/* The state word carries the meaning for anyone who
                         cannot use the dot's colour. */}
-                    <span className="sr-only">{STATE_WORD[row.state]}</span>
-                  </a>
-                </li>
+                      <span className="sr-only">{STATE_WORD[row.state]}</span>
+                    </a>
+                  </li>
+                </Fragment>
               );
             })}
-            {rows.length === 0 && (
+            {tlsAt === rows.length && tlsRow}
+            {rows.length === 0 && !tlsRow && (
               <li className="px-5 py-10 text-center text-sm text-muted-foreground">
                 Your role does not grant any of the health checks.
               </li>

@@ -10,7 +10,7 @@
  * Auth is mocked at the getSession/db boundary, the same way
  * tests/app/api/v3/admin/queue-status/route.test.ts does it.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -114,6 +114,7 @@ describe("GET /api/v3/admin/health", () => {
     expect(Object.keys(json).sort()).toEqual(
       [
         "backup",
+        "databaseTls",
         "email",
         "errorLogs",
         "generatedAt",
@@ -515,5 +516,78 @@ describe("GET /api/v3/admin/health: background workers", () => {
     expect(json.workers).toBeNull();
     expect(json.overdueSchedules.count).toBe(0);
     consoleError.mockRestore();
+  });
+});
+
+describe("GET /api/v3/admin/health: database TLS", () => {
+  const REMOTE = "postgresql://vr:secret@db.example.com:5432/vulnradar";
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("reports a production install reaching a remote database in plaintext, with the boot warning", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("DATABASE_URL", REMOTE);
+    vi.stubEnv("DATABASE_SSL", "false");
+    const { databaseTlsWarning } = await import("@/lib/database/pg-ssl.mjs");
+    signInAs("admin");
+    respondByTable();
+
+    const json = await (await GET()).json();
+
+    expect(json.databaseTls).toEqual({
+      encrypted: false,
+      remote: true,
+      warning: databaseTlsWarning(process.env),
+    });
+    expect(json.databaseTls.warning).toMatch(/DATABASE_SSL_CA/);
+  });
+
+  it("has no warning once the connection is encrypted", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("DATABASE_URL", REMOTE);
+    vi.stubEnv("DATABASE_SSL", "true");
+    signInAs("admin");
+    respondByTable();
+
+    const json = await (await GET()).json();
+
+    expect(json.databaseTls).toEqual({
+      encrypted: true,
+      remote: true,
+      warning: null,
+    });
+  });
+
+  it("never carries the connection string or the password", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("DATABASE_URL", REMOTE);
+    vi.stubEnv("DATABASE_SSL", "false");
+    signInAs("admin");
+    respondByTable();
+
+    const body = await (await GET()).text();
+
+    expect(body).not.toContain("secret");
+    expect(body).not.toContain("db.example.com");
+  });
+
+  it("gives it to the ops role, which reads the system stats", async () => {
+    signInAs("ops");
+    respondByTable();
+
+    const json = await (await GET()).json();
+
+    expect(json).toHaveProperty("databaseTls");
+  });
+
+  it("withholds it from a role without VIEW_SYSTEM_STATS", async () => {
+    signInAs("support");
+    respondByTable();
+
+    const json = await (await GET()).json();
+
+    expect(json).not.toHaveProperty("databaseTls");
   });
 });

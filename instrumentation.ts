@@ -81,6 +81,12 @@ export async function register() {
     const { validateEnv } = await import("./lib/config/env");
     validateEnv();
 
+    // Before the error-log capture below, which writes every console.error
+    // to the database: with DATABASE_SSL_REQUIRED=true a plaintext remote
+    // connection is refused before the password has been sent over it.
+    const { checkDatabaseTls } = await import("./lib/database/pg-ssl.mjs");
+    const databaseTlsWarning = checkDatabaseTls(process.env);
+
     const { default: pool } = await import("./lib/database/db");
     const {
       APP_NAME,
@@ -114,6 +120,8 @@ export async function register() {
     const { proxyTrustWarning } = await import("./lib/server/http-front.mjs");
     const proxyWarning = proxyTrustWarning(process.env);
     if (proxyWarning) console.error(`[${APP_NAME}] ${proxyWarning}`);
+    if (databaseTlsWarning)
+      console.error(`[${APP_NAME}] ${databaseTlsWarning}`);
 
     // ── Startup banner + update check ──────────────────────────────────
     const { reportRunningVersion } =
