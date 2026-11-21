@@ -9,6 +9,7 @@ import { InlineAlert } from "@/components/shared/inline-alert";
 import { clearAuthCache } from "@/components/providers/auth-provider";
 import { API, ROUTES } from "@/lib/config/client-constants";
 import { STEP_UP_WINDOW } from "@/lib/auth/step-up-window";
+import { SECOND_FACTOR_MESSAGES } from "@/lib/auth/staff-second-factor-kind";
 
 /**
  * "Confirm it is you" for an account with no password.
@@ -301,9 +302,14 @@ export function EmailStepUp({
       return;
     }
     // The config said mail works and the server says it does not: the
-    // server is the one that knows. A second factor has no fallback, so the
-    // refusal is shown and nothing is ready.
-    if (result.emailConfigured === false && !secondFactor) {
+    // server is the one that knows. A second factor has no fallback, so
+    // nothing is ready, and the server's "sign in again" is not repeated: a
+    // fresh sign-in does not count as one.
+    if (result.emailConfigured === false) {
+      if (secondFactor) {
+        setError(SECOND_FACTOR_MESSAGES.noMail);
+        return;
+      }
       setPhase("sign-in");
       onReady();
       return;

@@ -320,4 +320,72 @@ describe("StaffSecondFactorDialog", () => {
       find(tree, confirmButton("Start impersonating")).props.disabled,
     ).toBe(false);
   });
+
+  it("asks for a fresh mailed code when the server finds none for this session", async () => {
+    me = { ...me, twoFactorMethod: "email" };
+    const d = dialog(async () => ({
+      ok: false,
+      error: SECOND_FACTOR_MESSAGES.emailMissing,
+      secondFactor: "email",
+    }));
+    let tree = d.render();
+    type(tree, "-password", "hunter2");
+    tree = d.render();
+    const before = find(tree, ofType(EmailStepUp)) as unknown as {
+      key: unknown;
+      props: { onReady: () => void };
+    };
+    before.props.onReady();
+    tree = d.render();
+    await (
+      find(tree, confirmButton("Start impersonating")).props
+        .onClick as () => Promise<void>
+    )();
+    tree = d.render();
+    // Not "Confirmed" over a refusal that says there is no step-up: the
+    // mailed code starts again, and Confirm waits on it.
+    expect(
+      find(tree, confirmButton("Start impersonating")).props.disabled,
+    ).toBe(true);
+    const after = find(tree, ofType(EmailStepUp)) as unknown as {
+      key: unknown;
+    };
+    expect(after.key).not.toBe(before.key);
+    expect(
+      findAll(tree, ofType(InlineAlert)).map((el) => textOf(el.props.children)),
+    ).toContain(SECOND_FACTOR_MESSAGES.emailMissing);
+  });
+});
+
+describe("the mailed second factor on a server that turns out not to send mail", () => {
+  it("says an authenticator app is needed, not to sign in again, and stays not ready", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: "Sign in again to confirm it is you.",
+              emailConfigured: false,
+            }),
+            { status: 409 },
+          ),
+      ),
+    );
+    try {
+      const onReady = vi.fn();
+      const stepUp = harness(EmailStepUp);
+      const render = () =>
+        stepUp.render({ mode: "second-factor", onReady }) as {
+          props: { phase: string; error: string | null; onSend: () => void };
+        };
+      render().props.onSend();
+      await vi.waitFor(() => expect(render().props.error).not.toBeNull());
+      expect(render().props.error).toBe(SECOND_FACTOR_MESSAGES.noMail);
+      expect(render().props.phase).toBe("start");
+      expect(onReady).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

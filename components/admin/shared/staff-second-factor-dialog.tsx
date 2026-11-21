@@ -126,6 +126,8 @@ export function StaffSecondFactorDialog({
   const [totpCode, setTotpCode] = React.useState("");
   const [firstStepUpDone, setFirstStepUpDone] = React.useState(false);
   const [emailFactorDone, setEmailFactorDone] = React.useState(false);
+  // Remounts the mailed second factor, back at "Email me a code".
+  const [emailFactorRound, setEmailFactorRound] = React.useState(0);
   const [named, setNamed] = React.useState<SecondFactorKind | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -174,6 +176,13 @@ export function StaffSecondFactorDialog({
         ? result.secondFactor
         : null;
       if (next) setNamed(next);
+      // The server found no step-up for this session: the ten minutes ran out
+      // or the code never landed. Showing "Confirmed" over that refusal would
+      // leave nothing to click but a Confirm that fails the same way.
+      if (next === "email") {
+        setEmailFactorDone(false);
+        setEmailFactorRound((round) => round + 1);
+      }
       // A refusal that leaves nothing to type is shown once, in place of the
       // form, not again underneath it.
       setError(
@@ -285,6 +294,7 @@ export function StaffSecondFactorDialog({
                 </div>
               ) : (
                 <EmailStepUp
+                  key={emailFactorRound}
                   idPrefix={`${idPrefix}-factor`}
                   mode="second-factor"
                   emailConfigured={emailConfigured}
