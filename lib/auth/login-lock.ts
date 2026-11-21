@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
-import { findTrustedDevice } from "@/lib/auth/device-trust";
-import { getRateLimit } from "@/lib/rate-limiting/rate-limit";
+import {
+  findTrustedDevice,
+  hashDeviceFingerprint,
+} from "@/lib/auth/device-trust";
+import { checkRateLimit, getRateLimit } from "@/lib/rate-limiting/rate-limit";
 
 /**
  * The per-address sign-in lock. The login route fills it on every failed
@@ -24,6 +27,42 @@ export function loginLockKey(email: string): string {
 /** The one-shot key that keeps the lock alert to one email an hour. */
 export function loginLockAlertKey(email: string): string {
   return `login-fail-alert:${addressDigest(email)}`;
+}
+
+/**
+ * The tries one device cookie gets at a full bucket, per address. The cookie
+ * is the only thing that gets a request past the lock, so without a cap of
+ * its own a stolen one turned the lock into a password oracle: every wrong
+ * guess answered "locked", the right one signed in, and the only limit was
+ * the per-IP one, multiplied by every address the thief has.
+ *
+ * Keyed on the cookie's hash (what device_trust stores), never the cookie.
+ */
+export function lockedDeviceKey(email: string, deviceCookie: string): string {
+  return `login-device:${addressDigest(email)}:${hashDeviceFingerprint(deviceCookie)}`;
+}
+
+const LOCKED_DEVICE_ATTEMPTS = 5;
+const LOCKED_DEVICE_WINDOW_SECONDS = 15 * 60;
+
+/**
+ * Spend one of this device's tries at a full bucket. Returns the cookie when
+ * a try was left, and undefined when none was sent or they are spent, in
+ * which case the request is refused like any other locked one and its
+ * password is not weighed. Every cookie is counted, trusted or not, so the
+ * count says nothing about the cookie that the sender did not already know.
+ */
+export async function spendLockedDeviceTry(
+  email: string,
+  deviceCookie: string | undefined,
+): Promise<string | undefined> {
+  if (!deviceCookie) return undefined;
+  const tries = await checkRateLimit({
+    key: lockedDeviceKey(email, deviceCookie),
+    maxAttempts: LOCKED_DEVICE_ATTEMPTS,
+    windowSeconds: LOCKED_DEVICE_WINDOW_SECONDS,
+  });
+  return tries.allowed ? deviceCookie : undefined;
 }
 
 /**

@@ -10,6 +10,8 @@ import { createHash, randomBytes } from "node:crypto";
 const queries: { sql: string; params: unknown[] }[] = [];
 // "<userId>:<sha256(cookie)>" for every unexpired device_trust row.
 const trustedRows = new Set<string>();
+// Limiter buckets by key, capped the way the guarded upsert caps them.
+const buckets = new Map<string, number>();
 
 vi.mock("@/lib/database/db", () => ({
   default: {
@@ -21,13 +23,24 @@ vi.mock("@/lib/database/db", () => ({
           ? { rows: [{ "?column?": 1 }] }
           : { rows: [] };
       }
+      if (s.startsWith("INSERT INTO rate_limits")) {
+        const key = params[0] as string;
+        const count = buckets.get(key) ?? 0;
+        if (count >= (params[2] as number)) return { rows: [] };
+        buckets.set(key, count + 1);
+        return { rows: [{ count: String(count + 1) }] };
+      }
       return { rows: [] };
     },
   },
 }));
 
-const { loginLockKey, passesAccountLock } =
-  await import("@/lib/auth/login-lock");
+const {
+  loginLockKey,
+  lockedDeviceKey,
+  passesAccountLock,
+  spendLockedDeviceTry,
+} = await import("@/lib/auth/login-lock");
 const { hashDeviceFingerprint } = await import("@/lib/auth/device-trust");
 
 const deviceLookups = () =>
@@ -36,6 +49,7 @@ const deviceLookups = () =>
 beforeEach(() => {
   queries.length = 0;
   trustedRows.clear();
+  buckets.clear();
 });
 
 describe("loginLockKey", () => {
@@ -56,6 +70,66 @@ describe("loginLockKey", () => {
     expect(key).not.toContain("owner");
     expect(key).not.toContain("example");
     expect(key).toMatch(/^login-fail:[0-9a-f]{64}$/);
+  });
+});
+
+describe("lockedDeviceKey", () => {
+  const cookie = randomBytes(32).toString("hex");
+  const sha256 = (value: string) =>
+    createHash("sha256").update(value).digest("hex");
+
+  it("is the address digest and the device's stored hash, never either raw value", () => {
+    const key = lockedDeviceKey(" Owner@Example.COM", cookie);
+    expect(key).toBe(
+      `login-device:${sha256("owner@example.com")}:${hashDeviceFingerprint(cookie)}`,
+    );
+    expect(key).not.toContain(cookie);
+    expect(key).not.toContain("owner");
+    expect(key.length).toBeLessThanOrEqual(255);
+  });
+
+  it("is one bucket per address and device", () => {
+    const other = randomBytes(32).toString("hex");
+    expect(lockedDeviceKey("owner@example.com", cookie)).toBe(
+      lockedDeviceKey("OWNER@example.com ", cookie),
+    );
+    expect(lockedDeviceKey("owner@example.com", cookie)).not.toBe(
+      lockedDeviceKey("owner@example.com", other),
+    );
+    expect(lockedDeviceKey("owner@example.com", cookie)).not.toBe(
+      lockedDeviceKey("someone@example.com", cookie),
+    );
+  });
+});
+
+describe("spendLockedDeviceTry", () => {
+  const cookie = randomBytes(32).toString("hex");
+
+  it("hands the cookie back for five tries in the window, then nothing", async () => {
+    for (let n = 0; n < 5; n++) {
+      expect(await spendLockedDeviceTry("owner@example.com", cookie)).toBe(
+        cookie,
+      );
+    }
+    expect(
+      await spendLockedDeviceTry("owner@example.com", cookie),
+    ).toBeUndefined();
+    expect(buckets.get(lockedDeviceKey("owner@example.com", cookie))).toBe(5);
+  });
+
+  it("counts a cookie nobody trusts the same way, without looking it up", async () => {
+    await spendLockedDeviceTry("owner@example.com", "not-a-device");
+    expect(
+      buckets.get(lockedDeviceKey("owner@example.com", "not-a-device")),
+    ).toBe(1);
+    expect(deviceLookups()).toHaveLength(0);
+  });
+
+  it("spends nothing when no cookie was sent", async () => {
+    expect(
+      await spendLockedDeviceTry("owner@example.com", undefined),
+    ).toBeUndefined();
+    expect(buckets.size).toBe(0);
   });
 });
 

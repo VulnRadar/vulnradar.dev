@@ -175,7 +175,16 @@ vi.mock("@/lib/email/email", async (importOriginal) => {
   return { ...actual, sendEmail: vi.fn(async () => {}) };
 });
 
-const { hashPassword } = await import("@/lib/auth/password-hash");
+// The real verify, watched, so a test can tell whether the account's own
+// hash was consulted at all.
+vi.mock("@/lib/auth/password-hash", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/auth/password-hash")>();
+  return { ...actual, verifyPassword: vi.fn(actual.verifyPassword) };
+});
+
+const { hashPassword, verifyPassword } =
+  await import("@/lib/auth/password-hash");
 const { hashDeviceFingerprint } = await import("@/lib/auth/device-trust");
 const { hashAuthToken } = await import("@/lib/auth/token-hash");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
@@ -192,12 +201,20 @@ const NEW_PASSWORD = "Nx8&Qvrmpz3Ldk-later";
 const PER_IP_CAP = 5;
 const ACCOUNT_CAP = 25;
 
+const sha256 = (value: string) =>
+  createHash("sha256").update(value).digest("hex");
 const accountKey = (email: string) =>
-  `login-fail:${createHash("sha256").update(email.trim().toLowerCase()).digest("hex")}`;
+  `login-fail:${sha256(email.trim().toLowerCase())}`;
+// The trusted-device way past a full bucket has its own small bucket per
+// address and device.
+const deviceKey = (email: string, device: string) =>
+  `login-device:${sha256(email.trim().toLowerCase())}:${sha256(device)}`;
+const DEVICE_CAP = 5;
 
 let ownerHash: string;
 let otherHash: string;
 const ownerDevice = randomBytes(32).toString("hex");
+const ownerLaptop = randomBytes(32).toString("hex");
 const otherDevice = randomBytes(32).toString("hex");
 
 beforeAll(async () => {
@@ -279,7 +296,9 @@ beforeEach(async () => {
   rateLimits.clear();
   deviceTrust.clear();
   deviceTrust.add(`1:${hashDeviceFingerprint(ownerDevice)}`);
+  deviceTrust.add(`1:${hashDeviceFingerprint(ownerLaptop)}`);
   deviceTrust.add(`2:${hashDeviceFingerprint(otherDevice)}`);
+  vi.mocked(verifyPassword).mockClear();
   resetTokens.clear();
   sessionInserts = [];
   cookieState.clear();
@@ -431,6 +450,83 @@ describe("a full account bucket", () => {
       }
       expect(sessionInserts).toHaveLength(0);
     });
+  });
+});
+
+// The trusted-device cookie is the one thing that gets a request past a full
+// bucket, so a stolen one must not become unlimited password guesses with
+// "locked" as the answer to every wrong one.
+describe("the trusted-device way past a full bucket", () => {
+  let baseline: Awaited<ReturnType<typeof observable>>;
+
+  beforeEach(async () => {
+    fillOwnerBucket();
+    freshAddress();
+    baseline = await observable(
+      await login(loginRequest(OWNER_EMAIL, "definitely-wrong")),
+    );
+  });
+
+  async function fromDevice(password: string, device = ownerDevice) {
+    freshAddress();
+    return login(
+      loginRequest(OWNER_EMAIL, password, {
+        [DEVICE_TRUST_COOKIE_NAME]: device,
+      }),
+    );
+  }
+
+  it("refuses the right password like the lock once that device has spent its tries, without weighing it", async () => {
+    for (let n = 0; n < DEVICE_CAP; n++) {
+      expect(await observable(await fromDevice(`wrong-${n}`))).toEqual(
+        baseline,
+      );
+    }
+    expect(rateLimits.get(deviceKey(OWNER_EMAIL, ownerDevice))).toBe(
+      DEVICE_CAP,
+    );
+
+    vi.mocked(verifyPassword).mockClear();
+    const res = await fromDevice(OWNER_PASSWORD);
+
+    // The same status, body, Retry-After and cookies as the account lock,
+    // so a refusal never says which of the two buckets gave it.
+    expect(await observable(res)).toEqual(baseline);
+    expect(sessionInserts).toHaveLength(0);
+    expect(
+      vi
+        .mocked(verifyPassword)
+        .mock.calls.some(([, hash]) => hash === ownerHash),
+    ).toBe(false);
+    expect(rateLimits.get(accountKey(OWNER_EMAIL))).toBe(ACCOUNT_CAP);
+  }, 30_000);
+
+  it("gives each trusted device of the account its own tries", async () => {
+    for (let n = 0; n < DEVICE_CAP; n++) await fromDevice(`wrong-${n}`);
+
+    const res = await fromDevice(OWNER_PASSWORD, ownerLaptop);
+
+    expect(res.status).toBe(200);
+    expect(sessionInserts).toHaveLength(1);
+  }, 30_000);
+
+  it("spends a try only while the account bucket is full", async () => {
+    rateLimits.delete(accountKey(OWNER_EMAIL));
+
+    const res = await fromDevice("wrong-while-open");
+
+    expect(res.status).toBe(401);
+    expect(rateLimits.has(deviceKey(OWNER_EMAIL, ownerDevice))).toBe(false);
+  });
+
+  it("is emptied by the sign-in it lets through", async () => {
+    await fromDevice("a-typo");
+    expect(rateLimits.get(deviceKey(OWNER_EMAIL, ownerDevice))).toBe(1);
+
+    const res = await fromDevice(OWNER_PASSWORD);
+
+    expect(res.status).toBe(200);
+    expect(rateLimits.has(deviceKey(OWNER_EMAIL, ownerDevice))).toBe(false);
   });
 });
 

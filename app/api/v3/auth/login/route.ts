@@ -46,10 +46,12 @@ import { TOO_MANY_ATTEMPTS } from "@/lib/api/retry-in";
 import { logError } from "@/lib/logging/log";
 import { maskEmail, storeEmailCode } from "@/lib/auth/email-codes";
 import {
+  lockedDeviceKey,
   loginLockAlertKey,
   loginLockKey,
   passesAccountLock,
   resolveAccountLockLimit,
+  spendLockedDeviceTry,
 } from "@/lib/auth/login-lock";
 
 // The pending sign-ins the OAuth and Discord callbacks park while they wait
@@ -142,6 +144,19 @@ export const POST = withErrorHandling(async (request: Request) => {
     ...accountLockLimit,
   });
 
+  // The trusted-device way past a full bucket is rationed per device, before
+  // anything is weighed: a stolen cookie must not buy a guess for every
+  // request the per-IP limit allows. Once this device has spent its tries the request is
+  // refused like any other locked one, and the account's hash is not even
+  // consulted, so the answer cannot depend on the password.
+  const deviceCookie = (request as unknown as NextRequest).cookies?.get?.(
+    DEVICE_TRUST_COOKIE_NAME,
+  )?.value;
+  const lockedDevice = accountLock.allowed
+    ? undefined
+    : await spendLockedDeviceTry(email, deviceCookie);
+  const deviceSpent = !accountLock.allowed && !!deviceCookie && !lockedDevice;
+
   const user = await getUserByEmail(email);
 
   // No user, or an OAuth-only account with no password to check against
@@ -151,16 +166,15 @@ export const POST = withErrorHandling(async (request: Request) => {
   // enumerate which provider owns a given address.
   const passwordHash = user?.password_hash ?? null;
   let valid = false;
-  if (passwordHash) valid = await verifyPassword(password, passwordHash);
-  else await verifyPassword(password, await getDummyHash());
+  if (passwordHash && !deviceSpent) {
+    valid = await verifyPassword(password, passwordHash);
+  } else await verifyPassword(password, await getDummyHash());
 
   if (!accountLock.allowed) {
     const passes = await passesAccountLock({
       userId: user?.id ?? null,
       passwordValid: !!user && !!passwordHash && valid,
-      deviceCookie: (request as unknown as NextRequest).cookies?.get?.(
-        DEVICE_TRUST_COOKIE_NAME,
-      )?.value,
+      deviceCookie: lockedDevice,
     });
     if (!passes) {
       return ApiResponse.tooManyRequests(
@@ -234,8 +248,9 @@ export const POST = withErrorHandling(async (request: Request) => {
   // bucket the owner just passed from a trusted device. The per-IP bucket is
   // deliberately NOT cleared: that one throttles the source address, not
   // the account, and clearing it would let one address reset its own quota
-  // by interleaving a valid login.
+  // by interleaving a valid login. The device's tries at the lock go too.
   await resetRateLimit(accountKey);
+  if (lockedDevice) await resetRateLimit(lockedDeviceKey(email, lockedDevice));
 
   // Check if account is disabled or email not verified
   // `role` rides along for the PAUSE_LOGINS check below rather than costing a
@@ -287,9 +302,6 @@ export const POST = withErrorHandling(async (request: Request) => {
     // `${ip}-${userAgent}` was brute-forceable for any attacker who
     // could read the IP/UA pair (e.g. via login-alert email leakage).
     const userAgent = await getUserAgent();
-    const deviceCookie = (request as unknown as NextRequest).cookies?.get?.(
-      DEVICE_TRUST_COOKIE_NAME,
-    )?.value;
 
     if (deviceCookie && (await findTrustedDevice(user.id, deviceCookie))) {
       // Device is trusted - create session directly without 2FA
