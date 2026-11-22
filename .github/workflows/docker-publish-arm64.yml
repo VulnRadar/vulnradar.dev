@@ -281,6 +281,7 @@ jobs:
             -e DATABASE_URL='postgresql://vulnradar:ci_smoke_test_password@localhost:5432/vulnradar' \
             -e DATABASE_SSL=false \
             -e APP_URL=http://localhost:3000 \
+            -e NEXT_PUBLIC_APP_URL=http://localhost:3000 \
             -e API_KEY_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff \
             "$IMAGE"
 
