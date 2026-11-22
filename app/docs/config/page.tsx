@@ -902,11 +902,12 @@ export default function ConfigPage() {
             </li>
             <li>
               <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode>: exactly 64 hex
-              chars (32 bytes). Used to encrypt stored API keys, two-factor
-              seeds, Discord and GitHub tokens, users&rsquo; AI provider keys
-              and webhook signing secrets with AES-256-GCM, and backups too
-              while <InlineCode>BACKUP_ENCRYPTION_KEY</InlineCode> is unset.
-              Replacing it is a rotation, described under Key rotation below.
+              chars (32 bytes). Used to encrypt two-factor seeds, Discord and
+              GitHub tokens, users&rsquo; AI provider keys, and webhook signing
+              secrets and addresses with AES-256-GCM, and backups too while{" "}
+              <InlineCode>BACKUP_ENCRYPTION_KEY</InlineCode> is unset. API keys
+              are stored as a one-way digest and do not depend on it. Replacing
+              it is a rotation, described under Key rotation below.
             </li>
             <li>
               <InlineCode>NEXT_PUBLIC_APP_URL</InlineCode> or{" "}
@@ -929,10 +930,12 @@ export default function ConfigPage() {
             <li>
               <InlineCode>AUTH_SECRET</InlineCode>: the HMAC key for OAuth state
               tokens and the stored digests of password reset and email
-              verification tokens. Falls back to{" "}
+              verification tokens and of emailed sign-in, step-up and billing
+              codes. Falls back to{" "}
               <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode> if unset. Rotating
               it, or setting it where the fallback was in use, invalidates every
-              unexpired reset and verification link.
+              unexpired reset and verification link and every emailed code not
+              yet used.
             </li>
           </ul>
         </DocsSubSection>
@@ -949,11 +952,11 @@ export default function ConfigPage() {
             </li>
           </ul>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
-            Only API keys move to the new key on their own, the first time each
-            is used. Everything else stays under the old key until something
-            rewrites it, so the old key has to stay set for a long time. The
-            order of steps, what to check, and the repair command to avoid are
-            in{" "}
+            Nothing moves to the new key on its own: each value stays under the
+            old key until something rewrites it, so the old key has to stay set
+            for a long time. API keys are not affected, because they are stored
+            as a one-way digest rather than encrypted. The order of steps, what
+            to check, and the repair command to avoid are in{" "}
             <a
               href="/docs/self-hosting#key-rotation"
               className="text-primary underline-offset-2 hover:underline"

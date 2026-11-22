@@ -1352,13 +1352,15 @@ cat backup-2026-06-18.sql | docker compose exec -T postgres psql -U vulnradar vu
 
         <DocsSubSection id="key-rotation" title="Rotating the encryption key">
           <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-            <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode> encrypts stored API
-            keys, two-factor seeds, Discord and GitHub tokens, the AI provider
-            keys users save, webhook signing secrets, and, while{" "}
+            <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode> encrypts two-factor
+            seeds, Discord and GitHub tokens, the AI provider keys users save,
+            webhook signing secrets and webhook addresses, and, while{" "}
             <InlineCode>BACKUP_ENCRYPTION_KEY</InlineCode> is unset, your
             backups. Swap it for a new value with nothing else in place and
-            every one of those becomes unreadable at once. The runbook below
-            keeps the old key readable while the new one takes over.
+            every one of those becomes unreadable at once. API keys are not on
+            that list: they are stored as a one-way digest, so a rotation never
+            touches them. The runbook below keeps the old key readable while the
+            new one takes over.
           </p>
           <ol className="list-decimal pl-6 space-y-2 text-sm text-muted-foreground">
             <li>
@@ -1387,8 +1389,9 @@ cat backup-2026-06-18.sql | docker compose exec -T postgres psql -U vulnradar vu
               Check the logs and Admin, Error Logs for a line saying{" "}
               <InlineCode>PREVIOUS_API_KEY_ENCRYPTION_KEY</InlineCode> is not a
               64-character hex string (it was ignored, so nothing is protecting
-              the old values), or an API key that could not be decrypted under
-              the current or previous key.
+              the old values), or a count of stored API keys from before 4.0.0
+              that could not be decrypted under the current or previous key to
+              be converted to a digest.
             </li>
             <li>
               Take a fresh backup. From here on it is written under the new key.
@@ -1405,18 +1408,17 @@ cat backup-2026-06-18.sql | docker compose exec -T postgres psql -U vulnradar vu
             title="Keep the old key longer than you expect"
           >
             <p>
-              There is no command that re-encrypts everything. API keys move to
-              the new key the first time each one is used after the rotation, so
-              remove <InlineCode>PREVIOUS_API_KEY_ENCRYPTION_KEY</InlineCode>{" "}
-              only after every API key in use has been presented at least once.
-              The rest move only when something rewrites them: a user
-              re-enrolling two-factor, reconnecting Discord or GitHub, saving
-              their AI key again, or rotating a webhook secret. Until then those
-              rows are readable only through the old key, and dropping it makes
-              each one undecryptable: an unused API key answers 401, a
-              two-factor seed locks its owner out (see Locked out of your own
-              instance under Troubleshooting), and a webhook is delivered
-              unsigned. A backup taken before the rotation needs the old key to
+              There is no command that re-encrypts everything. Values move to
+              the new key only when something rewrites them: a user re-enrolling
+              two-factor, reconnecting Discord or GitHub, saving their AI key
+              again, rotating a webhook secret, or saving a webhook&rsquo;s URL
+              again. Until then those rows are readable only through the old
+              key, and dropping it makes each one undecryptable: a two-factor
+              seed locks its owner out (see Locked out of your own instance
+              under Troubleshooting), a webhook whose secret is still under the
+              old key is delivered unsigned, and a webhook whose address is
+              still under the old key sends nothing until its owner enters the
+              URL again. A backup taken before the rotation needs the old key to
               restore: set it as <InlineCode>BACKUP_ENCRYPTION_KEY</InlineCode>{" "}
               for that restore. Keep the old key until every backup that needs
               it has been retired.
