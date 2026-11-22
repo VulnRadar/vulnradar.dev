@@ -25,6 +25,7 @@ import {
 } from "vitest";
 import { NextRequest } from "next/server";
 import { createHash, createHmac } from "node:crypto";
+import { loginLockKey } from "@/lib/auth/login-lock";
 
 const mockQuery = vi.fn();
 const mockClientQuery = vi.fn();
@@ -2244,6 +2245,27 @@ describe("PATCH /api/v3/admin — spot checks across other actions (audit loggin
       expect.stringContaining("Cleared 3 rate limit bucket(s)"),
       "127.0.0.1",
     );
+  });
+
+  it("clear_rate_limits: also clears the sign-in lock, which is keyed on the address", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "Locked@Example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 3 }); // DELETE ... key ~ pattern
+    const res = await PATCH(
+      patchRequest({ action: "clear_rate_limits", userId: 5 }),
+    );
+    expect(res.status).toBe(200);
+    const lockDelete = mockQuery.mock.calls.find(
+      (c) =>
+        String(c[0]).includes("DELETE FROM rate_limits WHERE key = $1") &&
+        Array.isArray(c[1]) &&
+        c[1][0] === loginLockKey("locked@example.com"),
+    );
+    expect(lockDelete).toBeDefined();
   });
 
   // The bare DELETE this replaced orphaned host_reputation (ON DELETE SET

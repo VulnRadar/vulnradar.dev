@@ -25,7 +25,12 @@ import { analyzePassword } from "@/lib/auth/password-strength";
 import { startImpersonation } from "@/lib/auth/impersonation";
 import { revokeStoredGithubToken } from "@/lib/github/github-connections";
 import { revokeStoredDiscordTokens } from "@/lib/discord/revoke";
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import {
+  checkRateLimit,
+  RATE_LIMITS,
+  resetRateLimit,
+} from "@/lib/rate-limiting/rate-limit";
+import { loginLockKey } from "@/lib/auth/login-lock";
 import { refundRateLimitAttempt } from "@/lib/rate-limiting/refund-attempt";
 import {
   syncPlanForRoleChange,
@@ -1542,6 +1547,12 @@ export const PATCH = withErrorHandling(async (request: NextRequest) => {
       // whether the anchoring holds is decided by Postgres, and a mocked pool
       // answers a weakened pattern exactly as it answers this one.
       const cleared = await clearUserRateLimitBuckets(userId);
+      // The sign-in lock is keyed on the address, not the account, so the
+      // pattern above never reaches it: without this an admin clearing a
+      // locked customer's limits left them locked out. The per-device
+      // login-device keys stay; they expire in 15 minutes and only gate an
+      // address that is already locked.
+      await resetRateLimit(loginLockKey(targetUser.email));
       await logAction(
         session.userId,
         userId,
