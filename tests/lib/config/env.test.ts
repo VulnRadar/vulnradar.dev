@@ -305,6 +305,24 @@ describe("DATABASE_SSL is strictly true or false", () => {
   });
 });
 
+describe("DATABASE_SSL_REQUIRED is strictly true or false", () => {
+  it.each([
+    ["true", true],
+    ["false", false],
+  ])("turns %s into a boolean", async (value, parsed) => {
+    const env = await validate({ ...REQUIRED, DATABASE_SSL_REQUIRED: value });
+    expect(env.DATABASE_SSL_REQUIRED).toBe(parsed);
+  });
+
+  // The boot check reads the literal "true", so these would otherwise only
+  // warn where the operator asked for a refusal.
+  it.each(["1", "yes", "TRUE"])("refuses %s", async (value) => {
+    await expect(
+      validate({ ...REQUIRED, DATABASE_SSL_REQUIRED: value }),
+    ).rejects.toThrow("DATABASE_SSL_REQUIRED");
+  });
+});
+
 describe("the validation cache", () => {
   async function freshValidator(env: Record<string, string>) {
     process.env = { ...env } as NodeJS.ProcessEnv;

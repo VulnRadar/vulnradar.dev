@@ -138,6 +138,9 @@ const OptionalSchema = z.object({
   // Database: strict bool so "1" / "yes" can't slip through and
   // leave production running without SSL.
   DATABASE_SSL: optional(BoolString),
+  // Read as the literal "true" by checkDatabaseTls, so a "1" or "TRUE" here
+  // would otherwise warn and boot instead of refusing.
+  DATABASE_SSL_REQUIRED: optional(BoolString),
 
   // Proxy / IP trust: must be a valid CIDR or a comma-separated list of
   // CIDRs. Used by lib/api/request-utils.ts to walk X-Forwarded-For
