@@ -465,12 +465,6 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
-        icon: KeyRound,
-        label: "Rotating the Encryption Key Keeps API Keys Working",
-        desc: "Following the documented encryption key rotation made every existing API key stop working. API keys are now stored as a one-way digest that does not depend on the encryption key, so rotating it, or removing the previous key afterwards, leaves every key working.",
-        category: "fixed",
-      },
-      {
         icon: Key,
         label: "Sign-In Failures Are Logged",
         desc: "When signing in with Google, GitHub or Discord fails at the provider, the error log now records which provider, which step, the HTTP status and the provider's error code, so a wrong client secret or redirect address is visible to admins. Codes, tokens and response bodies are never logged.",
@@ -1604,7 +1598,7 @@ const CHANGELOG: Release[] = [
       {
         icon: BookOpen,
         label: "Contributor Docs Match the Code",
-        desc: "The README now says exactly what a self-hosted instance contacts, builds the image from your checkout so your config edits take effect, and describes API key encryption and the required encryption key accurately. The architecture and developer pages lost directories that never existed, show the real request handling and Stripe event list, and gained steps for adding a docs page, translating, and the development-only switches.",
+        desc: "The README now says exactly what a self-hosted instance contacts, builds the image from your checkout so your config edits take effect, and describes how API keys are stored and the required encryption key accurately. The architecture and developer pages lost directories that never existed, show the real request handling and Stripe event list, and gained steps for adding a docs page, translating, and the development-only switches.",
         category: "improved",
       },
       {
@@ -4145,7 +4139,7 @@ const CHANGELOG: Release[] = [
       {
         icon: UserCog,
         label: "Staff Need Two-Step Sign-In to Update or Impersonate",
-        desc: "A staff account without two-step sign-in can no longer apply an update from the admin panel or sign in as a customer, even with Require 2FA for staff turned off: the server refuses both with a message that points to Profile, Security. Turn on an authenticator app for every staff account that does either before upgrading.",
+        desc: "A staff account without two-step sign-in can no longer apply an update from the admin panel or sign in as a customer, even with Require 2FA for staff turned off: the server refuses both with a message that points to Profile, Security. Before upgrading, make sure every staff account that does either has two-step sign-in: an authenticator app, or, on an account with a password, email codes. An account without a password needs an authenticator app.",
         category: "breaking",
       },
       {
@@ -4175,7 +4169,7 @@ const CHANGELOG: Release[] = [
       {
         icon: KeyRound,
         label: "API Keys Stored as a One-Way Digest",
-        desc: "API keys are now stored only as a SHA-256 digest, never as a copy that can be decrypted, and the first 4.0.0 start converts existing keys automatically. Keys keep working when the encryption key is rotated or the previous key is removed. Keys that stopped working in an earlier release stay refused.",
+        desc: "API keys are now stored only as a SHA-256 digest, never as a copy that can be decrypted, and the first 4.0.0 start converts existing keys automatically. Following the documented encryption key rotation used to make every existing API key stop working; the digest does not depend on that key, so rotating it, or removing the previous key afterwards, leaves every key working. Keys that stopped working in an earlier release stay refused.",
         category: "security",
       },
       {

@@ -102,8 +102,6 @@ The largest release since 3.0, and a pass over the whole product rather than one
   Hourly and every-6-hours scheduled scans could skip most of their runs each day depending on the hour they were created. They now run on every slot, and schedules that were parked too far ahead are pulled back to their next slot when the app starts.
 - [Globe] **[FIXED]** **A DNS Outage No Longer Revokes Verified Domains**
   A DNS timeout during the periodic domain re-check used to mark verified domains as needing verification again and switch off active scanning for them. A lookup that gets no answer now leaves the domain alone and is retried later. When a domain really loses its verification record, its owner now gets a notification.
-- [KeyRound] **[FIXED]** **Rotating the Encryption Key Keeps API Keys Working**
-  Following the documented encryption key rotation made every existing API key stop working. API keys are now stored as a one-way digest that does not depend on the encryption key, so rotating it, or removing the previous key afterwards, leaves every key working.
 - [Key] **[IMPROVED]** **Sign-In Failures Are Logged**
   When signing in with Google, GitHub or Discord fails at the provider, the error log now records which provider, which step, the HTTP status and the provider's error code, so a wrong client secret or redirect address is visible to admins. Codes, tokens and response bodies are never logged.
 - [Search] **[ADDED]** **Trace an Error to Its Request or Scan**
@@ -481,7 +479,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Wrench] **[FIXED]** **Stripe Event List and Updater Message Corrected**
   The environment template now lists all nine Stripe webhook events the app needs (it listed five), and the docs no longer claim the list is re-checked on every boot. When the in-app updater is disabled in the Docker image, it now tells you to change the image tag before pulling.
 - [BookOpen] **[IMPROVED]** **Contributor Docs Match the Code**
-  The README now says exactly what a self-hosted instance contacts, builds the image from your checkout so your config edits take effect, and describes API key encryption and the required encryption key accurately. The architecture and developer pages lost directories that never existed, show the real request handling and Stripe event list, and gained steps for adding a docs page, translating, and the development-only switches.
+  The README now says exactly what a self-hosted instance contacts, builds the image from your checkout so your config edits take effect, and describes how API keys are stored and the required encryption key accurately. The architecture and developer pages lost directories that never existed, show the real request handling and Stripe event list, and gained steps for adding a docs page, translating, and the development-only switches.
 - [Shield] **[SECURITY]** **Security Policy Covers 4.0.x**
   The supported-versions table now lists 4.0.x as supported, and a test fails the build if a minor release ships without moving the table.
 - [Mail] **[FIXED]** **Staff Alert Emails Open the Support Inbox**
@@ -1325,7 +1323,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [ShieldAlert] **[SECURITY]** **Second Factor for Updates and Impersonation**
   Applying an update and starting an impersonation now need two-step sign-in on the staff account, whatever the Require 2FA for staff setting says. Authenticator codes are single-use and backup codes are not accepted. An account that signs in with email codes confirms with a fresh emailed code, and one without a password has to add an authenticator app.
 - [UserCog] **[BREAKING]** **Staff Need Two-Step Sign-In to Update or Impersonate**
-  A staff account without two-step sign-in can no longer apply an update from the admin panel or sign in as a customer, even with Require 2FA for staff turned off: the server refuses both with a message that points to Profile, Security. Turn on an authenticator app for every staff account that does either before upgrading.
+  A staff account without two-step sign-in can no longer apply an update from the admin panel or sign in as a customer, even with Require 2FA for staff turned off: the server refuses both with a message that points to Profile, Security. Before upgrading, make sure every staff account that does either has two-step sign-in: an authenticator app, or, on an account with a password, email codes. An account without a password needs an authenticator app.
 - [Fingerprint] **[ADMIN]** **Update and Impersonate Dialogs Ask for the Code**
   The update and impersonate confirmations now ask for the code from your authenticator app, or an emailed code if you sign in with email codes. If two-step sign-in is off, they say so and link to Profile, Security instead of failing after you submit.
 - [Users] **[ADMIN]** **Staff Without Two-Factor Are Named**
@@ -1335,7 +1333,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Database] **[BREAKING]** **Rolling Back Needs the Pre-Upgrade Backup**
   After upgrading to 4.0.0, the database no longer holds webhook addresses in plain text or API keys in a form 3.9.1 can check, so an older version running on that database sends no webhook deliveries and accepts no API key. To roll back, restore the backup taken before the upgrade. Upgrade every instance that shares a database at the same time: a key created by a 3.9.1 instance after the upgrade only starts working on the next 4.0.0 start.
 - [KeyRound] **[SECURITY]** **API Keys Stored as a One-Way Digest**
-  API keys are now stored only as a SHA-256 digest, never as a copy that can be decrypted, and the first 4.0.0 start converts existing keys automatically. Keys keep working when the encryption key is rotated or the previous key is removed. Keys that stopped working in an earlier release stay refused.
+  API keys are now stored only as a SHA-256 digest, never as a copy that can be decrypted, and the first 4.0.0 start converts existing keys automatically. Following the documented encryption key rotation used to make every existing API key stop working; the digest does not depend on that key, so rotating it, or removing the previous key afterwards, leaves every key working. Keys that stopped working in an earlier release stay refused.
 - [Network] **[SECURITY]** **IPv6 SIIT and Local NAT64 Targets Refused**
   The scanner's private-address check now refuses the SIIT IPv4-translated form (::ffff:0:a.b.c.d) and the whole local-use NAT64 range 64:ff9b:1::/48. Before, on a network with one of these translators, either could be used to reach loopback, private ranges or the cloud metadata service.
 - [ShieldCheck] **[SECURITY]** **Raw-Socket Probes Held to the Private-Address Guard**
@@ -3652,6 +3650,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1518
+- **Total changes documented:** 1517
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
