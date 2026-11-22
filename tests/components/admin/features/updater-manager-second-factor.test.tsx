@@ -90,7 +90,7 @@ describe("the apply-update dialog, by the account's second factor", () => {
   it("shows an account without two-factor the refusal and the way to turn it on, and no Apply", () => {
     me = { ...me, totpEnabled: false, twoFactorMethod: null };
     const html = dialog();
-    expect(html).toContain(SECOND_FACTOR_MESSAGES.none.replace(">", "&gt;"));
+    expect(html).toContain(SECOND_FACTOR_MESSAGES.none.replaceAll(">", "&gt;"));
     expect(html).toContain('href="/profile?tab=security"');
     expect(html).not.toMatch(PASSWORD_INPUT);
     expect(html).not.toContain(TOTP_LABEL);
