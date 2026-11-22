@@ -411,18 +411,17 @@ explicit way past it, for when you already hold a backup of your
 own.
 
 > **WARNING: Keep the old key longer than you expect**
-> There is no command that re-encrypts everything. API keys move to
-the new key the first time each one is used after the rotation, so
-remove PREVIOUS_API_KEY_ENCRYPTION_KEY
-only after every API key in use has been presented at least once.
-The rest move only when something rewrites them: a user
-re-enrolling two-factor, reconnecting Discord or GitHub, saving
-their AI key again, or rotating a webhook secret. Until then those
-rows are readable only through the old key, and dropping it makes
-each one undecryptable: an unused API key answers 401, a
-two-factor seed locks its owner out (see Locked out of your own
-instance under Troubleshooting), and a webhook is delivered
-unsigned. A backup taken before the rotation needs the old key to
+> There is no command that re-encrypts everything. Values move to
+the new key only when something rewrites them: a user re-enrolling
+two-factor, reconnecting Discord or GitHub, saving their AI key
+again, rotating a webhook secret, or saving a webhook&rsquo;s URL
+again. Until then those rows are readable only through the old
+key, and dropping it makes each one undecryptable: a two-factor
+seed locks its owner out (see Locked out of your own instance
+under Troubleshooting), a webhook whose secret is still under the
+old key is delivered unsigned, and a webhook whose address is
+still under the old key sends nothing until its owner enters the
+URL again. A backup taken before the rotation needs the old key to
 restore: set it as BACKUP_ENCRYPTION_KEY
 for that restore. Keep the old key until every backup that needs
 it has been retired.

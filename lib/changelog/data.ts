@@ -467,7 +467,7 @@ const CHANGELOG: Release[] = [
       {
         icon: KeyRound,
         label: "Rotating the Encryption Key Keeps API Keys Working",
-        desc: "Following the documented encryption key rotation made every existing API key stop working. Keys are now found under the previous key and moved to the new one the first time they are used. Keep the previous key set until every key in use has been used once.",
+        desc: "Following the documented encryption key rotation made every existing API key stop working. API keys are now stored as a one-way digest that does not depend on the encryption key, so rotating it, or removing the previous key afterwards, leaves every key working.",
         category: "fixed",
       },
       {
@@ -4122,6 +4122,84 @@ const CHANGELOG: Release[] = [
         label:
           "Releases Are Checked Before They Ship, and the Image Verify Command Works",
         desc: "The command in our security policy for verifying a release's Docker image failed on every release that includes the ARM64 build, because it looked for the wrong signer. It now names the signer correctly, and our release process runs the same command right after signing, so a signature that would not verify stops the release. A release is also built only from a commit whose tests passed, and each package's version is checked against what was already published before it can ship. The command-line tool is now tested on Windows, macOS and Linux, on the oldest and newest Node versions it supports, and installed from the packed download the way you install it. The GitHub Action that gates your pipeline on scan findings now stops waiting after a set time on every request, keeps your API key out of its log and out of the command line, and warns if the API address you give it is not encrypted.",
+        category: "security",
+      },
+      {
+        icon: KeyRound,
+        label: "Locked Sign-Ins Let the Owner Back In",
+        desc: "If repeated failed sign-ins lock your address, the right password from a browser you previously chose to trust still signs you in, with only a few tries while the lock lasts, and a password reset clears the lock so the new password works from any device. Every other attempt still waits out the lock and gets the same refusal as before.",
+        category: "security",
+      },
+      {
+        icon: Mail,
+        label: "Emailed Codes Stored as a Keyed Digest",
+        desc: "Emailed sign-in, step-up and billing codes are now stored under a server secret, so a copy of the database no longer gives away a live code. A code requested just before the update stops working; request a new one.",
+        category: "security",
+      },
+      {
+        icon: ShieldAlert,
+        label: "Second Factor for Updates and Impersonation",
+        desc: "Applying an update and starting an impersonation now need two-step sign-in on the staff account, whatever the Require 2FA for staff setting says. Authenticator codes are single-use and backup codes are not accepted. An account that signs in with email codes confirms with a fresh emailed code, and one without a password has to add an authenticator app.",
+        category: "security",
+      },
+      {
+        icon: UserCog,
+        label: "Staff Need Two-Step Sign-In to Update or Impersonate",
+        desc: "A staff account without two-step sign-in can no longer apply an update from the admin panel or sign in as a customer, even with Require 2FA for staff turned off: the server refuses both with a message that points to Profile, Security. Turn on an authenticator app for every staff account that does either before upgrading.",
+        category: "breaking",
+      },
+      {
+        icon: Fingerprint,
+        label: "Update and Impersonate Dialogs Ask for the Code",
+        desc: "The update and impersonate confirmations now ask for the code from your authenticator app, or an emailed code if you sign in with email codes. If two-step sign-in is off, they say so and link to Profile, Security instead of failing after you submit.",
+        category: "admin",
+      },
+      {
+        icon: Users,
+        label: "Staff Without Two-Factor Are Named",
+        desc: "While Require 2FA for staff is off, the staff directory names each staff account that signs in with a password alone and links to the setting.",
+        category: "admin",
+      },
+      {
+        icon: Webhook,
+        label: "Webhook Addresses Encrypted at Rest",
+        desc: "A Discord or Slack webhook address works like a password for posting into your channel, and it used to be stored as plain text beside its encrypted signing secret. Webhook addresses are now encrypted the same way, existing webhooks are moved on the first start after upgrading, and only the service's host is kept readable for display. If an address can no longer be read, its owner is asked to enter it again.",
+        category: "security",
+      },
+      {
+        icon: Database,
+        label: "Rolling Back Needs the Pre-Upgrade Backup",
+        desc: "After upgrading to 4.0.0, the database no longer holds webhook addresses in plain text or API keys in a form 3.9.1 can check, so an older version running on that database sends no webhook deliveries and accepts no API key. To roll back, restore the backup taken before the upgrade. Upgrade every instance that shares a database at the same time: a key created by a 3.9.1 instance after the upgrade only starts working on the next 4.0.0 start.",
+        category: "breaking",
+      },
+      {
+        icon: KeyRound,
+        label: "API Keys Stored as a One-Way Digest",
+        desc: "API keys are now stored only as a SHA-256 digest, never as a copy that can be decrypted, and the first 4.0.0 start converts existing keys automatically. Keys keep working when the encryption key is rotated or the previous key is removed. Keys that stopped working in an earlier release stay refused.",
+        category: "security",
+      },
+      {
+        icon: Network,
+        label: "IPv6 SIIT and Local NAT64 Targets Refused",
+        desc: "The scanner's private-address check now refuses the SIIT IPv4-translated form (::ffff:0:a.b.c.d) and the whole local-use NAT64 range 64:ff9b:1::/48. Before, on a network with one of these translators, either could be used to reach loopback, private ranges or the cloud metadata service.",
+        category: "security",
+      },
+      {
+        icon: ShieldCheck,
+        label: "Raw-Socket Probes Held to the Private-Address Guard",
+        desc: "The zone-transfer probe is now tested to never connect to a name server with a private or internal address. A repository check also fails the build if any code opens a raw TCP or TLS connection without first checking that the address is public.",
+        category: "security",
+      },
+      {
+        icon: Server,
+        label: "Chunked API Uploads Are Capped",
+        desc: "An API request sent in chunks with no declared length is now refused with a 413 once it passes 1 MiB, the same limit and error a declared length already got. Before, a route that read its own body kept reading whatever the client sent, including on the unsubscribe link endpoint, which needs no sign-in. This applies to installs started with npm start and to the Docker image.",
+        category: "security",
+      },
+      {
+        icon: Lock,
+        label: "Warning When the Database Connection Is Unencrypted",
+        desc: "A production install that reaches a remote PostgreSQL server without TLS now logs a warning at startup and shows it on the admin System Health overview. Setting DATABASE_SSL_REQUIRED=true makes the app refuse to start in that state instead. The database commands, such as db:migrate and db:backup, do not check it yet.",
         category: "security",
       },
     ],

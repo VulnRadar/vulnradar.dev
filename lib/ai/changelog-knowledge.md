@@ -103,7 +103,7 @@ The largest release since 3.0, and a pass over the whole product rather than one
 - [Globe] **[FIXED]** **A DNS Outage No Longer Revokes Verified Domains**
   A DNS timeout during the periodic domain re-check used to mark verified domains as needing verification again and switch off active scanning for them. A lookup that gets no answer now leaves the domain alone and is retried later. When a domain really loses its verification record, its owner now gets a notification.
 - [KeyRound] **[FIXED]** **Rotating the Encryption Key Keeps API Keys Working**
-  Following the documented encryption key rotation made every existing API key stop working. Keys are now found under the previous key and moved to the new one the first time they are used. Keep the previous key set until every key in use has been used once.
+  Following the documented encryption key rotation made every existing API key stop working. API keys are now stored as a one-way digest that does not depend on the encryption key, so rotating it, or removing the previous key afterwards, leaves every key working.
 - [Key] **[IMPROVED]** **Sign-In Failures Are Logged**
   When signing in with Google, GitHub or Discord fails at the provider, the error log now records which provider, which step, the HTTP status and the provider's error code, so a wrong client secret or redirect address is visible to admins. Codes, tokens and response bodies are never logged.
 - [Search] **[ADDED]** **Trace an Error to Its Request or Scan**
@@ -1318,6 +1318,32 @@ The largest release since 3.0, and a pass over the whole product rather than one
   VulnRadar now runs on Next.js 16, and every package it depends on directly is on its newest release. The packages those pull in are on the newest version they accept. The one exception is TypeScript, which stays on 6 until the lint tooling can read 7. npm audit reports nothing at any severity, in the app and in the browser extension. If you build from source, builds now use Turbopack, Next.js's own compiler, which needs a platform Next.js ships a native build for: Linux on x64 or arm64, macOS, or Windows. Anywhere else the build stops with an error that names the --webpack flag. Running the Docker images works as before, and Node 22 is still the version to use.
 - [ShieldCheck] **[SECURITY]** **Releases Are Checked Before They Ship, and the Image Verify Command Works**
   The command in our security policy for verifying a release's Docker image failed on every release that includes the ARM64 build, because it looked for the wrong signer. It now names the signer correctly, and our release process runs the same command right after signing, so a signature that would not verify stops the release. A release is also built only from a commit whose tests passed, and each package's version is checked against what was already published before it can ship. The command-line tool is now tested on Windows, macOS and Linux, on the oldest and newest Node versions it supports, and installed from the packed download the way you install it. The GitHub Action that gates your pipeline on scan findings now stops waiting after a set time on every request, keeps your API key out of its log and out of the command line, and warns if the API address you give it is not encrypted.
+- [KeyRound] **[SECURITY]** **Locked Sign-Ins Let the Owner Back In**
+  If repeated failed sign-ins lock your address, the right password from a browser you previously chose to trust still signs you in, with only a few tries while the lock lasts, and a password reset clears the lock so the new password works from any device. Every other attempt still waits out the lock and gets the same refusal as before.
+- [Mail] **[SECURITY]** **Emailed Codes Stored as a Keyed Digest**
+  Emailed sign-in, step-up and billing codes are now stored under a server secret, so a copy of the database no longer gives away a live code. A code requested just before the update stops working; request a new one.
+- [ShieldAlert] **[SECURITY]** **Second Factor for Updates and Impersonation**
+  Applying an update and starting an impersonation now need two-step sign-in on the staff account, whatever the Require 2FA for staff setting says. Authenticator codes are single-use and backup codes are not accepted. An account that signs in with email codes confirms with a fresh emailed code, and one without a password has to add an authenticator app.
+- [UserCog] **[BREAKING]** **Staff Need Two-Step Sign-In to Update or Impersonate**
+  A staff account without two-step sign-in can no longer apply an update from the admin panel or sign in as a customer, even with Require 2FA for staff turned off: the server refuses both with a message that points to Profile, Security. Turn on an authenticator app for every staff account that does either before upgrading.
+- [Fingerprint] **[ADMIN]** **Update and Impersonate Dialogs Ask for the Code**
+  The update and impersonate confirmations now ask for the code from your authenticator app, or an emailed code if you sign in with email codes. If two-step sign-in is off, they say so and link to Profile, Security instead of failing after you submit.
+- [Users] **[ADMIN]** **Staff Without Two-Factor Are Named**
+  While Require 2FA for staff is off, the staff directory names each staff account that signs in with a password alone and links to the setting.
+- [Webhook] **[SECURITY]** **Webhook Addresses Encrypted at Rest**
+  A Discord or Slack webhook address works like a password for posting into your channel, and it used to be stored as plain text beside its encrypted signing secret. Webhook addresses are now encrypted the same way, existing webhooks are moved on the first start after upgrading, and only the service's host is kept readable for display. If an address can no longer be read, its owner is asked to enter it again.
+- [Database] **[BREAKING]** **Rolling Back Needs the Pre-Upgrade Backup**
+  After upgrading to 4.0.0, the database no longer holds webhook addresses in plain text or API keys in a form 3.9.1 can check, so an older version running on that database sends no webhook deliveries and accepts no API key. To roll back, restore the backup taken before the upgrade. Upgrade every instance that shares a database at the same time: a key created by a 3.9.1 instance after the upgrade only starts working on the next 4.0.0 start.
+- [KeyRound] **[SECURITY]** **API Keys Stored as a One-Way Digest**
+  API keys are now stored only as a SHA-256 digest, never as a copy that can be decrypted, and the first 4.0.0 start converts existing keys automatically. Keys keep working when the encryption key is rotated or the previous key is removed. Keys that stopped working in an earlier release stay refused.
+- [Network] **[SECURITY]** **IPv6 SIIT and Local NAT64 Targets Refused**
+  The scanner's private-address check now refuses the SIIT IPv4-translated form (::ffff:0:a.b.c.d) and the whole local-use NAT64 range 64:ff9b:1::/48. Before, on a network with one of these translators, either could be used to reach loopback, private ranges or the cloud metadata service.
+- [ShieldCheck] **[SECURITY]** **Raw-Socket Probes Held to the Private-Address Guard**
+  The zone-transfer probe is now tested to never connect to a name server with a private or internal address. A repository check also fails the build if any code opens a raw TCP or TLS connection without first checking that the address is public.
+- [Server] **[SECURITY]** **Chunked API Uploads Are Capped**
+  An API request sent in chunks with no declared length is now refused with a 413 once it passes 1 MiB, the same limit and error a declared length already got. Before, a route that read its own body kept reading whatever the client sent, including on the unsubscribe link endpoint, which needs no sign-in. This applies to installs started with npm start and to the Docker image.
+- [Lock] **[SECURITY]** **Warning When the Database Connection Is Unencrypted**
+  A production install that reaches a remote PostgreSQL server without TLS now logs a warning at startup and shows it on the admin System Health overview. Setting DATABASE_SSL_REQUIRED=true makes the app refuse to start in that state instead. The database commands, such as db:migrate and db:backup, do not check it yet.
 
 ---
 
@@ -3626,6 +3652,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1505
+- **Total changes documented:** 1518
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
