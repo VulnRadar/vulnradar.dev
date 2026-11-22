@@ -134,7 +134,7 @@ describe("README.md", () => {
     expect(readme).not.toMatch(/HMAC locator/);
     expect(readme).not.toMatch(/bcrypt for API key/i);
 
-    expect(read("lib/api/api-key-digest.ts")).toMatch(/createHash\("sha256"/);
+    expect(read("lib/api/api-key-digest.ts")).toMatch(/hash\("sha256"/);
     expect(read("lib/api/api-keys.ts")).not.toMatch(/decryptApiKey\(/);
   });
 

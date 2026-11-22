@@ -1,5 +1,5 @@
 import { it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createHash, createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, hash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import pool from "@/lib/database/db";
 import {
@@ -47,9 +47,7 @@ function setKeys(current: string, previous?: string) {
 
 /** What key_hash holds from 4.0.0 on (lib/api/api-key-digest.ts). */
 function digest(raw: string): string {
-  return createHash("sha256")
-    .update("vulnradar-api-key-digest:" + raw, "utf8")
-    .digest("hex");
+  return hash("sha256", "vulnradar-api-key-digest:" + raw, "hex");
 }
 
 function newRawKey(): string {

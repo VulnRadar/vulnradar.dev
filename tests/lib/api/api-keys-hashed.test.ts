@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createHash, createHmac } from "node:crypto";
+import { createHash, createHmac, hash } from "node:crypto";
 import bcrypt from "bcryptjs";
 
 /**
@@ -214,9 +214,7 @@ const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
  * a change to the stored form (which invalidates every key) fails this suite.
  */
 function storedDigest(raw: string): string {
-  return createHash("sha256")
-    .update("vulnradar-api-key-digest:" + raw, "utf8")
-    .digest("hex");
+  return hash("sha256", "vulnradar-api-key-digest:" + raw, "hex");
 }
 
 /** What releases before 2.2.0 stored in key_hash: the key's bare SHA-256. */

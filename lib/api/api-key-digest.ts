@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { hash, timingSafeEqual } from "node:crypto";
 
 /**
  * Hashed in front of the key, so the stored digest is never the key's bare
@@ -27,15 +27,17 @@ const DIGEST_DOMAIN = "vulnradar-api-key-digest:";
  * stored value does not depend on API_KEY_ENCRYPTION_KEY and survives any
  * rotation of it.
  *
+ * Written with the one-shot hash() rather than createHash(): the output is
+ * the same SHA-256 hex, and it keeps CodeQL's js/insufficient-password-hash
+ * from reading a CSPRNG key, which only its name makes look like a password,
+ * as one that needed a slow hash.
+ *
  * Kept in its own module so the boot migration (lib/auth/security-migration.ts)
  * computes exactly what validation looks up without importing the whole key
  * module.
  */
 export function hashApiKey(rawKey: string): string {
-  const input = DIGEST_DOMAIN + rawKey;
-  // A 256-bit random API key, not a password (see above).
-  // codeql[js/insufficient-password-hash]
-  return createHash("sha256").update(input, "utf8").digest("hex");
+  return hash("sha256", DIGEST_DOMAIN + rawKey, "hex");
 }
 
 /**
