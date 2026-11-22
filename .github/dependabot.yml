@@ -8,6 +8,12 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "America/Chicago"
+    # The three-day rule: a version update waits three days after its release
+    # before Dependabot proposes it, so a hijacked release that the registry pulls
+    # within hours never reaches a pull request. Security updates are not held:
+    # GitHub applies cooldown to version updates only.
+    cooldown:
+      default-days: 3
     open-pull-requests-limit: 10
     labels:
       - "dependabot"
@@ -148,6 +154,8 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "America/Chicago"
+    cooldown:
+      default-days: 3
     open-pull-requests-limit: 5
     labels:
       - "dependabot"
@@ -185,6 +193,8 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "America/Chicago"
+    cooldown:
+      default-days: 3
     open-pull-requests-limit: 2
     labels:
       - "dependabot"
@@ -236,6 +246,8 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "America/Chicago"
+    cooldown:
+      default-days: 3
     labels:
       - "dependabot"
       - "docker"
@@ -254,6 +266,8 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "America/Chicago"
+    cooldown:
+      default-days: 3
     labels:
       - "dependabot"
       - "docker"
@@ -272,6 +286,8 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "America/Chicago"
+    cooldown:
+      default-days: 3
     labels:
       - "dependabot"
       - "github-actions"
