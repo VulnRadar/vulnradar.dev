@@ -1326,6 +1326,8 @@ The largest release since 3.0, and a pass over the whole product rather than one
   A staff account without two-step sign-in can no longer apply an update from the admin panel or sign in as a customer, even with Require 2FA for staff turned off: the server refuses both with a message that points to Profile, Security. Before upgrading, make sure every staff account that does either has two-step sign-in: an authenticator app, or, on an account with a password, email codes. An account without a password needs an authenticator app.
 - [Fingerprint] **[ADMIN]** **Update and Impersonate Dialogs Ask for the Code**
   The update and impersonate confirmations now ask for the code from your authenticator app, or an emailed code if you sign in with email codes. If two-step sign-in is off, they say so and link to Profile, Security instead of failing after you submit.
+- [UserCog] **[FIXED]** **Clear Rate Limits Also Unlocks Sign-In**
+  Clearing a user's rate limits from the admin panel now also lifts the sign-in lock on their address. Before, it cleared every per-account counter but left the failed-password lock in place, so a locked customer stayed locked out.
 - [Users] **[ADMIN]** **Staff Without Two-Factor Are Named**
   While Require 2FA for staff is off, the staff directory names each staff account that signs in with a password alone and links to the setting.
 - [Webhook] **[SECURITY]** **Webhook Addresses Encrypted at Rest**
@@ -3650,6 +3652,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 1517
+- **Total changes documented:** 1518
 - **Latest:** v4.0.0 (Unreleased) - The Things That Were Written Down Twice
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

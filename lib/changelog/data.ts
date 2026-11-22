@@ -4149,6 +4149,12 @@ const CHANGELOG: Release[] = [
         category: "admin",
       },
       {
+        icon: UserCog,
+        label: "Clear Rate Limits Also Unlocks Sign-In",
+        desc: "Clearing a user's rate limits from the admin panel now also lifts the sign-in lock on their address. Before, it cleared every per-account counter but left the failed-password lock in place, so a locked customer stayed locked out.",
+        category: "fixed",
+      },
+      {
         icon: Users,
         label: "Staff Without Two-Factor Are Named",
         desc: "While Require 2FA for staff is off, the staff directory names each staff account that signs in with a password alone and links to the setting.",
