@@ -146,6 +146,79 @@ describe("the dialog opens on the saved webhook", () => {
   });
 });
 
+describe("a creator whose stored address no longer opens", () => {
+  const UNREADABLE: WebhookItem = { ...WEBHOOK, url: null };
+
+  it("still gets an empty URL field, with the reason, so the address can be saved again", () => {
+    const html = render(
+      <WebhookEditDialog
+        webhook={UNREADABLE}
+        canEditUrl
+        onSave={async () => null}
+        onClose={() => {}}
+      />,
+    );
+    expect(html).toContain('id="edit-webhook-url"');
+    expect(html).toContain('value=""');
+    expect(html).toContain("The saved address can no longer be read");
+    expect(html).not.toContain("Only the person who created this webhook");
+    expect(last().dirty).toBe(false);
+    expect(last().canSave).toBe(false);
+  });
+
+  it("saves a rename alone without sending an empty url", async () => {
+    const onSave = vi.fn(async () => null);
+    const dialog = (
+      <WebhookEditDialog
+        webhook={UNREADABLE}
+        canEditUrl
+        onSave={onSave}
+        onClose={() => {}}
+      />
+    );
+    render(dialog);
+    slots[0] = "Renamed";
+    render(dialog);
+    expect(last().canSave).toBe(true);
+    await last().onSave();
+    expect(onSave).toHaveBeenCalledExactlyOnceWith(12, { name: "Renamed" });
+  });
+
+  it("sends the re-entered address", async () => {
+    const onSave = vi.fn(async () => null);
+    const dialog = (
+      <WebhookEditDialog
+        webhook={UNREADABLE}
+        canEditUrl
+        onSave={onSave}
+        onClose={() => {}}
+      />
+    );
+    render(dialog);
+    slots[1] = "https://discord.com/api/webhooks/1/abc";
+    render(dialog);
+    expect(last().canSave).toBe(true);
+    await last().onSave();
+    expect(onSave).toHaveBeenCalledExactlyOnceWith(12, {
+      name: "Discord Alerts",
+      url: "https://discord.com/api/webhooks/1/abc",
+    });
+  });
+
+  it("still keeps a teammate away from the address", () => {
+    const html = render(
+      <WebhookEditDialog
+        webhook={UNREADABLE}
+        canEditUrl={false}
+        onSave={async () => null}
+        onClose={() => {}}
+      />,
+    );
+    expect(html).not.toContain('id="edit-webhook-url"');
+    expect(html).toContain("Only the person who created this webhook");
+  });
+});
+
 describe("webhookEditState", () => {
   const saved = { name: "Discord Alerts", url: WEBHOOK.url as string };
 

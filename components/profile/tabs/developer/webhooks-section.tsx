@@ -651,8 +651,11 @@ export function webhookEditState(
  * refetch of the list cannot overwrite what is half typed.
  *
  * Without `canEditUrl` the draft has no url key at all, because PATCH refuses
- * a teammate who sends one even unchanged. A null URL never seeds the field:
- * the draft would be empty and "unchanged" would read as an edit.
+ * a teammate who sends one even unchanged. The creator sees a null URL when
+ * the stored address no longer opens under the server's key, and saving the
+ * address again is the only way to recover it, so the field is still offered,
+ * empty. An empty field over a null URL sends no url key, so a rename alone
+ * still saves.
  */
 export function WebhookEditDialog({
   webhook,
@@ -670,8 +673,10 @@ export function WebhookEditDialog({
 }) {
   const [name, setName] = useState(webhook.name);
   const [url, setUrl] = useState(webhook.url ?? "");
-  const showUrl = canEditUrl && webhook.url !== null;
-  const urlDraft = showUrl ? { url: url.trim() } : {};
+  const showUrl = canEditUrl;
+  const unreadable = webhook.url === null;
+  const urlDraft =
+    showUrl && !(unreadable && url.trim() === "") ? { url: url.trim() } : {};
   const { dirty, canSave } = webhookEditState(webhook, { name, ...urlDraft });
 
   return (
@@ -715,7 +720,9 @@ export function WebhookEditDialog({
               id="edit-webhook-url-hint"
               className="text-xs text-muted-foreground"
             >
-              Discord and Slack URLs are detected from the address.
+              {unreadable
+                ? "The saved address can no longer be read, so nothing is delivered. Enter it again to start deliveries."
+                : "Discord and Slack URLs are detected from the address."}
             </p>
           </div>
         ) : (

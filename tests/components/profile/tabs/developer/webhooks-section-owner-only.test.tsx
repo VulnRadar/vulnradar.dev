@@ -143,11 +143,29 @@ describe("a co-member with write access", () => {
 });
 
 describe("the redacted URL never reaches the field", () => {
-  it("draws no URL field for a null URL, even if the caller asks for one", () => {
+  // canEditUrl is only true for the creator, whose list response carries the
+  // opened URL; a null there means the stored address no longer opens, and
+  // the creator has to be able to type it again. The field still starts
+  // empty, so neither the host nor anything else stands in for the address.
+  it("seeds no value from a null URL, even when the caller may edit it", () => {
     const html = renderToStaticMarkup(
       <WebhookEditDialog
         webhook={REDACTED}
         canEditUrl
+        onSave={async () => null}
+        onClose={() => {}}
+      />,
+    );
+    expect(html).toContain('id="edit-webhook-url"');
+    expect(html).toMatch(/id="edit-webhook-url"[^>]*value=""/);
+    expect(html).not.toContain('value="discord.com"');
+  });
+
+  it("draws no URL field for a null URL when the caller may not edit it", () => {
+    const html = renderToStaticMarkup(
+      <WebhookEditDialog
+        webhook={REDACTED}
+        canEditUrl={false}
         onSave={async () => null}
         onClose={() => {}}
       />,
