@@ -3,6 +3,7 @@ import pool from "@/lib/database/db";
 import { ApiResponse } from "@/lib/api/api-utils";
 import { decryptApiKey } from "@/lib/auth/crypto";
 import { verifyTOTPWithCounter } from "@/lib/auth/totp";
+import { consumeTotpStep } from "@/lib/auth/totp-step";
 import { verifyReauthAgainstHash } from "@/lib/auth/reauth";
 import { isEmailConfigured } from "@/lib/email/email";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
@@ -64,44 +65,6 @@ function refuse(
   error: string,
 ): StaffSecondFactorResult {
   return { ok: false, secondFactor, error };
-}
-
-/**
- * Spend one TOTP time step for this account: true when `counter` is past the
- * last one used, which is then recorded; false for a replay. Locked, so two
- * requests with the same code cannot both pass. The same rule
- * POST /auth/2fa/verify applies at sign-in, on the same column, so a code
- * used there cannot be used again here and the reverse.
- */
-export async function consumeTotpStep(
-  userId: number,
-  counter: number,
-): Promise<boolean> {
-  const step = BigInt(counter);
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const res = await client.query(
-      "SELECT totp_last_counter FROM users WHERE id = $1 FOR UPDATE",
-      [userId],
-    );
-    const last = res.rows[0]?.totp_last_counter;
-    if (last !== null && last !== undefined && BigInt(last) >= step) {
-      await client.query("ROLLBACK");
-      return false;
-    }
-    await client.query(
-      "UPDATE users SET totp_last_counter = $1 WHERE id = $2",
-      [String(step), userId],
-    );
-    await client.query("COMMIT");
-    return true;
-  } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
-    throw err;
-  } finally {
-    client.release();
-  }
 }
 
 async function verifyTotp(

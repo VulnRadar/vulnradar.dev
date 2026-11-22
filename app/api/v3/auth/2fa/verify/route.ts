@@ -3,6 +3,7 @@ import { createSession, getSession, verifyPassword } from "@/lib/auth";
 import { decryptApiKey } from "@/lib/auth/crypto";
 import { verifyTOTPWithCounter } from "@/lib/auth/totp";
 import pool from "@/lib/database/db";
+import { consumeTotpStep } from "@/lib/auth/totp-step";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { newLoginEmail } from "@/lib/email/email";
 import {
@@ -255,43 +256,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
       if (verified) {
         // TOTP replay prevention: each 30-second time-step may only be used
-        // once per account. Lock the row, compare against the stored counter,
-        // and advance it atomically so two concurrent requests with the same
-        // code can't both pass (AUDIT-004#auth-01). Key the guard on the
-        // step the code actually matched, not the current wall-clock step:
-        // a code is valid for +/- window steps, so using the wall-clock step
-        // would let the same code be replayed once per step it stays valid.
-        const stepCounter = BigInt(totpResult.counter as number);
-        const stepClient = await pool.connect();
-        let replayDetected = false;
-        try {
-          await stepClient.query("BEGIN");
-          const cRow = await stepClient.query(
-            "SELECT totp_last_counter FROM users WHERE id = $1 FOR UPDATE",
-            [effectiveUserId],
-          );
-          const last = cRow.rows[0]?.totp_last_counter;
-          if (
-            last !== null &&
-            last !== undefined &&
-            BigInt(last) >= stepCounter
-          ) {
-            replayDetected = true;
-            await stepClient.query("ROLLBACK");
-          } else {
-            await stepClient.query(
-              "UPDATE users SET totp_last_counter = $1 WHERE id = $2",
-              [String(stepCounter), effectiveUserId],
-            );
-            await stepClient.query("COMMIT");
-          }
-        } catch (e) {
-          await stepClient.query("ROLLBACK").catch(() => {});
-          throw e;
-        } finally {
-          stepClient.release();
-        }
-        if (replayDetected) {
+        // once per account, shared with the staff second factor
+        // (lib/auth/totp-step.ts) so a code spent in one place is refused in
+        // the other (AUDIT-004#auth-01).
+        const fresh = await consumeTotpStep(
+          effectiveUserId,
+          totpResult.counter as number,
+        );
+        if (!fresh) {
           return ApiResponse.badRequest(
             "Code already used. Wait for the next 30-second window.",
           );
