@@ -2526,7 +2526,11 @@ export const downgrade = {
     "webhooks.url once it has encrypted the address, so each webhook saved " +
     "or backfilled since the upgrade is left with no URL and delivers " +
     "nothing until it is edited; restore the pre-upgrade backup to keep " +
-    "them. Re-adds the five unused v2.0.0 " +
+    "them. Also makes EVERY API key stop working on an older release: " +
+    "4.0.0 stores keys only as a one-way digest and clears " +
+    "api_keys.key_encrypted and key_locator at boot, so no older binary can " +
+    "validate any key; restore the pre-upgrade backup to keep them. " +
+    "Re-adds the five unused v2.0.0 " +
     "columns the upgrade dropped (AUDIT-011 drift-17), empty, so the " +
     "result is a true v2.0.0 shape.",
 
