@@ -12,6 +12,8 @@
  * (see _hook-harness.ts) and their handlers are driven directly.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 
 vi.mock("react", async (importOriginal) => {
   const { mockReact } = await import("./_hook-harness");
@@ -73,7 +75,11 @@ function detail() {
   };
 }
 
-function setup(result: { ok: boolean; error?: string } = { ok: true }) {
+function setup(
+  result: { ok: boolean; error?: string; secondFactor?: unknown } = {
+    ok: true,
+  },
+) {
   const onAction = vi.fn(async () => result);
   const props = {
     detail: detail(),
@@ -174,6 +180,34 @@ describe("the impersonate confirmation", () => {
     expect(find(render(), ofType(StaffSecondFactorDialog)).props.open).toBe(
       true,
     );
+  });
+
+  it("passes the factor a 403 names through to the dialog", async () => {
+    const { render } = setup({
+      ok: false,
+      error: SECOND_FACTOR_MESSAGES.totpWrong,
+      secondFactor: "email",
+    });
+    queueImpersonate(render);
+    const factor = find(render(), ofType(StaffSecondFactorDialog))
+      .props as unknown as DialogProps;
+    expect(
+      await factor.onConfirm({ password: "hunter2", totpCode: undefined }),
+    ).toMatchObject({ ok: false, secondFactor: "email" });
+  });
+});
+
+describe("admin page: a refused action keeps the factor the server named", () => {
+  const ADMIN_PAGE = fs.readFileSync(
+    path.resolve(__dirname, "../../../../app/admin/page.tsx"),
+    "utf8",
+  );
+
+  it("copies secondFactor from the response into handleAction's result", () => {
+    const start = ADMIN_PAGE.indexOf("async function handleAction(");
+    expect(start).toBeGreaterThan(-1);
+    const body = ADMIN_PAGE.slice(start, start + 4000);
+    expect(body).toMatch(/secondFactor:\s*data\.secondFactor/);
   });
 });
 

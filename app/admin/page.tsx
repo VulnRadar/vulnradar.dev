@@ -1030,12 +1030,14 @@ function AdminContent() {
     ok: boolean;
     error?: string;
     change?: { field: string; oldValue: string; newValue: string };
+    secondFactor?: unknown;
   }> {
     setActionLoading(`${userId}-${action}`);
     let result: {
       ok: boolean;
       error?: string;
       change?: { field: string; oldValue: string; newValue: string };
+      secondFactor?: unknown;
     };
     try {
       const res = await fetch(API.ADMIN, {
@@ -1080,7 +1082,13 @@ function AdminContent() {
         result = { ok: true, change: data.change };
       } else {
         showToast(data.error || "Action failed.", "error");
-        result = { ok: false, error: data.error };
+        result = {
+          ok: false,
+          error: data.error,
+          ...(data.secondFactor !== undefined
+            ? { secondFactor: data.secondFactor }
+            : {}),
+        };
       }
     } catch {
       showToast("Action failed.", "error");

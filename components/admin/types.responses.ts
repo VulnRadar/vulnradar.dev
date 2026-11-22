@@ -126,6 +126,11 @@ export interface AdminActionResponse {
    * than one per field, so the shape has to survive a route change.
    */
   change?: { field: string; oldValue: string; newValue: string };
+  /**
+   * On a 403 SECOND_FACTOR_REQUIRED (impersonate): the factor the server
+   * wants, so the confirmation can switch to it (lib/auth/staff-step-up.ts).
+   */
+  secondFactor?: unknown;
 }
 
 export interface TeamRenameResponse {

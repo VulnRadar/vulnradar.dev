@@ -136,6 +136,7 @@ interface UserDetailPanelProps {
     ok: boolean;
     error?: string;
     change?: { field: string; oldValue: string; newValue: string };
+    secondFactor?: unknown;
   }>;
   callerRole: string;
   /** The signed-in staff member's own id; null until the session has loaded. */
@@ -479,7 +480,7 @@ export function UserDetailPanel({
     notifyUser: boolean,
     password?: string,
     totpCode?: string,
-  ): Promise<{ ok: boolean; error?: string }> => {
+  ): Promise<{ ok: boolean; error?: string; secondFactor?: unknown }> => {
     if (!pendingSupportAction) return { ok: true };
     const result = await onAction(u.id, pendingSupportAction.action, {
       ...pendingSupportAction.extraPayload,
