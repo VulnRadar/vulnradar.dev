@@ -23,11 +23,13 @@ app version (UI/backend) are tracked separately in the config (see
 ## v3.9.2 - November 21, 2026
 **Nothing You Use Changed**
 
-This release changes nothing you use. Every page, scan, check, setting and API response works exactly as it did in 3.9.1. What changed is underneath: the Node.js runtime and the libraries VulnRadar is built on, updated to close security issues published after 3.9.1 shipped. Two of them were critical: one in Node.js itself that is being exploited in the wild, and an unauthenticated remote code execution in the image handling of Next.js, the framework the app runs on. If you self-host with Docker, pull v3.9.2. If you run from source, run npm ci, rebuild and restart. Nothing else is needed: no new settings, and no database migration.
+This release changes nothing you use. Every page, scan, check, setting and API response works exactly as it did in 3.9.1. What changed is underneath: the Node.js runtime and the libraries VulnRadar is built on, updated to close security issues published after 3.9.1 shipped. Two of them were critical: one in Node.js itself that is being exploited in the wild, and an unauthenticated remote code execution in the image handling of Next.js, the framework the app runs on. One setting changed as well: pages rendered on request are now kept in memory instead of written to disk, which closes a way to fill a server's disk with requests for pages that do not exist. If you self-host with Docker, pull v3.9.2. If you run from source, run npm ci, rebuild and restart. Nothing else is needed: nothing to configure, and no database migration.
 
 ### Changes
 - [Package] **[SECURITY]** **Next.js and Six Libraries Moved to Fixed Releases**
   Next.js 15.5.29 fixes an unauthenticated remote code execution through image optimization, a denial of service through Server Actions, cache poisoning on self-hosted servers, and HttpOnly cookies leaking through a response header on the Edge runtime. nodemailer 10.6.0 fixes how it reads email addresses, where a crafted address could tie up the mailer or deliver to a domain other than the one written. zod 4.6.7 stops an oversized input from exhausting memory while it is being validated. undici, sharp, source-map-js and DOMPurify each move to the first release that fixes their advisories, two of which were TLS certificate checks that could be skipped. None of these updates changes how VulnRadar behaves.
+- [Server] **[SECURITY]** **Made-Up Addresses Can No Longer Fill the Server's Disk**
+  The pages for a single check, a check category and a comparison with another scanner accept any name in the address and render a page for it on request, a not-found page included. Next.js, the framework underneath, keeps what it renders that way, and by default it writes each one to the server's disk and keeps it there through restarts. A pen test of another site built on Next.js filled its disk exactly like that, about 126 KB per made-up address and no account needed, and a hosting panel stops a server that runs out of space. VulnRadar now keeps those pages in memory only, up to a fixed size with the least recently used dropped first, so requests like that cannot grow the disk at all. Pages built ahead of time are served exactly as before.
 - [Container] **[SECURITY]** **The Docker Image Runs on a Patched Node.js and Alpine**
   The published image moves from Node.js 22.23.2 to 22.23.5, which fixes CVE-2026-111497, a critical Node.js vulnerability that is being actively exploited, and three others. The image also takes Alpine's current OpenSSL, zlib, musl and PostgreSQL client libraries when it is built, rather than whichever versions the base image happened to include, which closes the OpenSSL and libpq advisories the weekly scan of the published image found. The base image is now pinned by digest as well as by version, so a rebuild cannot silently land on a different base image.
 - [ShieldCheck] **[SECURITY]** **The Release Verifier Itself Was Out of Date**
@@ -1450,6 +1452,6 @@ entry is retrieved.
 ## Quick reference
 
 - **Total releases:** 73
-- **Total changes documented:** 863
+- **Total changes documented:** 864
 - **Latest:** v3.9.2 (November 21, 2026) - Nothing You Use Changed
 - **Earliest:** v1.0.0 (February 9, 2026) - First Release

@@ -47,6 +47,22 @@ const nextConfig = {
   // accidental re-enablement via future config additions.
   productionBrowserSourceMaps: false,
   poweredByHeader: false,
+  experimental: {
+    // security: keep what Next renders at run time in memory, not on disk.
+    // app/checks/[id], app/checks/category/[category] and
+    // app/alternatives/[competitor] set `dynamicParams = true`, so a slug
+    // outside generateStaticParams is rendered on request, and with Next's
+    // default (true) every response its incremental cache stores for such a
+    // slug is written under .next/server and kept across restarts. On another
+    // Next site a pen test filled the disk exactly that way: made-up slugs,
+    // 404s included, about 126 KB a request, no sign-in needed. A Pterodactyl
+    // server that goes over its disk limit is stopped. With this off, runtime
+    // entries live only in Next's in-memory cache (cacheMaxMemorySize, 50 MB
+    // by default, least recently used dropped first); the pages the build
+    // prerendered are still read from disk.
+    // tests/repo/isr-flush-to-disk.test.ts keeps it set.
+    isrFlushToDisk: false,
+  },
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
