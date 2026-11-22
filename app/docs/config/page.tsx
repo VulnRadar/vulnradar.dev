@@ -982,6 +982,20 @@ export default function ConfigPage() {
               <InlineCode>DATABASE_SSL_CA</InlineCode>: CA cert contents (when
               SSL is on and the CA is not in the system trust store)
             </li>
+            <li>
+              <InlineCode>DATABASE_SSL_REQUIRED</InlineCode>:{" "}
+              <InlineCode>true</InlineCode> to refuse to start in production
+              when <InlineCode>DATABASE_URL</InlineCode> reaches a remote
+              database without TLS, that is with neither{" "}
+              <InlineCode>DATABASE_SSL=true</InlineCode> nor{" "}
+              <InlineCode>sslmode=require</InlineCode>,{" "}
+              <InlineCode>verify-ca</InlineCode> or{" "}
+              <InlineCode>verify-full</InlineCode> in the URL. Unset, the app
+              logs a warning at startup and shows it on the admin System Health
+              overview. A socket, localhost or a single-label name such as the
+              compose service <InlineCode>postgres</InlineCode> counts as local.
+              The db scripts do not read it.
+            </li>
           </ul>
         </DocsSubSection>
 
