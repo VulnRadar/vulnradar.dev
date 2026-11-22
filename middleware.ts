@@ -918,10 +918,12 @@ export function middleware(request: NextRequest, event?: NextFetchEvent) {
   // forgetting to call the helper. ref: AUDIT-013#dup-04
   //
   // Content-Length only: middleware cannot measure a chunked body without
-  // consuming the stream the route handler still needs. That is not a hole a
-  // client picks: dropping the header does not remove the cap parseBody-backed
-  // routes still apply, and an unbounded chunked upload is bounded by the
-  // reverse proxy every deployment doc puts in front of this app.
+  // consuming the stream the route handler still needs. Under server.mjs (npm
+  // start and the Docker image) the front server caps a chunked /api/ body at
+  // the same MAX_REQUEST_BODY_BYTES before Next reads it (capRequestBody in
+  // lib/server/http-front.mjs). Only an install that skips server.mjs relies
+  // on the reverse proxy and on the cap readJsonObject and parseBody apply,
+  // which tests/repo/no-raw-request-json.test.ts holds routes to.
   if (isApi && BODY_CARRYING_METHODS.has(request.method.toUpperCase())) {
     const declaredLength = Number.parseInt(
       request.headers.get("content-length") ?? "",
